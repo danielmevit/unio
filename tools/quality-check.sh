@@ -20,6 +20,7 @@ python3 -B tools/embed-lead-cooldown.py --check
 python3 -B tools/embed-browser.py --check
 python3 -B tools/embed-capacity.py --check
 python3 -B tools/embed-readiness.py --check
+python3 -B tools/embed-fleet.py --check
 python3 -B tools/embed-dashboard.py --check
 python3 -B tools/embed-adapters.py --check
 UNIO_BIN_DIR="$QUALITY_CHECK_DIR/bin" UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" \
@@ -47,6 +48,7 @@ python3 -B tests/unio-dashboard.py
 python3 -B bridge/tests/capacity_test.py
 python3 -B tests/unio-capacity.py
 python3 -B tests/unio-readiness.py
+python3 -B tests/unio-fleet.py
 python3 -B tests/unio-readiness-install.py
 python3 -B bridge/tests/provider_capacity_test.py
 python3 -B tests/unio-provider-capacity.py
