@@ -15793,6 +15793,8 @@ def same(a, b):
 
 def retention_plan(store, worker, budget):
     active, corrupt = scan_store(store)
+    if len(active) + len(corrupt) > CAP_PROJECT:
+        raise Refuse('excessive', 'active store already exceeds the project cap; existing evidence was preserved')
     archive = archive_for_store(store)
     historical, archive_corrupt = scan_archive(archive)
     claims, bad_claims = load_claims(store)

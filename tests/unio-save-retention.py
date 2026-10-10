@@ -150,6 +150,13 @@ with tempfile.TemporaryDirectory(prefix='save-retention-') as directory:
           and all(content(store/sid) == newest_bytes[sid] for sid in initial))
 
     initial = seed()
+    overcap = store/('e'*32); overcap.mkdir(mode=0o700)
+    r = unio('save', 'create', workers[8], 'T1')
+    check('already-overfull store with corrupt evidence refuses before archival',
+          r.returncode == 1 and 'already exceeds the project cap' in r.stderr
+          and ids(store) == set(initial) | {overcap.name} and not archive.exists())
+
+    initial = seed()
     bad = store/'claims'/('f'*32 + '.json'); bad.write_text('{}'); bad.chmod(0o600)
     r = unio('save', 'create', workers[8], 'T1')
     check('unreadable claims block archival and retain every save', r.returncode == 1
