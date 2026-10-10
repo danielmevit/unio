@@ -17,6 +17,7 @@ remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The comp
 
 | Version | Included work | State |
 | --- | --- | --- |
+| 0.5.11 | Offline recovery-save performance probe with isolated fixtures, bounded processes and observed filesystem/engine timings | CLI follow-up candidate; focused checks passed; full release validation, integration and publication pending |
 | 0.5.10 | Bounded recovery-save archival and usage, explicit cached Claude sign-in, remembered task filters and daily-use guide | Integrated release candidate; complete merged-tree gate, installation and publication pending |
 | 0.5.9 | Saved dashboard redesign: readable task list, agent allowance cards, activity timeline and map readability; packaged Copilot Auto Balance and fleet guide | [Released and installed 2026-10-10](https://github.com/danielmevit/unio/releases/tag/v0.5.9); source0c2def4, complete gate, six browser suites, artifacts, upgrade/restore and official download/install checks passed |
 | 0.5.0 | Completed A/B/C/D rename; installer, commands, config, docs and prototypes | [Published 2026-10-06](https://github.com/danielmevit/unio/releases/tag/v0.5.0); source aebe23c; installed with owner approval |
@@ -39,7 +40,10 @@ an owner-enabled supervisor waits outside the lead CLI and restarts it from
 the saved handoff after its allowance resets. The five-hour fallback is five
 hours and one minute. Repeated lead limits create new waits; existing worker
 limit handling stays unchanged. Implement work saving before this restart slice.
-Later release numbers and dates are not assigned yet. The
+Continue with patch releases in 0.5.x: 0.5.11 follows 0.5.10. Further release
+numbers and dates are not assigned yet. See the
+[save-performance probe](development/SAVE-PERFORMANCE.md) for measured baselines;
+its measurements do not imply a save-engine speedup. The
 [worker progress contract](WORKER-PROGRESS.md) covers browser output and files;
 its implementation has passed native checks and the real funded browser journey.
 [Task time budgets](development/TASK-TIME-BUDGETS.md) give substantial work

@@ -1,48 +1,78 @@
-# Save Performance Benchmark
+# Measure recovery-save performance
 
-## Running the Probe
+`tools/save-benchmark.py` measures the installed Unio CLI using a tiny,
+isolated project. Use it to compare save latency on different filesystems or
+engine versions before choosing an optimization. This is a source-checkout
+utility; it does not add an installed `unio` subcommand.
 
-The `save-benchmark.py` probe builds a private Git fixture to measure `unio save create` performance without modifying any real project state or saves. It measures isolated worker performance, bounds execution times, and reports results in schema-1 JSON.
+## Run it
 
-### On ordinary workspace-mounted scratch
+From the repository root, choose an existing directory owned by you. In the
+Unio workspace layout, `repo/` and `tmp/` are siblings:
 
-To run the probe on a standard disk-backed scratch directory (e.g., inside the workspace `tmp/`):
-
-```sh
-python3 -B tools/save-benchmark.py \
-    --engine /path/to/bin/unio \
-    --scratch tmp \
-    --workspace save-benchmark-disk
+```bash
+mkdir -p "../tmp/save-benchmarks"
+python3 -B "tools/save-benchmark.py" \
+  --engine "$HOME/.local/bin/unio" \
+  --scratch "../tmp/save-benchmarks" \
+  --workspace "baseline-disk"
 ```
 
-### On workspace-local tmpfs
+Every run requires a new workspace name. The probe refuses to reuse an
+existing child and leaves its generated project and private `receipt.json`
+there for inspection. `--cleanup` explicitly removes only that newly created
+child; capture stdout if you need the receipt after cleanup.
 
-To measure performance without disk I/O overhead, create a user-owned tmpfs and use it as the scratch directory:
+For a filesystem comparison, use a second, already mounted, owner-created
+tmpfs directory **inside the workspace** as `--scratch`, with a new workspace
+name and the same engine, save count and limits. Creating or mounting tmpfs
+is a separate operator action. The probe never mounts storage, installs
+software, clones external repositories or makes a provider call.
 
-```sh
-# Create a local mount point
-mkdir -p tmp/ramdisk
+## What is measured
 
-# Mount a user-owned tmpfs (requires appropriate permissions or sudo)
-sudo mount -t tmpfs -o size=256M,uid=$(id -u),gid=$(id -g) tmpfs tmp/ramdisk
+The fixture has two local workers and a small mixed workload: a staged text
+change and deletion, an unstaged edit, and untracked text and binary files.
+It runs at most three `save create` calls, worker `save inspect`, `save usage`
+and `watch --once --json`. STOP stays set. It preserves HOME, isolates Unio
+and Git configuration, disables Git hooks and uses a local provider stub to
+detect accidental invocation.
 
-# Run the benchmark
-python3 -B tools/save-benchmark.py \
-    --engine /path/to/bin/unio \
-    --scratch tmp/ramdisk \
-    --workspace save-benchmark-tmpfs
-```
+Schema-1 JSON includes the exact engine version and SHA-256, observed
+filesystem, monotonic command durations, exits, timeout/output flags and
+workload counts. `save_attempt_count` counts calls; `save_count` counts unique
+IDs with matching published manifest identities. That manifest check does
+not prove a restore or replace native verification. A refused save remains a
+failed observation. Unsupported usage, supported-but-Unknown usage, and
+unrecognized output remain distinct.
 
-## Observations (0.5.9)
+Defaults are 60 seconds per subprocess, 300 seconds for the probe and 256 KiB
+per output stream. Git and filesystem-observation commands share the total
+deadline. Owned process groups are stopped on a bound or interruption, with
+up to one extra second to reap the child. Exit 0 means the planned
+measurements were recorded; inspect each measurement for engine failures.
+Exit 1 means the fixture or whole-probe deadline prevented completion.
 
-### Facts
-- A probe ran on `Unio 0.5.9` using a `v9fs` (9p) workspace-mounted scratch directory.
-- `unio save create` duration over three attempts was observed at `~8.19s`, `~8.21s`, and `~6.27s`.
-- `unio save inspect --worker <w> --json` executed in `~3.10s`.
-- `unio watch --once --json` executed in `~0.18s`.
-- `unio save usage` is officially unsupported on `0.5.9` (exits with code 2).
+## Observed baseline
 
-### Interpretations
-- The save creation process on 0.5.9 is heavily influenced by filesystem I/O performance. The `v9fs` file system used during observation might amplify the time taken to clone worker states and write save manifests compared to a native local filesystem.
-- Running the same probe on a `tmpfs` RAM disk would likely drastically decrease the save creation time by eliminating storage subsystem latency.
-- Future engine enhancements could optimize the storage layer or parallelize worker snapshotting to reduce save times.
+A corrected probe against Unio 0.5.9 on 2026-10-10 observed `v9fs` / `9p` on
+the workspace-mounted Windows drive:
+
+| Operation | Elapsed seconds | Result |
+| --- | ---: | --- |
+| Save 1 | 7.19 | exit 0, matching published manifest |
+| Save 2 | 7.52 | exit 0, matching published manifest |
+| Save 3 | 7.24 | exit 0, matching published manifest |
+| Inspect worker | 3.36 | exit 0, JSON object |
+| Watch once | 0.25 | exit 0, JSON object |
+| Usage | 0.07 | exit 2, command unsupported in 0.5.9 |
+
+The generated workload contained six non-control files totaling 2,377 bytes.
+Three distinct saves were recorded; no provider-stub call occurred. The
+installed engine and operator configuration hashes were unchanged afterward.
+Private receipts stay outside the repository.
+
+These are observations from one small fixture, not a general model or
+filesystem ranking. Repeating the same workload on tmpfs can help separate
+storage costs from process and Git costs. No comparative tmpfs measurement
+or save-engine speedup is claimed here.

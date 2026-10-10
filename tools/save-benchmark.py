@@ -21,10 +21,13 @@ observations, not probe failures); 1 the probe stopped early (unsafe input,
 fixture failure or deadline); 2 usage error.
 """
 import argparse
+import hashlib
 import json
+import math
 import os
 import re
 import select
+import shlex
 import shutil
 import signal
 import stat
@@ -50,10 +53,9 @@ def fail(message):
 class RunResult:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
-        if 'exit_code' in kwargs:
-            self.returncode = kwargs['exit_code']
-        else:
-            self.returncode = None
+        self.returncode = kwargs.get('exit_code')
+        if self.returncode is None:
+            self.returncode = 124
 
 
 def run_bounded(argv, cwd, env, timeout, cap=OUTPUT_CAP_BYTES):
@@ -63,58 +65,66 @@ def run_bounded(argv, cwd, env, timeout, cap=OUTPUT_CAP_BYTES):
     can neither block the probe nor exhaust memory with unbounded output.
     """
     started = time.monotonic()
-    proc = subprocess.Popen(argv, cwd=str(cwd), env=env,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            start_new_session=True)
-    streams = {proc.stdout.fileno(): bytearray(), proc.stderr.fileno(): bytearray()}
+    try:
+        proc = subprocess.Popen(argv, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                start_new_session=True)
+    except OSError as error:
+        return RunResult(duration_seconds=round(time.monotonic()-started, 6),
+                         exit_code=127, stdout='', stderr=str(error),
+                         timed_out=False, output_truncated=False)
+    out_fd, err_fd = proc.stdout.fileno(), proc.stderr.fileno()
+    streams = {out_fd: bytearray(), err_fd: bytearray()}
     for fd in streams:
         os.set_blocking(fd, False)
     eof, truncated = set(), False
     deadline = started + timeout
-    while len(eof) < len(streams):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-        open_fds = [fd for fd in streams if fd not in eof]
-        try:
-            ready, _, _ = select.select(open_fds, [], [], min(remaining, 0.25))
-        except InterruptedError:
-            continue
-        for fd in ready:
-            try:
-                chunk = os.read(fd, 65536)
-            except (BlockingIOError, OSError):
-                continue
-            if not chunk:
-                eof.add(fd)
-                continue
-            buf = streams[fd]
-            room = cap - len(buf)
-            if room > 0:
-                buf.extend(chunk[:room])
-                truncated = truncated or len(chunk) > room
-            else:
-                truncated = True
-        if truncated:
-            break
-    timed_out = len(eof) < len(streams) and not truncated
-    if timed_out or truncated:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except OSError:
-            pass
+    timed_out = False
     try:
-        proc.wait(timeout=10)
-    except subprocess.TimeoutExpired:
+        while len(eof) < len(streams) or proc.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            open_fds = [fd for fd in streams if fd not in eof]
+            if not open_fds:
+                time.sleep(min(remaining, 0.01))
+                continue
+            try:
+                ready, _, _ = select.select(open_fds, [], [], min(remaining, 0.25))
+            except InterruptedError:
+                continue
+            for fd in ready:
+                try:
+                    chunk = os.read(fd, 65536)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    eof.add(fd)
+                    continue
+                buf = streams[fd]
+                room = cap - len(buf)
+                if room > 0:
+                    buf.extend(chunk[:room])
+                    truncated = truncated or len(chunk) > room
+                else:
+                    truncated = True
+            if truncated:
+                break
+    finally:
+        # Reap the leader and stop any owned descendants, including children
+        # which closed both pipes before the leader finished.
         try:
             os.killpg(proc.pid, signal.SIGKILL)
-        except OSError:
+        except ProcessLookupError:
             pass
-        proc.wait()
-    out = bytes(streams[proc.stdout.fileno()])
-    err = bytes(streams[proc.stderr.fileno()])
-    proc.stdout.close()
-    proc.stderr.close()
+        try:
+            proc.wait(timeout=1)
+        finally:
+            proc.stdout.close()
+            proc.stderr.close()
+    out = bytes(streams[out_fd])
+    err = bytes(streams[err_fd])
     return RunResult(duration_seconds=round(time.monotonic() - started, 6),
                      exit_code=None if (timed_out or truncated) else proc.returncode, stdout=out.decode(errors='replace'),
                      stderr=err.decode(errors='replace'), timed_out=timed_out,
@@ -130,25 +140,26 @@ class Probe:
         self.deadline = self.started + args.total_timeout
 
     def out_of_time(self, step):
-        return time.monotonic() >= self.deadline and self.failures.append(
-            'total timeout reached before %s' % step) is None
+        if time.monotonic() < self.deadline:
+            return False
+        self.failures.append('total timeout reached before %s' % step)
+        return True
 
-    def git(self, cwd, *git_args, data=None):
-        timeout = min(self.args.step_timeout, max(0.1, self.deadline - time.monotonic()))
-        try:
-            return subprocess.run(['git', *git_args], cwd=str(cwd), env=self.env,
-                                 input=data, capture_output=True, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            class Dummy:
-                returncode = 124
-                stdout = b''
-                stderr = b'git command timed out'
-            return Dummy()
+    def git(self, cwd, *git_args):
+        if self.out_of_time('git ' + ' '.join(git_args)):
+            return RunResult(exit_code=124, stdout=b'', stderr=b'total deadline reached')
+        result = run_bounded(['git', *git_args], cwd, self.env,
+                             min(self.args.step_timeout, self.deadline - time.monotonic()))
+        result.stdout = result.stdout.encode()
+        result.stderr = result.stderr.encode()
+        if result.timed_out or result.output_truncated:
+            result.returncode = 124
+        return result
 
     def engine(self, cwd, *engine_args):
         if self.out_of_time(' '.join(engine_args)):
             return None
-        timeout = min(self.args.step_timeout, max(0.1, self.deadline - time.monotonic()))
+        timeout = min(self.args.step_timeout, self.deadline - time.monotonic())
         return run_bounded([str(self.engine_path), *engine_args], cwd=cwd,
                            env=self.env, timeout=timeout)
 
@@ -167,15 +178,24 @@ class Probe:
         project = child / 'project'
         repo = project / 'repo'
         repo.mkdir(parents=True)
-        (child / 'home').mkdir()
-        self.env = dict(os.environ,
+        # Keep HOME unchanged while discarding inherited project, Git and
+        # shell startup overrides. No provider command is used by this probe.
+        self.env = {key: os.environ[key] for key in
+                    ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TZ')
+                    if key in os.environ}
+        self.env.update(
                         UNIO_CONF_DIR=str(conf), UNIO_AUTO_OFF='0', UNIO_AUTO_SYNC='0',
-                        UNIO_AUTO_VERIFY='0', HOME=str(child / 'home'),
+                        UNIO_AUTO_VERIFY='0', TMPDIR=str(child), GIT_TERMINAL_PROMPT='0',
                         GIT_CONFIG_GLOBAL='/dev/null', GIT_CONFIG_SYSTEM='/dev/null',
+                        GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_COUNT='3',
+                        GIT_CONFIG_KEY_0='core.hooksPath', GIT_CONFIG_VALUE_0='/dev/null',
+                        GIT_CONFIG_KEY_1='commit.gpgsign', GIT_CONFIG_VALUE_1='false',
+                        GIT_CONFIG_KEY_2='core.fsmonitor', GIT_CONFIG_VALUE_2='false',
                         GIT_AUTHOR_NAME='bench', GIT_COMMITTER_NAME='bench',
                         GIT_AUTHOR_EMAIL='bench@example.invalid',
                         GIT_COMMITTER_EMAIL='bench@example.invalid',
                         GIT_OPTIONAL_LOCKS='0')
+        (conf / 'agents.conf').write_text('bench=false\n')
         r = self.git(repo, 'init', '-q', '--template=', '-b', 'main')
         if r.returncode:
             return 'git init failed: %s' % r.stderr.decode(errors='replace').strip()
@@ -214,8 +234,10 @@ class Probe:
         (tasks / (TASK + '.md')).write_text(
             '# %s\nBenchmark fixture task.\n## Allowed scope\n- none\n## Validate\n$ true\n' % TASK)
         # A stub agent records any invocation; save/inspect/watch never call it.
-        (project / 'coord' / 'agents.conf').write_text(
-            "bench-none=sh -c 'echo called >> \"%s" % (project / 'coord' / 'provider-calls') + "\"'\n")
+        stub = child / 'provider-stub'
+        stub.write_text('#!/bin/sh\nprintf "called\\n" >> "$(dirname "$0")/project/coord/provider-calls"\nexit 1\n')
+        stub.chmod(0o700)
+        (project / 'coord' / 'agents.conf').write_text('bench=' + shlex.quote(str(stub)) + '\n')
         r = self.engine(repo, 'stop')
         if r is None or r.returncode or not (project / 'coord' / 'STOP').exists():
             return 'engine stop failed: %s' % (r.stderr.strip() if r else 'timeout')
@@ -246,6 +268,8 @@ class Probe:
         for dirpath, dirnames, filenames in os.walk(a):
             dirnames[:] = [d for d in dirnames if d != '.git']
             for name in filenames:
+                if name == '.git' or name in ('WORKER.md', 'MASTER.md', 'CLAUDE.md', 'AGENTS.md', 'GEMINI.md', '.unio-worker'):
+                    continue
                 p = Path(dirpath) / name
                 counts['worktree_files'] += 1
                 try:
@@ -258,12 +282,12 @@ class Probe:
                 if not entry:
                     continue
                 code = entry[:2].decode(errors='replace')
-                if '?' in code:
+                if code == '??':
                     counts['untracked'] += 1
-                elif code[0] in 'MARC':
-                    counts['staged'] += 1
-                elif code[1] in 'MD':
-                    counts['unstaged'] += 1
+                    continue
+                counts['staged'] += int(code[0] != ' ')
+                counts['unstaged'] += int(code[1] != ' ')
+                counts['removed'] += int('D' in code)
         return counts
 
     # ---- measurements --------------------------------------------------
@@ -283,8 +307,18 @@ class Probe:
                 save_id = m.group(1)
             # Never claim a save from exit alone: confirm the published
             # manifest inside the fixture's private save store.
-            confirmed = bool(save_id) and (project / 'coord' / 'saves' / save_id
-                                           / 'manifest.json').is_file()
+            manifest = project / 'coord' / 'saves' / (save_id or 'missing') / 'manifest.json'
+            confirmed = r.exit_code == 0 and bool(save_id) and manifest.is_file() and not manifest.is_symlink()
+            if confirmed:
+                try:
+                    if manifest.stat().st_size > OUTPUT_CAP_BYTES:
+                        raise ValueError('oversized manifest')
+                    doc = json.loads(manifest.read_text())
+                    confirmed = (isinstance(doc, dict) and doc.get('schema_version') == 1
+                                 and doc.get('save_id') == save_id
+                                 and doc.get('worker') == WORKERS[0] and doc.get('task') == TASK)
+                except (OSError, ValueError):
+                    confirmed = False
             results['save_create'].append(dict(
                 attempt=attempt, duration_seconds=r.duration_seconds,
                 exit_code=r.exit_code, save_id=save_id,
@@ -301,8 +335,7 @@ class Probe:
         if r is not None:
             valid = False
             try:
-                json.loads(r.stdout)
-                valid = True
+                valid = isinstance(json.loads(r.stdout), dict)
             except ValueError:
                 pass
             results['save_inspect_worker'] = dict(
@@ -311,20 +344,23 @@ class Probe:
                 output_truncated=r.output_truncated)
         r = self.engine(repo, 'save', 'usage', '--json')
         if r is not None:
+            try:
+                usage = json.loads(r.stdout)
+            except ValueError:
+                usage = None
+            unsupported = r.exit_code == 2 and 'usage: unio save' in r.stderr.lower()
             results['save_usage'] = dict(
                 duration_seconds=r.duration_seconds, exit_code=r.exit_code,
-                supported=r.exit_code == 0, timed_out=r.timed_out,
+                supported=False if unsupported else True if isinstance(usage, dict) else None,
+                observation=usage, timed_out=r.timed_out,
                 output_truncated=r.output_truncated,
                 detail=(r.stderr.strip().splitlines() or [''])[0][:200] or None)
         r = self.engine(repo, 'watch', '--once', '--json')
         if r is not None:
             valid = False
             try:
-                for line in r.stdout.splitlines():
-                    if line.strip():
-                        json.loads(line)
-                        valid = True
-                        break
+                lines = [line for line in r.stdout.splitlines() if line.strip()]
+                valid = bool(lines) and all(isinstance(json.loads(line), dict) for line in lines)
             except ValueError:
                 pass
             results['watch_once_json'] = dict(
@@ -338,10 +374,12 @@ class Probe:
         info = {'stat_f_type': None, 'proc_mounts_type': None,
                 'mount_point': None, 'device': None}
         try:
-            r = subprocess.run(['stat', '-f', '-c', '%T', str(path)],
-                               capture_output=True, timeout=10)
+            if self.out_of_time('filesystem observation'):
+                return info
+            r = run_bounded(['stat', '-f', '-c', '%T', str(path)], path, self.env,
+                            min(self.args.step_timeout, self.deadline-time.monotonic()))
             if r.returncode == 0:
-                info['stat_f_type'] = r.stdout.decode().strip()
+                info['stat_f_type'] = r.stdout.strip()
         except (OSError, subprocess.TimeoutExpired):
             pass
         try:
@@ -352,7 +390,8 @@ class Probe:
                     mounts.append((parts[1], parts[0], parts[2]))
             best = ''
             for point, device, fs_type in mounts:
-                if str(path).startswith(point) and len(point) > len(best):
+                point = re.sub(r'\\([0-7]{3})', lambda m: chr(int(m[1], 8)), point)
+                if (str(path) == point or str(path).startswith(point.rstrip('/') + '/')) and len(point) > len(best):
                     best, info['mount_point'] = point, point
                     info['proc_mounts_type'], info['device'] = fs_type, device
         except OSError:
@@ -370,7 +409,8 @@ class Probe:
             return False
         if (not stat.S_ISDIR(st.st_mode) or os.path.islink(child)
                 or Path(os.path.realpath(child)).parent != parent
-                or child.name != self.args.workspace):
+                or child.name != self.args.workspace
+                or (st.st_dev, st.st_ino) != self.child_identity):
             self.failures.append('cleanup refused: workspace changed on disk')
             return False
         shutil.rmtree(child)
@@ -402,10 +442,14 @@ class Probe:
             fail('refusing to use a filesystem root as scratch')
         if not NAME_RE.match(args.workspace):
             fail('workspace name must match %s' % NAME_RE.pattern)
+        if args.workspace in ('.', '..'):
+            fail('workspace must be a new child name')
         child = self.scratch_real / args.workspace
         if os.path.lexists(child):
             fail('refusing to reuse existing benchmark workspace: %s' % child)
         os.mkdir(child, 0o700)
+        child_stat = child.stat()
+        self.child_identity = (child_stat.st_dev, child_stat.st_ino)
         started_at = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
         fixture_error = self.build_fixture(child)
         measurements = None
@@ -432,7 +476,9 @@ class Probe:
                         'provider_calls_recorded': provider_calls},
             'workload': self.workload_counts(child / 'project') if not fixture_error else None,
             'measurements': measurements,
-            'save_count': len(measurements['save_create']) if measurements else 0,
+            'save_attempt_count': len(measurements['save_create']) if measurements else 0,
+            'save_count': len({c['save_id'] for c in measurements['save_create']
+                               if c['confirmed_by_manifest']}) if measurements else 0,
             'failures': self.failures,
             'bounds': {'step_timeout_seconds': args.step_timeout,
                        'total_timeout_seconds': args.total_timeout,
@@ -446,6 +492,9 @@ class Probe:
             m = re.match(r'Unio (\S+)', r.stdout)
             if m:
                 receipt['engine']['version'] = m.group(1)
+        receipt['engine']['sha256'] = hashlib.sha256(engine.read_bytes()).hexdigest()
+        receipt['finished_at'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+        receipt['duration_seconds'] = round(time.monotonic() - self.started, 6)
         receipt['cleanup']['performed'] = self.cleanup(child)
         if not receipt['cleanup']['performed']:
             receipt_path = child / 'receipt.json'
@@ -478,8 +527,8 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.saves <= MAX_SAVES:
         fail('--saves must be between 1 and %d' % MAX_SAVES)
-    if args.step_timeout <= 0 or args.total_timeout <= 0:
-        fail('timeouts must be positive')
+    if not all(math.isfinite(t) and t > 0 for t in (args.step_timeout, args.total_timeout)):
+        fail('timeouts must be finite and positive')
     if args.workspace is None:
         args.workspace = 'save-benchmark-%s-%d' % (
             time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()), os.getpid())
