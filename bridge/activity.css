@@ -587,7 +587,7 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 /* ---- Tasks, readable: summary, grouped list, plain states ---------------- */
 .task-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 4px 0 18px; }
 .task-summary button {
-  display: flex; align-items: baseline; gap: 10px; justify-content: flex-start;
+  display: grid; grid-auto-flow: column; justify-content: start; align-content: center; align-items: baseline; column-gap: 10px;
   min-height: 64px; padding: 10px 16px; text-align: left; background: var(--paper);
   border-radius: var(--r-xs);
 }
@@ -638,7 +638,7 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .track li::before { content: ""; width: 8px; height: 8px; border-radius: 2px; border: 1.5px solid var(--line-alt); }
 .track li[data-step="done"] { color: var(--text-main); }
 .track li[data-step="done"]::before { background: var(--map-passed); border-color: var(--map-passed); }
-.track li[data-step="failed"] { color: var(--text-main); border-color: var(--map-failed); }
+.track li[data-step="failed"] { color: var(--text-main); }
 .track li[data-step="failed"]::before { background: var(--map-failed); border-color: var(--map-failed); }
 .track li[data-step="running"]::before { background: var(--text-main); border-color: var(--text-main); }
 .track li[data-step="unknown"]::before { border-style: dashed; }
@@ -811,7 +811,7 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
   .task-row.row { grid-template-columns: minmax(0, 1fr); }
   .track { grid-template-columns: 62px 112px 90px; }
 }
-.task-row.row { grid-template-columns: minmax(0, 1fr) 272px 176px 384px; }
+.task-row.row { grid-template-columns: minmax(0, 1fr) calc(272px + clamp(16px, 2vw, 40px)) 176px 384px; }
 /* a long command wraps instead of being cut off; Copy takes it whole */
 .next-line code { white-space: normal; overflow-wrap: anywhere; overflow-x: visible; }
 @media (max-width: 1200px) { .task-row.row { grid-template-columns: minmax(0, 1fr) 176px; } }
