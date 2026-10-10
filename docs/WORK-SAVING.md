@@ -1,4 +1,4 @@
-# Work saving — saves and authorized continuation in v0.5.4
+# Work saving — saves and authorized continuation
 
 Owner requirement recorded 2026-10-06 after a worker reached its allowance
 limit with useful edits but no final commit. See the
@@ -17,10 +17,12 @@ preserved failures and live cooldown limitation](development/RECOVERY-ACCEPTANCE
 | Manual `unio save create`, `inspect` and `restore` | Available in v0.5.4 |
 | Automatic baseline, periodic and final saves during runs | Available in v0.5.4 |
 | One authorized continuation from a save (`unio save continue`) | Available in v0.5.4 |
+| Save retention with archival (`unio save usage`) | Next release candidate; not included in v0.5.9 |
 | [Lead cooldown supervisor](LEAD-COOLDOWN.md) | Experimental, explicitly enabled in v0.5.4; genuine lead-limit-to-restart cycle unverified |
 
-Install the [official v0.5.4 release](https://github.com/danielmevit/unio/releases/tag/v0.5.4)
-to use these commands. Check the installed version with `unio version`.
+Install the [official v0.5.9 release](https://github.com/danielmevit/unio/releases/tag/v0.5.9)
+to use the existing saving commands. The archival and usage additions below
+require the next release. Check the installed version with `unio version`.
 
 ## Manual saving
 
@@ -29,11 +31,15 @@ unio save create WORKER TASK
 unio save inspect SAVE_ID [--json]
 unio save inspect --worker WORKER [--json]
 unio save restore SAVE_ID DESTINATION
+unio save continue SAVE_ID DESTINATION NEW_TASK
+unio save usage [--json]
 ```
 
-These commands make no provider call and work while STOP is set. Exit 0
-means success, 1 a known refusal or failure, 2 bad arguments, a busy lock
-or an Unknown restore outcome.
+`create`, `inspect`, `restore` and `usage` make no provider call and work while
+STOP is set. `continue` starts one separately authorized worker run and respects
+STOP and account limits. Exit 0 means success, 1 a known refusal or failure,
+and 2 bad arguments, unavailable observations or an Unknown restore outcome;
+`continue` preserves the worker run's exit code.
 
 `create` acquires the source worker's native lock exactly once (a validated, regular, owned file in a safe parent directory, without following symlinks or blocking) and observes the worktree twice. It saves only when both observations match: committed history after the base (as a verified Git bundle carrying HEAD over the base), the full index and the working files, each with its own bytes and modes. Staged, unstaged, untracked, deleted, binary, empty, executable and retained deleted-from-index content is kept exactly. Ignored caches and the native ignored role cards are omitted before any of their bytes are read; however, required paths like HEAD-tracked files inside ignored directories are still saved. The base is the frozen task base that `unio run` recorded, otherwise the commit named by `coord/base`.
 
@@ -54,12 +60,33 @@ place. Each worker keeps its latest five unclaimed saves; restore claims pin
 the saves they used. A separate latest-attempt record per worker shows a
 newer refused or failed attempt without hiding the last good save.
 
+When retention caps are reached (5 ordinary unclaimed saves per worker, 8
+total per worker, 32 project-wide), older eligible saves are atomically archived
+to `coord/saves/archive/SAVE_ID/snapshot/` instead of being deleted. A private
+wrapper reserves each ID exclusively before the existing save directory moves
+inside it; an existing ID is never replaced. Archived saves remain
+accessible for inspect and restore, and count toward a separate archive bound
+(128 saves, 512 MiB). Each worker's newest valid save and every claim-pinned or
+corrupt/unsupported item is preserved. If no eligible history can move, the
+archive is full or evidence is unsafe, the new save is refused without deleting
+history. There is no automatic archive purge. `unio save usage` reports active
+and archived counts, bounds and evidence.
+
 `inspect` validates every stored byte and reports the save, or a worker's
 last good save, latest attempt and live state. Live state is Unknown while
 the worker is busy, its native lock or coordination parents are unsafe, or it
 cannot be observed. Unsafe lock admission refuses before changing saved or
 claim evidence. Existing owned, single-link 0644 native locks are supported;
 new native locks are 0600, and save-store privacy remains 0700/0600.
+
+`usage` reports read-only metadata observations: active and archived save counts,
+actual stored file bytes, retention caps (5 per worker unclaimed, 8 per worker, 32
+project-wide), archive bounds (128 saves, 512 MiB), valid claim pins, corrupt
+evidence and claim counts. It works while STOP is set and makes no provider
+calls, creates no missing store or lock and changes no existing files. Busy or
+unsafe storage, unreadable claims and corrupt or ambiguous entries report
+Unknown with exit 2. Counts do not establish content integrity; `inspect`
+validates content hashes. The JSON output labels this `metadata_only`.
 
 `restore` writes into a different worker that is idle, clean and at the
 saved base in the same repository. Everything is validated first: manifest,
@@ -177,3 +204,8 @@ Unknown refusal, STOP and occupied accounts, changed/incomplete orders,
 single ownership through auto-verification, signal cleanup, pinned evidence,
 source immutability and preserved commits with auto-sync enabled and newer main.
 These focused checks make no AI request; the full gate runs before release.
+
+`tests/unio-save-retention.py` exercises cross-worker pressure, archived inspect,
+restore and authorized continuation, byte preservation, protected claims and
+newest saves, archive count/byte bounds, collisions, read-only usage and an
+interrupted archive move using isolated native workflows.

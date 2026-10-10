@@ -14592,6 +14592,7 @@ MAX_ENTRIES, MAX_COMMITS = 4000, 100
 MAX_BODY, MAX_STORED, MAX_TASK, MAX_MANIFEST = 4 * MIB, 32 * MIB, MIB, MIB
 MAX_OBSERVED, CAPTURE_SECONDS, RESTORE_SECONDS = 64 * MIB, 30.0, 120.0
 KEEP_UNPINNED, CAP_WORKER, CAP_PROJECT, CAP_CLAIMS = 5, 8, 32, 32
+ARCHIVE_CAP_SAVES, ARCHIVE_CAP_BYTES = 128, 512 * MIB
 LOCK_WAIT = 10.0
 SAVE_REASONS = ('manual', 'baseline', 'periodic', 'final', 'final-failure')
 CODES = ('unstable', 'excessive', 'secret_name', 'unsupported_type', 'unsupported_git', 'unsafe_name',
@@ -14646,7 +14647,7 @@ def fault(name):
         return
     if name == 'between-passes':
         os.kill(os.getpid(), signal.SIGSTOP)
-    elif name.startswith('publish-'):
+    elif name.startswith(('publish-', 'archive-')):
         os._exit(75)
     else:
         raise Refuse('io_error', 'injected fault: ' + name)
@@ -14915,6 +14916,53 @@ def open_store(root, create):
     for sub in ('attempts', 'claims'):
         private_dir(os.path.join(store, sub), create)
     return store
+
+
+def archive_for_store(store, create=False):
+    archive = os.path.join(store, 'archive')
+    return archive if private_dir(archive, create) else None
+
+
+def bounded_names(path, limit=4096):
+    names = []
+    with os.scandir(path) as entries:
+        for entry in entries:
+            if len(names) >= limit:
+                raise Refuse('excessive', 'too many entries to observe save storage safely')
+            names.append(entry.name)
+    return sorted(names)
+
+
+def archive_save(store, save_id, archive):
+    # mkdir reserves the ID exclusively, including on WSL Windows mounts
+    # without renameat2(NOREPLACE). Move into its new private wrapper under
+    # the saves lock. No copy/delete fallback and no existing ID replacement.
+    src, dst = open_dir(store), open_dir(archive)
+    reserved = None
+    try:
+        private_at(src, save_id, 'dir')
+        try:
+            os.mkdir(save_id, mode=0o700, dir_fd=dst)
+        except FileExistsError:
+            raise Refuse('invalid_save', 'archive ID already exists; no history was replaced')
+        reserved = open_dir(save_id, dst)
+        if os.listdir(reserved):
+            raise Refuse('unknown', 'new archive reservation unexpectedly contains evidence')
+        os.fsync(dst)
+        fault('archive-after-reserve')
+        os.rename(save_id, 'snapshot', src_dir_fd=src, dst_dir_fd=reserved)
+        os.fsync(reserved)
+        os.fsync(src)
+        os.fsync(dst)
+    finally:
+        if reserved is not None:
+            os.close(reserved)
+        os.close(src)
+        os.close(dst)
+
+
+def scan_archive(archive):
+    return scan_store(archive, archived=True) if archive else ([], [])
 
 
 def saves_lock(root):
@@ -15542,7 +15590,7 @@ def load_save(path, save_id, deep):
     except OSError:
         raise Refuse('invalid_save', 'unreadable save directory: ' + save_id)
     try:
-        private_at(dfd, 'manifest.json', 'file')
+        manifest_size = private_at(dfd, 'manifest.json', 'file').st_size
         doc, sizes = manifest_doc(strict_json(read_at(dfd, 'manifest.json', MAX_MANIFEST)[1], MAX_MANIFEST, 'manifest'), save_id)
         g = doc['git']
         expected = {'manifest.json', 'context', 'pool'} | ({'bundle'} if g['commit_ids'] else set())
@@ -15561,8 +15609,9 @@ def load_save(path, save_id, deep):
                     raise Refuse('invalid_save', 'stored content size mismatch: ' + digest)
             if g['commit_ids'] and private_at(dfd, 'bundle', 'file').st_size != g['bundle_bytes']:
                 raise Refuse('invalid_save', 'bundle size mismatch')
+            stored_bytes = manifest_size + doc['context']['task_bytes'] + sum(sizes.values()) + g['bundle_bytes']
             if not deep:
-                return dict(manifest=doc)
+                return dict(manifest=doc, stored_bytes=stored_bytes)
             task = read_at(cfd, 'task.md', MAX_TASK)[1]
             if sha(task) != doc['context']['task_sha256']:
                 raise Refuse('invalid_save', 'task context hash mismatch')
@@ -15584,7 +15633,7 @@ def load_save(path, save_id, deep):
                 prereqs, refs = bundle_header(bundle, g['object_format'])
                 if refs != [(g['head_commit'], 'HEAD')] or g['base_commit'] not in prereqs:
                     raise Refuse('invalid_save', 'bundle does not carry exactly HEAD over the base')
-            return dict(manifest=doc, bodies=bodies, task=task, bundle=bundle)
+            return dict(manifest=doc, bodies=bodies, task=task, bundle=bundle, stored_bytes=stored_bytes)
         finally:
             os.close(cfd)
             os.close(pfd)
@@ -15629,7 +15678,7 @@ def load_claims(store):
     """All claims, plus whether unreadable claim evidence exists."""
     claims, corrupt = [], 0
     directory = os.path.join(store, 'claims')
-    for name in sorted(os.listdir(directory)):
+    for name in bounded_names(directory):
         if re.fullmatch(r'[0-9a-f]{32}\.json\.tmp-[0-9a-f]{16}', name):
             continue
         try:
@@ -15660,36 +15709,68 @@ def lenient_worker(path):
         return None
 
 
-def scan_store(store):
-    """Published saves (lightly validated) and corrupt evidence."""
+def scan_store(store, archived=False, budget=None):
+    """Bounded metadata validation; corrupt evidence is counted and kept."""
     saves, corrupt = [], []
-    for name in sorted(os.listdir(store)):
-        if name in ('attempts', 'claims') or name.startswith('.staging-'):
+    for name in bounded_names(store):
+        if budget is not None:
+            budget.remaining()
+        if not archived and (name in ('attempts', 'claims', 'archive') or name.startswith('.staging-')):
             continue
         path = os.path.join(store, name)
         if HEX32.fullmatch(name):
             try:
-                doc = load_save(path, name, False)['manifest']
+                if archived:
+                    path = archived_path(store, name)
+                loaded = load_save(path, name, False)
+                doc = loaded['manifest']
                 saves.append(dict(id=name, worker=doc['worker'], task=doc['task'],
-                                  published=when(doc['published_at']), manifest=doc))
+                                  published=when(doc['published_at']), manifest=doc,
+                                  archived=archived, stored_bytes=loaded['stored_bytes']))
                 continue
             except Refuse:
                 pass
         corrupt.append(dict(id=name, worker=lenient_worker(path) if HEX32.fullmatch(name) else None))
-    saves.sort(key=lambda s: (s['published'], s['id']), reverse=True)
+    saves.sort(key=lambda item: (item['published'], item['id']), reverse=True)
     return saves, corrupt
 
 
+def archived_path(archive, save_id):
+    wrapper = under(archive, save_id)
+    if not private_dir(wrapper, False) or bounded_names(wrapper) != ['snapshot']:
+        raise Refuse('invalid_save', 'incomplete or unsupported archive reservation')
+    return under(wrapper, 'snapshot')
+
+
+def resolve_save_path(root, save_id):
+    store = open_store(root, False)
+    if store is None:
+        raise Refuse('invalid_save', 'no saves in this project')
+    archive = archive_for_store(store)
+    active = under(store, save_id)
+    historical = under(archive, save_id) if archive else None
+    found = [path for path in (active, historical) if path and os.path.lexists(path)]
+    if len(found) != 1:
+        raise Refuse('invalid_save', 'save ID is missing or occurs in both active and archived storage')
+    return archived_path(archive, save_id) if found[0] == historical else active
+
+
 def last_good(store, worker, deep):
-    saves, _ = scan_store(store)
-    for s in saves:
-        if s['worker'] != worker:
+    active, active_corrupt = scan_store(store)
+    archive = archive_for_store(store)
+    historical, archive_corrupt = scan_archive(archive)
+    if ({item['id'] for item in active + active_corrupt}
+            & {item['id'] for item in historical + archive_corrupt}):
+        raise Refuse('invalid_save', 'duplicate active/archive save ID')
+    all_saves = sorted(active + historical, key=lambda item: (item['published'], item['id']), reverse=True)
+    for item in all_saves:
+        if item['worker'] != worker:
             continue
-        if not deep:
-            return s
         try:
-            load_save(os.path.join(store, s['id']), s['id'], True)
-            return s
+            path = archived_path(archive, item['id']) if item['archived'] else os.path.join(store, item['id'])
+            if deep:
+                load_save(path, item['id'], True)
+            return item
         except Refuse:
             continue
     return None
@@ -15710,26 +15791,56 @@ def same(a, b):
             and a['repo'] == b['repo'] and a['git'] == b['git'])
 
 
-def retention_plan(store, worker):
-    saves, corrupt = scan_store(store)
+def retention_plan(store, worker, budget):
+    active, corrupt = scan_store(store)
+    archive = archive_for_store(store)
+    historical, archive_corrupt = scan_archive(archive)
     claims, bad_claims = load_claims(store)
-    pins = {c['save_id'] for c in claims}
-    mine = [s for s in saves if s['worker'] == worker]
-    unpinned = [] if bad_claims else [s for s in mine if s['id'] not in pins]
-    evict = []
-    for s in unpinned[KEEP_UNPINNED - 1:]:
+    if bad_claims:
+        raise Refuse('excessive', 'unreadable claims make save pins unknown; no history was archived')
+    if archive_corrupt:
+        raise Refuse('excessive', 'archive contains corrupt or unsupported evidence; its available space is Unknown')
+    if {item['id'] for item in active + corrupt} & {item['id'] for item in historical}:
+        raise Refuse('invalid_save', 'duplicate active/archive save ID')
+    pins = {claim['save_id'] for claim in claims}
+    # Protect each worker's newest fully valid active save. Failed deep
+    # validation converts that item to protected corrupt evidence.
+    newest, valid = set(), []
+    for item in active:  # newest first
+        budget.remaining()
         try:
-            load_save(os.path.join(store, s['id']), s['id'], True)
-            evict.append(s)
+            load_save(os.path.join(store, item['id']), item['id'], True)
         except Refuse:
-            corrupt.append(dict(id=s['id'], worker=worker))
-            mine.remove(s)
-    worker_after = len(mine) - len(evict) + 1 + sum(1 for c in corrupt if c['worker'] == worker)
-    project_after = len(saves) + len(corrupt) - len(evict) + 1
-    if worker_after > CAP_WORKER or project_after > CAP_PROJECT:
-        raise Refuse('excessive', 'save retention cap reached (%d per worker, %d per project) by pinned or corrupt evidence'
-                     % (CAP_WORKER, CAP_PROJECT))
-    return evict
+            corrupt.append(dict(id=item['id'], worker=item['worker']))
+            continue
+        if item['worker'] not in newest:
+            newest.add(item['worker'])
+            pins.add(item['id'])
+        valid.append(item)
+    mine = [item for item in valid if item['worker'] == worker]
+    claim_pins = {claim['save_id'] for claim in claims}
+    ordinary = [item for item in mine if item['id'] not in claim_pins]
+    planned = [item for item in ordinary[KEEP_UNPINNED - 1:] if item['id'] not in pins]
+    ids = {item['id'] for item in planned}
+    worker_after = len(mine) + sum(item['worker'] == worker for item in corrupt) - len(planned) + 1
+    if worker_after > CAP_WORKER:
+        raise Refuse('excessive', 'active worker cap reached; pinned/corrupt evidence was preserved')
+    project_after = len(valid) + len(corrupt) - len(planned) + 1
+    for item in reversed(valid):  # oldest eligible, across every worker
+        if project_after <= CAP_PROJECT:
+            break
+        if item['id'] not in pins and item['id'] not in ids:
+            planned.append(item)
+            ids.add(item['id'])
+            project_after -= 1
+    if project_after > CAP_PROJECT:
+        raise Refuse('excessive', 'active project cap reached; newest, pinned and corrupt evidence was preserved')
+    if len(historical) + len(planned) > ARCHIVE_CAP_SAVES:
+        raise Refuse('excessive', 'archive count cap reached; no history was deleted')
+    if sum(item['stored_bytes'] for item in historical + planned) > ARCHIVE_CAP_BYTES:
+        raise Refuse('excessive', 'archive byte cap reached; no history was deleted')
+    budget.remaining()
+    return planned
 
 
 def clean_staging(store):
@@ -15750,7 +15861,7 @@ def publish(root, store, worker, task, obs, task_bytes, observed_at, budget,
     staging = os.path.join(store, '.staging-' + save_id)
     try:
         clean_staging(store)
-        evict = retention_plan(store, worker)
+        to_archive = retention_plan(store, worker, budget)
         os.mkdir(staging, 0o700)
         os.chmod(staging, 0o700)
         try:
@@ -15793,15 +15904,16 @@ def publish(root, store, worker, task, obs, task_bytes, observed_at, budget,
             shutil.rmtree(staging, ignore_errors=True)
             raise
         fault('publish-interrupt')
+        # Every bound and staged byte is checked before moving any old save.
+        # Each move preserves its ID and bytes even if a later move is interrupted.
+        archive_store = archive_for_store(store, True) if to_archive else None
+        for item in to_archive:
+            archive_save(store, item['id'], archive_store)
+            fault('archive-after-move')
         os.rename(staging, os.path.join(store, save_id))
         fsync_dir(store)
         fault('publish-after-rename')
-        for s in evict:
-            doomed = os.path.join(store, '.staging-' + s['id'])
-            os.rename(os.path.join(store, s['id']), doomed)
-            fsync_dir(store)
-            shutil.rmtree(doomed)
-        return save_id, len(evict)
+        return save_id, len(to_archive)
     finally:
         os.close(lock)
 
@@ -15882,7 +15994,7 @@ def create_locked(root, worker, task, reason='manual', run_id=None, provider_exi
     print('saved %s: worker %s, task %s, %d paths, %d commits' % (save_id, worker, task, len(second['entries']), len(g['commit_ids'])))
     print('  base %s (%s), head %s' % (g['base_commit'][:12], 'frozen task base' if second['base_source'] == 'task' else 'coord/base', g['head_commit'][:12]))
     print('  local unverified recovery snapshot: nothing committed, accepted or sent to a provider'
-          + ('; %d older save(s) evicted' % evicted if evicted else ''))
+          + ('; %d older save(s) archived' % evicted if evicted else ''))
     return 0
 
 
@@ -16106,7 +16218,10 @@ def cmd_inspect_id(root, save_id, as_json):
         store = open_store(root, False)
         if store is None:
             raise Refuse('invalid_save', 'no saves in this project')
-        doc = load_save(os.path.join(store, save_id), save_id, True)['manifest']
+        save_path = resolve_save_path(root, save_id)
+        if save_path is None:
+            raise Refuse('invalid_save', 'no such save: ' + save_id)
+        doc = load_save(save_path, save_id, True)['manifest']
         claims, _ = load_claims(store)
     except Refuse as r:
         if as_json:
@@ -16186,6 +16301,67 @@ def cmd_inspect_worker(root, worker, as_json):
     if out['corrupt_evidence']:
         print('  corrupt evidence kept: %d' % out['corrupt_evidence'])
     return 0
+
+
+def usage_observation(root, as_json):
+    out = dict(schema_version=1, status='observed', content_validation='metadata_only',
+               active_saves=0, archived_saves=0, active_bytes=0, archived_bytes=0,
+               active_cap=CAP_PROJECT, worker_cap=CAP_WORKER, ordinary_worker_cap=KEEP_UNPINNED,
+               archive_cap_saves=ARCHIVE_CAP_SAVES, archive_cap_bytes=ARCHIVE_CAP_BYTES,
+               valid_pins=0, corrupt_evidence=0, claims=0, bad_claims=0)
+    store = open_store(root, False)
+    if store is not None:
+        # Never create a lock/store, change permissions or prune staging on a
+        # read. A concurrent writer means Unknown, not a mixed observation.
+        fd = os.open(under(root, 'coord', '.locks', 'saves.lock'), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_nlink != 1 or st.st_mode & 0o077:
+                raise Refuse('io_error', 'unsafe saves lock')
+            try:
+                fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise Refuse('lock_busy', 'save usage is Unknown while a writer owns the store')
+            active, corrupt = scan_store(store)
+            historical, archive_corrupt = scan_archive(archive_for_store(store))
+            claims, bad_claims = load_claims(store)
+            duplicate = bool({item['id'] for item in active + corrupt} & {item['id'] for item in historical + archive_corrupt})
+            valid_ids = {item['id'] for item in active + historical}
+            out.update(active_saves=len(active) + len(corrupt), archived_saves=len(historical) + len(archive_corrupt),
+                       active_bytes=None if corrupt else sum(item['stored_bytes'] for item in active),
+                       archived_bytes=None if archive_corrupt else sum(item['stored_bytes'] for item in historical),
+                       valid_pins=len({claim['save_id'] for claim in claims} & valid_ids),
+                       corrupt_evidence=len(corrupt) + len(archive_corrupt), claims=len(claims), bad_claims=bad_claims)
+            if corrupt or archive_corrupt or bad_claims or duplicate:
+                out['status'] = 'unknown'
+        finally:
+            os.close(fd)
+    if as_json:
+        emit(out)
+    else:
+        print('Save usage: ' + out['status'] + ' (metadata only)')
+        print('  Active saves: %s / %s' % (out['active_saves'], CAP_PROJECT))
+        print('  Archived saves: %s / %s' % (out['archived_saves'], ARCHIVE_CAP_SAVES))
+        print('  Archived bytes: %s / %s' % (out['archived_bytes'] if out['archived_bytes'] is not None else 'Unknown', ARCHIVE_CAP_BYTES))
+        print('  Pins: %s; corrupt evidence: %s; unreadable claims: %s' % (out['valid_pins'], out['corrupt_evidence'], out['bad_claims']))
+    return 2 if out['status'] == 'unknown' else 0
+
+
+def cmd_usage(root, as_json):
+    try:
+        return usage_observation(root, as_json)
+    except (Refuse, OSError):
+        if as_json:
+            emit(dict(schema_version=1, status='unknown', active_saves=None,
+                      archived_saves=None, active_bytes=None, archived_bytes=None,
+                      active_cap=CAP_PROJECT, worker_cap=CAP_WORKER,
+                      ordinary_worker_cap=KEEP_UNPINNED, archive_cap_saves=ARCHIVE_CAP_SAVES,
+                      archive_cap_bytes=ARCHIVE_CAP_BYTES, valid_pins=None,
+                      corrupt_evidence=None, claims=None, bad_claims=None,
+                      content_validation='metadata_only'))
+        else:
+            print('Save usage: Unknown (busy, unsafe, missing or unobservable storage evidence)')
+        return 2
 
 
 # --------------------------------------------------------------- restore
@@ -16358,7 +16534,10 @@ def restore(root, save_id, dest):
     if store is None:
         raise Refuse('invalid_save', 'no saves in this project')
     budget = Budget(RESTORE_SECONDS)
-    save = load_save(os.path.join(store, save_id), save_id, True)
+    save_path = resolve_save_path(root, save_id)
+    if save_path is None:
+        raise Refuse('invalid_save', 'no such save: ' + save_id)
+    save = load_save(save_path, save_id, True)
     m = save['manifest']
     g, fmt = m['git'], m['git']['object_format']
     if dest == m['worker']:
@@ -16428,8 +16607,9 @@ def restore(root, save_id, dest):
             claims, bad_claims = load_claims(store)
             if bad_claims or len(claims) >= CAP_CLAIMS or any(c['destination'] == dest and c['state'] in UNRESOLVED for c in claims):
                 raise Refuse('destination_rejected', 'claim evidence changed; refusing')
-            if not os.path.isdir(os.path.join(store, save_id)):
-                raise Refuse('invalid_save', 'save was removed before it could be claimed')
+            current = load_save(resolve_save_path(root, save_id), save_id, True)
+            if current['manifest'] != m:
+                raise Refuse('invalid_save', 'save changed before it could be claimed')
             write_claim(store, claim)
         finally:
             os.close(lock)
@@ -16501,7 +16681,7 @@ def continue_context(root, dest, task, claim_id=None, expected='reserved', live=
         body = read_path(under(root, 'coord', 'tasks', task + '.md'), MAX_TASK)[1]
         if sha(body) != claim['task_sha256']:
             raise Refuse('destination_rejected', 'the frozen continuation task changed')
-        save = load_save(os.path.join(store, claim['save_id']), claim['save_id'], True)
+        save = load_save(resolve_save_path(root, claim['save_id']), claim['save_id'], True)
         m = save['manifest']
         if (task == m['task'] or dest == m['worker'] or claim['source_fingerprint'] != m['fingerprint']
                 or claim['preimage_fingerprint'] != m['fingerprint']):
@@ -16566,7 +16746,7 @@ def cmd_continue(root, save_id, dest, task, task_hash, engine):
         body = read_path(under(root, 'coord', 'tasks', task + '.md'), MAX_TASK)[1]
         if sha(body) != task_hash:
             raise Refuse('destination_rejected', 'the authorized continuation task changed during preflight')
-        save = load_save(os.path.join(store, save_id), save_id, True)
+        save = load_save(resolve_save_path(root, save_id), save_id, True)
         if task == save['manifest']['task']:
             raise Refuse('destination_rejected', 'write a separate new task before continuing')
         validate_continue_destination(root, dest, save)
@@ -16581,7 +16761,7 @@ def cmd_continue(root, save_id, dest, task, task_hash, engine):
                     or any(c['save_id'] == save_id and c['new_task'] is not None for c in claims)
                     or any(c['destination'] == dest and c['state'] in UNRESOLVED for c in claims)):
                 raise Refuse('destination_rejected', 'continuation already claimed, unresolved or at capacity; no replay')
-            load_save(os.path.join(store, save_id), save_id, True)
+            load_save(resolve_save_path(root, save_id), save_id, True)
             write_claim(store, claim)
         finally:
             os.close(lock)
@@ -16732,7 +16912,8 @@ USAGE = ('usage: unio save create <worker> <task>\n'
          '       unio save inspect <save-id> [--json]\n'
          '       unio save inspect --worker <worker> [--json]\n'
          '       unio save restore <save-id> <destination>\n'
-         '       unio save continue <save-id> <destination> <new-task>')
+         '       unio save continue <save-id> <destination> <new-task>\n'
+         '       unio save usage [--json]')
 
 
 def main(argv):
@@ -16766,6 +16947,8 @@ def main(argv):
                 return cmd_inspect_worker(root, plain[1], as_json)
         if command == 'restore' and len(args) == 2 and HEX32.fullmatch(args[0]) and ident(args[1]):
             return cmd_restore(root, args[0], args[1])
+        if command == 'usage' and args in ([], ['--json']):
+            return cmd_usage(root, as_json)
     except Refuse as r:
         print('unio: save %s: %s' % (r.code, r.message), file=sys.stderr)
         return r.exit_code
@@ -18338,7 +18521,8 @@ save_usage() {
        unio save inspect <save-id> [--json]
        unio save inspect --worker <worker> [--json]
        unio save restore <save-id> <destination>
-       unio save continue <save-id> <destination> <new-task>" >&2
+       unio save continue <save-id> <destination> <new-task>
+       unio save usage [--json]" >&2
   return 2
 }
 
@@ -18400,8 +18584,8 @@ cmd_save() { # Inspection/restore call no provider; continue authorizes one run.
       [ -d "$root/wt/$worker" ] || { echo "unio: no worktree for '$worker'" >&2; return 1; }
       saves "$root" "$sub" "$@" || rc=$?
       return "$rc";;
-    inspect)
-      saves "$root" inspect "$@" || rc=$?
+    usage|inspect)
+      saves "$root" "$sub" "$@" || rc=$?
       return "$rc";;
     *) save_usage; return 2;;
   esac
@@ -19400,7 +19584,9 @@ work saving (private local snapshots under coord/saves, unverified)
                                      start one separately authorized task from
                                      already restored state; respects STOP and
                                      account limits, refuses claim replay
-      Create/inspect/restore make no provider call and work while STOP is set.
+  unio save usage [--json]     read-only active/archive counts, bytes, pins
+                                     and bounds; uncertain evidence stays Unknown
+      Create/inspect/restore/usage make no provider call and work while STOP is set.
       Runs save baseline, changed periodic and final state automatically. A save is
       not a commit, acceptance or retry; it is not an off-device backup.
 
@@ -21908,7 +22094,8 @@ _unio() {
       local saves=""
       [ -n "$root" ] && saves=$(ls "$root/coord/saves" 2>/dev/null | grep -E '^[0-9a-f]{32}$')
       case "$COMP_CWORD:${COMP_WORDS[2]}" in
-        2:*) COMPREPLY=( $(compgen -W "create inspect restore continue" -- "$cur") );;
+        2:*) COMPREPLY=( $(compgen -W "create inspect restore continue usage" -- "$cur") );;
+        3:usage) COMPREPLY=( $(compgen -W "--json" -- "$cur") );;
         3:create) COMPREPLY=( $(compgen -W "$workers" -- "$cur") );;
         3:inspect) COMPREPLY=( $(compgen -W "--worker $saves" -- "$cur") );;
         3:restore|3:continue) COMPREPLY=( $(compgen -W "$saves" -- "$cur") );;
