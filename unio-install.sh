@@ -19093,8 +19093,13 @@ cmd_dashboard() { # detached read-only browser per project; never calls a provid
 # --------------------------------------------------------------- fleet
 cmd_fleet() { # local agent fleet snapshot and observation
   command -v python3 >/dev/null || die "fleet requires Python 3.9 or newer"
-  local cli="$CONF_DIR/lib/fleet-status.py" root="" arg explicit=false asks_help=false
+  local cli="$CONF_DIR/lib/fleet-status.py" conf engine root arg explicit=false asks_help=false
   [ -f "$cli" ] || die "fleet files missing; rerun the matching Unio installer"
+  conf=$(cd -- "$CONF_DIR" && pwd -P) || die "configuration directory unavailable"
+  engine=$(readlink -f -- "$0") || die "cannot resolve this Unio executable"
+  UNIO_CONF_DIR="$conf"
+  export UNIO_CONF_DIR
+  # Only leading options belong to fleet itself; the helper rejects the rest.
   for arg in "$@"; do
     case "$arg" in
       --project|--project=*) explicit=true; break;;
@@ -19106,8 +19111,17 @@ cmd_fleet() { # local agent fleet snapshot and observation
   for arg in "$@"; do
     case "$arg" in -h|--help) asks_help=true;; esac
   done
-  [ "$asks_help" = true ] || root=$(find_project "$explicit" "$@") || exit 2
-  exec python3 -B "$cli" "$UNIO_RUNNER" "$root" "$@"
+  if ! $explicit && ! $asks_help; then
+    if root=$(find_root); then
+      # The stores refuse symlinked paths; select the same root physically.
+      root=$(cd -- "$root" && pwd -P) || die "fleet: project directory unavailable"
+      set -- --project "$root" "$@"
+    else
+      die "fleet: no Unio workspace (coord/ and wt/) found above $PWD; pass --project PATH to select a project directory"
+    fi
+  fi
+  # Isolated imports: the installed helper is the only code it loads.
+  exec python3 -I -S -B "$cli" "$engine" "$@"
 }
 
 # --------------------------------------------------------------- capacity
@@ -19894,9 +19908,10 @@ switches
                                      recorded verdicts, failures and limits.
                                      No provider call, no current readiness
                                      claim; Ctrl-C exits (default poll 1s)
-  unio fleet [--project PATH] [--json]
-                                     local read-only snapshot of agent admission,
-                                     occupied groups, STOP facts, cached auth
+  unio fleet [--project PATH] [--json] [--timeout seconds]
+                                     local read-only snapshot: agent admission,
+                                     occupied shared groups, STOP, cached auth
+                                     and allowance; no provider calls
   unio status                   off-agents, tasks, reports, review queue,
                                      running jobs
   unio off <agent> [30m|5h|7d]  quota switch: disable an agent
