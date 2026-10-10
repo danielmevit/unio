@@ -25,7 +25,7 @@ SOURCE = Path(__file__).resolve().parent.parent
 RELEASE_VERSION = re.search(r'^UNIO_VERSION="([^"]+)"$',
                             (SOURCE / 'unio-install.sh').read_text(), re.MULTILINE).group(1)
 HELPER = SOURCE / 'tools' / 'runtime' / 'dashboard.py'
-BROWSER_FILES = ('server.py', 'launcher.py', 'progress.py', 'worker_files.py',
+BROWSER_FILES = ('server.py', 'readiness.py', 'launcher.py', 'progress.py', 'worker_files.py',
                  'plan_store.py', 'job_store.py', 'execution_service.py', 'index.html',
                  'activity.js', 'activity.css', 'drafts.js', 'jobs.js', 'worker_console.js')
 spec = importlib.util.spec_from_file_location('unio_dashboard_helper', HELPER)

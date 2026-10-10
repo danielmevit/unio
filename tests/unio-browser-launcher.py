@@ -19,7 +19,7 @@ import unittest
 
 SOURCE = Path(__file__).resolve().parent.parent
 # The fixed browser payload; capacity.py is packaged separately (embed-capacity.py).
-BROWSER_FILES = ('server.py', 'launcher.py', 'progress.py', 'worker_files.py',
+BROWSER_FILES = ('server.py', 'readiness.py', 'launcher.py', 'progress.py', 'worker_files.py',
                  'plan_store.py', 'job_store.py', 'execution_service.py', 'index.html',
                  'activity.js', 'activity.css', 'drafts.js', 'jobs.js', 'worker_console.js')
 PAYLOAD = {name: (SOURCE / 'bridge' / name).read_bytes() for name in BROWSER_FILES}
@@ -114,7 +114,7 @@ class BrowserLauncherTests(unittest.TestCase):
         self.assertFalse(self.decoy_marker.exists())
 
     def test_standalone_bytes_and_shell(self):
-        self.assertEqual(len(PAYLOAD), 13)
+        self.assertEqual(len(PAYLOAD), 14)
         self.assertEqual(sorted(p.name for p in self.payload.iterdir()), sorted(BROWSER_FILES))
         for name, raw in PAYLOAD.items():
             self.assertEqual((self.payload / name).read_bytes(), raw, name)
