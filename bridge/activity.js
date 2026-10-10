@@ -243,7 +243,7 @@
     const limits = document.getElementById("limits");
     limits.replaceChildren();
     if (data.agents.length)
-      limits.append(text("p", "For every tool, authentication unknown · capacity unknown: this page never signs in or asks a provider.", "small"));
+      limits.append(text("p", "Tool activity does not check sign-in or remaining allowance. Cached observations appear in AI agents & limits.", "small"));
     else
       limits.append(text("p", "No tool observations recorded. Authentication and capacity remain unknown.", "small"));
     const missing = data.agents.filter((a) => a.binary && a.binary.present === false).map((a) => a.name);
@@ -1529,6 +1529,7 @@
     const policy = section(view, "policy");
     const manual = section(view, "manual");
     const codex = section(view, "codex");
+    const authentication = section(view, "authentication");
     const agents = lastData && Array.isArray(lastData.agents) ? lastData.agents : [];
     const statusLine = document.getElementById("limits-status");
     if (!statusLine) return;
@@ -1621,6 +1622,12 @@
       fact(facts, "Running", policy ? running() : "Unknown");
       const binary = agent && agent.binary ? agent.binary.present : null;
       fact(facts, "Tool", binary === true ? "installed" : binary === false ? "missing" : "Unknown");
+      const auth = /^claude(?:-|$)/.test(name) && authentication && authentication.agents
+        ? authentication.agents.claude : null;
+      const signIn = auth && auth.authentication === "signed_in" ? "Signed in"
+        : auth && auth.authentication === "signed_out" ? "Signed out" : "Unknown";
+      fact(facts, "Sign-in", signIn + (auth ? " · " + auth.status + " native observation"
+        + (Number.isFinite(auth.age_seconds) ? " · " + span(auth.age_seconds) + " ago" : "") : ""));
       card.append(facts);
       if (group !== null && !shared.length) {
         const allowance = text("div", "", "limits-allowance");

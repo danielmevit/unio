@@ -7,6 +7,7 @@
 # See LICENSE and NOTICE; distributed without warranty.
 """Loopback-only read-only Activity preview; no dispatch or project writes."""
 import argparse
+import importlib.util
 from datetime import datetime
 import hashlib
 import hmac
@@ -26,6 +27,19 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ASSETS = Path(__file__).resolve().parent
+
+
+def cached_authentication(project):
+    """Read only the sanitized first-party cache; never refresh or call a CLI."""
+    try:
+        spec = importlib.util.spec_from_file_location('unio_readiness_store', ASSETS / 'readiness.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        view = module.ReadinessStore(project).show(agent='claude')
+        return view if view['state'] != 'invalid' else {'state': 'unknown'}
+    except (OSError, ValueError, ImportError):
+        return {'state': 'unknown'}
+
 TOP_FIELDS = {'schema_version','observed_at','stopped','agents','results','retries','recent_events','warnings','evidence'}
 DEFAULT_OBSERVER_TIMEOUT = 30
 DASHBOARD_LAUNCH = 'UNIO_DASHBOARD_LAUNCH'  # internal: set only by the managed dashboard helper
@@ -326,6 +340,7 @@ class LimitsObserver:
                     view[name] = sanitize(bounded_run(commands[name], self.project / 'repo', self.timeout))
                 except (LimitsRefused, OSError, subprocess.SubprocessError):
                     view[name] = {'state': 'unknown'}
+            view['authentication'] = cached_authentication(self.project)
             self.cached = view
             self.expires = time.monotonic() + self.ttl
             return view

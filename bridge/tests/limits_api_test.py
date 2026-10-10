@@ -135,6 +135,26 @@ class LimitsApi(unittest.TestCase):
     def fresh(self):
         self.limits.expires = 0
 
+    def test_authentication_uses_only_private_cache_and_adds_no_cli_call(self):
+        spec = importlib.util.spec_from_file_location('test_readiness_store',
+                                                     Path(__file__).parents[1] / 'readiness.py')
+        readiness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(readiness)
+        self.assertEqual(self.view()['authentication']['state'], 'missing')
+        store = readiness.ReadinessStore(self.project)
+        store.record_good('claude', 'native', True, auth_method='claude.ai')
+        self.fresh()
+        authentication = self.view()['authentication']['agents']['claude']
+        self.assertEqual(authentication['authentication'], 'signed_in')
+        self.assertEqual(authentication['capacity'], 'unknown')
+        self.assertEqual(authentication['dispatch_readiness'], 'unknown')
+        self.assertEqual(len(self.calls()), 6)
+        self.assertTrue(all(call['argv'][0] in ('policy', 'capacity') for call in self.calls()))
+        (self.project / 'coord/readiness/observations.json').chmod(0o644)
+        self.fresh()
+        self.assertEqual(self.view()['authentication'], {'state': 'unknown'})
+        self.assertEqual(len(self.calls()), 9)
+
     def test_fresh_manual_codex_multiwindow_and_shared_group(self):
         view = self.view()
         policy = view['policy']
