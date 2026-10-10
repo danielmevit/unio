@@ -8,6 +8,7 @@ on:
     branches: ["main"]
     paths:
       - "site/**"
+      - "bridge/**"
       - ".github/workflows/deploy.yml"
       # The site reads the version from the newest CHANGELOG heading at build
       # time; without this the page keeps advertising the previous release.

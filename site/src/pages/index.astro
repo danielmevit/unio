@@ -60,14 +60,6 @@ const readouts = [
   { label: "Cost", value: "Free" },
 ];
 
-// The numbers match the screenshot below (an example project).
-const mapStats = [
-  { label: "Tasks", value: 10 },
-  { label: "Finished", value: 7 },
-  { label: "Active", value: 1 },
-  { label: "Need attention", value: 2 },
-];
-
 const legend = [
   { label: "Finished", tone: "passed" },
   { label: "Recorded failure", tone: "failed" },
@@ -318,25 +310,16 @@ const faqs = [
           <span class="xh xh-bl" aria-hidden="true"></span><span class="xh xh-br" aria-hidden="true"></span>
           <div class="panel-bar">
             <span class="panel-title">Work map</span>
-            <ul class="stats" aria-label="Tasks in this example">
-              {mapStats.map((s) => <li><b>{pad(s.value)}</b> {s.label}</li>)}
-            </ul>
+            <span class="stats">Live demo · try the filters, the map and the list</span>
           </div>
-          <a class="map-shot" href={`${base}/assets/dashboard.webp`} aria-label="Open the full dashboard screenshot">
-            <img
-              src={`${base}/assets/work-map.webp`}
-              srcset={`${base}/assets/work-map-1x.webp 1021w, ${base}/assets/work-map.webp 2042w`}
-              sizes="(max-width: 980px) calc(100vw - 34px), 720px"
-              width="2042"
-              height="1498"
-              alt="The Unio dashboard's work map: a project hub linked to seven AI workers (Codex, Antigravity, DeepSeek, Claude, GLM, Grok and Kimi), each node marked with its lab's logo. Seven tasks are finished, one Codex task is running, one Antigravity task waits for review and one DeepSeek task recorded a failure."
-            />
-          </a>
+          <div class="map-live">
+            <iframe src={`${base}/demo/`} title="The Unio dashboard running on a demo project" loading="lazy"></iframe>
+          </div>
           <figcaption class="panel-foot">
             <ul class="legend" aria-label="Legend">
               {legend.map((l) => <li><span class={`key key-${l.tone}`} aria-hidden="true"></span>{l.label}</li>)}
             </ul>
-            <span class="foot-note">Example project · local dashboard</span>
+            <span class="foot-note">Demo project · the real dashboard, read-only</span>
           </figcaption>
         </figure>
       </section>
@@ -760,8 +743,9 @@ const faqs = [
   .panel-title { color: var(--text); }
   .stats { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; color: var(--muted); }
   .stats b { color: var(--text); font-weight: 600; }
-  .map-shot { display: block; background: var(--bg); }
-  .map-shot img { display: block; width: 100%; height: auto; }
+  /* the real dashboard on a demo project; it scrolls inside the panel */
+  .map-live { background: var(--bg); }
+  .map-live iframe { display: block; width: 100%; height: clamp(560px, 82vh, 900px); border: 0; }
   .panel-foot {
     display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px;
     padding: 9px 12px; border-top: 1px solid var(--line); background: var(--deep);

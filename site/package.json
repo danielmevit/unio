@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "astro dev",
+    "dev": "node scripts/demo.mjs && astro dev",
     "start": "astro dev",
-    "build": "astro build",
+    "build": "node scripts/demo.mjs && astro build",
     "preview": "astro preview",
     "astro": "astro"
   },
