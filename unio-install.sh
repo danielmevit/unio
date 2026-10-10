@@ -4511,10 +4511,13 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
         : "Operator retry " + (typeof at === "number" ? new Date(at * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : String(at)) + "; not a provider reset.";
       box.append(toolRow(agentBadge(a.name), a.name, detail, a.bench.off ? "Off" : "Retry set", "attention"));
     }
-    const workerOf = new Map((data.results || []).map((r) => [r.task, r.worker]));
+    // a task name shown with a lab logo only when exactly one worker has it
+    const workersOf = new Map();
+    for (const r of data.results || []) workersOf.set(r.task, (workersOf.get(r.task) || new Set()).add(r.worker));
     const troubled = data.retries.filter((retry) => retry.failed_attempts > 0 || retry.blocked || retry.retry_granted);
     for (const retry of troubled) {
-      const n = retry.failed_attempts, worker = workerOf.get(retry.task);
+      const owners = workersOf.get(retry.task);
+      const n = retry.failed_attempts, worker = owners && owners.size === 1 ? [...owners][0] : "";
       box.append(toolRow(worker ? agentBadge(worker) : null, retry.task, n + " failed " + (n === 1 ? "attempt" : "attempts"),
         retry.blocked ? "Blocked" : retry.retry_granted ? "Retry granted" : "Brake clear",
         retry.blocked ? "failed" : retry.retry_granted ? "attention" : ""));
@@ -4566,52 +4569,63 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       row.append(text("span", "Warning", "timeline-time"), text("p", String(warning), "timeline-text"));
       box.append(row);
     }
-    // Oldest first, so each run collects its events in order. A new start
-    // opens a new run; a merge joins the latest run of its worker.
+    // Oldest first, so each run collects its events in order. A row is one
+    // run of one task on one worker: a start, or a second run end, opens a
+    // new row, so a later result never covers an earlier one. A merge takes
+    // the worker's whole branch, so it is a row of its own.
     const events = (data.recent_events || []).slice().sort((a, b) => (Date.parse(a.ts) || 0) - (Date.parse(b.ts) || 0));
-    const runs = [], byTask = new Map(), byWorker = new Map();
+    const runs = [], open = new Map();
     for (const e of events) {
-      let run = e.event === "run_start" ? null : e.task ? byTask.get(e.task) : e.event === "merge" ? byWorker.get(e.worker) : null;
+      const key = JSON.stringify([e.worker || "", e.task || ""]);
+      let run = e.task && e.event !== "run_start" && e.event !== "merge" ? open.get(key) : null;
+      if (run && e.event === "run" && run.events.some((x) => x.event === "run")) run = null;
       if (!run) {
         run = { task: e.task || "", worker: e.worker || "", events: [], at: 0 };
         runs.push(run);
+        if (e.task && e.event !== "merge") open.set(key, run);
       }
-      if (e.task) byTask.set(e.task, run);
       run.events.push(e);
-      run.worker = run.worker || e.worker || "";
       run.at = Math.max(run.at, Date.parse(e.ts) || 0);
-      if (run.worker) byWorker.set(run.worker, run);
+    }
+    for (const run of runs) {
+      // the row's color is the latest event that decided something
+      const tones = run.events.map((e) => eventLine(e)[1]).filter((t) => t !== "neutral");
+      run.tone = tones.length ? tones[tones.length - 1] : "neutral";
     }
     runs.sort((a, b) => b.at - a.at);
+    // the newest few, plus every failed run: a failure is never folded away
+    const shown = logShowAll ? runs : runs.filter((run, i) => i < LOG_VISIBLE || run.tone === "failed");
     let day = "";
-    for (const run of logShowAll ? runs : runs.slice(0, LOG_VISIBLE)) {
+    for (const run of shown) {
       const last = run.events[run.events.length - 1];
       const at = Date.parse(last.ts);
       const thisDay = Number.isFinite(at) ? new Date(at).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "Unknown day";
       if (thisDay !== day) { day = thisDay; box.append(text("p", day, "timeline-day")); }
-      // the row's color is the latest event that decided something
-      const tones = run.events.map((e) => eventLine(e)[1]).filter((t) => t !== "neutral");
       const row = text("div", "", "timeline-row");
-      row.dataset.tone = tones.length ? tones[tones.length - 1] : "neutral";
+      row.dataset.tone = run.tone;
       const when = text("time", Number.isFinite(at) ? clock(at) : "--:--", "timeline-time");
       when.dateTime = last.ts || "";
       when.title = exactTime(last.ts);
       const line = text("p", "", "timeline-text");
-      line.append(text("strong", run.task || run.worker || "Unknown task", "timeline-task"), document.createTextNode(run.events.map(stepText).join(" · ")));
+      const merge = run.events.length === 1 && run.events[0].event === "merge";
+      line.append(text("strong", merge ? (run.worker || "A worker") + "'s branch" : run.task || run.worker || "Unknown task", "timeline-task"),
+        document.createTextNode(run.events.map(stepText).join(" · ")));
       row.append(when, run.worker ? agentBadge(run.worker) : text("span", ""), line);
       box.append(row);
     }
-    if (runs.length > LOG_VISIBLE) {
-      const more = text("button", logShowAll ? "Show the newest " + LOG_VISIBLE : "Show all " + runs.length + " runs", "log-more");
+    if (shown.length < runs.length || logShowAll && runs.length > LOG_VISIBLE) {
+      const more = text("button", logShowAll ? "Show the newest " + LOG_VISIBLE : "Show all " + runs.length + " rows", "log-more");
       more.type = "button";
       more.addEventListener("click", () => { logShowAll = !logShowAll; renderTimeline(data); });
       box.append(more);
     }
     if (!events.length && !warnings.length) box.append(text("p", "No recorded events yet.", "small"));
     const parts = [];
-    if (runs.length) parts.push(runs.length + (runs.length === 1 ? " run" : " runs"));
+    if (runs.length) parts.push(runs.length + (runs.length === 1 ? " row" : " rows"));
+    const failedRuns = runs.filter((run) => run.tone === "failed").length;
+    if (failedRuns) parts.push(failedRuns + " failed");
     if (warnings.length) parts.push(warnings.length + (warnings.length === 1 ? " warning" : " warnings"));
-    setDrawerCount("events-count", parts.join(" · "), warnings.length ? "attention" : "");
+    setDrawerCount("events-count", parts.join(" · "), warnings.length || failedRuns ? "attention" : "");
   }
 
   const GROUPS = [["attention", "Needs you"], ["active", "Running"], ["finished", "Finished"]];
