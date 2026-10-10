@@ -6365,18 +6365,22 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 @keyframes boot-away { to { transform: translateY(-100%); } }
 .boot-field { display: grid; grid-template-columns: repeat(10, 14px); gap: 4px; }
 .boot-field i { width: 14px; height: 14px; border-radius: 3px; background: var(--bg-composer); }
-/* Each dot of the U waits dim like the field, then switches on in turn -
-   instantly and crisp, like a dot-matrix display (no growing or fading,
-   which blurs the edges). Its colored layer already starts in a tone, so
-   while the page is still busy loading, a dot never shows up gray. */
+/* Each dot of the U waits dim like the field, then appears small and grows
+   to full size. It grows by uncovering a full-size square (clip-path) rather
+   than scaling it, so the edges stay crisp the whole time. Its colored layer
+   already starts in a tone, so while the page is still busy loading a dot
+   never shows up gray. */
 .boot-field i { position: relative; }
 .boot-field i.on::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit;
   background: var(--t-rust); opacity: 0;
-  animation: boot-dot 0s forwards, boot-tone 3.6s linear infinite;
+  animation: boot-dot .2s ease-out forwards, boot-tone 3.6s linear infinite;
 }
-@keyframes boot-dot { to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .boot-field i.on::after { opacity: 1; background: var(--accent); } }
+@keyframes boot-dot {
+  from { opacity: 1; clip-path: inset(32% round 1px); }
+  to { opacity: 1; clip-path: inset(0 round 3px); }
+}
+@media (prefers-reduced-motion: reduce) { .boot-field i.on::after { opacity: 1; clip-path: none; background: var(--accent); } }
 @keyframes boot-tone {
   0%, 100% { background: var(--t-rust); } 16.6% { background: var(--t-mustard); } 33.3% { background: var(--t-sea); }
   50% { background: var(--t-steel); } 66.6% { background: var(--t-periwinkle); } 83.3% { background: var(--t-lavender); }
