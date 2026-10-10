@@ -725,7 +725,39 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .timeline-text { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .timeline-warning { grid-template-columns: 70px minmax(0, 1fr); --signal-color: var(--map-attention); }
 .timeline-warning .timeline-time { color: var(--map-attention); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.timeline-task { margin-right: 8px; font-weight: 650; }
+.log-more { justify-self: start; min-height: 44px; margin-top: 6px; padding: 6px 14px; }
 .raw-data > summary { font-size: 12px; }
+
+/* ---- Drawers: Tools and limits, Activity log ------------------------------
+   A label like every other section label; when closed it still says
+   whether it is worth opening. */
+.drawer > summary { font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.drawer-count { margin-left: 12px; font-weight: 600; letter-spacing: .02em; text-transform: none; color: var(--muted); }
+.drawer-count[data-tone="attention"] { color: var(--map-attention); }
+.drawer-note { margin: 0 0 10px; font-size: 12.5px; color: var(--muted); }
+.tools { display: grid; gap: 2px; margin: 0 0 14px; }
+.tool-row {
+  display: grid; grid-template-columns: 104px minmax(120px, 220px) minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  padding: 8px 12px; border-radius: var(--r-sm); background: var(--paper);
+  box-shadow: inset 3px 0 0 var(--signal-color, var(--line));
+}
+.tool-row[data-tone="failed"] { --signal-color: var(--map-failed); }
+.tool-row[data-tone="attention"] { --signal-color: var(--map-attention); }
+.tool-row .agent-badge { grid-row: auto; flex-direction: row; gap: 6px; min-width: 0; }
+.tool-row .agent-logo { width: 16px; height: 16px; }
+.tool-name { font-size: 13px; overflow-wrap: anywhere; }
+.tool-detail { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.tool-pill {
+  padding: 3px 8px 3px 11px; border-radius: var(--r-xs); white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-main); background: var(--bg-label); box-shadow: inset 3px 0 0 var(--signal-color, var(--line-alt));
+}
+@media (max-width: 720px) {
+  .tool-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .tool-row .agent-badge { display: none; }
+  .tool-detail { grid-column: 1 / -1; grid-row: 2; }
+}
 .raw-data pre { max-height: 360px; overflow: auto; }
 
 /* ---- Map: the how-to stays out of the way until asked for ----------------- */

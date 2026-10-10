@@ -238,26 +238,7 @@
     // hidden, so switching views never shows an older observation.
     renderSummary(tally);
     renderTaskList(data, pageTasks, categories);
-    // Tools and operator limits: one honest line for what is never observed,
-    // then only what actually happened (benched tools, failed attempts).
-    const limits = document.getElementById("limits");
-    limits.replaceChildren();
-    if (data.agents.length)
-      limits.append(text("p", "For every tool, authentication unknown · capacity unknown: this page never signs in or asks a provider.", "small"));
-    else
-      limits.append(text("p", "No tool observations recorded. Authentication and capacity remain unknown.", "small"));
-    const missing = data.agents.filter((a) => a.binary && a.binary.present === false).map((a) => a.name);
-    if (missing.length) limits.append(text("p", "Tool missing: " + missing.join(", ") + ".", "small"));
-    for (const agent of data.agents) {
-      const retryAt = agent.bench.operator_retry_at !== null ? " · operator retry epoch " + agent.bench.operator_retry_at + "; not a provider reset" : "";
-      if (agent.bench.off || retryAt) limits.append(text("p", agent.name + (agent.bench.off ? " is benched (OFF)" : "") + retryAt + ".", "small"));
-    }
-    const troubled = data.retries.filter((retry) => retry.failed_attempts > 0 || retry.blocked || retry.retry_granted);
-    for (const retry of troubled)
-      limits.append(text("p", retry.task + ": " + retry.failed_attempts + " failed " + (retry.failed_attempts === 1 ? "attempt" : "attempts") + " · "
-        + (retry.blocked ? "BLOCKED" : retry.retry_granted ? "one retry granted" : "brake clear"), "small"));
-    if (!troubled.length && data.retries.length)
-      limits.append(text("p", "No failed attempts recorded; the loop brake is clear for every task.", "small"));
+    renderTools(data);
     renderTimeline(data);
     setText(document.getElementById("events-raw"), JSON.stringify(
       { recent_events: data.recent_events, warnings: data.warnings },
@@ -439,30 +420,138 @@
       default: return [label(String(e.event || "event")) + (e.task ? " · " + e.task : ""), "neutral"];
     }
   }
+  // The closed drawers say whether they are worth opening.
+  function setDrawerCount(id, value, tone) {
+    const el = document.getElementById(id);
+    el.textContent = value;
+    el.dataset.tone = tone || "";
+  }
+
+  // Tools and limits: what is never observed is said once; below it only
+  // what actually happened, one row each: a missing or switched-off tool,
+  // or a task with failed attempts and the state of its loop brake.
+  function toolRow(badge, name, detail, pill, tone) {
+    const row = text("div", "", "tool-row");
+    row.dataset.tone = tone || "";
+    row.append(badge || text("span", ""), text("strong", name, "tool-name"), text("p", detail, "tool-detail"), text("span", pill, "tool-pill"));
+    return row;
+  }
+  function renderTools(data) {
+    const box = document.getElementById("limits");
+    box.replaceChildren();
+    box.append(text("p", data.agents.length
+      ? "For every tool: authentication unknown · capacity unknown. This page never signs in or asks a provider."
+      : "No tool observations recorded. Authentication and capacity remain unknown.", "drawer-note"));
+    const missing = data.agents.filter((a) => a.binary && a.binary.present === false);
+    for (const a of missing) box.append(toolRow(agentBadge(a.name), a.name, "Its command-line tool is not installed.", "Missing", "failed"));
+    const off = data.agents.filter((a) => a.bench.off || a.bench.operator_retry_at !== null);
+    for (const a of off) {
+      const at = a.bench.operator_retry_at;
+      const detail = at === null ? "Switched off by the operator."
+        : "Operator retry " + (typeof at === "number" ? new Date(at * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : String(at)) + "; not a provider reset.";
+      box.append(toolRow(agentBadge(a.name), a.name, detail, a.bench.off ? "Off" : "Retry set", "attention"));
+    }
+    const workerOf = new Map((data.results || []).map((r) => [r.task, r.worker]));
+    const troubled = data.retries.filter((retry) => retry.failed_attempts > 0 || retry.blocked || retry.retry_granted);
+    for (const retry of troubled) {
+      const n = retry.failed_attempts, worker = workerOf.get(retry.task);
+      box.append(toolRow(worker ? agentBadge(worker) : null, retry.task, n + " failed " + (n === 1 ? "attempt" : "attempts"),
+        retry.blocked ? "Blocked" : retry.retry_granted ? "Retry granted" : "Brake clear",
+        retry.blocked ? "failed" : retry.retry_granted ? "attention" : ""));
+    }
+    if (data.agents.length && !missing.length && !off.length && !troubled.length)
+      box.append(text("p", "All clear: every tool is installed and on, and no task has failed attempts.", "small"));
+    const parts = [];
+    if (missing.length) parts.push(missing.length + " missing");
+    if (off.length) parts.push(off.length + " off");
+    const blocked = troubled.filter((r) => r.blocked).length;
+    if (blocked) parts.push(blocked + " blocked");
+    const attempts = troubled.reduce((sum, r) => sum + r.failed_attempts, 0);
+    if (attempts) parts.push(attempts + " failed " + (attempts === 1 ? "attempt" : "attempts"));
+    setDrawerCount("limits-count", parts.length ? parts.join(" · ") : data.agents.length ? "All clear" : "", parts.length ? "attention" : "");
+  }
+
+  // Activity log: one row per task run instead of one per event, newest
+  // first and read left to right ("T7-glm started 01:07 · ran 16s ·
+  // checks 1/1 · approved by qwen · merged"). Warnings stay pinned above.
+  const LOG_VISIBLE = 8;
+  let logShowAll = false;
+  const clock = (at) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  function stepText(e) {
+    const n = (v) => (typeof v === "number" ? v : "?");
+    const at = Date.parse(e.ts);
+    switch (e.event) {
+      case "run_start": return "started" + (Number.isFinite(at) ? " " + clock(at) : "");
+      case "run": return e.exit === 0 ? "ran" + (typeof e.duration_s === "number" ? " " + span(e.duration_s) : " to the end")
+        : "ended with exit " + n(e.exit) + (e.wall ? " (time limit)" : "");
+      case "verify": {
+        const run = n(e.validate_run), failed = n(e.validate_failed);
+        const scope = e.scope && e.scope !== "OK" ? " (scope " + label(String(e.scope)).toLowerCase() + ")" : "";
+        return (e.verdict === "PASS" ? "checks " + run + "/" + run : e.verdict === "FAIL" ? "failed " + failed + " of " + run + " checks"
+          : "checks " + label(String(e.verdict || "unknown")).toLowerCase()) + scope;
+      }
+      case "review": return e.decision === "approved" ? "approved by " + (e.reviewer || "a reviewer")
+        : e.decision === "changes_requested" ? "changes asked by " + (e.reviewer || "a reviewer")
+          : "review " + label(String(e.decision || "no decision")).toLowerCase();
+      case "merge": return "merged";
+      default: return label(String(e.event || "event")).toLowerCase();
+    }
+  }
   function renderTimeline(data) {
     const box = document.getElementById("events");
     box.replaceChildren();
-    for (const warning of data.warnings || []) {
+    const warnings = data.warnings || [];
+    for (const warning of warnings) {
       const row = text("div", "", "timeline-row timeline-warning");
       row.append(text("span", "Warning", "timeline-time"), text("p", String(warning), "timeline-text"));
       box.append(row);
     }
-    const events = (data.recent_events || []).slice().sort((a, b) => (Date.parse(b.ts) || 0) - (Date.parse(a.ts) || 0));
-    let day = "";
+    // Oldest first, so each run collects its events in order. A new start
+    // opens a new run; a merge joins the latest run of its worker.
+    const events = (data.recent_events || []).slice().sort((a, b) => (Date.parse(a.ts) || 0) - (Date.parse(b.ts) || 0));
+    const runs = [], byTask = new Map(), byWorker = new Map();
     for (const e of events) {
-      const at = Date.parse(e.ts);
+      let run = e.event === "run_start" ? null : e.task ? byTask.get(e.task) : e.event === "merge" ? byWorker.get(e.worker) : null;
+      if (!run) {
+        run = { task: e.task || "", worker: e.worker || "", events: [], at: 0 };
+        runs.push(run);
+      }
+      if (e.task) byTask.set(e.task, run);
+      run.events.push(e);
+      run.worker = run.worker || e.worker || "";
+      run.at = Math.max(run.at, Date.parse(e.ts) || 0);
+      if (run.worker) byWorker.set(run.worker, run);
+    }
+    runs.sort((a, b) => b.at - a.at);
+    let day = "";
+    for (const run of logShowAll ? runs : runs.slice(0, LOG_VISIBLE)) {
+      const last = run.events[run.events.length - 1];
+      const at = Date.parse(last.ts);
       const thisDay = Number.isFinite(at) ? new Date(at).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "Unknown day";
       if (thisDay !== day) { day = thisDay; box.append(text("p", day, "timeline-day")); }
-      const [line, tone] = eventLine(e);
+      // the row's color is the latest event that decided something
+      const tones = run.events.map((e) => eventLine(e)[1]).filter((t) => t !== "neutral");
       const row = text("div", "", "timeline-row");
-      row.dataset.tone = tone;
-      const when = text("time", Number.isFinite(at) ? new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "--:--", "timeline-time");
-      when.dateTime = e.ts || "";
-      when.title = exactTime(e.ts);
-      row.append(when, e.worker ? agentBadge(e.worker) : text("span", ""), text("p", line, "timeline-text"));
+      row.dataset.tone = tones.length ? tones[tones.length - 1] : "neutral";
+      const when = text("time", Number.isFinite(at) ? clock(at) : "--:--", "timeline-time");
+      when.dateTime = last.ts || "";
+      when.title = exactTime(last.ts);
+      const line = text("p", "", "timeline-text");
+      line.append(text("strong", run.task || run.worker || "Unknown task", "timeline-task"), document.createTextNode(run.events.map(stepText).join(" · ")));
+      row.append(when, run.worker ? agentBadge(run.worker) : text("span", ""), line);
       box.append(row);
     }
-    if (!events.length && !(data.warnings || []).length) box.append(text("p", "No recorded events yet.", "small"));
+    if (runs.length > LOG_VISIBLE) {
+      const more = text("button", logShowAll ? "Show the newest " + LOG_VISIBLE : "Show all " + runs.length + " runs", "log-more");
+      more.type = "button";
+      more.addEventListener("click", () => { logShowAll = !logShowAll; renderTimeline(data); });
+      box.append(more);
+    }
+    if (!events.length && !warnings.length) box.append(text("p", "No recorded events yet.", "small"));
+    const parts = [];
+    if (runs.length) parts.push(runs.length + (runs.length === 1 ? " run" : " runs"));
+    if (warnings.length) parts.push(warnings.length + (warnings.length === 1 ? " warning" : " warnings"));
+    setDrawerCount("events-count", parts.join(" · "), warnings.length ? "attention" : "");
   }
 
   const GROUPS = [["attention", "Needs you"], ["active", "Running"], ["finished", "Finished"]];
@@ -489,7 +578,10 @@
     for (const [category, title] of GROUPS) {
       const records = pageTasks.filter((r) => categories.get(r).category === category);
       if (!records.length) continue;
-      records.sort((a, b) => (Date.parse(b.recorded_at) || 0) - (Date.parse(a.recorded_at) || 0));
+      // Newest first; in Needs you, failures come before work that is only
+      // waiting for its next step (a review, a check), so they never get buried.
+      const failedFirst = (r) => (category === "attention" && taskSignal(r, categories.get(r)) === "failed" ? 0 : 1);
+      records.sort((a, b) => failedFirst(a) - failedFirst(b) || (Date.parse(b.recorded_at) || 0) - (Date.parse(a.recorded_at) || 0));
       const group = text("section", "", "task-group");
       group.dataset.group = category;
       const heading = text("h3", "", "task-group-title");
@@ -1750,6 +1842,8 @@
       document.getElementById("limits").replaceChildren();
       document.getElementById("events").textContent = "";
       document.getElementById("events-raw").textContent = "";
+      setDrawerCount("limits-count", "");
+      setDrawerCount("events-count", "");
       status.className = "error";
       status.textContent =
         "Local activity is unavailable. No current state is claimed.";

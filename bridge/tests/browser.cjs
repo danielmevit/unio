@@ -161,7 +161,7 @@ const { chromium } = require(process.env.M2_PLAYWRIGHT_MODULE || "playwright");
       ),
     );
     assert.ok(
-      (await page.locator("#limits").textContent()).includes("BLOCKED"),
+      (await page.locator("#limits").textContent()).includes("Blocked"),
     );
     // Read-only mode exposes only view controls: the list's only extra
     // buttons copy a suggested command to the clipboard.
@@ -232,7 +232,7 @@ const { chromium } = require(process.env.M2_PLAYWRIGHT_MODULE || "playwright");
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     );
-    await page.getByText("Recent recorded events and warnings", {exact:true}).click();
+    await page.getByText("Activity log", {exact:true}).click();
     assert.ok((await page.locator("#events").textContent()).includes("Literal <script>"));
     assert.equal(await page.locator("#events script").count(), 0);
     assert.ok(await page.locator("#events").evaluate((el) => el.scrollWidth <= el.clientWidth + 1));
