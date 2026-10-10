@@ -1,200 +1,202 @@
 #!/usr/bin/env python3
-# Unio — Copyright (C) 2026 Daniel Mitev
-# Public attribution: Daniel Mevit (@danielmevit)
-# Original project: https://github.com/danielmevit/unio
-# SPDX-License-Identifier: AGPL-3.0-only
-# Additional attribution/origin terms: NOTICE (AGPLv3 sections 7(b), 7(c)).
-# See LICENSE and NOTICE; distributed without warranty.
-"""Save retention with archival: 32 valid saves across workers, archival under pressure,
-inspect/restore of archived saves, protection of newest/pins/corrupt, archive bounds.
+# Unio — Copyright (C) 2026 Daniel Mitev; Daniel Mevit (@danielmevit).
+# https://github.com/danielmevit/unio
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE. No warranty.
+"""Offline installed archival workflows and protected-history boundaries.
 
-Offline and mock-only. Uses the same fixture approach as unio-work-saving.py.
+Pressure fixtures clone a real native save, changing only its ID, worker and
+publication time. Content/fingerprints remain valid. No live provider is used.
 """
 import fcntl
+import hashlib
 import json
 import os
 import re
 import shutil
-import signal
-import stat
 import subprocess
-import sys
 import tempfile
-import time
 from pathlib import Path
 
-source = Path(__file__).resolve().parent.parent
-passed = [0]
+SOURCE = Path(__file__).resolve().parents[1]
+helper = SOURCE.joinpath('unio-install.sh').read_text().split("<<'SAVES_PY'\n", 1)[1].split('\nSAVES_PY', 1)[0]
+core = {}
+exec(compile(helper.rsplit('sys.exit(main(sys.argv[1:]))', 1)[0], '<save-helper>', 'exec'), core)
+passed = 0
 
 
-def check(label, condition=True):
-    if not condition:
-        print('FAIL ' + label)
-        sys.exit(1)
-    passed[0] += 1
-    print('  ok %s' % label)
+def check(label, condition):
+    global passed
+    assert condition, label
+    passed += 1
+    print('PASS ' + label, flush=True)
 
 
 with tempfile.TemporaryDirectory(prefix='save-retention-') as directory:
     base = Path(directory)
-    calls = base / 'provider-calls'
-    env = dict(os.environ, UNIO_BIN_DIR=str(base / 'bin'), UNIO_CONF_DIR=str(base / 'conf'),
-               UNIO_COMPLETION_DIR=str(base / 'completion'),
-               GIT_AUTHOR_NAME='mock', GIT_COMMITTER_NAME='mock',
-               GIT_AUTHOR_EMAIL='mock@example.invalid', GIT_COMMITTER_EMAIL='mock@example.invalid',
-               GIT_OPTIONAL_LOCKS='0', UNIO_AUTO_VERIFY='0', UNIO_AUTO_SYNC='0', UNIO_AUTO_OFF='0')
+    env = dict(os.environ, UNIO_BIN_DIR=str(base/'bin'), UNIO_CONF_DIR=str(base/'conf'),
+               UNIO_COMPLETION_DIR=str(base/'completion'), UNIO_AUTO_VERIFY='0', UNIO_AUTO_SYNC='0',
+               GIT_AUTHOR_NAME='mock', GIT_COMMITTER_NAME='mock', GIT_AUTHOR_EMAIL='mock@example.invalid',
+               GIT_COMMITTER_EMAIL='mock@example.invalid')
     env.pop('UNIO_SAVE_TEST_FAULT', None)
-    subprocess.run(['bash', str(source / 'unio-install.sh')], env=env, check=True, capture_output=True)
-    (base / 'conf' / 'agents.conf').write_text("mock=sh -c 'echo called >> \"%s\"'\n" % calls)
-    at = str(base / 'bin' / 'unio')
-    root = base / 'mock project'
-    repo = root / 'repo'
-    repo.mkdir(parents=True)
+    subprocess.run(['bash', str(SOURCE/'unio-install.sh')], env=env, check=True, capture_output=True)
+    engine = str(base/'bin/unio')
+    project = base/'project with spaces'
+    repo = project/'repo'; repo.mkdir(parents=True)
+    coord = project/'coord'; store = coord/'saves'; archive = store/'archive'
+    calls = base/'mock-calls'
+    (base/'conf/agents.conf').write_text('mock=sh -c \'echo invoked >> "%s"; exit 7\'\n' % calls)
 
-    def git(cwd, *args, data=None):
-        return subprocess.run(['git', *args], cwd=cwd, env=env, check=True, capture_output=True,
-                              input=data).stdout
+    def unio(*args, fault=None):
+        return subprocess.run([engine, *args], cwd=repo, env=dict(env, UNIO_SAVE_TEST_FAULT=fault or ''),
+                              text=True, capture_output=True, timeout=90)
 
-    def unio(*args, fault=None, cwd=None, timeout=120):
-        e = dict(env, UNIO_SAVE_TEST_FAULT=fault) if fault else env
-        return subprocess.run([at, *args], cwd=cwd or repo, env=e, capture_output=True, text=True, timeout=timeout)
+    def git(*args):
+        return subprocess.run(['git', '-C', str(repo), *args], env=env, check=True, capture_output=True)
 
-    def write(path, data, mode=0o644):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data if isinstance(data, bytes) else data.encode())
-        os.chmod(path, mode)
-
-    # Base commit
-    write(repo / '.gitignore', 'cache/\n*.log\n.env\n')
-    write(repo / 'README.md', 'base readme\n')
-    git(repo, 'init', '-q', '-b', 'main')
-    git(repo, 'add', '-A')
-    git(repo, 'commit', '-qm', 'base')
-    base_commit = git(repo, 'rev-parse', 'HEAD').decode().strip()
-    workers = ['mock-' + c for c in 'abcdefghij']
-    init = unio('init', *workers)
-    check('init creates mock workers', init.returncode == 0)
-    coord, wt = root / 'coord', root / 'wt'
-    write(coord / 'tasks' / 'T1.md', '# T1\nFinish the feature.\n## Validate\n$ false\n')
+    (repo/'README.md').write_text('native saved bytes\n')
+    git('init', '-q', '-b', 'main'); git('add', '.'); git('commit', '-qm', 'base')
+    workers = ['mock-' + letter for letter in 'abcdefghijk']
+    check('native workers initialize', unio('init', *workers).returncode == 0)
     unio('stop')
-    check('STOP is set for every save command below', (coord / 'STOP').exists())
+    before = sorted(p.relative_to(coord).as_posix() for p in coord.rglob('*'))
+    missing = unio('save', 'usage', '--json')
+    check('missing-store usage reports zero without writes', missing.returncode == 0
+          and json.loads(missing.stdout)['active_saves'] == 0
+          and before == sorted(p.relative_to(coord).as_posix() for p in coord.rglob('*')) and not store.exists())
+    (coord/'tasks/T1.md').write_text('# T1\nKeep native bytes.\n')
+    created = unio('save', 'create', workers[0], 'T1')
+    match = re.search(r'^saved ([0-9a-f]{32}):', created.stdout, re.M)
+    check('native template save created', created.returncode == 0 and match is not None)
+    template = base/'template'; shutil.copytree(store/match[1], template)
 
-    # Create 32 saves across 4 workers (8 per worker to test per-worker cap)
-    save_ids = []
-    for i, worker in enumerate(workers[:4]):
-        for j in range(8):
-            task_content = '# Task %d-%d\nContent.\n' % (i, j)
-            write(coord / 'tasks' / ('T%d-%d.md' % (i, j)), task_content)
-            r = unio('save', 'create', worker, 'T%d-%d' % (i, j))
-            check('%s save %d created' % (worker, j), r.returncode == 0)
-            # Extract save ID from output
-            match = re.search(r'saved ([0-9a-f]{32}):', r.stdout)
-            if match:
-                save_ids.append(match.group(1))
-    
-    check('created 32 saves', len(save_ids) == 32)
+    def ids(where):
+        return {p.name for p in where.iterdir() if re.fullmatch('[0-9a-f]{32}', p.name)} if where.exists() else set()
 
-    # Verify saves are in the store
-    store = root / 'coord' / 'saves'
-    check('saves directory exists', store.exists())
-    active_saves = [d for d in os.listdir(store) if re.fullmatch(r'[0-9a-f]{32}', d)]
-    check('active saves count', len(active_saves) == 32)
+    def content(where):
+        if where.parent == archive:
+            where = where/'snapshot'
+        return {p.relative_to(where).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in where.rglob('*') if p.is_file() and not p.is_symlink()}
 
-    # Create a new save from a 5th worker - should trigger archival
-    task_content = '# New Task\nNew content.\n'
-    write(coord / 'tasks' / 'new.md', task_content)
-    r = unio('save', 'create', workers[4], 'new')
-    check('new worker save triggers archival', r.returncode == 0)
-    
-    # Check that archive was created and has saves
-    archive = root / 'coord' / 'saves' / 'archive'
-    check('archive directory exists', archive.exists())
-    archived_saves = [d for d in os.listdir(archive) if re.fullmatch(r'[0-9a-f]{32}', d)]
-    check('some saves were archived', len(archived_saves) > 0)
-    
-    # Total saves (active + archived) should still be 33
-    active_saves = [d for d in os.listdir(store) if re.fullmatch(r'[0-9a-f]{32}', d)]
-    check('total saves preserved', len(active_saves) + len(archived_saves) == 33)
+    def clone(where, number, worker, second):
+        sid = '%032x' % number
+        dest = where/sid
+        if where == archive:
+            dest.mkdir(mode=0o700)
+            dest = dest/'snapshot'
+        shutil.copytree(template, dest)
+        doc = json.loads((dest/'manifest.json').read_text())
+        doc.update(save_id=sid, worker=worker, published_at='2026-10-10T10:%02d:%02d+00:00' % (second//60, second%60))
+        (dest/'manifest.json').write_text(json.dumps(doc) + '\n')
+        return sid
 
-    # Test usage command
-    r = unio('save', 'usage')
-    check('usage command succeeds', r.returncode == 0)
-    check('usage output contains active saves', 'Active saves:' in r.stdout)
-    check('usage output contains archived saves', 'Archived saves:' in r.stdout)
-    
-    # Test usage with --json
-    r = unio('save', 'usage', '--json')
-    check('usage --json succeeds', r.returncode == 0)
-    usage_data = json.loads(r.stdout)
-    check('usage JSON has active_saves', 'active_saves' in usage_data)
-    check('usage JSON has archived_saves', 'archived_saves' in usage_data)
-    check('usage JSON has archive bounds', usage_data.get('archive_cap_saves') == 128)
-    check('usage JSON has archive bytes bound', usage_data.get('archive_cap_bytes') == 512 * 1024 * 1024)
+    def seed(unique=False):
+        for p in store.iterdir():
+            if re.fullmatch('[0-9a-f]{32}', p.name) or p.name == 'archive': shutil.rmtree(p)
+        for p in (store/'claims').iterdir(): p.unlink()
+        return [clone(store, i+1, 'isolated-%d' % i if unique else workers[i//4], i) for i in range(32)]
 
-    # Test inspect of archived save
-    if archived_saves:
-        archived_id = archived_saves[0]
-        r = unio('save', 'inspect', archived_id)
-        check('inspect archived save succeeds', r.returncode == 0)
-        check('inspect archived save shows valid', 'complete, valid' in r.stdout)
-        
-        # Test inspect with --json
-        r = unio('save', 'inspect', archived_id, '--json')
-        check('inspect archived save --json succeeds', r.returncode == 0)
-        inspect_data = json.loads(r.stdout)
-        check('inspect archived save JSON valid', inspect_data.get('valid') is True)
+    initial = seed(); originals = {sid: content(store/sid) for sid in initial}
+    core['load_save'](str(store/initial[0]), initial[0], True)
+    r = unio('save', 'create', workers[8], 'T1')
+    if r.returncode:
+        print('Native pressure-save diagnostic:', r.returncode, r.stdout, r.stderr, flush=True)
+    check('33rd save archives oldest eligible from another worker', r.returncode == 0
+          and len(ids(store)) == 32 and ids(archive) == {initial[0]})
+    check('all previous IDs and bytes preserved exactly', all(content((store if sid in ids(store) else archive)/sid)
+          == originals[sid] for sid in initial))
+    check('each original worker newest remains active', all(initial[i] in ids(store) for i in range(3, 32, 4)))
+    inspected = unio('save', 'inspect', initial[0], '--json')
+    check('archived ID inspects without moving it back', inspected.returncode == 0
+          and json.loads(inspected.stdout)['valid'] and initial[0] in ids(archive))
+    restored = unio('save', 'restore', initial[0], workers[9])
+    check('archived ID restores and remains archived', restored.returncode == 0
+          and initial[0] in ids(archive) and (project/'wt'/workers[9]/'README.md').read_text() == 'native saved bytes\n')
+    before_usage = content(store)
+    usage = unio('save', 'usage', '--json'); stats = json.loads(usage.stdout)
+    check('usage measures actual archive bytes, unique pins and fixed caps without writes', usage.returncode == 0
+          and stats['active_saves'] == 32 and stats['archived_saves'] == 1 and stats['valid_pins'] == 1
+          and stats['archived_bytes'] == sum(p.stat().st_size for p in (archive/initial[0]).rglob('*') if p.is_file())
+          and stats['archive_cap_saves'] == 128 and stats['archive_cap_bytes'] == 512*1024*1024
+          and content(store) == before_usage)
+    check('usage rejects unknown arguments', unio('save', 'usage', 'oops').returncode == 2)
+    lock = (coord/'.locks/saves.lock').open('rb'); fcntl.flock(lock, fcntl.LOCK_EX)
+    try:
+        busy = unio('save', 'usage', '--json')
+        check('busy usage reports Unknown without changing evidence', busy.returncode == 2
+              and json.loads(busy.stdout)['status'] == 'unknown' and content(store) == before_usage)
+    finally: lock.close()
+    check('save/usage/inspect/restore made no provider calls', not calls.exists())
 
-    # Test that newest per worker is preserved
-    for worker in workers[:5]:
-        r = unio('save', 'inspect', '--worker', worker)
-        check('worker %s has last good save' % worker, r.returncode == 0)
-        check('worker %s last good save exists' % worker, 'last good save:' in r.stdout)
+    (coord/'tasks/CONT1.md').write_text('# CONT1\nSeparate authorized mock continuation.\n## Allowed scope\n- README.md\n## Validate\n$ true\n')
+    unio('resume')
+    continued = unio('save', 'continue', initial[0], workers[9], 'CONT1')
+    unio('stop')
+    check('archived continuation resolves through native claim/run path once', continued.returncode == 7
+          and calls.read_text() == 'invoked\n' and initial[0] in ids(archive))
+    replay = unio('save', 'continue', initial[0], workers[9], 'CONT1')
+    check('STOP/replay dispatches no further continuation', replay.returncode != 0 and calls.read_text() == 'invoked\n')
 
-    # Test restore of archived save
-    if archived_saves:
-        archived_id = archived_saves[0]
-        # Get worker from archived save
-        r = unio('save', 'inspect', archived_id, '--json')
-        inspect_data = json.loads(r.stdout)
-        original_worker = inspect_data['worker']
-        
-        # Restore to a different worker
-        dest_worker = workers[5]  # Use a worker that hasn't saved yet
-        r = unio('save', 'restore', archived_id, dest_worker)
-        check('restore archived save succeeds', r.returncode == 0)
+    initial = seed()
+    unio('save', 'restore', initial[0], workers[10])
+    r = unio('save', 'create', workers[8], 'T1')
+    check('active claim pin is skipped under cross-worker pressure', r.returncode == 0
+          and initial[0] in ids(store) and initial[1] in ids(archive))
 
-    # Test archive bounds - create many saves to fill archive
-    # This tests that archive refuses when bounds are exceeded
-    for i in range(100):
-        task_content = '# Fill Task %d\nFill.\n' % i
-        write(coord / 'tasks' / ('fill%d.md' % i), task_content)
-        r = unio('save', 'create', workers[0], 'fill%d' % i)
-        if r.returncode != 0:
-            # Should fail when archive bounds are exceeded
-            check('archive bounds enforced at save %d' % i, True)
-            break
-    else:
-        check('archive bounds not reached after 100 saves', False)
+    initial = seed(unique=True); newest_bytes = {sid: content(store/sid) for sid in initial}
+    r = unio('save', 'create', workers[8], 'T1')
+    check('32 distinct newest saves refuse rather than losing a worker checkpoint', r.returncode == 1
+          and 'newest' in r.stderr and ids(store) == set(initial) and not archive.exists()
+          and all(content(store/sid) == newest_bytes[sid] for sid in initial))
 
-    # Verify archive count doesn't exceed bounds
-    archived_saves = [d for d in os.listdir(archive) if re.fullmatch(r'[0-9a-f]{32}', d)]
-    check('archive count within bounds', len(archived_saves) <= 128)
+    initial = seed()
+    bad = store/'claims'/('f'*32 + '.json'); bad.write_text('{}'); bad.chmod(0o600)
+    r = unio('save', 'create', workers[8], 'T1')
+    check('unreadable claims block archival and retain every save', r.returncode == 1
+          and 'unreadable claims' in r.stderr and ids(store) == set(initial) and not archive.exists())
+    check('usage marks unreadable claims Unknown', json.loads(unio('save', 'usage', '--json').stdout)['status'] == 'unknown')
 
-    # Test that claims still work with archived saves
-    if archived_saves and len(save_ids) >= 2:
-        archived_id = archived_saves[0]
-        r = unio('save', 'inspect', archived_id, '--json')
-        inspect_data = json.loads(r.stdout)
-        original_worker = inspect_data['worker']
-        
-        # Create a claim by restoring
-        dest_worker = workers[6]
-        r = unio('save', 'restore', archived_id, dest_worker)
-        check('create claim for archived save', r.returncode == 0)
-        
-        # Verify the save is now pinned
-        r = unio('save', 'usage', '--json')
-        usage_data = json.loads(r.stdout)
-        check('pinned count increased', usage_data.get('valid_pins', 0) >= 1)
+    initial = seed()
+    body = next((store/initial[0]/'pool').iterdir()); body.write_bytes(b'x'*body.stat().st_size)
+    bad_bytes = content(store/initial[0])
+    r = unio('save', 'create', workers[8], 'T1')
+    check('hash-corrupt save is never archived or deleted', r.returncode == 0
+          and initial[0] in ids(store) and content(store/initial[0]) == bad_bytes and initial[1] in ids(archive))
 
-    print('\nAll retention tests passed: %d checks' % passed[0])
+    initial = seed(); archive.mkdir(mode=0o700); (archive/initial[0]).mkdir(mode=0o700)
+    try:
+        core['archive_save'](str(store), initial[0], str(archive))
+    except core['Refuse']: collision = True
+    else: collision = False
+    check('no-replace refuses even an empty destination collision', collision
+          and (archive/initial[0]).is_dir() and content(store/initial[0]) == originals[initial[0]])
+    check('duplicate ID inspect refuses ambiguity', unio('save', 'inspect', initial[0], '--json').returncode != 0)
+    check('worker inspection refuses a corrupt archive ID collision',
+          unio('save', 'inspect', '--worker', workers[0], '--json').returncode != 0)
+
+    initial = seed(); archive.symlink_to(base/'elsewhere', target_is_directory=True)
+    r = unio('save', 'create', workers[8], 'T1')
+    check('unsafe archive link refuses before moving history', r.returncode == 1 and ids(store) == set(initial))
+    archive.unlink()
+
+    initial = seed(); archive.mkdir(mode=0o700)
+    for i in range(128): clone(archive, 1000+i, workers[0], i)
+    r = unio('save', 'create', workers[8], 'T1')
+    check('actual 128-save archive cap refuses without publishing or deleting', r.returncode == 1
+          and 'archive count cap' in r.stderr and len(ids(store)) == 32 and len(ids(archive)) == 128)
+
+    initial = seed(); core['ARCHIVE_CAP_BYTES'] = 1
+    try:
+        core['retention_plan'](str(store), workers[8], core['Budget'](30))
+    except core['Refuse'] as error: byte_refused = 'archive byte cap' in error.message
+    else: byte_refused = False
+    finally: core['ARCHIVE_CAP_BYTES'] = 512*1024*1024
+    check('measured-byte boundary refuses before mutation (reduced test cap)', byte_refused and ids(store) == set(initial))
+
+    r = unio('save', 'create', workers[8], 'T1', fault='archive-after-move')
+    check('interruption after atomic move keeps all old IDs and bytes', r.returncode != 0
+          and ids(store) | ids(archive) == set(initial)
+          and all(content((store if sid in ids(store) else archive)/sid) == originals[sid] for sid in initial))
+    check('interrupted archived ID still inspects', unio('save', 'inspect', initial[0], '--json').returncode == 0)
+    check('only explicitly authorized mock continuation was invoked', calls.read_text() == 'invoked\n')
+    print('Save retention: %d checks passed' % passed)
