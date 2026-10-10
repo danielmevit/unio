@@ -80,5 +80,5 @@ and interruption, including descendants that close their output pipes.
 The snapshot is not atomic, a reservation or live provider readiness. External
 sessions and other workspaces remain uncounted. Check current native admission
 when actually launching work. See [work modes](WORK-MODES.md),
-[capacity readings](CAPACITY-READINGS.md) and
+[capacity readings](development/CAPACITY-READINGS.md) and
 [agent fleet assignments](development/AGENT-FLEET.md).
