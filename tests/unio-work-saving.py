@@ -738,7 +738,7 @@ with tempfile.TemporaryDirectory(prefix='work-saving-') as directory:
     check('bare save prints usage with exit 2', usage.returncode == 2 and 'unio save inspect' in usage.stderr)
     comp = subprocess.run(['bash', '-c', 'source "$1"; cd "$2"; COMP_WORDS=(unio save ""); COMP_CWORD=2; _unio; echo "${COMPREPLY[*]}"',
                            '_', str(base / 'completion' / 'unio'), str(repo)], capture_output=True, text=True, env=env)
-    check('completion offers the save subcommands', comp.stdout.split() == ['create', 'inspect', 'restore', 'continue'])
+    check('completion offers the save subcommands', comp.returncode == 0 and comp.stdout.split() == ['create', 'inspect', 'restore', 'continue', 'usage'])
     check('source unchanged at the end', snap(a)['index'] == before_a['index'] and snap(a)['head'] == before_a['head'])
     check('provider stub was never invoked', not calls.exists())
 
