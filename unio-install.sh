@@ -3973,15 +3973,6 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
         <p id="map-activity" class="small map-activity" role="status" aria-live="polite"></p>
         <p id="map-empty" class="small map-empty" hidden></p>
         <div id="tasks-map-container" class="map-container">
-          <div class="map-controls">
-            <div class="map-camera-controls" role="group" aria-label="Map viewport">
-              <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
-              <output id="map-zoom-level" aria-label="Map zoom">100%</output>
-              <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
-              <button id="map-fit" type="button" aria-pressed="true">Fit view</button>
-              <button id="map-reset" type="button">Reset 100%</button>
-            </div>
-          </div>
           <details class="map-howto">
             <summary>How to read the map</summary>
             <p id="map-help" class="small map-help">Read left to right: project → worker → task. Connections show ownership, not execution order. Scroll to zoom at the pointer; hold the middle mouse button and drag to pan, or drag with the left button or touch. Use + / − to zoom, arrow keys to pan, 0 to fit, or Home to reset. Tab to a node, then Enter or Space to select.</p>
@@ -3995,6 +3986,13 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
           </p>
           <div class="map-workspace">
             <div class="map-canvas-column">
+              <div class="map-camera-controls" role="group" aria-label="Map viewport">
+                <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
+                <output id="map-zoom-level" aria-label="Map zoom">100%</output>
+                <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+                <button id="map-fit" type="button" aria-pressed="true" aria-label="Fit view">Fit</button>
+                <button id="map-reset" type="button" aria-label="Reset to 100%">100%</button>
+              </div>
               <div class="map-scroll-area">
                 <svg id="work-map" tabindex="0" role="group" aria-label="Work map" aria-describedby="map-help"></svg>
               </div>
@@ -6229,7 +6227,14 @@ footer a { display: inline-flex; align-items: center; min-height: 44px; color: v
   cursor: pointer;
 }
 .history-toggle input { width: auto; min-height: auto; flex: none; }
-.map-camera-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+/* The zoom controls float inside the map's top-right corner, on a plate of
+   their own, so the map keeps the whole frame. */
+.map-canvas-column { position: relative; }
+.map-camera-controls {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  display: flex; align-items: center; gap: 6px; padding: 4px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+}
 .map-camera-controls button { min-width: 44px; }
 #map-zoom-level { min-width: 4ch; text-align: center; font-size: 12px; color: var(--muted); }
 .map-help { margin: 0 0 12px; max-width: 100ch; }

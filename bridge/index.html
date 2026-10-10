@@ -211,15 +211,6 @@
         <p id="map-activity" class="small map-activity" role="status" aria-live="polite"></p>
         <p id="map-empty" class="small map-empty" hidden></p>
         <div id="tasks-map-container" class="map-container">
-          <div class="map-controls">
-            <div class="map-camera-controls" role="group" aria-label="Map viewport">
-              <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
-              <output id="map-zoom-level" aria-label="Map zoom">100%</output>
-              <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
-              <button id="map-fit" type="button" aria-pressed="true">Fit view</button>
-              <button id="map-reset" type="button">Reset 100%</button>
-            </div>
-          </div>
           <details class="map-howto">
             <summary>How to read the map</summary>
             <p id="map-help" class="small map-help">Read left to right: project → worker → task. Connections show ownership, not execution order. Scroll to zoom at the pointer; hold the middle mouse button and drag to pan, or drag with the left button or touch. Use + / − to zoom, arrow keys to pan, 0 to fit, or Home to reset. Tab to a node, then Enter or Space to select.</p>
@@ -233,6 +224,13 @@
           </p>
           <div class="map-workspace">
             <div class="map-canvas-column">
+              <div class="map-camera-controls" role="group" aria-label="Map viewport">
+                <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
+                <output id="map-zoom-level" aria-label="Map zoom">100%</output>
+                <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+                <button id="map-fit" type="button" aria-pressed="true" aria-label="Fit view">Fit</button>
+                <button id="map-reset" type="button" aria-label="Reset to 100%">100%</button>
+              </div>
               <div class="map-scroll-area">
                 <svg id="work-map" tabindex="0" role="group" aria-label="Work map" aria-describedby="map-help"></svg>
               </div>

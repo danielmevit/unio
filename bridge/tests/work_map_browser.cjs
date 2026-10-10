@@ -866,7 +866,7 @@ sys.stdout.buffer.write((root/'coord'/'snapshot.json').read_bytes())
         assert.ok(Math.abs(layout.details.width - layout.map.width) < 1, 'full-width narrow details on ' + width);
       }
 
-      assert.ok(await page.evaluate(() => [...document.querySelectorAll('.map-controls > *, .map-details-header > *')].every(e => {
+      assert.ok(await page.evaluate(() => [...document.querySelectorAll('.map-controls > *, .map-camera-controls > *, .map-details-header > *')].every(e => {
         const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth;
       })), 'controls remain within screen at ' + width);
     }

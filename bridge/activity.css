@@ -287,7 +287,14 @@ footer a { display: inline-flex; align-items: center; min-height: 44px; color: v
   cursor: pointer;
 }
 .history-toggle input { width: auto; min-height: auto; flex: none; }
-.map-camera-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+/* The zoom controls float inside the map's top-right corner, on a plate of
+   their own, so the map keeps the whole frame. */
+.map-canvas-column { position: relative; }
+.map-camera-controls {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  display: flex; align-items: center; gap: 6px; padding: 4px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+}
 .map-camera-controls button { min-width: 44px; }
 #map-zoom-level { min-width: 4ch; text-align: center; font-size: 12px; color: var(--muted); }
 .map-help { margin: 0 0 12px; max-width: 100ch; }
