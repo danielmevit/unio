@@ -67,6 +67,33 @@ Only after that slice is accepted should dispatch be implemented. Dispatch must
 recheck exact task/revision authority and native admission at launch; a previous
 plan cannot bypass STOP, reservations, slots or the retry brake.
 
+## How the first planner should explain a day of work
+
+The planner should explain what could proceed from recorded tasks and fleet
+state. Suppose the lead is working on Codex. That occupies its account's one
+low-tier slot, so a second independent Codex task is blocked. A documentation
+task on Copilot and a separate implementation task on an idle Gemini account
+can be ready if their dependencies are satisfied and their write paths do not
+conflict. One busy account need not stop independent work on another.
+
+GLM and Medium aliases on the same busy Mistral account share one budget. Both
+must wait for that account's slot; a different model name creates no additional
+capacity. Conversely, an empty local slot does not prove provider availability.
+Cached zero allowance or signed-out status should have separate explanations.
+A past reset time is not evidence that allowance has refreshed.
+
+Dependencies require the exact accepted revision of the prerequisite. A task
+waiting for a known required revision is blocked until that evidence matches.
+Missing acceptance evidence or an ambiguous write-scope pattern makes the task
+unresolved. Successful execution, passing tests and a green review alone do
+not establish human acceptance. Each ready, blocked or unresolved result should
+show its reason, relevant input revision and observation age.
+
+Ready means a recommendation, not approval, a reservation or permission to
+dispatch. Later dispatch requires explicit approval and fresh authority and
+admission checks; retries are never implicit. The read-only planner and its
+later dispatch capability still require implementation.
+
 See the [current roadmap](ROADMAP.md), [work policy](../WORK-MODES.md),
 [queue contract](../NEXT-MILESTONE-CONTRACTS.md#2-queue-library-contract) and
 [model roles](../ai/MODEL-ROLES.md).
