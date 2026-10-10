@@ -17,6 +17,7 @@ remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The comp
 
 | Version | Included work | State |
 | --- | --- | --- |
+| 0.5.10 | Bounded recovery-save archival and usage, explicit cached Claude sign-in, remembered task filters and daily-use guide | Integrated release candidate; complete merged-tree gate, installation and publication pending |
 | 0.5.9 | Saved dashboard redesign: readable task list, agent allowance cards, activity timeline and map readability; packaged Copilot Auto Balance and fleet guide | [Released and installed 2026-10-10](https://github.com/danielmevit/unio/releases/tag/v0.5.9); source0c2def4, complete gate, six browser suites, artifacts, upgrade/restore and official download/install checks passed |
 | 0.5.0 | Completed A/B/C/D rename; installer, commands, config, docs and prototypes | [Published 2026-10-06](https://github.com/danielmevit/unio/releases/tag/v0.5.0); source aebe23c; installed with owner approval |
 | 0.5.1 | Limit-policy hardening and regression coverage | [Published 2026-10-06](https://github.com/danielmevit/unio/releases/tag/v0.5.1); source af437b1 |

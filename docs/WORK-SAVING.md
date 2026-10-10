@@ -17,7 +17,7 @@ preserved failures and live cooldown limitation](development/RECOVERY-ACCEPTANCE
 | Manual `unio save create`, `inspect` and `restore` | Available in v0.5.4 |
 | Automatic baseline, periodic and final saves during runs | Available in v0.5.4 |
 | One authorized continuation from a save (`unio save continue`) | Available in v0.5.4 |
-| Save retention with archival (`unio save usage`) | Next release candidate; not included in v0.5.9 |
+| Save retention with archival (`unio save usage`) | Included in the v0.5.10 release candidate; not included in v0.5.9 |
 | [Lead cooldown supervisor](LEAD-COOLDOWN.md) | Experimental, explicitly enabled in v0.5.4; genuine lead-limit-to-restart cycle unverified |
 
 Install the [official v0.5.9 release](https://github.com/danielmevit/unio/releases/tag/v0.5.9)

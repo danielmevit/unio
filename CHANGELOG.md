@@ -4,6 +4,26 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.10 — safer recovery and daily-use improvements — 2026-10-10
+
+See [release scope and usage](docs/RELEASE-0.5.10.md).
+
+- Archive eligible older recovery saves instead of deleting history, including
+  under project-wide pressure. Protect each worker's newest valid save, claims
+  and corrupt evidence; refuse new saves when bounded archival cannot proceed.
+- Inspect, restore and separately authorize continuation from archived save IDs.
+  Add read-only `unio save usage [--json]` for counts, limits and actual file bytes;
+  unavailable or unsafe observations remain Unknown.
+- Add explicit `unio readiness refresh claude` and local-only `show`, with private
+  cached observations and bounded native metadata commands for Claude Code 2.1.296.
+  The dashboard displays the cache without signing in or refreshing a provider;
+  authentication does not establish allowance or permission to start work.
+- Remember task search, worker, lifecycle and category filters across reloads of
+  the same dashboard URL. Reconcile vanished restored choices after live data
+  arrives; reset retains theme and list/map preferences.
+- Add a practical daily-use guide and record real worker outcomes separately
+  from connection failures and model-quality claims.
+
 ## 0.5.9 — clearer dashboard and agent fleet — 2026-10-10
 
 See [release scope and usage](docs/RELEASE-0.5.9.md).

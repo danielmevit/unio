@@ -12985,7 +12985,7 @@ cat > "$BIN_DIR/unio" <<'UNIO_BIN_EOF'
 #   PROJECT/coord/    board.md, base, docs/, tasks/, reports/, blockers.md, STOP
 set -euo pipefail
 
-UNIO_VERSION="0.5.9"
+UNIO_VERSION="0.5.10"
 CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
 CONF_FILE="$CONF_DIR/agents.conf"
 TPL_DIR="$CONF_DIR/templates"
@@ -21307,6 +21307,20 @@ checks, and both generated two faulty test fixtures. Their reproduced security
 findings were complementary. Kimi returned faster in this one batch; GLM's
 integration plan kept slots and allowance clearer. Use the report's bounded
 task-fit guidance, not an overall model ranking. No proposal was merged.
+
+## Recovery and connection checks — 2026-10-10
+
+Vibe GLM 5.3/high and its Medium 3.5/high replacement both stopped with
+`backend_error: All connection attempts failed` after about five minutes of
+provider work. Both were below their task budgets; neither failure is evidence
+of exhausted subscription allowance or a model reasoning score. GLM left no
+edits; Medium's partial commit was preserved and completed by the existing lead.
+
+An owner-requested, tools-disabled GLM connection diagnostic subsequently
+returned the exact requested marker in 10.847 seconds with native exit 0,
+7,591 cumulative tokens and no backend error. This establishes a successful
+small round trip at that time, not sustained connection reliability. The
+original implementation attempts were not retried.
 
 ## Adapter batch — 2026-10-09
 

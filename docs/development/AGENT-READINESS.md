@@ -6,7 +6,7 @@ combined dispatch readiness remain Unknown, including after a signed-in result.
 
 ## Use the command
 
-The next release candidate adds the native command below. It is not included in
+The v0.5.10 release candidate adds the native command below. It is not included in
 the published v0.5.9 installer.
 
 ```bash
