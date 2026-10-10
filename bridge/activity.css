@@ -536,7 +536,6 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
   0%, 100% { background: var(--t-rust); } 16.6% { background: var(--t-mustard); } 33.3% { background: var(--t-sea); }
   50% { background: var(--t-steel); } 66.6% { background: var(--t-periwinkle); } 83.3% { background: var(--t-lavender); }
 }
-.boot-label { margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .boot-field i:nth-child(23) { animation-delay: 0ms, 0ms; }
 .boot-field i:nth-child(24) { animation-delay: 30ms, 30ms; }
 .boot-field i:nth-child(27) { animation-delay: 60ms, 60ms; }
@@ -813,3 +812,60 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .limits-routes, .limits-groups { grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); }
 .view-switch button, .task-summary .summary-name, .state-pill, .track li { white-space: nowrap; }
 .view-switch { flex: none; }
+
+/* Before the theme script runs, follow the system: in dark mode the page
+   paints dark from the first frame instead of flashing light. Same values as
+   [data-theme="dark"]; work_map_browser.cjs checks the two never drift. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --text-main: #e8e8e8;
+    --bg-main: #1c1c1c;
+    --muted: #a6a6a6;
+    --line: #3d3d3d;
+    --accent: #d2d2d2;
+    --paper: #252525;
+    --bg-label: #333333;
+    --text-label: #c4c4c4;
+    --bg-composer: #2b2b2b;
+    --btn-border: #686868;
+    --btn-text: #e8e8e8;
+    --btn-hover-bg: #3d3d3d;
+    --btn-hover-border: #8b8b8b;
+    --btn-primary-hover: #eeeeee;
+    --btn-danger-text: #eeeeee;
+    --btn-danger-border: #858585;
+    --btn-danger-hover: #383838;
+    --btn-disabled-bg: #2e2e2e;
+    --btn-disabled-text: #888888;
+    --btn-disabled-border: #464646;
+    --btn-primary-text: #1c1c1c;
+    --focus-ring: #e2e2e2;
+    --text-placeholder: #a0a0a0;
+    --line-alt: #555555;
+    --text-error: #eeeeee;
+    --bg-error: #383838;
+    --border-error: #a0a0a0;
+    --bg-pre: #222222;
+    --border-pre: #3b3b3b;
+    --text-summary: #b4b4b4;
+    --text-stage: #a6a6a6;
+    --text-stage-help: #bdbdbd;
+    --text-warn: #dddddd;
+    --bg-warn: #383838;
+    --text-status: #b4b4b4;
+    --text-chip: #c4c4c4;
+    --bg-chip-warn: #383838;
+    --text-chip-warn: #dddddd;
+    --map-passed: #3fb950;
+    --map-failed: #f85149;
+    --map-attention: #d29922;
+    --t-rust: #cb7f72;
+    --t-mustard: #caaa72;
+    --t-sea: #74b4a5;
+    --t-steel: #91a2b6;
+    --t-periwinkle: #8795c9;
+    --t-lavender: #a094d1;
+    --footer-bg: #151515;
+  }
+}

@@ -174,6 +174,30 @@ sys.stdout.buffer.write((root/'coord'/'snapshot.json').read_bytes())
       await context.close();
     }
 
+    // --- Theme: the first paint follows the system before the script runs ---
+    {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "dark" });
+      const page = await context.newPage();
+      watch(page);
+      await page.goto(origin);
+      const verdict = await page.evaluate(() => {
+        const read = () => {
+          const s = getComputedStyle(document.documentElement);
+          return JSON.stringify([...s].filter((k) => k.startsWith("--") || k === "color-scheme").sort().map((k) => [k, s.getPropertyValue(k).trim()]));
+        };
+        const root = document.documentElement;
+        root.dataset.theme = "dark";
+        const chosen = read();
+        delete root.dataset.theme;
+        const system = read();
+        root.dataset.theme = "dark";
+        return chosen === system ? "same" : "differs";
+      });
+      assert.equal(verdict, "same", "system dark before the theme script and chosen dark use identical tokens");
+      await context.close();
+      ok("first paint in system dark already uses the dark tokens");
+    }
+
     // --- Work map ------------------------------------------------------------
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
     const page = await context.newPage();

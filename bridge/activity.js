@@ -473,8 +473,18 @@
       button.setAttribute("aria-pressed", mapStateFilter === state ? "true" : "false");
     }
   }
+  // The list is rebuilt only when what it shows changes (the relative times
+  // count as a change once a minute), and a reader's open "Technical details"
+  // stay open across a rebuild, so polling never closes what someone opened.
+  let taskListSignature = "";
   function renderTaskList(data, pageTasks, categories) {
     const tasks = document.getElementById("tasks");
+    const minute = Math.floor((Date.parse(data.observed_at) || 0) / 60000);
+    const signature = JSON.stringify([minute, data.results.length, pageTasks.map((r) => [r, categories.get(r).category, isLatestForWorker(data, r)])]);
+    if (signature === taskListSignature && tasks.childElementCount) return;
+    taskListSignature = signature;
+    const rowKey = (row) => JSON.stringify([row.dataset.worker, row.dataset.task]);
+    const open = new Set([...tasks.querySelectorAll(".task-row")].filter((row) => row.querySelector(".task-tech[open]")).map(rowKey));
     tasks.replaceChildren();
     for (const [category, title] of GROUPS) {
       const records = pageTasks.filter((r) => categories.get(r).category === category);
@@ -515,6 +525,7 @@
       tasks.append(group);
     }
     if (!data.results.length) tasks.append(text("p", "No structured task evidence yet.", "small"));
+    for (const row of tasks.querySelectorAll(".task-row")) if (open.has(rowKey(row))) row.querySelector(".task-tech").open = true;
   }
 
   // JSON arrays cannot collide for different tuples, whatever the names hold.
@@ -1709,16 +1720,18 @@
     renderLimits();
   }
 
-  // The loading screen (the dot U) stays until the first observation has
-  // finished, whatever its result, and at least long enough not to flash.
-  const bootStarted = performance.now();
+  // The loading screen (the dot U) stays only until the first observation
+  // has finished, whatever its result; the person is let in right away,
+  // even if the animation is still running.
   let booted = false;
   function markReady() {
     if (booted) return;
     booted = true;
-    const wait = Math.max(0, 600 - (performance.now() - bootStarted));
-    setTimeout(() => document.documentElement.classList.add("is-ready"), wait);
+    document.documentElement.classList.add("is-ready");
   }
+  // A slow first read never holds anyone on the loading screen: after 2.5 s
+  // the page opens and its own status line says it is still loading.
+  setTimeout(markReady, 2500);
 
   async function refresh() {
     if (busy) return;
@@ -1733,6 +1746,7 @@
       // Remove old states so a failed observation cannot look current.
       clearMapAfterFailure();
       document.getElementById("tasks").replaceChildren();
+      taskListSignature = "";
       document.getElementById("limits").replaceChildren();
       document.getElementById("events").textContent = "";
       document.getElementById("events-raw").textContent = "";

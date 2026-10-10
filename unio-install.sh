@@ -3777,7 +3777,6 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
   <body>
     <div class="boot" aria-hidden="true">
       <div class="boot-field"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <p class="boot-label">Reading recorded activity</p>
     </div>
     <a class="skip-link" href="#workspace">Skip to workspace</a>
     <main id="workspace" tabindex="-1">
@@ -4532,8 +4531,18 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       button.setAttribute("aria-pressed", mapStateFilter === state ? "true" : "false");
     }
   }
+  // The list is rebuilt only when what it shows changes (the relative times
+  // count as a change once a minute), and a reader's open "Technical details"
+  // stay open across a rebuild, so polling never closes what someone opened.
+  let taskListSignature = "";
   function renderTaskList(data, pageTasks, categories) {
     const tasks = document.getElementById("tasks");
+    const minute = Math.floor((Date.parse(data.observed_at) || 0) / 60000);
+    const signature = JSON.stringify([minute, data.results.length, pageTasks.map((r) => [r, categories.get(r).category, isLatestForWorker(data, r)])]);
+    if (signature === taskListSignature && tasks.childElementCount) return;
+    taskListSignature = signature;
+    const rowKey = (row) => JSON.stringify([row.dataset.worker, row.dataset.task]);
+    const open = new Set([...tasks.querySelectorAll(".task-row")].filter((row) => row.querySelector(".task-tech[open]")).map(rowKey));
     tasks.replaceChildren();
     for (const [category, title] of GROUPS) {
       const records = pageTasks.filter((r) => categories.get(r).category === category);
@@ -4574,6 +4583,7 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       tasks.append(group);
     }
     if (!data.results.length) tasks.append(text("p", "No structured task evidence yet.", "small"));
+    for (const row of tasks.querySelectorAll(".task-row")) if (open.has(rowKey(row))) row.querySelector(".task-tech").open = true;
   }
 
   // JSON arrays cannot collide for different tuples, whatever the names hold.
@@ -5768,16 +5778,18 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     renderLimits();
   }
 
-  // The loading screen (the dot U) stays until the first observation has
-  // finished, whatever its result, and at least long enough not to flash.
-  const bootStarted = performance.now();
+  // The loading screen (the dot U) stays only until the first observation
+  // has finished, whatever its result; the person is let in right away,
+  // even if the animation is still running.
   let booted = false;
   function markReady() {
     if (booted) return;
     booted = true;
-    const wait = Math.max(0, 600 - (performance.now() - bootStarted));
-    setTimeout(() => document.documentElement.classList.add("is-ready"), wait);
+    document.documentElement.classList.add("is-ready");
   }
+  // A slow first read never holds anyone on the loading screen: after 2.5 s
+  // the page opens and its own status line says it is still loading.
+  setTimeout(markReady, 2500);
 
   async function refresh() {
     if (busy) return;
@@ -5792,6 +5804,7 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       // Remove old states so a failed observation cannot look current.
       clearMapAfterFailure();
       document.getElementById("tasks").replaceChildren();
+      taskListSignature = "";
       document.getElementById("limits").replaceChildren();
       document.getElementById("events").textContent = "";
       document.getElementById("events-raw").textContent = "";
@@ -6355,7 +6368,6 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
   0%, 100% { background: var(--t-rust); } 16.6% { background: var(--t-mustard); } 33.3% { background: var(--t-sea); }
   50% { background: var(--t-steel); } 66.6% { background: var(--t-periwinkle); } 83.3% { background: var(--t-lavender); }
 }
-.boot-label { margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .boot-field i:nth-child(23) { animation-delay: 0ms, 0ms; }
 .boot-field i:nth-child(24) { animation-delay: 30ms, 30ms; }
 .boot-field i:nth-child(27) { animation-delay: 60ms, 60ms; }
@@ -6632,6 +6644,63 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .limits-routes, .limits-groups { grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); }
 .view-switch button, .task-summary .summary-name, .state-pill, .track li { white-space: nowrap; }
 .view-switch { flex: none; }
+
+/* Before the theme script runs, follow the system: in dark mode the page
+   paints dark from the first frame instead of flashing light. Same values as
+   [data-theme="dark"]; work_map_browser.cjs checks the two never drift. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --text-main: #e8e8e8;
+    --bg-main: #1c1c1c;
+    --muted: #a6a6a6;
+    --line: #3d3d3d;
+    --accent: #d2d2d2;
+    --paper: #252525;
+    --bg-label: #333333;
+    --text-label: #c4c4c4;
+    --bg-composer: #2b2b2b;
+    --btn-border: #686868;
+    --btn-text: #e8e8e8;
+    --btn-hover-bg: #3d3d3d;
+    --btn-hover-border: #8b8b8b;
+    --btn-primary-hover: #eeeeee;
+    --btn-danger-text: #eeeeee;
+    --btn-danger-border: #858585;
+    --btn-danger-hover: #383838;
+    --btn-disabled-bg: #2e2e2e;
+    --btn-disabled-text: #888888;
+    --btn-disabled-border: #464646;
+    --btn-primary-text: #1c1c1c;
+    --focus-ring: #e2e2e2;
+    --text-placeholder: #a0a0a0;
+    --line-alt: #555555;
+    --text-error: #eeeeee;
+    --bg-error: #383838;
+    --border-error: #a0a0a0;
+    --bg-pre: #222222;
+    --border-pre: #3b3b3b;
+    --text-summary: #b4b4b4;
+    --text-stage: #a6a6a6;
+    --text-stage-help: #bdbdbd;
+    --text-warn: #dddddd;
+    --bg-warn: #383838;
+    --text-status: #b4b4b4;
+    --text-chip: #c4c4c4;
+    --bg-chip-warn: #383838;
+    --text-chip-warn: #dddddd;
+    --map-passed: #3fb950;
+    --map-failed: #f85149;
+    --map-attention: #d29922;
+    --t-rust: #cb7f72;
+    --t-mustard: #caaa72;
+    --t-sea: #74b4a5;
+    --t-steel: #91a2b6;
+    --t-periwinkle: #8795c9;
+    --t-lavender: #a094d1;
+    --footer-bg: #151515;
+  }
+}
 UNIO_BROWSER_ACTIVITY_CSS
 cat > "$CONF_DIR/lib/browser/drafts.js" <<'UNIO_BROWSER_DRAFTS_JS'
 /* Unio — Copyright (C) 2026 Daniel Mitev; Daniel Mevit (@danielmevit).
