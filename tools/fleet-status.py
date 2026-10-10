@@ -28,7 +28,6 @@ import time
 
 SCHEMA_VERSION = 1
 CAP_BYTES = 256 * 1024
-GRACE_SECONDS = 0.5
 POLL_SECONDS = 0.1
 READ_CHUNK = 65536
 MAX_TEXT = 64
@@ -38,6 +37,12 @@ MAX_BUCKETS = 16
 MAX_WINDOW_MINUTES = 366 * 24 * 60
 MAX_AGE_SECONDS = 366 * 24 * 3600
 LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
+BUCKET_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,63}')
+TIME = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)')
+CODEX_REASONS = (None, 'not_refreshed', 'binary_missing', 'start_failed', 'timeout',
+    'exited', 'output_limit', 'invalid_message', 'unexpected_request', 'request_failed',
+    'not_signed_in', 'unsupported_account', 'invalid_account', 'invalid_rate_limits',
+    'no_valid_window', 'internal_error', 'invalid_bucket', 'invalid_window', 'implausible_reset')
 
 MODES = ('yolo', 'medium', 'safe')
 TIERS = ('low', 'medium', 'high')
@@ -80,7 +85,10 @@ def is_int(value):
 
 
 def is_number(value):
-    return type(value) in (int, float) and math.isfinite(value)
+    try:
+        return type(value) in (int, float) and math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def is_label(value):
@@ -96,7 +104,20 @@ def is_percent(value):
 
 
 def is_age(value):
-    return value is None or (is_number(value) and 0 <= value <= MAX_AGE_SECONDS)
+    return value is None or (is_number(value) and -300 <= value <= MAX_AGE_SECONDS)
+
+
+def timestamp(value):
+    if not isinstance(value, str) or TIME.fullmatch(value) is None:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone(datetime.timezone.utc)
+    except (ValueError, OverflowError):
+        return None
+
+
+def is_time(value):
+    return value is None or timestamp(value) is not None
 
 
 def _unique_object(pairs):
@@ -128,9 +149,9 @@ def parse_strict(data):
     try:
         obj = json.loads(data.decode('utf-8'), object_pairs_hook=_unique_object,
                          parse_constant=_reject_constant)
-    except Exception:
-        return None
-    if not isinstance(obj, dict) or not _finite(obj):
+        if not isinstance(obj, dict) or not _finite(obj):
+            return None
+    except (ValueError, UnicodeError, RecursionError):
         return None
     return obj
 
@@ -142,90 +163,65 @@ def _stop_group(proc):
         pass
 
 
-def _drain(stream, data):
-    """Bounded tail read after the group is dead; True when the cap is exceeded."""
-    try:
-        fd = stream.fileno()
-    except (OSError, ValueError):
-        return False
-    deadline = time.monotonic() + GRACE_SECONDS
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return False
-        try:
-            ready, _, _ = select.select([fd], [], [], min(POLL_SECONDS, remaining))
-        except (OSError, ValueError):
-            return False
-        if not ready:
-            continue
-        try:
-            chunk = os.read(fd, READ_CHUNK)
-        except OSError:
-            return False
-        if not chunk:
-            return False
-        data.extend(chunk)
-        if len(data) > CAP_BYTES:
-            return True
-
-
 def observe(runner, root, argv, deadline):
-    """Run one fixed runner argv under an owned process group.
+    """Bound combined output and lifetime, including descendants/closed pipes.
 
-    Combined stdout/stderr is collected streamingly and stops at the cap. The
-    group is always stopped and reaped, even when the child exits first and
-    descendants keep the pipes open; then only a short grace is waited, never
-    the remaining deadline.
+    Wait without reaping until the owned group has been killed so its group id
+    cannot be reused. Stderr counts toward the cap but never enters the JSON.
     """
     try:
         proc = subprocess.Popen(
             [runner] + list(argv), cwd=root, stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             start_new_session=True)
     except OSError:
         return None, 'launch_failed'
-    data = bytearray()
-    reason = None
-    exited_at = None
+    data, seen, reason, stopped = bytearray(), 0, None, False
+    streams = {proc.stdout.fileno(), proc.stderr.fileno()}
+    for fd in streams:
+        os.set_blocking(fd, False)
     try:
-        fd = proc.stdout.fileno()
         while True:
-            limit = deadline
-            if exited_at is not None:
-                limit = min(limit, exited_at + GRACE_SECONDS)
-            remaining = limit - time.monotonic()
+            remaining = deadline - time.monotonic()
             if remaining <= 0:
-                if exited_at is None:
-                    reason = 'timeout'
+                reason = 'timeout'
                 break
-            ready, _, _ = select.select([fd], [], [], min(POLL_SECONDS, remaining))
-            if ready:
-                chunk = os.read(fd, READ_CHUNK)
-                if not chunk:
+            if not stopped and os.waitid(os.P_PID, proc.pid,
+                    os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None:
+                _stop_group(proc)
+                stopped = True
+            if not streams:
+                if stopped:
                     break
-                data.extend(chunk)
-                if len(data) > CAP_BYTES:
+                time.sleep(min(POLL_SECONDS, remaining))
+                continue
+            for fd in select.select(list(streams), [], [], min(POLL_SECONDS, remaining))[0]:
+                chunk = os.read(fd, min(READ_CHUNK, CAP_BYTES - seen + 1))
+                if not chunk:
+                    streams.remove(fd)
+                    continue
+                seen += len(chunk)
+                if seen > CAP_BYTES:
                     reason = 'overflow'
                     break
-            elif proc.poll() is not None and exited_at is None:
-                # The child itself finished; do not wait the rest of the
-                # deadline for descendants that keep the pipes open.
-                exited_at = time.monotonic()
+                if fd == proc.stdout.fileno():
+                    data.extend(chunk)
+            if reason:
+                break
+    except OSError:
+        reason = 'error'
     finally:
         _stop_group(proc)
-        if reason != 'overflow' and _drain(proc.stdout, data):
-            reason = 'overflow'
-        try:
-            proc.stdout.close()
-        except OSError:
-            pass
-        proc.wait()
+        proc.stdout.close()
+        proc.stderr.close()
+        proc.wait(timeout=1)
     if reason is not None:
         return None, reason
+    if proc.returncode != 0:
+        return None, 'error'
     obj = parse_strict(bytes(data))
     if obj is None:
-        return None, 'error' if proc.returncode != 0 else 'malformed'
+        return None, 'malformed'
     return obj, None
 
 
@@ -249,7 +245,8 @@ def valid_policy(obj):
         if not is_label(agent) or not is_label(group):
             return None
     limit = obj.get('workflow_limit_per_group')
-    if not is_int(limit) or not 1 <= limit <= 4:
+    if (not is_int(limit) or limit != {'low': 1, 'medium': 2, 'high': 4}[tier]
+            or obj.get('workflow_enforcement') != 'native_workflows'):
         return None
     active = obj.get('active_with_lead')
     if not isinstance(active, dict) or len(active) > MAX_ENTRIES:
@@ -296,9 +293,9 @@ def _valid_manual_window(window):
     if status not in WINDOW_STATES:
         return None
     observed, reset = window.get('observed_at'), window.get('reset_at')
-    if observed is not None and not is_text(observed):
+    if not is_time(observed):
         return None
-    if reset is not None and not is_text(reset):
+    if not is_time(reset):
         return None
     if not is_age(window.get('age_seconds')):
         return None
@@ -308,10 +305,15 @@ def _valid_manual_window(window):
         return None
     if usable is not None and not is_percent(usable):
         return None
+    minutes = window.get('window_minutes')
+    if not is_int(minutes) or not 1 <= minutes <= MAX_WINDOW_MINUTES:
+        return None
+    if status == 'fresh' and (observed is None or usable != last):
+        return None
     # Stale, expired and unknown readings never become current capacity.
     if status != 'fresh':
         usable = None
-    return {'source': 'manual', 'status': status, 'observed_at': observed,
+    return {'source': 'manual', 'status': status, 'window_minutes': minutes, 'observed_at': observed,
             'age_seconds': window.get('age_seconds'), 'reset_at': reset,
             'last_reading_remaining_percent': last,
             'usable_remaining_percent': usable}
@@ -327,6 +329,8 @@ def valid_manual(obj):
     groups = obj.get('groups')
     if not isinstance(groups, dict) or len(groups) > MAX_ENTRIES:
         return None
+    if state != 'ok':
+        return {'state': state, 'groups': {}}
     normalized = {}
     for group, view in groups.items():
         if not is_label(group) or not isinstance(view, dict):
@@ -353,19 +357,23 @@ def _valid_cached_window(window, historical):
     if not isinstance(window, dict):
         return None
     status = window.get('status')
-    if status not in WINDOW_STATES:
+    if status not in WINDOW_STATES + ('historical',):
         return None
+    if status == 'unknown' and 'window_minutes' not in window:
+        return {'status': 'unknown', 'usable_remaining_percent': None}
     minutes = window.get('window_minutes')
     if not is_int(minutes) or not 1 <= minutes <= MAX_WINDOW_MINUTES:
         return None
     reset = window.get('reset_at')
-    if reset is not None and not is_text(reset):
+    if not is_time(reset):
         return None
     last = window.get('last_reading_remaining_percent')
     if not is_percent(last):
         return None
     usable = window.get('usable_remaining_percent')
     if usable is not None and not is_percent(usable):
+        return None
+    if status == 'fresh' and not historical and usable != last:
         return None
     if historical:
         # A last good reading is history: clearly labeled, never current.
@@ -384,13 +392,13 @@ def _valid_cached_buckets(buckets, historical):
         return None
     clean = {}
     for key, bucket in buckets.items():
-        if not is_label(key) or not isinstance(bucket, dict):
+        if not isinstance(key, str) or BUCKET_ID.fullmatch(key) is None or not isinstance(bucket, dict):
             return None
         status = bucket.get('status')
         if status not in BUCKET_STATES:
             return None
         reason = bucket.get('reason')
-        if reason is not None and not is_text(reason):
+        if reason not in CODEX_REASONS:
             return None
         windows = bucket.get('windows')
         if not isinstance(windows, dict) or len(windows) > MAX_WINDOWS:
@@ -421,6 +429,8 @@ def valid_cached(obj):
     groups = obj.get('groups')
     if not isinstance(groups, dict) or len(groups) > MAX_ENTRIES:
         return None
+    if state != 'ok':
+        return {'state': state, 'groups': {}}
     clean_groups = {}
     for group, entry in groups.items():
         if not is_label(group) or not isinstance(entry, dict):
@@ -431,10 +441,10 @@ def valid_cached(obj):
         if entry_state not in ENTRY_STATES:
             return None
         reason = entry.get('reason')
-        if reason is not None and not is_text(reason):
+        if reason not in CODEX_REASONS:
             return None
         observed = entry.get('observed_at')
-        if observed is not None and not is_text(observed):
+        if not is_time(observed):
             return None
         if not is_age(entry.get('age_seconds')):
             return None
@@ -448,7 +458,7 @@ def valid_cached(obj):
         if last_good is not None:
             if not isinstance(last_good, dict):
                 return None
-            if not is_text(last_good.get('observed_at')):
+            if last_good.get('historical') is not True or timestamp(last_good.get('observed_at')) is None:
                 return None
             if not is_age(last_good.get('age_seconds')):
                 return None
@@ -457,7 +467,7 @@ def valid_cached(obj):
                 return None
             clean_last = {'historical': True, 'observed_at': last_good['observed_at'],
                           'age_seconds': last_good.get('age_seconds'), 'buckets': history}
-        clean_groups[group] = {'state': entry_state, 'reason': reason,
+        clean_groups[group] = {'source': 'codex', 'state': entry_state, 'reason': reason,
                                'observed_at': observed,
                                'age_seconds': entry.get('age_seconds'),
                                'freshness': freshness, 'buckets': buckets,
@@ -476,6 +486,8 @@ def valid_readiness(obj):
     agents = obj.get('agents')
     if not isinstance(agents, dict) or len(agents) > MAX_ENTRIES:
         return None
+    if state != 'ok':
+        return {}
     clean = {}
     for name, view in agents.items():
         if not is_label(name) or not isinstance(view, dict):
@@ -487,11 +499,13 @@ def valid_readiness(obj):
         if authentication not in AUTH_STATES:
             return None
         source, observed = view.get('source'), view.get('observed_at')
-        if source is not None and not is_text(source):
+        if source not in (None, 'native'):
             return None
-        if observed is not None and not is_text(observed):
+        if not is_time(observed):
             return None
         if not is_age(view.get('age_seconds')):
+            return None
+        if status == 'fresh' and (observed is None or view.get('age_seconds') is None):
             return None
         # Authentication is only a fact on a fresh observation.
         if status != 'fresh':
@@ -530,12 +544,15 @@ def collect(runner, root, timeout):
         if obj is None:
             statuses[name] = reason
             continue
-        parsed = VALIDATORS[name](obj)
+        try:
+            parsed = VALIDATORS[name](obj)
+        except (ValueError, TypeError, OverflowError, RecursionError):
+            parsed = None
         if parsed is None:
             statuses[name] = 'malformed'
         else:
             observed[name] = parsed
-            statuses[name] = 'ok'
+            statuses[name] = obj.get('state', 'ok') if name not in ('policy', 'agents') else 'ok'
     return observed, statuses
 
 
@@ -613,6 +630,32 @@ def build_report(root, timeout, stop, observed, statuses):
     if cached:
         for name, view in cached['groups'].items():
             row(name)['cached_allowance'] = view
+    # A reset can pass between the first input and the completed snapshot.
+    # Recheck times before presenting any percentage as usable.
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for group in groups.values():
+        manual_view = group['manual_allowance']
+        windows = list(manual_view['windows'].values()) if manual_view else []
+        cached_view = group['cached_allowance']
+        if cached_view:
+            for bucket in cached_view['buckets'].values():
+                for window in bucket['windows'].values():
+                    if window:
+                        windows.append(window)
+                        window['source'] = 'codex'
+                        window['observed_at'] = cached_view['observed_at']
+                        window['age_seconds'] = cached_view['age_seconds']
+                        if cached_view['state'] != 'ok' or cached_view['freshness'] != 'fresh':
+                            window['usable_remaining_percent'] = None
+        for window in windows:
+            observed, reset = timestamp(window.get('observed_at')), timestamp(window.get('reset_at'))
+            expired = reset is not None and now >= reset
+            if observed is not None and window.get('window_minutes'):
+                expired |= (now-observed).total_seconds() >= window['window_minutes']*60
+            if expired:
+                window['status'], window['usable_remaining_percent'] = 'expired', None
+            if observed is None or (observed-now).total_seconds() > 300:
+                window['usable_remaining_percent'] = None
     return report
 
 
@@ -632,10 +675,10 @@ def group_line(name, row):
 
 def manual_window_line(window, view):
     percent = fmt_percent(view['last_reading_remaining_percent'])
-    if view['status'] == 'fresh':
-        text = 'fresh, usable ' + percent
+    if view['usable_remaining_percent'] is not None:
+        text = 'fresh, usable ' + fmt_percent(view['usable_remaining_percent'])
     elif view['status'] == 'expired':
-        text = 'expired, last reading ' + percent + ' (past reset; not current)'
+        text = 'expired, last reading ' + percent + ' (not current)'
     elif view['status'] == 'stale':
         text = 'stale, last reading ' + percent + ' (not current)'
     else:
@@ -648,13 +691,15 @@ def manual_window_line(window, view):
 
 
 def cached_window_line(key, window, view):
+    if 'last_reading_remaining_percent' not in view:
+        return '{} {}: unknown'.format(key, window)
     percent = fmt_percent(view['last_reading_remaining_percent'])
-    if view['status'] == 'fresh':
-        text = 'fresh, usable ' + percent
+    if view['usable_remaining_percent'] is not None:
+        text = 'fresh, usable ' + fmt_percent(view['usable_remaining_percent'])
     elif view['status'] == 'historical':
         text = 'historical, ' + percent + ' (never current)'
     elif view['status'] == 'expired':
-        text = 'expired, last reading ' + percent + ' (past reset; not current)'
+        text = 'expired, last reading ' + percent + ' (not current)'
     elif view['status'] == 'stale':
         text = 'stale, last reading ' + percent + ' (not current)'
     else:
@@ -692,10 +737,11 @@ def allowance_lines(row):
         if last is not None:
             percents = [view['last_reading_remaining_percent']
                         for bucket in last['buckets'].values()
-                        for view in bucket['windows'].values() if view is not None]
+                        for view in bucket['windows'].values()
+                        if view is not None and 'last_reading_remaining_percent' in view]
             shown = ', '.join(fmt_percent(value) for value in percents) if percents else 'unknown'
             lines.append('    last good (historical, never current): {} ({}s old)'.format(
-                shown, fmt_number(last['age_seconds'])))
+                shown, fmt_number(last['age_seconds']) if last['age_seconds'] is not None else 'unknown'))
     return lines
 
 
@@ -722,7 +768,7 @@ def agent_lines(row):
 
 def render_text(report):
     lines = []
-    head = 'Project: ' + report['project']
+    head = 'Project: ' + report['project'].encode('unicode_escape').decode('ascii')
     if report['stop']:
         head += '  [STOP active]'
     lines.append(head)
@@ -743,7 +789,7 @@ def render_text(report):
     lines.append('')
     lines.append('Cached local readings only, never a live provider state; external sessions')
     lines.append('outside this workspace are uncounted. Clear local checks do not claim provider')
-    lines.append('readiness: dispatch readiness stays unknown. Observation only; nothing ran.')
+    lines.append('readiness: dispatch readiness stays unknown. Observation only; no agent was started.')
     return '\n'.join(lines)
 
 
@@ -752,14 +798,17 @@ def main(argv=None):
         prog='unio fleet', allow_abbrev=False,
         description='Local read-only fleet observation: agents, shared budget '
                     'groups, STOP facts and cached readings.')
-    parser.add_argument('runner', help='installed Unio runner path (from the dispatcher)')
     parser.add_argument('--project', metavar='PATH',
                         help='explicit physical project root (coord/ and wt/)')
     parser.add_argument('--json', action='store_true',
                         help='write exactly one schema-1 JSON object')
     parser.add_argument('--timeout', type=int, metavar='SECONDS', default=10,
                         help='whole observation deadline, 1..60 seconds (default 10)')
-    args = parser.parse_args(argv)
+    native = list(sys.argv[1:] if argv is None else argv)
+    if not native:
+        fail('installed runner path missing')
+    runner = native.pop(0)
+    args = parser.parse_args(native)
     if not 1 <= args.timeout <= 60:
         fail('--timeout must be 1..60 seconds')
     if not args.project:
@@ -772,7 +821,7 @@ def main(argv=None):
         stop = os.path.exists(os.path.join(root, 'coord', 'STOP'))
     except OSError:
         stop = False
-    observed, statuses = collect(args.runner, root, args.timeout)
+    observed, statuses = collect(runner, root, args.timeout)
     report = build_report(root, args.timeout, stop, observed, statuses)
     if args.json:
         sys.stdout.write(json.dumps(report, indent=2, ensure_ascii=True,
@@ -783,6 +832,9 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
+    def interrupted(_signal, _frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, interrupted)
     try:
         sys.exit(main())
     except KeyboardInterrupt:

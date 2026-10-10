@@ -1,1 +1,1 @@
-Add `unio fleet [--json]` to view a read-only consolidated local snapshot of agents, policy limits, STOP facts, and cached allowance.
+Add `unio fleet` to explain local agent blocks and shared account slots alongside separate cached authentication and allowance readings. Bounded local observations preserve Unknown and historical readings and never start or refresh an agent. Gemini's draft and GLM's partial correction were completed and checked by the existing lead; this is a source candidate for the 0.5.11 follow-up.
