@@ -1,4 +1,4 @@
-# Work saving — saves and authorized continuation in v0.5.4
+# Work saving — saves and authorized continuation in v0.5.9
 
 Owner requirement recorded 2026-10-06 after a worker reached its allowance
 limit with useful edits but no final commit. See the
@@ -17,9 +17,10 @@ preserved failures and live cooldown limitation](development/RECOVERY-ACCEPTANCE
 | Manual `unio save create`, `inspect` and `restore` | Available in v0.5.4 |
 | Automatic baseline, periodic and final saves during runs | Available in v0.5.4 |
 | One authorized continuation from a save (`unio save continue`) | Available in v0.5.4 |
+| Save retention with archival (`unio save usage`) | Available in v0.5.9 |
 | [Lead cooldown supervisor](LEAD-COOLDOWN.md) | Experimental, explicitly enabled in v0.5.4; genuine lead-limit-to-restart cycle unverified |
 
-Install the [official v0.5.4 release](https://github.com/danielmevit/unio/releases/tag/v0.5.4)
+Install the [official v0.5.9 release](https://github.com/danielmevit/unio/releases/tag/v0.5.9)
 to use these commands. Check the installed version with `unio version`.
 
 ## Manual saving
@@ -29,6 +30,8 @@ unio save create WORKER TASK
 unio save inspect SAVE_ID [--json]
 unio save inspect --worker WORKER [--json]
 unio save restore SAVE_ID DESTINATION
+unio save continue SAVE_ID DESTINATION NEW_TASK
+unio save usage [--json]
 ```
 
 These commands make no provider call and work while STOP is set. Exit 0
@@ -54,12 +57,26 @@ place. Each worker keeps its latest five unclaimed saves; restore claims pin
 the saves they used. A separate latest-attempt record per worker shows a
 newer refused or failed attempt without hiding the last good save.
 
+When retention caps are reached (5 ordinary unclaimed saves per worker, 8
+total per worker, 32 project-wide), older eligible saves are atomically archived
+to `coord/saves/archive/` instead of being deleted. Archived saves remain
+accessible for inspect and restore, and count toward a separate archive bound
+(128 saves, 512 MiB). Each worker's newest valid save and every claim-pinned or
+corrupt/unsupported item is preserved. `unio save usage` reports active and
+archived counts, bounds and evidence.
+
 `inspect` validates every stored byte and reports the save, or a worker's
 last good save, latest attempt and live state. Live state is Unknown while
 the worker is busy, its native lock or coordination parents are unsafe, or it
 cannot be observed. Unsafe lock admission refuses before changing saved or
 claim evidence. Existing owned, single-link 0644 native locks are supported;
 new native locks are 0600, and save-store privacy remains 0700/0600.
+
+`usage` reports read-only save statistics: active and archived save counts,
+stored bytes, retention caps (5 per worker unclaimed, 8 per worker, 32
+project-wide), archive bounds (128 saves, 512 MiB), valid claim pins, corrupt
+evidence and claim counts. It works while STOP is set and makes no provider
+calls. The JSON output includes all bounds and counts for programmatic use.
 
 `restore` writes into a different worker that is idle, clean and at the
 saved base in the same repository. Everything is validated first: manifest,

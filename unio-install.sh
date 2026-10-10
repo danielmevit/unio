@@ -13525,6 +13525,7 @@ MAX_ENTRIES, MAX_COMMITS = 4000, 100
 MAX_BODY, MAX_STORED, MAX_TASK, MAX_MANIFEST = 4 * MIB, 32 * MIB, MIB, MIB
 MAX_OBSERVED, CAPTURE_SECONDS, RESTORE_SECONDS = 64 * MIB, 30.0, 120.0
 KEEP_UNPINNED, CAP_WORKER, CAP_PROJECT, CAP_CLAIMS = 5, 8, 32, 32
+ARCHIVE_CAP_SAVES, ARCHIVE_CAP_BYTES = 128, 512 * MIB
 LOCK_WAIT = 10.0
 SAVE_REASONS = ('manual', 'baseline', 'periodic', 'final', 'final-failure')
 CODES = ('unstable', 'excessive', 'secret_name', 'unsupported_type', 'unsupported_git', 'unsafe_name',
@@ -13848,6 +13849,62 @@ def open_store(root, create):
     for sub in ('attempts', 'claims'):
         private_dir(os.path.join(store, sub), create)
     return store
+
+
+def open_archive(root, create):
+    archive = under(root, 'coord', 'saves', 'archive')
+    if not private_dir(archive, create):
+        return None
+    return archive
+
+
+def archive_size(store):
+    archive = open_archive(store.rsplit(os.sep + 'saves', 1)[0] + os.sep + 'saves', False)
+    if archive is None:
+        return 0
+    total = 0
+    for name in os.listdir(archive):
+        if HEX32.fullmatch(name):
+            path = os.path.join(archive, name)
+            try:
+                for dirpath, dirnames, filenames in os.walk(path):
+                    for f in filenames:
+                        fp = os.path.join(dirpath, f)
+                        total += os.path.getsize(fp)
+            except (OSError, IOError):
+                pass
+    return total
+
+
+def archive_save(store, save_id, archive_store):
+    src = os.path.join(store, save_id)
+    dst = os.path.join(archive_store, save_id)
+    if os.path.exists(dst) or os.path.islink(dst):
+        raise Refuse('io_error', 'archive save ID already exists: ' + save_id)
+    try:
+        shutil.move(src, dst)
+        fsync_dir(archive_store)
+    except OSError as e:
+        raise Refuse('io_error', 'failed to archive save %s: %s' % (save_id, e.strerror))
+
+
+def scan_archive(archive_path):
+    saves, corrupt = [], []
+    if archive_path is None:
+        return saves, corrupt
+    for name in sorted(os.listdir(archive_path)):
+        if HEX32.fullmatch(name):
+            path = os.path.join(archive_path, name)
+            try:
+                doc = load_save(path, name, False)['manifest']
+                saves.append(dict(id=name, worker=doc['worker'], task=doc['task'],
+                                  published=when(doc['published_at']), manifest=doc, archived=True))
+                continue
+            except Refuse:
+                pass
+        corrupt.append(dict(id=name, worker=lenient_worker(path) if HEX32.fullmatch(name) else None, archived=True))
+    saves.sort(key=lambda s: (s['published'], s['id']), reverse=True)
+    return saves, corrupt
 
 
 def saves_lock(root):
@@ -14597,7 +14654,7 @@ def scan_store(store):
     """Published saves (lightly validated) and corrupt evidence."""
     saves, corrupt = [], []
     for name in sorted(os.listdir(store)):
-        if name in ('attempts', 'claims') or name.startswith('.staging-'):
+        if name in ('attempts', 'claims', 'archive') or name.startswith('.staging-'):
             continue
         path = os.path.join(store, name)
         if HEX32.fullmatch(name):
@@ -14613,15 +14670,35 @@ def scan_store(store):
     return saves, corrupt
 
 
+def resolve_save_path(root, save_id):
+    """Find a save in either the main store or the archive."""
+    store = open_store(root, False)
+    if store is None:
+        return None
+    path = os.path.join(store, save_id)
+    if os.path.isdir(path):
+        return path
+    archive = open_archive(root, False)
+    if archive is not None:
+        path = os.path.join(archive, save_id)
+        if os.path.isdir(path):
+            return path
+    return None
+
+
 def last_good(store, worker, deep):
     saves, _ = scan_store(store)
-    for s in saves:
+    archive = open_archive(store.rsplit(os.sep + 'saves', 1)[0] + os.sep + 'saves', False)
+    archive_saves, _ = scan_archive(archive)
+    all_saves = saves + archive_saves
+    for s in all_saves:
         if s['worker'] != worker:
             continue
         if not deep:
             return s
         try:
-            load_save(os.path.join(store, s['id']), s['id'], True)
+            path = os.path.join(store, s['id']) if not s.get('archived', False) else os.path.join(archive, s['id'])
+            load_save(path, s['id'], True)
             return s
         except Refuse:
             continue
@@ -14643,26 +14720,94 @@ def same(a, b):
             and a['repo'] == b['repo'] and a['git'] == b['git'])
 
 
-def retention_plan(store, worker):
+def retention_plan(store, worker, root=None):
     saves, corrupt = scan_store(store)
+    archive_path = open_archive(root, False) if root else None
+    archive_saves, archive_corrupt = scan_archive(archive_path)
     claims, bad_claims = load_claims(store)
     pins = {c['save_id'] for c in claims}
-    mine = [s for s in saves if s['worker'] == worker]
-    unpinned = [] if bad_claims else [s for s in mine if s['id'] not in pins]
-    evict = []
-    for s in unpinned[KEEP_UNPINNED - 1:]:
-        try:
-            load_save(os.path.join(store, s['id']), s['id'], True)
-            evict.append(s)
-        except Refuse:
-            corrupt.append(dict(id=s['id'], worker=worker))
-            mine.remove(s)
-    worker_after = len(mine) - len(evict) + 1 + sum(1 for c in corrupt if c['worker'] == worker)
-    project_after = len(saves) + len(corrupt) - len(evict) + 1
+    all_saves = saves + archive_saves
+    all_corrupt = corrupt + archive_corrupt
+    
+    if bad_claims:
+        raise Refuse('excessive', 'unreadable claim evidence prevents retention planning')
+    
+    mine = [s for s in all_saves if s['worker'] == worker]
+    unpinned = [s for s in mine if s['id'] not in pins]
+    
+    archive_candidates = []
+    
+    # First, check per-worker cap
+    worker_unpinned = [s for s in unpinned if not s.get('archived', False)]
+    if len(mine) >= CAP_WORKER:
+        # Need to archive oldest unpinned saves from this worker
+        worker_unpinned.sort(key=lambda s: (s['published'], s['id']))
+        for s in worker_unpinned:
+            if len(mine) - len(archive_candidates) >= CAP_WORKER:
+                try:
+                    if not s.get('archived', False):
+                        load_save(os.path.join(store, s['id']), s['id'], True)
+                    archive_candidates.append(s)
+                except Refuse:
+                    all_corrupt.append(dict(id=s['id'], worker=worker))
+            else:
+                break
+    
+    # Then check project-wide cap
+    if len(all_saves) + len(all_corrupt) >= CAP_PROJECT:
+        # Collect all eligible saves across all workers (not pinned, not corrupt)
+        eligible = []
+        for s in all_saves:
+            if s['id'] not in pins and not any(c['id'] == s['id'] for c in all_corrupt):
+                eligible.append(s)
+        
+        # Sort by published date (oldest first)
+        eligible.sort(key=lambda s: (s['published'], s['id']))
+        
+        # Archive oldest until we're under the cap
+        for s in eligible:
+            if len(all_saves) + len(all_corrupt) - len(archive_candidates) >= CAP_PROJECT:
+                try:
+                    if not s.get('archived', False):
+                        load_save(os.path.join(store, s['id']), s['id'], True)
+                    if s not in archive_candidates:
+                        archive_candidates.append(s)
+                except Refuse:
+                    all_corrupt.append(dict(id=s['id'], worker=s['worker']))
+            else:
+                break
+    
+    # Check archive bounds before returning
+    if archive_path and len(archive_candidates) > 0:
+        current_archive_count = len(archive_saves)
+        current_archive_bytes = archive_size(store)
+        
+        # Calculate bytes to be archived
+        bytes_to_archive = 0
+        for s in archive_candidates:
+            if not s.get('archived', False):
+                path = os.path.join(store, s['id'])
+                for dirpath, dirnames, filenames in os.walk(path):
+                    for f in filenames:
+                        fp = os.path.join(dirpath, f)
+                        bytes_to_archive += os.path.getsize(fp)
+        
+        if (current_archive_count + len([s for s in archive_candidates if not s.get('archived', False)]) > ARCHIVE_CAP_SAVES or
+            (current_archive_bytes + bytes_to_archive) > ARCHIVE_CAP_BYTES):
+            raise Refuse('excessive', 'archive bounds exceeded (%d saves, %d bytes)' % 
+                         (ARCHIVE_CAP_SAVES, ARCHIVE_CAP_BYTES))
+    
+    # Filter to only non-archived candidates that need to be moved
+    to_archive = [s for s in archive_candidates if not s.get('archived', False)]
+    
+    worker_after = len([s for s in mine if not s.get('archived', False)]) - len(to_archive) + 1 + sum(1 for c in all_corrupt if c['worker'] == worker)
+    project_after = len([s for s in all_saves if not s.get('archived', False)]) + len(all_corrupt) - len(to_archive) + 1
+    
     if worker_after > CAP_WORKER or project_after > CAP_PROJECT:
         raise Refuse('excessive', 'save retention cap reached (%d per worker, %d per project) by pinned or corrupt evidence'
                      % (CAP_WORKER, CAP_PROJECT))
-    return evict
+    
+    return to_archive
 
 
 def clean_staging(store):
@@ -14681,9 +14826,10 @@ def publish(root, store, worker, task, obs, task_bytes, observed_at, budget,
     g, wt = obs['git'], obs['repo']['wt']
     lock = saves_lock(root)
     staging = os.path.join(store, '.staging-' + save_id)
+    archive_store = open_archive(root, True)
     try:
         clean_staging(store)
-        evict = retention_plan(store, worker)
+        to_archive = retention_plan(store, worker, root)
         os.mkdir(staging, 0o700)
         os.chmod(staging, 0o700)
         try:
@@ -14729,12 +14875,11 @@ def publish(root, store, worker, task, obs, task_bytes, observed_at, budget,
         os.rename(staging, os.path.join(store, save_id))
         fsync_dir(store)
         fault('publish-after-rename')
-        for s in evict:
-            doomed = os.path.join(store, '.staging-' + s['id'])
-            os.rename(os.path.join(store, s['id']), doomed)
-            fsync_dir(store)
-            shutil.rmtree(doomed)
-        return save_id, len(evict)
+        archived_count = 0
+        for s in to_archive:
+            archive_save(store, s['id'], archive_store)
+            archived_count += 1
+        return save_id, archived_count
     finally:
         os.close(lock)
 
@@ -15039,7 +15184,10 @@ def cmd_inspect_id(root, save_id, as_json):
         store = open_store(root, False)
         if store is None:
             raise Refuse('invalid_save', 'no saves in this project')
-        doc = load_save(os.path.join(store, save_id), save_id, True)['manifest']
+        save_path = resolve_save_path(root, save_id)
+        if save_path is None:
+            raise Refuse('invalid_save', 'no such save: ' + save_id)
+        doc = load_save(save_path, save_id, True)['manifest']
         claims, _ = load_claims(store)
     except Refuse as r:
         if as_json:
@@ -15118,6 +15266,56 @@ def cmd_inspect_worker(root, worker, as_json):
     print('  live state: %s%s' % (labels[out['live']], ' (%s)' % out['live_reason'] if out['live_reason'] else ''))
     if out['corrupt_evidence']:
         print('  corrupt evidence kept: %d' % out['corrupt_evidence'])
+    return 0
+
+
+def cmd_usage(root, as_json):
+    store = open_store(root, False)
+    if store is None:
+        if as_json:
+            emit(dict(schema_version=1, active_saves=0, archived_saves=0, active_bytes=0, archived_bytes=0,
+                      active_cap=CAP_PROJECT, worker_cap=CAP_WORKER, archive_cap_saves=ARCHIVE_CAP_SAVES,
+                      archive_cap_bytes=ARCHIVE_CAP_BYTES, valid_pins=0, corrupt_evidence=0, claims=0))
+        else:
+            print('No saves in this project.')
+        return 0
+    
+    saves, corrupt = scan_store(store)
+    archive = open_archive(root, False)
+    archive_saves, archive_corrupt = scan_archive(archive)
+    claims, bad_claims = load_claims(store)
+    
+    active_bytes = 0
+    for s in saves:
+        path = os.path.join(store, s['id'])
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                active_bytes += os.path.getsize(fp)
+    
+    archived_bytes = archive_size(store)
+    
+    all_corrupt = corrupt + archive_corrupt
+    valid_pins = len([c for c in claims if c['save_id'] in [s['id'] for s in saves + archive_saves]])
+    
+    if as_json:
+        emit(dict(schema_version=1, active_saves=len(saves), archived_saves=len(archive_saves),
+                      active_bytes=active_bytes, archived_bytes=archived_bytes,
+                      active_cap=CAP_PROJECT, worker_cap=CAP_WORKER, archive_cap_saves=ARCHIVE_CAP_SAVES,
+                      archive_cap_bytes=ARCHIVE_CAP_BYTES, valid_pins=valid_pins,
+                      corrupt_evidence=len(all_corrupt), claims=len(claims), bad_claims=bad_claims))
+        return 0
+    
+    print('Save usage:')
+    print('  Active saves: %d (cap: %d)' % (len(saves), CAP_PROJECT))
+    print('  Archived saves: %d (cap: %d)' % (len(archive_saves), ARCHIVE_CAP_SAVES))
+    print('  Active bytes: %d' % active_bytes)
+    print('  Archived bytes: %d (cap: %d)' % (archived_bytes, ARCHIVE_CAP_BYTES))
+    print('  Valid pins: %d' % valid_pins)
+    print('  Corrupt evidence: %d' % len(all_corrupt))
+    print('  Claims: %d' % len(claims))
+    if bad_claims:
+        print('  Bad claims: %d' % bad_claims)
     return 0
 
 
@@ -15291,7 +15489,10 @@ def restore(root, save_id, dest):
     if store is None:
         raise Refuse('invalid_save', 'no saves in this project')
     budget = Budget(RESTORE_SECONDS)
-    save = load_save(os.path.join(store, save_id), save_id, True)
+    save_path = resolve_save_path(root, save_id)
+    if save_path is None:
+        raise Refuse('invalid_save', 'no such save: ' + save_id)
+    save = load_save(save_path, save_id, True)
     m = save['manifest']
     g, fmt = m['git'], m['git']['object_format']
     if dest == m['worker']:
@@ -15665,7 +15866,8 @@ USAGE = ('usage: unio save create <worker> <task>\n'
          '       unio save inspect <save-id> [--json]\n'
          '       unio save inspect --worker <worker> [--json]\n'
          '       unio save restore <save-id> <destination>\n'
-         '       unio save continue <save-id> <destination> <new-task>')
+         '       unio save continue <save-id> <destination> <new-task>\n'
+         '       unio save usage [--json]')
 
 
 def main(argv):
@@ -15699,6 +15901,8 @@ def main(argv):
                 return cmd_inspect_worker(root, plain[1], as_json)
         if command == 'restore' and len(args) == 2 and HEX32.fullmatch(args[0]) and ident(args[1]):
             return cmd_restore(root, args[0], args[1])
+        if command == 'usage' and len(args) <= 1:
+            return cmd_usage(root, as_json)
     except Refuse as r:
         print('unio: save %s: %s' % (r.code, r.message), file=sys.stderr)
         return r.exit_code
