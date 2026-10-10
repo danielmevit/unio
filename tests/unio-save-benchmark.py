@@ -33,7 +33,10 @@ case "$cmd" in
   version) echo "Unio 0.5.9-fake ($0)"; echo "Your AIs, in sync." ;;
   init)
     mkdir -p "$root/coord/tasks" "$root/coord/.locks" "$root/wt"
-    for w in "$@"; do mkdir -p "$root/wt/$w"; printf '%s' "$w" > "$root/wt/$w/.unio-worker"; done
+    for w in "$@"; do
+      ( git clone -q "$root/repo" "$root/wt/$w" && printf '%s' "$w" > "$root/wt/$w/.unio-worker" ) &
+    done
+    wait
     echo "workers initialized" ;;
   stop) mkdir -p "$root/coord"; touch "$root/coord/STOP"; echo "STOP set" ;;
   save)

@@ -26,6 +26,7 @@ import os
 import re
 import select
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -46,6 +47,15 @@ def fail(message):
     sys.exit(2)
 
 
+class RunResult:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+        if 'exit_code' in kwargs:
+            self.returncode = kwargs['exit_code']
+        else:
+            self.returncode = None
+
+
 def run_bounded(argv, cwd, env, timeout, cap=OUTPUT_CAP_BYTES):
     """One subprocess with a hard deadline and per-stream byte caps.
 
@@ -54,7 +64,8 @@ def run_bounded(argv, cwd, env, timeout, cap=OUTPUT_CAP_BYTES):
     """
     started = time.monotonic()
     proc = subprocess.Popen(argv, cwd=str(cwd), env=env,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            start_new_session=True)
     streams = {proc.stdout.fileno(): bytearray(), proc.stderr.fileno(): bytearray()}
     for fd in streams:
         os.set_blocking(fd, False)
@@ -89,20 +100,25 @@ def run_bounded(argv, cwd, env, timeout, cap=OUTPUT_CAP_BYTES):
     timed_out = len(eof) < len(streams) and not truncated
     if timed_out or truncated:
         try:
-            proc.kill()
+            os.killpg(proc.pid, signal.SIGKILL)
         except OSError:
             pass
     try:
         proc.wait(timeout=10)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
         proc.wait()
     out = bytes(streams[proc.stdout.fileno()])
     err = bytes(streams[proc.stderr.fileno()])
-    return dict(duration_seconds=round(time.monotonic() - started, 6),
-                exit_code=proc.returncode, stdout=out.decode(errors='replace'),
-                stderr=err.decode(errors='replace'), timed_out=timed_out,
-                output_truncated=truncated)
+    proc.stdout.close()
+    proc.stderr.close()
+    return RunResult(duration_seconds=round(time.monotonic() - started, 6),
+                     exit_code=None if (timed_out or truncated) else proc.returncode, stdout=out.decode(errors='replace'),
+                     stderr=err.decode(errors='replace'), timed_out=timed_out,
+                     output_truncated=truncated)
 
 
 class Probe:
@@ -118,14 +134,23 @@ class Probe:
             'total timeout reached before %s' % step) is None
 
     def git(self, cwd, *git_args, data=None):
-        return subprocess.run(['git', *git_args], cwd=str(cwd), env=self.env,
-                             input=data, capture_output=True, timeout=self.args.step_timeout)
+        timeout = min(self.args.step_timeout, max(0.1, self.deadline - time.monotonic()))
+        try:
+            return subprocess.run(['git', *git_args], cwd=str(cwd), env=self.env,
+                                 input=data, capture_output=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            class Dummy:
+                returncode = 124
+                stdout = b''
+                stderr = b'git command timed out'
+            return Dummy()
 
     def engine(self, cwd, *engine_args):
         if self.out_of_time(' '.join(engine_args)):
             return None
+        timeout = min(self.args.step_timeout, max(0.1, self.deadline - time.monotonic()))
         return run_bounded([str(self.engine_path), *engine_args], cwd=cwd,
-                           env=self.env, timeout=self.args.step_timeout)
+                           env=self.env, timeout=timeout)
 
     # ---- fixture -------------------------------------------------------
     def build_fixture(self, child):
@@ -134,7 +159,10 @@ class Probe:
         (conf / 'off').mkdir()
         for name, text in (('board.md', '# Board\n'), ('TASK.md', '# Task\n'),
                            ('PROTOCOL.md', '# Protocol\n'), ('MASTER.md', '# Master\n'),
-                           ('WORKER.md', '# Worker {{WORKER}}\n')):
+                           ('WORKER.md', '# Worker {{WORKER}}\n'), ('WORK-MODES.md', '# Work Modes\n'),
+                           ('LEAD-ESCALATION.md', '# Lead Escalation\n'),
+                           ('MODEL-SCOREBOARD.md', '# Model Scoreboard\n'),
+                           ('AGENT-FLEET.md', '# Agent Fleet\n')):
             (conf / 'templates' / name).write_text(text)
         project = child / 'project'
         repo = project / 'repo'
@@ -151,6 +179,7 @@ class Probe:
         r = self.git(repo, 'init', '-q', '--template=', '-b', 'main')
         if r.returncode:
             return 'git init failed: %s' % r.stderr.decode(errors='replace').strip()
+        (repo / '.git' / 'info').mkdir(exist_ok=True)
         # Hooks never run (including the guard hooks `init` writes) and no
         # git sample templates are injected into the fixture.
         for key, value in (('core.hooksPath', '/dev/null'), ('core.fsmonitor', 'false'),
@@ -418,9 +447,10 @@ class Probe:
             if m:
                 receipt['engine']['version'] = m.group(1)
         receipt['cleanup']['performed'] = self.cleanup(child)
-        receipt_path = child / 'receipt.json'
-        receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
-        os.chmod(receipt_path, 0o600)
+        if not receipt['cleanup']['performed']:
+            receipt_path = child / 'receipt.json'
+            receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
+            os.chmod(receipt_path, 0o600)
         print(json.dumps(receipt, indent=2))
         if fixture_error or any(f.startswith('total timeout') for f in self.failures):
             sys.exit(1)
