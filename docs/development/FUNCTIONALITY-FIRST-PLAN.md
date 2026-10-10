@@ -1,11 +1,14 @@
 # Functionality first: milestone review and delivery plan
 
-Current delivery update, 2026-10-09: v0.5.7 is published and installed. Recovery,
-packaged browser startup, manual capacity readings and the managed dashboard/
-allowance view have shipped. Optional Vibe and Perplexity proposal adapters are
-in main after focused offline checks, with manual Perplexity activation still
-pending. The [roadmap](ROADMAP.md) is the current priority list. The audit below
-records its 2026-10-08 baseline; its counts and pending statements are historical.
+Current delivery update, 2026-10-10: v0.5.9 is published and installed. Recovery,
+packaged browser startup, manual capacity, Codex refresh, the managed dashboard
+and optional subscription adapters have shipped. Perplexity account-backed
+proposal trials are complete. Recovery archival/usage and cached Claude sign-in
+are candidates for v0.5.10; the checked save-performance probe and active CLI
+fleet overview follow in v0.5.11. See the [roadmap](ROADMAP.md) for current scope
+and the [version plan](../VERSION-PLAN.md) for publication status. The audit
+below preserves its 2026-10-08 baseline; its counts and pending statements are
+historical.
 
 Recorded 2026-10-08 at the owner's request. This is a source-backed audit and
 recommended delivery order. It preserves the approved v0.5.4 recovery scope;
