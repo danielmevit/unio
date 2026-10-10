@@ -8,7 +8,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 FILES = ('server.py', 'launcher.py', 'progress.py', 'worker_files.py',
          'plan_store.py', 'job_store.py', 'execution_service.py', 'index.html',
-         'activity.js', 'activity.css', 'drafts.js', 'jobs.js', 'worker_console.js')
+         'activity.js', 'activity.css', 'drafts.js', 'jobs.js', 'worker_console.js', 'theme.js')
 BEGIN = '# BEGIN EMBEDDED BROWSER\n'
 END = '# END EMBEDDED BROWSER\n'
 

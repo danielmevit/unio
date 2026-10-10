@@ -21,7 +21,7 @@ SOURCE = Path(__file__).resolve().parent.parent
 # The fixed browser payload; capacity.py is packaged separately (embed-capacity.py).
 BROWSER_FILES = ('server.py', 'launcher.py', 'progress.py', 'worker_files.py',
                  'plan_store.py', 'job_store.py', 'execution_service.py', 'index.html',
-                 'activity.js', 'activity.css', 'drafts.js', 'jobs.js', 'worker_console.js')
+                 'activity.js', 'activity.css', 'drafts.js', 'jobs.js', 'worker_console.js', 'theme.js')
 PAYLOAD = {name: (SOURCE / 'bridge' / name).read_bytes() for name in BROWSER_FILES}
 
 
@@ -114,7 +114,7 @@ class BrowserLauncherTests(unittest.TestCase):
         self.assertFalse(self.decoy_marker.exists())
 
     def test_standalone_bytes_and_shell(self):
-        self.assertEqual(len(PAYLOAD), 13)
+        self.assertEqual(len(PAYLOAD), 14)  # 13 + theme.js (applies a saved theme before first paint)
         self.assertEqual(sorted(p.name for p in self.payload.iterdir()), sorted(BROWSER_FILES))
         for name, raw in PAYLOAD.items():
             self.assertEqual((self.payload / name).read_bytes(), raw, name)
@@ -135,7 +135,7 @@ class BrowserLauncherTests(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertEqual(json.loads(raw), dict(schema_version=1, manual_drafts=False,
                 execution=False, progress_output=False, worker_files=False, token=None))
-            for path in ('/', '/activity.js', '/activity.css', '/drafts.js', '/jobs.js', '/worker_console.js'):
+            for path in ('/', '/activity.js', '/activity.css', '/drafts.js', '/jobs.js', '/worker_console.js', '/theme.js'):
                 code, raw = self.request(port, path)
                 self.assertEqual(code, 200, path)
                 self.assertTrue(raw)
@@ -231,7 +231,7 @@ class BrowserLauncherTests(unittest.TestCase):
                 foreign.write_bytes(b'foreign bytes must survive\n')
                 witness = browser / 'server.py'
                 witness.write_bytes(b'old browser must survive\n')
-                target = browser / 'worker_console.js'  # Last managed name: preflight must scan all.
+                target = browser / 'theme.js'  # Last managed name: preflight must scan all.
                 if kind == 'directory-symlink':
                     browser.rename(conf / 'lib/original')
                     browser.symlink_to(conf / 'lib/original', target_is_directory=True)

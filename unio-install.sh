@@ -38,7 +38,7 @@ for browser_dir in "$CONF_DIR/lib" "$CONF_DIR/lib/browser"; do
     exit 1
   fi
 done
-for browser_name in server.py launcher.py progress.py worker_files.py plan_store.py job_store.py execution_service.py index.html activity.js activity.css drafts.js jobs.js worker_console.js; do
+for browser_name in server.py launcher.py progress.py worker_files.py plan_store.py job_store.py execution_service.py index.html activity.js activity.css drafts.js jobs.js worker_console.js theme.js; do
   browser_file="$CONF_DIR/lib/browser/$browser_name"
   if [ -L "$browser_file" ] || { [ -e "$browser_file" ] && { [ ! -f "$browser_file" ] || [ "$(stat -c '%h' -- "$browser_file")" != 1 ]; }; }; then
     echo "unio: refusing unsafe browser file: $browser_file" >&2
@@ -590,6 +590,7 @@ class ActivityHandler(BaseHTTPRequestHandler):
         routes = {'/':('index.html','text/html; charset=utf-8'),
                   '/activity.js':('activity.js','text/javascript; charset=utf-8'),
                   '/drafts.js':('drafts.js','text/javascript; charset=utf-8'),
+                  '/theme.js':('theme.js','text/javascript; charset=utf-8'),
                   '/activity.css':('activity.css','text/css; charset=utf-8')}
         if self.path in routes:
             name, content_type = routes[self.path]
@@ -3769,6 +3770,7 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Unio · project workspace</title>
     <link rel="stylesheet" href="activity.css" />
+    <script src="theme.js"></script>
     <script defer src="activity.js"></script>
     <script defer src="drafts.js"></script>
     <script defer src="jobs.js"></script>
@@ -6354,50 +6356,63 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .boot {
   position: fixed; inset: 0; z-index: 100; display: grid; place-content: center; justify-items: center; gap: 20px;
   background: var(--bg-main); pointer-events: none;
-  animation: boot-away .3s ease 6s forwards;
+  /* Safety exit if no script ever marks the page ready. It moves the screen
+     away instead of fading it: sharing opacity/visibility with the fade
+     below made Firefox hold the screen up until this ran. */
+  animation: boot-away 0s linear 8s forwards;
 }
 .is-ready .boot { opacity: 0; visibility: hidden; transition: opacity .35s ease, visibility 0s .35s; }
-@keyframes boot-away { to { opacity: 0; visibility: hidden; } }
+@keyframes boot-away { to { transform: translateY(-100%); } }
 .boot-field { display: grid; grid-template-columns: repeat(10, 14px); gap: 4px; }
 .boot-field i { width: 14px; height: 14px; border-radius: 3px; background: var(--bg-composer); }
-/* each dot of the U waits dim like the field, then pops into a tone in turn */
-.boot-field i.on { animation: boot-dot .3s ease-out, boot-tone 3.6s linear infinite; }
-@keyframes boot-dot { from { transform: scale(.55); } to { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .boot-field i.on { background: var(--accent); } }
+/* Each dot of the U waits dim like the field, then switches on in turn -
+   instantly and crisp, like a dot-matrix display (no growing or fading,
+   which blurs the edges). Its colored layer already starts in a tone, so
+   while the page is still busy loading, a dot never shows up gray. */
+.boot-field i { position: relative; }
+.boot-field i.on::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: var(--t-rust); opacity: 0;
+  animation: boot-dot 0s forwards, boot-tone 3.6s linear infinite;
+}
+@keyframes boot-dot { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .boot-field i.on::after { opacity: 1; background: var(--accent); } }
 @keyframes boot-tone {
   0%, 100% { background: var(--t-rust); } 16.6% { background: var(--t-mustard); } 33.3% { background: var(--t-sea); }
   50% { background: var(--t-steel); } 66.6% { background: var(--t-periwinkle); } 83.3% { background: var(--t-lavender); }
 }
-.boot-field i:nth-child(23) { animation-delay: 0ms, 0ms; }
-.boot-field i:nth-child(24) { animation-delay: 30ms, 30ms; }
-.boot-field i:nth-child(27) { animation-delay: 60ms, 60ms; }
-.boot-field i:nth-child(28) { animation-delay: 90ms, 90ms; }
-.boot-field i:nth-child(33) { animation-delay: 120ms, 120ms; }
-.boot-field i:nth-child(34) { animation-delay: 150ms, 150ms; }
-.boot-field i:nth-child(37) { animation-delay: 180ms, 180ms; }
-.boot-field i:nth-child(38) { animation-delay: 210ms, 210ms; }
-.boot-field i:nth-child(43) { animation-delay: 240ms, 240ms; }
-.boot-field i:nth-child(44) { animation-delay: 270ms, 270ms; }
-.boot-field i:nth-child(47) { animation-delay: 300ms, 300ms; }
-.boot-field i:nth-child(48) { animation-delay: 330ms, 330ms; }
-.boot-field i:nth-child(53) { animation-delay: 360ms, 360ms; }
-.boot-field i:nth-child(54) { animation-delay: 390ms, 390ms; }
-.boot-field i:nth-child(57) { animation-delay: 420ms, 420ms; }
-.boot-field i:nth-child(58) { animation-delay: 450ms, 450ms; }
-.boot-field i:nth-child(63) { animation-delay: 480ms, 480ms; }
-.boot-field i:nth-child(64) { animation-delay: 510ms, 510ms; }
-.boot-field i:nth-child(67) { animation-delay: 540ms, 540ms; }
-.boot-field i:nth-child(68) { animation-delay: 570ms, 570ms; }
-.boot-field i:nth-child(73) { animation-delay: 600ms, 600ms; }
-.boot-field i:nth-child(74) { animation-delay: 630ms, 630ms; }
-.boot-field i:nth-child(75) { animation-delay: 660ms, 660ms; }
-.boot-field i:nth-child(76) { animation-delay: 690ms, 690ms; }
-.boot-field i:nth-child(77) { animation-delay: 720ms, 720ms; }
-.boot-field i:nth-child(78) { animation-delay: 750ms, 750ms; }
-.boot-field i:nth-child(84) { animation-delay: 780ms, 780ms; }
-.boot-field i:nth-child(85) { animation-delay: 810ms, 810ms; }
-.boot-field i:nth-child(86) { animation-delay: 840ms, 840ms; }
-.boot-field i:nth-child(87) { animation-delay: 870ms, 870ms; }
+/* Dots switch on as a ring growing from the top-left dot of the U: each
+   dot's delay follows its distance from there, with a little jitter. */
+.boot-field i:nth-child(23)::after { animation-delay: 0ms, 0ms; }
+.boot-field i:nth-child(33)::after { animation-delay: 97ms, 97ms; }
+.boot-field i:nth-child(24)::after { animation-delay: 100ms, 100ms; }
+.boot-field i:nth-child(34)::after { animation-delay: 140ms, 140ms; }
+.boot-field i:nth-child(43)::after { animation-delay: 198ms, 198ms; }
+.boot-field i:nth-child(44)::after { animation-delay: 227ms, 227ms; }
+.boot-field i:nth-child(53)::after { animation-delay: 269ms, 269ms; }
+.boot-field i:nth-child(54)::after { animation-delay: 316ms, 316ms; }
+.boot-field i:nth-child(37)::after { animation-delay: 380ms, 380ms; }
+.boot-field i:nth-child(27)::after { animation-delay: 401ms, 401ms; }
+.boot-field i:nth-child(63)::after { animation-delay: 403ms, 403ms; }
+.boot-field i:nth-child(47)::after { animation-delay: 409ms, 409ms; }
+.boot-field i:nth-child(64)::after { animation-delay: 414ms, 414ms; }
+.boot-field i:nth-child(73)::after { animation-delay: 462ms, 462ms; }
+.boot-field i:nth-child(74)::after { animation-delay: 465ms, 465ms; }
+.boot-field i:nth-child(28)::after { animation-delay: 476ms, 476ms; }
+.boot-field i:nth-child(57)::after { animation-delay: 486ms, 486ms; }
+.boot-field i:nth-child(38)::after { animation-delay: 487ms, 487ms; }
+.boot-field i:nth-child(48)::after { animation-delay: 505ms, 505ms; }
+.boot-field i:nth-child(75)::after { animation-delay: 515ms, 515ms; }
+.boot-field i:nth-child(58)::after { animation-delay: 536ms, 536ms; }
+.boot-field i:nth-child(76)::after { animation-delay: 537ms, 537ms; }
+.boot-field i:nth-child(67)::after { animation-delay: 546ms, 546ms; }
+.boot-field i:nth-child(84)::after { animation-delay: 559ms, 559ms; }
+.boot-field i:nth-child(77)::after { animation-delay: 597ms, 597ms; }
+.boot-field i:nth-child(85)::after { animation-delay: 601ms, 601ms; }
+.boot-field i:nth-child(68)::after { animation-delay: 615ms, 615ms; }
+.boot-field i:nth-child(86)::after { animation-delay: 637ms, 637ms; }
+.boot-field i:nth-child(78)::after { animation-delay: 662ms, 662ms; }
+.boot-field i:nth-child(87)::after { animation-delay: 702ms, 702ms; }
 
 /* ---- Tasks, readable: summary, grouped list, plain states ---------------- */
 .task-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 4px 0 18px; }
@@ -7849,6 +7864,21 @@ cat > "$CONF_DIR/lib/browser/worker_console.js" <<'UNIO_BROWSER_WORKER_CONSOLE_J
   });
 })();
 UNIO_BROWSER_WORKER_CONSOLE_JS
+cat > "$CONF_DIR/lib/browser/theme.js" <<'UNIO_BROWSER_THEME_JS'
+/* Unio — Copyright (C) 2026 Daniel Mitev; Daniel Mevit (@danielmevit).
+   https://github.com/danielmevit/unio
+   SPDX-License-Identifier: AGPL-3.0-only; see LICENSE and NOTICE. No warranty. */
+// Runs before the first paint (loaded without defer): applies a saved Light or
+// Dark choice at once, so the page never flashes the other theme while the
+// deferred scripts load. System needs nothing here; the stylesheet follows it.
+// activity.js stays the authority and re-applies the theme when it runs.
+(function () {
+  try {
+    var saved = localStorage.getItem("unio-theme-preference");
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+  } catch (_) {}
+})();
+UNIO_BROWSER_THEME_JS
 # END EMBEDDED BROWSER
 # BEGIN EMBEDDED CAPACITY
 # Check every generated destination before replacing any capacity file.

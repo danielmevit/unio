@@ -39,6 +39,7 @@ python3 -B bridge/tests/progress_test.py
 python3 -B bridge/tests/progress_api_test.py
 python3 -B bridge/tests/worker_files_test.py
 node --check bridge/worker_console.js
+node --check bridge/theme.js
 python3 -B bridge/tests/server_test.py
 python3 -B bridge/tests/limits_api_test.py
 python3 -B tests/unio-browser-launcher.py
