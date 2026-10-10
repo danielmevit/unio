@@ -2,151 +2,173 @@
 # Unio — Copyright (C) 2026 Daniel Mitev; Daniel Mevit (@danielmevit)
 # https://github.com/danielmevit/unio
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE. No warranty.
-"""Agent authentication readiness tool."""
+"""Explicit non-generating Claude authentication observation; show is local-only."""
 import argparse
 import json
+import os
+from pathlib import Path
+import selectors
+import signal
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 
-# Add the parent directory to sys.path to allow importing bridge
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from bridge.readiness import ReadinessStore, ReadinessError
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from bridge.readiness import NATIVE_LABELS, ReadinessStore, ReadinessError
+
+PINNED_VERSION = '2.1.296 (Claude Code)'
+
+
+class NativeFailure(Exception):
+    def __init__(self, reason):
+        self.reason = reason
+
+
+def _native(argv, *, timeout, limit):
+    """Read a fixed native command with bounded aggregate output and group cleanup."""
+    try:
+        child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, start_new_session=True)
+    except OSError:
+        raise NativeFailure('launch_failed') from None
+    selector = selectors.DefaultSelector()
+    output = bytearray()
+    total = 0
+    deadline = time.monotonic() + timeout
+    try:
+        for pipe in (child.stdout, child.stderr):
+            os.set_blocking(pipe.fileno(), False)
+            selector.register(pipe, selectors.EVENT_READ)
+        while selector.get_map() or child.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise NativeFailure('timeout')
+            if not selector.get_map():
+                time.sleep(min(0.025, remaining))
+                continue
+            for key, _ in selector.select(min(0.1, remaining)):
+                try:
+                    chunk = os.read(key.fd, min(8192, limit + 1 - total))
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                total += len(chunk)
+                if total > limit:
+                    raise NativeFailure('output_overflow')
+                if key.fileobj is child.stdout:
+                    output.extend(chunk)
+        return subprocess.CompletedProcess(argv, child.returncode, output.decode('utf-8'), None)
+    finally:
+        selector.close()
+        # Descendants may keep pipes open after their parent exits. This group
+        # belongs to this metadata observation, never to an AI worker session.
+        for signum in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(child.pid, signum)
+            except ProcessLookupError:
+                pass
+        child.stdout.close()
+        child.stderr.close()
+        try:
+            child.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            raise NativeFailure('timeout') from None
+
 
 def _strict_object(pairs):
     result = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError('duplicate JSON key')
+            raise ValueError('duplicate key')
         result[key] = value
     return result
 
+
+def _constant(_):
+    raise ValueError('nonfinite number')
+
+
 def run_refresh(project_dir, now=None):
     store = ReadinessStore(project_dir)
-    if now is None:
-        now = datetime.now(timezone.utc)
-    
-    # Bounded non-generating version check
+    now = datetime.now(timezone.utc) if now is None else now
+    reason = None
     try:
-        version_proc = subprocess.run(
-            ['claude', '--version'], 
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-            timeout=5, text=True
-        )
-        if version_proc.returncode != 0:
-            store.record_failure('claude', 'native', 'version check failed', now=now)
-            return
-        version_out = version_proc.stdout.strip()
-        # Pinning the actual installed CLI version checked during this task
-        if not version_out.startswith('2.1.295') and not version_out.startswith('2.1.296'):
-            store.record_failure('claude', 'native', f'unsupported version: {version_out}', now=now)
-            return
-    except Exception as e:
-        store.record_failure('claude', 'native', f'version check error: {e}', now=now)
-        return
-        
-    try:
-        proc = subprocess.run(
-            ['claude', 'auth', 'status', '--json'],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            timeout=10, text=True
-        )
-        if proc.returncode != 0:
-            store.record_failure('claude', 'native', f'nonzero exit: {proc.returncode}', now=now)
-            return
-        
-        output = proc.stdout.strip()
-        if not output:
-            store.record_failure('claude', 'native', 'empty output', now=now)
-            return
-            
-        if len(output.encode('utf-8')) > 65536:
-            store.record_failure('claude', 'native', 'oversized JSON', now=now)
-            return
-            
-        data = json.loads(output, object_pairs_hook=_strict_object)
-        
-        if not isinstance(data, dict):
-            store.record_failure('claude', 'native', 'unexpected type', now=now)
-            return
-            
-        if 'loggedIn' not in data:
-            store.record_failure('claude', 'native', 'missing required fields', now=now)
-            return
-            
-        if type(data['loggedIn']) is not bool:
-            store.record_failure('claude', 'native', 'unexpected fields/types', now=now)
-            return
-            
-        store.record_good(
-            'claude',
-            'native',
-            data['loggedIn'],
-            auth_method=data.get('authMethod'),
-            api_provider=data.get('apiProvider'),
-            subscription_type=data.get('subscriptionType'),
-            now=now
-        )
-            
-    except ValueError as e:
-        store.record_failure('claude', 'native', f'malformed/duplicate JSON: {e}', now=now)
+        version = _native(['claude', '--version'], timeout=5, limit=256)
+        if version.returncode != 0:
+            reason = 'version_failed'
+        elif version.stdout.strip() != PINNED_VERSION:
+            reason = 'unsupported_version'
+        if reason is None:
+            proc = _native(['claude', 'auth', 'status', '--json'], timeout=10, limit=65536)
+            if proc.returncode != 0:
+                reason = 'native_failed'
+            else:
+                data = json.loads(proc.stdout, object_pairs_hook=_strict_object, parse_constant=_constant)
+                if not isinstance(data, dict) or type(data.get('loggedIn')) is not bool:
+                    raise ValueError('invalid status')
+                for name, allowed in NATIVE_LABELS.items():
+                    if name in data and (not isinstance(data[name], str) or data[name] not in allowed):
+                        raise ValueError('invalid label')
+                # Unknown fields, including account names and credentials, are
+                # discarded in memory and never printed or written.
+                store.record_good('claude', 'native', data['loggedIn'],
+                                  auth_method=data.get('authMethod'),
+                                  api_provider=data.get('apiProvider'),
+                                  subscription_type=data.get('subscriptionType'), now=now)
+                return 0
+    except ReadinessError:
+        raise
+    except NativeFailure as error:
+        reason = error.reason
     except subprocess.TimeoutExpired:
-        store.record_failure('claude', 'native', 'timeout', now=now)
-    except Exception as e:
-        store.record_failure('claude', 'native', f'unexpected error: {e}', now=now)
+        reason = 'timeout'
+    except (ValueError, UnicodeError, RecursionError):
+        reason = 'invalid_status'
+    store.record_failure('claude', 'native', reason, now=now)
+    return 1
+
 
 def run_show(project_dir, agent=None, output_json=False, now=None):
-    store = ReadinessStore(project_dir)
-    view = store.show(agent=agent, now=now)
+    view = ReadinessStore(project_dir).show(agent=agent, now=now)
     if output_json:
         print(json.dumps(view, indent=2))
     else:
+        print('Authentication observation only; capacity and dispatch readiness remain Unknown.')
         for name, data in view['agents'].items():
-            print(f"Agent: {name}")
-            print(f"  Status: {data['status']}")
-            if data['status'] == 'unknown':
-                continue
-            if 'latest_observation' in data:
-                latest = data['latest_observation']
-                if 'error' in latest:
-                    print(f"  Error: {latest['error']}")
-                else:
-                    print(f"  Logged In: {latest.get('loggedIn')}")
-                    if 'authMethod' in latest: print(f"  Auth Method: {latest['authMethod']}")
-                    if 'apiProvider' in latest: print(f"  API Provider: {latest['apiProvider']}")
-                    if 'subscriptionType' in latest: print(f"  Subscription Type: {latest['subscriptionType']}")
-            print(f"  Observed At: {data.get('observed_at')}")
-            print(f"  Age: {data.get('age_seconds')} seconds")
-            if 'last_good_observation' in data:
-                lg = data['last_good_observation']
-                print(f"  Last Good Logged In: {lg.get('loggedIn')} at {lg.get('observed_at')}")
-            print()
+            print(f"{name}: authentication={data['authentication']}; observation={data['status']}")
+            if 'observed_at' in data:
+                print(f"  source={data['source']}; observed={data['observed_at']}; age={data['age_seconds']}s")
+            if 'error' in data.get('latest_observation', {}):
+                print('  reason=' + data['latest_observation']['error'])
+            if 'last_good_observation' in data and data['status'] != 'fresh':
+                old = data['last_good_observation']
+                print(f"  historical only: loggedIn={old['loggedIn']}; observed={old['observed_at']}")
+    return view
+
 
 def main():
-    parser = argparse.ArgumentParser(description='Agent authentication readiness tool.')
-    parser.add_argument('--project', required=True, help='WORKSPACE project directory')
-    subparsers = parser.add_subparsers(dest='command', required=True)
-    
-    refresh_parser = subparsers.add_parser('refresh')
-    refresh_parser.add_argument('agent', choices=['claude'], help='Agent to refresh')
-    
-    show_parser = subparsers.add_parser('show')
-    show_parser.add_argument('--agent', help='Agent name to show')
-    show_parser.add_argument('--json', action='store_true', help='Output in JSON format')
-    
-    args = parser.add_args = parser.parse_args()
-    
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--project', required=True, help='Unio workspace directory')
+    commands = parser.add_subparsers(dest='command', required=True)
+    commands.add_parser('refresh').add_argument('agent', choices=['claude'])
+    show = commands.add_parser('show')
+    show.add_argument('--agent')
+    show.add_argument('--json', action='store_true')
+    args = parser.parse_args()
     try:
         if args.command == 'refresh':
-            if args.agent == 'claude':
-                run_refresh(args.project)
-        elif args.command == 'show':
-            run_show(args.project, agent=args.agent, output_json=args.json)
-    except ReadinessError as e:
-        sys.exit(f"ReadinessError: {e}")
-    except Exception as e:
-        sys.exit(f"Error: {e}")
+            code = run_refresh(args.project)
+            run_show(args.project, agent='claude', output_json=True)
+            return code
+        view = run_show(args.project, agent=args.agent, output_json=args.json)
+        return 2 if view['state'] == 'invalid' else 0
+    except (ReadinessError, OSError):
+        print('agent-readiness: unsafe, unavailable or busy local storage; no fresh reading claimed', file=sys.stderr)
+        return 2
+
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

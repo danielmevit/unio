@@ -11,6 +11,7 @@ import os
 import re
 import stat
 import uuid
+import time
 
 SCHEMA_VERSION = 1
 STATE = 'observations.json'
@@ -20,11 +21,23 @@ MAX_AGENTS = 32
 MAX_TIMESTAMP_CHARS = 64
 MAX_AGE_LIMIT = 366 * 24 * 3600
 DEFAULT_MAX_AGE = 900
-CLOCK_SKEW = timedelta(seconds=300)
+CLOCK_SKEW = timedelta(0)
 LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
 REQUIRED_GOOD = {'source', 'observed_at', 'loggedIn'}
 ALLOWED_GOOD = {'source', 'observed_at', 'loggedIn', 'authMethod', 'apiProvider', 'subscriptionType'}
 REQUIRED_FAILED = {'source', 'observed_at', 'error'}
+NATIVE_LABELS = {
+    'authMethod': frozenset(('claude.ai', 'api_key', 'oauth', 'none')),
+    'apiProvider': frozenset(('firstParty', 'bedrock', 'vertex', 'foundry')),
+    'subscriptionType': frozenset(('pro', 'max', 'team', 'enterprise', 'free')),
+}
+FAILURES = frozenset(('unsupported_version', 'version_failed', 'native_failed',
+                      'timeout', 'output_overflow', 'invalid_status', 'launch_failed'))
+
+def _private(info, directory=False):
+    if (info.st_uid != os.getuid() or info.st_mode & 0o077
+            or (not directory and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1))):
+        raise ReadinessError('readiness storage must be private, owned and single-link')
 
 class ReadinessError(ValueError):
     """Refused input, unsafe path or unusable existing state."""
@@ -93,22 +106,19 @@ def _validate_observation(obs, is_good):
             raise ReadinessError('good observation has unexpected fields')
         if type(obs['loggedIn']) is not bool:
             raise ReadinessError('loggedIn must be a boolean')
-        if 'authMethod' in obs and not isinstance(obs['authMethod'], str):
-            raise ReadinessError('authMethod must be a string')
-        if 'apiProvider' in obs and not isinstance(obs['apiProvider'], str):
-            raise ReadinessError('apiProvider must be a string')
-        if 'subscriptionType' in obs and not isinstance(obs['subscriptionType'], str):
-            raise ReadinessError('subscriptionType must be a string')
+        for name, allowed in NATIVE_LABELS.items():
+            if name in obs and (not isinstance(obs[name], str) or obs[name] not in allowed):
+                raise ReadinessError('unsupported native status label')
     else:
         if not REQUIRED_FAILED <= set(obs):
             raise ReadinessError('failed observation missing required fields')
         if not set(obs) <= REQUIRED_FAILED:
             raise ReadinessError('failed observation has unexpected fields')
-        if not isinstance(obs['error'], str):
-            raise ReadinessError('error must be a string')
+        if not isinstance(obs['error'], str) or obs['error'] not in FAILURES:
+            raise ReadinessError('unsupported failure reason')
     
-    if not isinstance(obs['source'], str):
-        raise ReadinessError('source must be a string')
+    if obs['source'] != 'native':
+        raise ReadinessError('unsupported observation source')
     parse_timestamp(obs['observed_at'], 'observed time')
 
 def validate_state(data):
@@ -121,13 +131,20 @@ def validate_state(data):
         raise ReadinessError(f'agents must be an object with at most {MAX_AGENTS} entries')
     for agent, obs in agents.items():
         validate_label(agent, 'stored agent')
-        if not isinstance(obs, dict):
+        if not isinstance(obs, dict) or 'latest' not in obs or not set(obs) <= {'latest', 'last_good'}:
             raise ReadinessError('stored agent data must be an object')
         if 'last_good' in obs:
             _validate_observation(obs['last_good'], True)
         if 'latest' in obs:
+            if not isinstance(obs['latest'], dict):
+                raise ReadinessError('latest observation must be an object')
             is_good = 'loggedIn' in obs['latest']
             _validate_observation(obs['latest'], is_good)
+        if 'last_good' in obs:
+            if parse_timestamp(obs['last_good']['observed_at']) > parse_timestamp(obs['latest']['observed_at']):
+                raise ReadinessError('historical observation is newer than latest')
+        if 'loggedIn' in obs['latest'] and obs.get('last_good') != obs['latest']:
+            raise ReadinessError('latest good observation must match last good')
     return data
 
 class ReadinessStore:
@@ -145,6 +162,8 @@ class ReadinessStore:
         except OSError as error:
             raise ReadinessError(f'cannot open project: {error.strerror}') from None
         try:
+            if os.fstat(current).st_uid != os.getuid():
+                raise ReadinessError('project must be owned by current user')
             for name in ('coord', 'readiness'):
                 if create:
                     try:
@@ -160,6 +179,14 @@ class ReadinessStore:
                 except OSError as error:
                     if error.errno in (errno.ELOOP, errno.ENOTDIR):
                         raise ReadinessError(f'{name} must be a real directory, not a symlink or file') from None
+                    raise
+                try:
+                    if os.fstat(child).st_uid != os.getuid():
+                        raise ReadinessError('coordination directory must be owned by current user')
+                    if name == 'readiness':
+                        _private(os.fstat(child), directory=True)
+                except BaseException:
+                    os.close(child)
                     raise
                 os.close(current)
                 current = child
@@ -180,8 +207,7 @@ class ReadinessStore:
                 raise ReadinessError('state file must not be a symlink') from None
             raise
         with os.fdopen(descriptor, 'rb') as source:
-            if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
-                raise ReadinessError('state file must be a regular file')
+            _private(os.fstat(source.fileno()))
             raw = source.read(MAX_STATE_BYTES + 1)
         return _decode(raw)
 
@@ -195,9 +221,16 @@ class ReadinessStore:
                 raise ReadinessError('lock file must not be a symlink') from None
             raise
         try:
-            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-                raise ReadinessError('lock file must be a regular file')
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            _private(os.fstat(descriptor))
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise ReadinessError('readiness store busy') from None
+                    time.sleep(0.025)
         except BaseException:
             os.close(descriptor)
             raise
@@ -205,6 +238,7 @@ class ReadinessStore:
 
     @staticmethod
     def _write(directory, data):
+        validate_state(data)
         raw = (json.dumps(data, ensure_ascii=True, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
         if len(raw) > MAX_STATE_BYTES:
             raise ReadinessError(f'state would exceed {MAX_STATE_BYTES} bytes')
@@ -237,14 +271,14 @@ class ReadinessStore:
         obs = {
             'source': source,
             'observed_at': observed_at,
-            'loggedIn': bool(logged_in)
+            'loggedIn': logged_in
         }
         if auth_method is not None:
-            obs['authMethod'] = str(auth_method)
+            obs['authMethod'] = auth_method
         if api_provider is not None:
-            obs['apiProvider'] = str(api_provider)
+            obs['apiProvider'] = api_provider
         if subscription_type is not None:
-            obs['subscriptionType'] = str(subscription_type)
+            obs['subscriptionType'] = subscription_type
         
         self._merge_observation(agent, obs, is_good=True)
         return obs
@@ -262,13 +296,14 @@ class ReadinessStore:
         obs = {
             'source': source,
             'observed_at': observed_at,
-            'error': str(error_msg)
+            'error': error_msg
         }
         
         self._merge_observation(agent, obs, is_good=False)
         return obs
 
     def _merge_observation(self, agent, obs, is_good):
+        _validate_observation(obs, is_good)
         directory = self._open_directory(create=True)
         try:
             lock = self._lock(directory)
@@ -320,7 +355,7 @@ class ReadinessStore:
         for name in [agent] if agent is not None else sorted(stored):
             agent_data = stored.get(name)
             if not agent_data:
-                view['agents'][name] = {'status': 'unknown'}
+                view['agents'][name] = {'status': 'unknown', 'authentication': 'unknown', 'capacity': 'unknown', 'dispatch_readiness': 'unknown'}
                 continue
             view['agents'][name] = self._agent_view(agent_data, max_age_seconds, now)
         return view
@@ -328,7 +363,7 @@ class ReadinessStore:
     def _agent_view(self, agent_data, max_age_seconds, now):
         latest = agent_data.get('latest')
         if not latest:
-            return {'status': 'unknown'}
+            return {'status': 'unknown', 'authentication': 'unknown', 'capacity': 'unknown', 'dispatch_readiness': 'unknown'}
         
         observed = parse_timestamp(latest['observed_at'])
         age = (now - observed).total_seconds()
@@ -345,6 +380,9 @@ class ReadinessStore:
             
         view = {
             'status': status,
+            'authentication': ('signed_in' if latest['loggedIn'] else 'signed_out') if status == 'fresh' else 'unknown',
+            'capacity': 'unknown',
+            'dispatch_readiness': 'unknown',
             'source': latest['source'],
             'observed_at': latest['observed_at'],
             'age_seconds': round(age, 3),

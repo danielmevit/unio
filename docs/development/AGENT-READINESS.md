@@ -1,27 +1,69 @@
-# Agent Readiness
+# Authentication observations
 
-This document describes the native agent authentication readiness CLI tool and its associated storage bridge (`bridge/readiness.py`).
+This development slice distinguishes **signed in** from **able to take work**.
+It observes Claude Code authentication without asking a model. Allowance and
+combined dispatch readiness remain Unknown, including after a signed-in result.
 
-## Limits
-The observation tool explicitly tests non-generating readiness, verifying basic authentication status without modifying config, falling back to API calls, or making actual LLM queries. It only runs read-only commands and records the result safely under `coord/readiness/`.
+## Use the source tool
 
-## Checked Fields
-The tool runs `claude auth status --json` and strictly accepts:
-- `loggedIn`: Required boolean.
-- `authMethod`: Optional string.
-- `apiProvider`: Optional string.
-- `subscriptionType`: Optional string.
+```bash
+python3 -B 'tools/agent-readiness.py' --project '/path/to/workspace' refresh claude
+python3 -B 'tools/agent-readiness.py' --project '/path/to/workspace' show --agent claude --json
+```
 
-Any other fields are silently dropped (privacy sentinel behavior) to ensure no credentials or excessive PII are exposed or saved to disk. Missing `loggedIn` or unexpectedly typed fields result in an observation failure.
+The project path names the workspace containing `coord`, rather than its `repo`
+subfolder. `show` reads only local cached data, creates no missing store and
+executes no command. Refresh is explicit and works while STOP is set; it does
+not permit a worker run or change the project's policy or off/on settings.
 
-## Exits
-The `agent-readiness.py` CLI verifies:
-- `claude --version`: Nonzero exit codes or unsupported versions are considered failures. (Only versions matching `2.1.295` or `2.1.296` are considered supported).
-- `claude auth status --json`: 
-  - Nonzero exit codes are logged as `nonzero exit: <code>`.
-  - Empty output, timeouts (10s), and oversize outputs (>64KB) are considered failures.
+Only the checked Claude Code **2.1.296** is supported. Refresh runs exactly
+`claude --version`, then `claude auth status --json` if the version matches.
+Other versions and agents do not trigger a generating command or fallback.
+This slice is source-only: the installed `unio readiness` command and browser
+integration remain separate packaging work.
 
-Any malformed or duplicate JSON structures result in an immediate parsing error and a failed observation, to prevent JSON injection or parsing bugs.
+## What is recorded
 
-## Pending Packaging
-In the future, the lead will package the accepted module into the native command. Currently, `tools/agent-readiness.py` remains an isolated stdlib script and does not claim to replace or mimic a fully integrated sub-command of `agy`.
+The required `loggedIn` field must be a JSON boolean. Optional strings must
+match these allowlists:
+
+| Field | Accepted labels |
+| --- | --- |
+| `authMethod` | `claude.ai`, `api_key`, `oauth`, `none` |
+| `apiProvider` | `firstParty`, `bedrock`, `vertex`, `foundry` |
+| `subscriptionType` | `pro`, `max`, `team`, `enterprise`, `free` |
+
+Unknown additional native fields are discarded in memory. Email, organization,
+account names, identifiers, tokens and raw native diagnostics are never printed
+or saved. An unexpected optional label or type produces a failed observation,
+not a signed-in claim. Duplicate or malformed JSON is refused.
+
+Fresh observations expose `authentication=signed_in` or `signed_out` alongside
+source, time and age. A reading older than 15 minutes or ahead of the local clock
+has Unknown current authentication. A failed refresh also makes current
+authentication Unknown, retaining a separately labelled historical last-good
+observation. Historical sign-in never establishes present capacity.
+
+## Bounds and failure behavior
+
+Version output has a 256-byte aggregate stdout/stderr bound and five-second
+deadline. Status has a 64 KiB aggregate bound and ten-second deadline. Output is
+bounded while reading; owned process groups are cleaned up on timeout, overflow
+and completion. These controls operate on a trusted host, not in an OS sandbox.
+
+The private `coord/readiness` store uses owned, single-link regular files,
+no-follow directory/file opens, a bounded lock and atomic replacement. Unsafe,
+busy or failed storage never establishes a fresh persisted reading. Existing
+malformed evidence is preserved rather than silently repaired.
+
+Refresh exits 0 after persisting a valid observation, 1 after persisting an
+allowlisted native-failure reason, and 2 for unsafe or unavailable storage.
+Reasons are fixed labels such as `timeout`, `unsupported_version` and
+`invalid_status`; they contain no native output. Show exits 2 for invalid stored
+state and 0 for readable or missing state. A missing reading is Unknown.
+
+Focused checks cover exact argv, signed-in/out, private-field rejection,
+historical/stale/skew handling, storage permissions and links, bounded locking,
+output overflow and descendant cleanup. The original Gemini candidate and its
+six failed personal-review probes remain recorded separately; passing its
+initial tests did not establish acceptance.
