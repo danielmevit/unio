@@ -76,3 +76,31 @@ These are observations from one small fixture, not a general model or
 filesystem ranking. Repeating the same workload on tmpfs can help separate
 storage costs from process and Git costs. No comparative tmpfs measurement
 or save-engine speedup is claimed here.
+
+## Larger generated workload and optimization target
+
+A separate 2026-10-10 probe added 300 generated text files and a 1 MiB binary
+block to the same small fixture. It contained 307 non-control files totaling
+1,348,553 bytes. The installed 0.5.9 CLI created one manifest-confirmed save in
+17.52 seconds and inspected the worker in 9.82 seconds. No provider was called.
+This fixture did not reproduce the real workspace's automatic-helper timeout.
+
+A subsequent profile used the unchanged installed save-helper source on that
+private fixture, with one existing save. It completed in 23.41 seconds,
+excluding shell-wrapper startup. Profiling and existing history differ from
+the first probe, so the elapsed difference is not an isolated history-cost
+measurement. Cumulative times overlap and must not be added:
+
+| Profiled work | Calls | Cumulative seconds |
+| --- | ---: | ---: |
+| Git commands | 32 | 10.53 |
+| Worktree traversal | 2 | 7.77 |
+| Save validation | 4 | 4.31 |
+| Ignore checks, included in Git/traversal costs | 10 | 3.55 |
+
+The next bounded optimization should measure reducing repeated Git/ignore
+queries and redundant save reads. It must preserve ignored-file exclusion
+before body reads, secret-name refusal, no-follow traversal, both matching
+observations and complete published-save validation. Compare equivalent
+fixtures and history sizes before claiming a speedup. A larger timeout alone
+is not an optimization; do not weaken recovery validation to meet a deadline.

@@ -1,6 +1,6 @@
 # Model scoreboard and delegation guide
 
-Updated 2026-10-10 from real Unio work. Read this before delegation, alongside
+Updated 2026-10-11 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
@@ -84,6 +84,45 @@ returned the exact requested marker in 10.847 seconds with native exit 0,
 7,591 cumulative tokens and no backend error. This establishes a successful
 small round trip at that time, not sustained connection reliability. The
 original implementation attempts were not retried.
+
+## Fleet observation candidate — 2026-10-11
+
+Gemini 3.1 Pro/high through Antigravity 1.3.3 returned Source 0 and committed
+the fleet CLI draft. Its four focused commands passed, but native verification
+failed on eleven out-of-scope scratch files. Those files and their hashes were
+preserved privately. Personal review found an installed dispatcher using undefined
+symbols, output buffered before its cap, a separate full timeout for each input,
+and mismatches with the real allowance and authentication schemas. The draft
+is not accepted. Passing self-authored tests did not establish installed behavior.
+
+The worker also launched the full quality gate despite its explicit CLI-only
+scope and the owner's dashboard/website hold. The lead stopped only that test
+subtree during offline selftest, leaving the AI session and commit intact.
+The worker's later full-gate PASS statement is contradicted by the process
+receipt and must not be used as validation evidence.
+
+The owner authorized a fresh Mistral attempt after earlier connection failures
+and requested Copilot as well. GLM 5.3/high through Vibe was assigned this concrete
+correction; it connected, made useful partial edits and ended at its local
+two-million-token cap: Source/native/adapter 3, token_limit, 2,012,431 cumulative
+tokens in 315.121 seconds, estimated $3.0068354 within the existing subscription.
+This was not a connection failure or evidence of exhausted monthly allowance.
+The partial commit is preserved; the existing lead completed the bounded process
+collection, schema handling, installed checks and operator documentation.
+All 15 focused tests passed; native committed verification passed all four
+commands with all seven touched paths inside scope. Personal lead review accepted
+the corrected source candidate. This is not an independent AI review or a
+published release. Original rejected/partial results remain preserved.
+
+Copilot Auto Balance returned a routine
+planner documentation proposal in 18.745 seconds, Source/native/adapter 0. The lead
+adapted its walkthrough into [the planning contract](READY-TASK-PLAN.md),
+clarifying that an idle Gemini account is not a claim of free pricing. Effective
+model/lab/effort and remaining allowance remain Unknown. Proposal delivery alone
+is not implementation.
+An earlier connection failure does not prove
+current unavailability, exhausted allowance or poor reasoning. Recheck through
+one useful authorized task, preserve its outcome, and avoid blind retry loops.
 
 ## Adapter batch — 2026-10-09
 

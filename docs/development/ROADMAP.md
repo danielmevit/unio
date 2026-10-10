@@ -2,16 +2,23 @@
 
 Your AIs, in sync.
 
-Current update, 2026-10-09: [v0.5.7](https://github.com/danielmevit/unio/releases/tag/v0.5.7)
-is published and installed. Recovery shipped in v0.5.4, the browser launcher in
-v0.5.5, manual capacity readings in v0.5.6, and the managed dashboard, task
-filters, visible allowance section and explicit Codex metadata refresh in v0.5.7.
+Current update, 2026-10-11: [v0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9)
+is the latest published release. Recovery, the browser launcher, manual capacity
+readings, explicit Codex metadata refresh, the managed dashboard and the saved
+dashboard redesign have shipped. Vibe, Perplexity and Copilot adapters are
+packaged; Perplexity has completed account-backed GLM/Kimi proposal trials.
+Adapters have different roles: proposal routes still need an implementation
+agent. See [setup](../integrations/README.md) and the [version plan](../VERSION-PLAN.md).
+
+The v0.5.10 candidate adds bounded recovery-save archival and storage usage,
+explicit cached Claude sign-in observations, remembered filters and daily-use
+instructions. It is not published yet. The CLI follow-up for v0.5.11 includes a
+checked [save-performance probe](SAVE-PERFORMANCE.md) and a checked
+[local fleet overview](../FLEET-STATUS.md). The fleet candidate passed its
+installed offline checks and native scope verification after lead completion.
+These are source candidates, not published releases. Continue with 0.5.x patches.
 Genuine lead-limit restart remains unobserved and experimental/opt-in.
-Optional Vibe workers and Perplexity research/code proposals are now in main
-with focused offline checks; owner Perplexity sign-in and a live trial remain.
-They are not packaged in the immutable v0.5.7 release. See
-[adapter setup](../integrations/README.md) and [version plan](../VERSION-PLAN.md).
-Earlier dated status sections below preserve their original context.
+Earlier dated sections below preserve their historical context.
 
 ## Current focus: finish the functional core
 
@@ -40,11 +47,37 @@ low-tier lead.
 | Priority | Functional milestone | Current state |
 | --- | --- | --- |
 | Complete | v0.5.4 recovery, release and install | Published and installed after release checks. Genuine lead-limit restart remains unobserved; the feature is experimental and opt-in. |
-| 2 | Simple daily launch and responsive observation | Launcher shipped055 and managed dashboard057. Measured scan optimization remains; a larger budget is not a speed improvement. |
-| 3 | Shared-account allowance and worker readiness | Native slots, manual readings and explicit Codex metadata refresh/browser observations shipped. Readiness and fleet scheduling integration remain. |
-| 4 | Ready-task dispatch and dependency handling | Queue/reservation exists; automated ready/dependency/scope scheduling remains planned. |
+| 2 | Simple daily use and measured performance | Launcher and managed dashboard shipped; daily-use guide and save probe are checked follow-ups. Save/scan optimization still needs measured comparisons. |
+| 3 — CLI slice checked | Shared-account allowance and worker readiness | Native slots, manual readings and Codex refresh shipped. Cached Claude authentication is in the 0.5.10 candidate; the 0.5.11 fleet CLI combines local slots, bench/binary facts and cached observations. Other automatic provider readings remain planned. |
+| 4 — next | Ready-task dispatch and dependency handling | Queue/reservation exists. First deliver an explainable, read-only ready/blocked task plan; add owner-enabled single-attempt dispatch afterward. |
 | 5 | Native independent review pipeline | Single reviews exist; built-in separate parallel review views and finding aggregation remain planned and mode-aware. |
 | 6 | Evidence-based routing and context efficiency | Ledger/score and curated guides exist; exact model/task profiles and automatic suggestions remain planned. |
+
+### Next useful slices
+
+The fleet CLI slice is checked. Its source-only status and limitations are in
+the [version plan](../VERSION-PLAN.md). Next:
+
+1. **[Ready-task plan](READY-TASK-PLAN.md):** identify satisfied dependencies, overlapping write scopes
+   and unavailable account slots before a run. Start with a read-only explanation;
+   dispatch requires a separate explicit implementation boundary.
+2. **Measured save optimization:** reduce demonstrated Git/ignore calls and
+   repeated save validation without weakening snapshot, secret or retention
+   checks. Generated workload timings identify overhead but do not yet reproduce
+   the actual automatic-save helper timeout or establish a speedup.
+3. **Review aggregation:** preserve separate reviews of the same revision and
+   summarize their findings without turning agreement into human acceptance.
+4. **Evidence-based routing:** record model, route, effort, task category and
+   correction burden from useful work, then offer transparent suggestions.
+5. **Lead continuity and phone access:** supported session attachment, lead transfer
+   after a handoff, then scoped pairing and message delivery. These need session
+   ownership and transport work; a local dashboard is not remote control.
+
+Complete one bounded slice before assigning its dependent implementation.
+Independent eligible accounts may work on separate ready scopes. Focused checks
+and personal lead review are the current YOLO cadence; the full frozen-tree gate
+remains required at publication. A source candidate, a release and an installed
+version are separate states.
 
 Later ordering is a recommendation from this audit; new version numbers and
 task contracts follow bounded planning. Defer additional visual redesign,

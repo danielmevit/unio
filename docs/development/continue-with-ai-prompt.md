@@ -7,6 +7,24 @@ do not infer current availability from an earlier successful worker run.
 
 ## Current release — 2026-10-10
 
+Continuation 2026-10-11: official and installed remain 0.5.9. Owner dashboard
+and website work are reserved for another session: do not edit, merge, build,
+test or restart that work, or replace its payload through global installation.
+The 0.5.10 save-retention/auth candidate is awaiting combined release validation.
+The 0.5.11 save-performance probe passed focused checks. The fleet CLI candidate
+was completed by this existing lead after Gemini's rejected draft and GLM's
+partial correction: 15 focused tests passed, native verification passed all four
+commands and seven paths, and personal lead review accepted the candidate.
+Pre-existing installer bytes and protected source trees were unchanged.
+The owner-authorized fresh GLM 5.3/high Vibe attempt connected and made
+partial edits before its local two-million-token cap; this was not a connection
+failure or confirmed subscription limit. Copilot Auto Balance delivered the
+reviewed planner documentation proposal, Source/native/adapter 0. Worker attempts
+and useful saved work remain preserved. Read the newest local log/receipts for
+actual outcomes before editing active worker files. The ready-task planner is
+documented future work, not an implemented scheduler. Continue 0.5.x, never 0.6.0
+for this batch.
+
 [Unio v0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9) is
 published and installed from `0c2def4dfee307622b3d5959641a22d220d1576a`.
 It preserves all nine Opus dashboard commits at `0aa9a8b` and packages the
