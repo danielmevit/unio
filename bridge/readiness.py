@@ -116,7 +116,7 @@ def _validate_observation(obs, is_good):
             raise ReadinessError('failed observation has unexpected fields')
         if not isinstance(obs['error'], str) or obs['error'] not in FAILURES:
             raise ReadinessError('unsupported failure reason')
-    
+
     if obs['source'] != 'native':
         raise ReadinessError('unsupported observation source')
     parse_timestamp(obs['observed_at'], 'observed time')
@@ -267,7 +267,7 @@ class ReadinessStore:
             observed = parse_timestamp(observed_at, 'observed time')
             if observed > now + CLOCK_SKEW:
                 raise ReadinessError('observed time is in the future')
-        
+
         obs = {
             'source': source,
             'observed_at': observed_at,
@@ -279,7 +279,7 @@ class ReadinessStore:
             obs['apiProvider'] = api_provider
         if subscription_type is not None:
             obs['subscriptionType'] = subscription_type
-        
+
         self._merge_observation(agent, obs, is_good=True)
         return obs
 
@@ -292,13 +292,13 @@ class ReadinessStore:
             observed = parse_timestamp(observed_at, 'observed time')
             if observed > now + CLOCK_SKEW:
                 raise ReadinessError('observed time is in the future')
-        
+
         obs = {
             'source': source,
             'observed_at': observed_at,
             'error': error_msg
         }
-        
+
         self._merge_observation(agent, obs, is_good=False)
         return obs
 
@@ -312,9 +312,9 @@ class ReadinessStore:
                 agents = data['agents']
                 if agent not in agents and len(agents) >= MAX_AGENTS:
                     raise ReadinessError(f'refusing more than {MAX_AGENTS} agents')
-                
+
                 agent_data = agents.setdefault(agent, {})
-                
+
                 if 'latest' in agent_data:
                     stored = parse_timestamp(agent_data['latest']['observed_at'])
                     observed = parse_timestamp(obs['observed_at'])
@@ -322,11 +322,11 @@ class ReadinessStore:
                         raise ReadinessError('duplicate reading: this agent already has that observed time')
                     if observed < stored:
                         raise ReadinessError('refusing a reading older than the stored one for this agent')
-                
+
                 agent_data['latest'] = obs
                 if is_good:
                     agent_data['last_good'] = obs
-                
+
                 self._write(directory, data)
             finally:
                 os.close(lock)
@@ -364,10 +364,10 @@ class ReadinessStore:
         latest = agent_data.get('latest')
         if not latest:
             return {'status': 'unknown', 'authentication': 'unknown', 'capacity': 'unknown', 'dispatch_readiness': 'unknown'}
-        
+
         observed = parse_timestamp(latest['observed_at'])
         age = (now - observed).total_seconds()
-        
+
         status = 'unknown'
         if observed > now + CLOCK_SKEW:
             status = 'unknown'
@@ -377,7 +377,7 @@ class ReadinessStore:
             status = 'failed'
         else:
             status = 'fresh'
-            
+
         view = {
             'status': status,
             'authentication': ('signed_in' if latest['loggedIn'] else 'signed_out') if status == 'fresh' else 'unknown',
@@ -388,13 +388,13 @@ class ReadinessStore:
             'age_seconds': round(age, 3),
             'latest_observation': latest
         }
-        
+
         if 'last_good' in agent_data:
             last_good = agent_data['last_good']
             lg_observed = parse_timestamp(last_good['observed_at'])
             lg_age = (now - lg_observed).total_seconds()
             view['last_good_observation'] = last_good
             view['last_good_age_seconds'] = round(lg_age, 3)
-            
+
         return view
 

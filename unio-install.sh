@@ -38,7 +38,7 @@ for browser_dir in "$CONF_DIR/lib" "$CONF_DIR/lib/browser"; do
     exit 1
   fi
 done
-for browser_name in server.py launcher.py progress.py worker_files.py plan_store.py job_store.py execution_service.py index.html activity.js activity.css drafts.js jobs.js worker_console.js; do
+for browser_name in server.py readiness.py launcher.py progress.py worker_files.py plan_store.py job_store.py execution_service.py index.html activity.js activity.css drafts.js jobs.js worker_console.js; do
   browser_file="$CONF_DIR/lib/browser/$browser_name"
   if [ -L "$browser_file" ] || { [ -e "$browser_file" ] && { [ ! -f "$browser_file" ] || [ "$(stat -c '%h' -- "$browser_file")" != 1 ]; }; }; then
     echo "unio: refusing unsafe browser file: $browser_file" >&2
@@ -56,6 +56,7 @@ cat > "$CONF_DIR/lib/browser/server.py" <<'UNIO_BROWSER_SERVER_PY'
 # See LICENSE and NOTICE; distributed without warranty.
 """Loopback-only read-only Activity preview; no dispatch or project writes."""
 import argparse
+import importlib.util
 from datetime import datetime
 import hashlib
 import hmac
@@ -75,6 +76,19 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ASSETS = Path(__file__).resolve().parent
+
+
+def cached_authentication(project):
+    """Read only the sanitized first-party cache; never refresh or call a CLI."""
+    try:
+        spec = importlib.util.spec_from_file_location('unio_readiness_store', ASSETS / 'readiness.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        view = module.ReadinessStore(project).show(agent='claude')
+        return view if view['state'] != 'invalid' else {'state': 'unknown'}
+    except (OSError, ValueError, ImportError):
+        return {'state': 'unknown'}
+
 TOP_FIELDS = {'schema_version','observed_at','stopped','agents','results','retries','recent_events','warnings','evidence'}
 DEFAULT_OBSERVER_TIMEOUT = 30
 DASHBOARD_LAUNCH = 'UNIO_DASHBOARD_LAUNCH'  # internal: set only by the managed dashboard helper
@@ -375,6 +389,7 @@ class LimitsObserver:
                     view[name] = sanitize(bounded_run(commands[name], self.project / 'repo', self.timeout))
                 except (LimitsRefused, OSError, subprocess.SubprocessError):
                     view[name] = {'state': 'unknown'}
+            view['authentication'] = cached_authentication(self.project)
             self.cached = view
             self.expires = time.monotonic() + self.ttl
             return view
@@ -866,6 +881,408 @@ def main(argv=None, *, engine_override=None, project_default=None, installed_ver
 if __name__ == '__main__':
     main()
 UNIO_BROWSER_SERVER_PY
+cat > "$CONF_DIR/lib/browser/readiness.py" <<'UNIO_BROWSER_READINESS_PY'
+# Unio — Copyright (C) 2026 Daniel Mitev; Daniel Mevit (@danielmevit)
+# https://github.com/danielmevit/unio
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE. No warranty.
+"""Agent authentication readiness observation storage under coord/readiness/."""
+from datetime import datetime, timedelta, timezone
+import errno
+import fcntl
+import json
+import math
+import os
+import re
+import stat
+import uuid
+import time
+
+SCHEMA_VERSION = 1
+STATE = 'observations.json'
+LOCK = '.observations.lock'
+MAX_STATE_BYTES = 65536
+MAX_AGENTS = 32
+MAX_TIMESTAMP_CHARS = 64
+MAX_AGE_LIMIT = 366 * 24 * 3600
+DEFAULT_MAX_AGE = 900
+CLOCK_SKEW = timedelta(0)
+LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
+REQUIRED_GOOD = {'source', 'observed_at', 'loggedIn'}
+ALLOWED_GOOD = {'source', 'observed_at', 'loggedIn', 'authMethod', 'apiProvider', 'subscriptionType'}
+REQUIRED_FAILED = {'source', 'observed_at', 'error'}
+NATIVE_LABELS = {
+    'authMethod': frozenset(('claude.ai', 'api_key', 'oauth', 'none')),
+    'apiProvider': frozenset(('firstParty', 'bedrock', 'vertex', 'foundry')),
+    'subscriptionType': frozenset(('pro', 'max', 'team', 'enterprise', 'free')),
+}
+FAILURES = frozenset(('unsupported_version', 'version_failed', 'native_failed',
+                      'timeout', 'output_overflow', 'invalid_status', 'launch_failed'))
+
+def _private(info, directory=False):
+    if (info.st_uid != os.getuid() or info.st_mode & 0o077
+            or (not directory and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1))):
+        raise ReadinessError('readiness storage must be private, owned and single-link')
+
+class ReadinessError(ValueError):
+    """Refused input, unsafe path or unusable existing state."""
+
+def _now(now):
+    now = datetime.now(timezone.utc) if now is None else now
+    if not isinstance(now, datetime) or now.tzinfo is None:
+        raise ReadinessError('now must be a timezone-aware datetime')
+    return now
+
+def validate_label(value, name='label'):
+    if not isinstance(value, str) or LABEL.fullmatch(value) is None:
+        raise ReadinessError(f'{name} must be 1-64 ASCII letters, digits, ".", "_" or "-", '
+                             'starting with a letter or digit')
+    return value
+
+def parse_timestamp(value, name='timestamp'):
+    if not isinstance(value, str) or not value or len(value) > MAX_TIMESTAMP_CHARS:
+        raise ReadinessError(f'{name} must be an ISO 8601 string of at most {MAX_TIMESTAMP_CHARS} characters')
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        raise ReadinessError(f'{name} is not a valid ISO 8601 time') from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ReadinessError(f'{name} must include a timezone offset')
+    try:
+        return parsed.astimezone(timezone.utc)
+    except (OverflowError, ValueError):
+        raise ReadinessError(f'{name} is outside the supported UTC range') from None
+
+def validate_max_age(value):
+    if type(value) is not int or not 1 <= value <= MAX_AGE_LIMIT:
+        raise ReadinessError(f'max age must be an integer number of seconds from 1 through {MAX_AGE_LIMIT}')
+    return value
+
+def _strict_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ReadinessError('state contains a duplicate JSON key')
+        result[key] = value
+    return result
+
+def _reject_constant(name):
+    raise ReadinessError(f'state contains non-finite number {name}')
+
+def _decode(raw):
+    if len(raw) > MAX_STATE_BYTES:
+        raise ReadinessError(f'state exceeds {MAX_STATE_BYTES} bytes')
+    try:
+        text = raw.decode('utf-8')
+        data = json.loads(text, object_pairs_hook=_strict_object, parse_constant=_reject_constant)
+    except ReadinessError:
+        raise
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        raise ReadinessError('state is not strict UTF-8 JSON') from None
+    return validate_state(data)
+
+def _validate_observation(obs, is_good):
+    if not isinstance(obs, dict):
+        raise ReadinessError('observation must be an object')
+    if is_good:
+        if not REQUIRED_GOOD <= set(obs):
+            raise ReadinessError('good observation missing required fields')
+        if not set(obs) <= ALLOWED_GOOD:
+            raise ReadinessError('good observation has unexpected fields')
+        if type(obs['loggedIn']) is not bool:
+            raise ReadinessError('loggedIn must be a boolean')
+        for name, allowed in NATIVE_LABELS.items():
+            if name in obs and (not isinstance(obs[name], str) or obs[name] not in allowed):
+                raise ReadinessError('unsupported native status label')
+    else:
+        if not REQUIRED_FAILED <= set(obs):
+            raise ReadinessError('failed observation missing required fields')
+        if not set(obs) <= REQUIRED_FAILED:
+            raise ReadinessError('failed observation has unexpected fields')
+        if not isinstance(obs['error'], str) or obs['error'] not in FAILURES:
+            raise ReadinessError('unsupported failure reason')
+
+    if obs['source'] != 'native':
+        raise ReadinessError('unsupported observation source')
+    parse_timestamp(obs['observed_at'], 'observed time')
+
+def validate_state(data):
+    if not isinstance(data, dict) or set(data) != {'schema_version', 'agents'}:
+        raise ReadinessError('state must contain exactly schema_version and agents')
+    if type(data['schema_version']) is not int or data['schema_version'] != SCHEMA_VERSION:
+        raise ReadinessError('unsupported state schema_version')
+    agents = data['agents']
+    if not isinstance(agents, dict) or len(agents) > MAX_AGENTS:
+        raise ReadinessError(f'agents must be an object with at most {MAX_AGENTS} entries')
+    for agent, obs in agents.items():
+        validate_label(agent, 'stored agent')
+        if not isinstance(obs, dict) or 'latest' not in obs or not set(obs) <= {'latest', 'last_good'}:
+            raise ReadinessError('stored agent data must be an object')
+        if 'last_good' in obs:
+            _validate_observation(obs['last_good'], True)
+        if 'latest' in obs:
+            if not isinstance(obs['latest'], dict):
+                raise ReadinessError('latest observation must be an object')
+            is_good = 'loggedIn' in obs['latest']
+            _validate_observation(obs['latest'], is_good)
+        if 'last_good' in obs:
+            if parse_timestamp(obs['last_good']['observed_at']) > parse_timestamp(obs['latest']['observed_at']):
+                raise ReadinessError('historical observation is newer than latest')
+        if 'loggedIn' in obs['latest'] and obs.get('last_good') != obs['latest']:
+            raise ReadinessError('latest good observation must match last good')
+    return data
+
+class ReadinessStore:
+    def __init__(self, project):
+        path = os.path.abspath(os.fspath(project))
+        if os.path.realpath(path) != path:
+            raise ReadinessError('project must be a real path without symlinks')
+        if not os.path.isdir(path):
+            raise ReadinessError('project must be an existing directory')
+        self.project = path
+
+    def _open_directory(self, create):
+        try:
+            current = os.open(self.project, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except OSError as error:
+            raise ReadinessError(f'cannot open project: {error.strerror}') from None
+        try:
+            if os.fstat(current).st_uid != os.getuid():
+                raise ReadinessError('project must be owned by current user')
+            for name in ('coord', 'readiness'):
+                if create:
+                    try:
+                        os.mkdir(name, mode=0o700, dir_fd=current)
+                    except FileExistsError:
+                        pass
+                try:
+                    child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+                except FileNotFoundError:
+                    if create:
+                        raise
+                    return None
+                except OSError as error:
+                    if error.errno in (errno.ELOOP, errno.ENOTDIR):
+                        raise ReadinessError(f'{name} must be a real directory, not a symlink or file') from None
+                    raise
+                try:
+                    if os.fstat(child).st_uid != os.getuid():
+                        raise ReadinessError('coordination directory must be owned by current user')
+                    if name == 'readiness':
+                        _private(os.fstat(child), directory=True)
+                except BaseException:
+                    os.close(child)
+                    raise
+                os.close(current)
+                current = child
+            result, current = current, None
+            return result
+        finally:
+            if current is not None:
+                os.close(current)
+
+    @staticmethod
+    def _read(directory):
+        try:
+            descriptor = os.open(STATE, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        except FileNotFoundError:
+            return None
+        except OSError as error:
+            if error.errno == errno.ELOOP:
+                raise ReadinessError('state file must not be a symlink') from None
+            raise
+        with os.fdopen(descriptor, 'rb') as source:
+            _private(os.fstat(source.fileno()))
+            raw = source.read(MAX_STATE_BYTES + 1)
+        return _decode(raw)
+
+    @staticmethod
+    def _lock(directory):
+        try:
+            descriptor = os.open(LOCK, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                                 0o600, dir_fd=directory)
+        except OSError as error:
+            if error.errno == errno.ELOOP:
+                raise ReadinessError('lock file must not be a symlink') from None
+            raise
+        try:
+            _private(os.fstat(descriptor))
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise ReadinessError('readiness store busy') from None
+                    time.sleep(0.025)
+        except BaseException:
+            os.close(descriptor)
+            raise
+        return descriptor
+
+    @staticmethod
+    def _write(directory, data):
+        validate_state(data)
+        raw = (json.dumps(data, ensure_ascii=True, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
+        if len(raw) > MAX_STATE_BYTES:
+            raise ReadinessError(f'state would exceed {MAX_STATE_BYTES} bytes')
+        temporary = f'.observations.{uuid.uuid4().hex}.tmp'
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory)
+        try:
+            with os.fdopen(descriptor, 'wb') as output:
+                output.write(raw)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, STATE, src_dir_fd=directory, dst_dir_fd=directory)
+            os.fsync(directory)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=directory)
+            except FileNotFoundError:
+                pass
+
+    def record_good(self, agent, source, logged_in, auth_method=None, api_provider=None, subscription_type=None, observed_at=None, now=None):
+        now = _now(now)
+        validate_label(agent, 'agent')
+        if observed_at is None:
+            observed_at = now.isoformat()
+        else:
+            observed = parse_timestamp(observed_at, 'observed time')
+            if observed > now + CLOCK_SKEW:
+                raise ReadinessError('observed time is in the future')
+
+        obs = {
+            'source': source,
+            'observed_at': observed_at,
+            'loggedIn': logged_in
+        }
+        if auth_method is not None:
+            obs['authMethod'] = auth_method
+        if api_provider is not None:
+            obs['apiProvider'] = api_provider
+        if subscription_type is not None:
+            obs['subscriptionType'] = subscription_type
+
+        self._merge_observation(agent, obs, is_good=True)
+        return obs
+
+    def record_failure(self, agent, source, error_msg, observed_at=None, now=None):
+        now = _now(now)
+        validate_label(agent, 'agent')
+        if observed_at is None:
+            observed_at = now.isoformat()
+        else:
+            observed = parse_timestamp(observed_at, 'observed time')
+            if observed > now + CLOCK_SKEW:
+                raise ReadinessError('observed time is in the future')
+
+        obs = {
+            'source': source,
+            'observed_at': observed_at,
+            'error': error_msg
+        }
+
+        self._merge_observation(agent, obs, is_good=False)
+        return obs
+
+    def _merge_observation(self, agent, obs, is_good):
+        _validate_observation(obs, is_good)
+        directory = self._open_directory(create=True)
+        try:
+            lock = self._lock(directory)
+            try:
+                data = self._read(directory) or {'schema_version': SCHEMA_VERSION, 'agents': {}}
+                agents = data['agents']
+                if agent not in agents and len(agents) >= MAX_AGENTS:
+                    raise ReadinessError(f'refusing more than {MAX_AGENTS} agents')
+
+                agent_data = agents.setdefault(agent, {})
+
+                if 'latest' in agent_data:
+                    stored = parse_timestamp(agent_data['latest']['observed_at'])
+                    observed = parse_timestamp(obs['observed_at'])
+                    if observed == stored:
+                        raise ReadinessError('duplicate reading: this agent already has that observed time')
+                    if observed < stored:
+                        raise ReadinessError('refusing a reading older than the stored one for this agent')
+
+                agent_data['latest'] = obs
+                if is_good:
+                    agent_data['last_good'] = obs
+
+                self._write(directory, data)
+            finally:
+                os.close(lock)
+        finally:
+            os.close(directory)
+
+    def show(self, agent=None, max_age_seconds=DEFAULT_MAX_AGE, now=None):
+        now = _now(now)
+        validate_max_age(max_age_seconds)
+        if agent is not None:
+            validate_label(agent, 'agent')
+        view = {'schema_version': SCHEMA_VERSION, 'checked_at': now.astimezone(timezone.utc).isoformat(),
+                'max_age_seconds': max_age_seconds, 'state': 'missing', 'error': None, 'agents': {}}
+        data = None
+        directory = self._open_directory(create=False)
+        if directory is not None:
+            try:
+                data = self._read(directory)
+            except ReadinessError as error:
+                view['state'], view['error'] = 'invalid', str(error)
+            finally:
+                os.close(directory)
+        if data is not None:
+            view['state'] = 'ok'
+        stored = data['agents'] if data else {}
+        for name in [agent] if agent is not None else sorted(stored):
+            agent_data = stored.get(name)
+            if not agent_data:
+                view['agents'][name] = {'status': 'unknown', 'authentication': 'unknown', 'capacity': 'unknown', 'dispatch_readiness': 'unknown'}
+                continue
+            view['agents'][name] = self._agent_view(agent_data, max_age_seconds, now)
+        return view
+
+    def _agent_view(self, agent_data, max_age_seconds, now):
+        latest = agent_data.get('latest')
+        if not latest:
+            return {'status': 'unknown', 'authentication': 'unknown', 'capacity': 'unknown', 'dispatch_readiness': 'unknown'}
+
+        observed = parse_timestamp(latest['observed_at'])
+        age = (now - observed).total_seconds()
+
+        status = 'unknown'
+        if observed > now + CLOCK_SKEW:
+            status = 'unknown'
+        elif age > max_age_seconds:
+            status = 'stale'
+        elif 'error' in latest:
+            status = 'failed'
+        else:
+            status = 'fresh'
+
+        view = {
+            'status': status,
+            'authentication': ('signed_in' if latest['loggedIn'] else 'signed_out') if status == 'fresh' else 'unknown',
+            'capacity': 'unknown',
+            'dispatch_readiness': 'unknown',
+            'source': latest['source'],
+            'observed_at': latest['observed_at'],
+            'age_seconds': round(age, 3),
+            'latest_observation': latest
+        }
+
+        if 'last_good' in agent_data:
+            last_good = agent_data['last_good']
+            lg_observed = parse_timestamp(last_good['observed_at'])
+            lg_age = (now - lg_observed).total_seconds()
+            view['last_good_observation'] = last_good
+            view['last_good_age_seconds'] = round(lg_age, 3)
+
+        return view
+
+UNIO_BROWSER_READINESS_PY
 cat > "$CONF_DIR/lib/browser/launcher.py" <<'UNIO_BROWSER_LAUNCHER_PY'
 #!/usr/bin/env python3
 # Unio — Copyright (C) 2026 Daniel Mitev
@@ -4020,7 +4437,7 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
         </div>
         <p class="small">Recorded observations only: this page never refreshes a provider, signs in or changes policy. Missing, stale or expired readings are Unknown, and a passed reset is not recovered allowance.</p>
         <p id="limits-lead" class="limits-lead"></p>
-        <p id="limits-caveat" class="small limits-caveat">Authentication Unknown for every agent: ON or an installed tool is not readiness, and this page never signs in or asks a provider.</p>
+        <p id="limits-caveat" class="small limits-caveat">Sign-in uses explicit cached Claude observations; other agents remain Unknown. Sign-in does not establish remaining allowance or permission to run. This page never signs in or asks a provider.</p>
         <div id="limits-routes" class="limits-routes"></div>
         <h3 class="limits-subtitle">Shared budget allowance windows</h3>
         <div id="limits-groups" class="limits-groups"></div>
@@ -4258,7 +4675,7 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     const limits = document.getElementById("limits");
     limits.replaceChildren();
     if (data.agents.length)
-      limits.append(text("p", "For every tool, authentication unknown · capacity unknown: this page never signs in or asks a provider.", "small"));
+      limits.append(text("p", "Tool activity does not check sign-in or remaining allowance. Cached observations appear in AI agents & limits.", "small"));
     else
       limits.append(text("p", "No tool observations recorded. Authentication and capacity remain unknown.", "small"));
     const missing = data.agents.filter((a) => a.binary && a.binary.present === false).map((a) => a.name);
@@ -5544,6 +5961,7 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     const policy = section(view, "policy");
     const manual = section(view, "manual");
     const codex = section(view, "codex");
+    const authentication = section(view, "authentication");
     const agents = lastData && Array.isArray(lastData.agents) ? lastData.agents : [];
     const statusLine = document.getElementById("limits-status");
     if (!statusLine) return;
@@ -5636,6 +6054,12 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       fact(facts, "Running", policy ? running() : "Unknown");
       const binary = agent && agent.binary ? agent.binary.present : null;
       fact(facts, "Tool", binary === true ? "installed" : binary === false ? "missing" : "Unknown");
+      const auth = /^claude(?:-|$)/.test(name) && authentication && authentication.agents
+        ? authentication.agents.claude : null;
+      const signIn = auth && auth.authentication === "signed_in" ? "Signed in"
+        : auth && auth.authentication === "signed_out" ? "Signed out" : "Unknown";
+      fact(facts, "Sign-in", signIn + (auth ? " · " + auth.status + " native observation"
+        + (Number.isFinite(auth.age_seconds) ? " · " + span(auth.age_seconds) + " ago" : "") : ""));
       card.append(facts);
       if (group !== null && !shared.length) {
         const allowance = text("div", "", "limits-allowance");
@@ -8841,6 +9265,601 @@ if __name__ == '__main__':
     sys.exit(main())
 UNIO_CAPACITY_CLI_PY
 # END EMBEDDED CAPACITY
+# BEGIN EMBEDDED READINESS
+# Check every generated destination before replacing any readiness file.
+for readiness_dir in "$CONF_DIR/lib" "$CONF_DIR/lib/readiness" "$CONF_DIR/lib/readiness/bridge" "$CONF_DIR/lib/readiness/tools"; do
+  if [ -L "$readiness_dir" ] || { [ -e "$readiness_dir" ] && [ ! -d "$readiness_dir" ]; }; then
+    echo "unio: refusing unsafe readiness directory: $readiness_dir" >&2
+    exit 1
+  fi
+done
+for readiness_name in bridge/readiness.py tools/agent-readiness.py; do
+  readiness_file="$CONF_DIR/lib/readiness/$readiness_name"
+  if [ -L "$readiness_file" ] || { [ -e "$readiness_file" ] && { [ ! -f "$readiness_file" ] || [ "$(stat -c '%h' -- "$readiness_file")" != 1 ]; }; }; then
+    echo "unio: refusing unsafe readiness file: $readiness_file" >&2
+    exit 1
+  fi
+done
+mkdir -p "$CONF_DIR/lib/readiness/bridge" "$CONF_DIR/lib/readiness/tools"
+cat > "$CONF_DIR/lib/readiness/bridge/readiness.py" <<'UNIO_READINESS_STORE_PY'
+# Unio — Copyright (C) 2026 Daniel Mitev; Daniel Mevit (@danielmevit)
+# https://github.com/danielmevit/unio
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE. No warranty.
+"""Agent authentication readiness observation storage under coord/readiness/."""
+from datetime import datetime, timedelta, timezone
+import errno
+import fcntl
+import json
+import math
+import os
+import re
+import stat
+import uuid
+import time
+
+SCHEMA_VERSION = 1
+STATE = 'observations.json'
+LOCK = '.observations.lock'
+MAX_STATE_BYTES = 65536
+MAX_AGENTS = 32
+MAX_TIMESTAMP_CHARS = 64
+MAX_AGE_LIMIT = 366 * 24 * 3600
+DEFAULT_MAX_AGE = 900
+CLOCK_SKEW = timedelta(0)
+LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
+REQUIRED_GOOD = {'source', 'observed_at', 'loggedIn'}
+ALLOWED_GOOD = {'source', 'observed_at', 'loggedIn', 'authMethod', 'apiProvider', 'subscriptionType'}
+REQUIRED_FAILED = {'source', 'observed_at', 'error'}
+NATIVE_LABELS = {
+    'authMethod': frozenset(('claude.ai', 'api_key', 'oauth', 'none')),
+    'apiProvider': frozenset(('firstParty', 'bedrock', 'vertex', 'foundry')),
+    'subscriptionType': frozenset(('pro', 'max', 'team', 'enterprise', 'free')),
+}
+FAILURES = frozenset(('unsupported_version', 'version_failed', 'native_failed',
+                      'timeout', 'output_overflow', 'invalid_status', 'launch_failed'))
+
+def _private(info, directory=False):
+    if (info.st_uid != os.getuid() or info.st_mode & 0o077
+            or (not directory and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1))):
+        raise ReadinessError('readiness storage must be private, owned and single-link')
+
+class ReadinessError(ValueError):
+    """Refused input, unsafe path or unusable existing state."""
+
+def _now(now):
+    now = datetime.now(timezone.utc) if now is None else now
+    if not isinstance(now, datetime) or now.tzinfo is None:
+        raise ReadinessError('now must be a timezone-aware datetime')
+    return now
+
+def validate_label(value, name='label'):
+    if not isinstance(value, str) or LABEL.fullmatch(value) is None:
+        raise ReadinessError(f'{name} must be 1-64 ASCII letters, digits, ".", "_" or "-", '
+                             'starting with a letter or digit')
+    return value
+
+def parse_timestamp(value, name='timestamp'):
+    if not isinstance(value, str) or not value or len(value) > MAX_TIMESTAMP_CHARS:
+        raise ReadinessError(f'{name} must be an ISO 8601 string of at most {MAX_TIMESTAMP_CHARS} characters')
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        raise ReadinessError(f'{name} is not a valid ISO 8601 time') from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ReadinessError(f'{name} must include a timezone offset')
+    try:
+        return parsed.astimezone(timezone.utc)
+    except (OverflowError, ValueError):
+        raise ReadinessError(f'{name} is outside the supported UTC range') from None
+
+def validate_max_age(value):
+    if type(value) is not int or not 1 <= value <= MAX_AGE_LIMIT:
+        raise ReadinessError(f'max age must be an integer number of seconds from 1 through {MAX_AGE_LIMIT}')
+    return value
+
+def _strict_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ReadinessError('state contains a duplicate JSON key')
+        result[key] = value
+    return result
+
+def _reject_constant(name):
+    raise ReadinessError(f'state contains non-finite number {name}')
+
+def _decode(raw):
+    if len(raw) > MAX_STATE_BYTES:
+        raise ReadinessError(f'state exceeds {MAX_STATE_BYTES} bytes')
+    try:
+        text = raw.decode('utf-8')
+        data = json.loads(text, object_pairs_hook=_strict_object, parse_constant=_reject_constant)
+    except ReadinessError:
+        raise
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        raise ReadinessError('state is not strict UTF-8 JSON') from None
+    return validate_state(data)
+
+def _validate_observation(obs, is_good):
+    if not isinstance(obs, dict):
+        raise ReadinessError('observation must be an object')
+    if is_good:
+        if not REQUIRED_GOOD <= set(obs):
+            raise ReadinessError('good observation missing required fields')
+        if not set(obs) <= ALLOWED_GOOD:
+            raise ReadinessError('good observation has unexpected fields')
+        if type(obs['loggedIn']) is not bool:
+            raise ReadinessError('loggedIn must be a boolean')
+        for name, allowed in NATIVE_LABELS.items():
+            if name in obs and (not isinstance(obs[name], str) or obs[name] not in allowed):
+                raise ReadinessError('unsupported native status label')
+    else:
+        if not REQUIRED_FAILED <= set(obs):
+            raise ReadinessError('failed observation missing required fields')
+        if not set(obs) <= REQUIRED_FAILED:
+            raise ReadinessError('failed observation has unexpected fields')
+        if not isinstance(obs['error'], str) or obs['error'] not in FAILURES:
+            raise ReadinessError('unsupported failure reason')
+
+    if obs['source'] != 'native':
+        raise ReadinessError('unsupported observation source')
+    parse_timestamp(obs['observed_at'], 'observed time')
+
+def validate_state(data):
+    if not isinstance(data, dict) or set(data) != {'schema_version', 'agents'}:
+        raise ReadinessError('state must contain exactly schema_version and agents')
+    if type(data['schema_version']) is not int or data['schema_version'] != SCHEMA_VERSION:
+        raise ReadinessError('unsupported state schema_version')
+    agents = data['agents']
+    if not isinstance(agents, dict) or len(agents) > MAX_AGENTS:
+        raise ReadinessError(f'agents must be an object with at most {MAX_AGENTS} entries')
+    for agent, obs in agents.items():
+        validate_label(agent, 'stored agent')
+        if not isinstance(obs, dict) or 'latest' not in obs or not set(obs) <= {'latest', 'last_good'}:
+            raise ReadinessError('stored agent data must be an object')
+        if 'last_good' in obs:
+            _validate_observation(obs['last_good'], True)
+        if 'latest' in obs:
+            if not isinstance(obs['latest'], dict):
+                raise ReadinessError('latest observation must be an object')
+            is_good = 'loggedIn' in obs['latest']
+            _validate_observation(obs['latest'], is_good)
+        if 'last_good' in obs:
+            if parse_timestamp(obs['last_good']['observed_at']) > parse_timestamp(obs['latest']['observed_at']):
+                raise ReadinessError('historical observation is newer than latest')
+        if 'loggedIn' in obs['latest'] and obs.get('last_good') != obs['latest']:
+            raise ReadinessError('latest good observation must match last good')
+    return data
+
+class ReadinessStore:
+    def __init__(self, project):
+        path = os.path.abspath(os.fspath(project))
+        if os.path.realpath(path) != path:
+            raise ReadinessError('project must be a real path without symlinks')
+        if not os.path.isdir(path):
+            raise ReadinessError('project must be an existing directory')
+        self.project = path
+
+    def _open_directory(self, create):
+        try:
+            current = os.open(self.project, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except OSError as error:
+            raise ReadinessError(f'cannot open project: {error.strerror}') from None
+        try:
+            if os.fstat(current).st_uid != os.getuid():
+                raise ReadinessError('project must be owned by current user')
+            for name in ('coord', 'readiness'):
+                if create:
+                    try:
+                        os.mkdir(name, mode=0o700, dir_fd=current)
+                    except FileExistsError:
+                        pass
+                try:
+                    child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+                except FileNotFoundError:
+                    if create:
+                        raise
+                    return None
+                except OSError as error:
+                    if error.errno in (errno.ELOOP, errno.ENOTDIR):
+                        raise ReadinessError(f'{name} must be a real directory, not a symlink or file') from None
+                    raise
+                try:
+                    if os.fstat(child).st_uid != os.getuid():
+                        raise ReadinessError('coordination directory must be owned by current user')
+                    if name == 'readiness':
+                        _private(os.fstat(child), directory=True)
+                except BaseException:
+                    os.close(child)
+                    raise
+                os.close(current)
+                current = child
+            result, current = current, None
+            return result
+        finally:
+            if current is not None:
+                os.close(current)
+
+    @staticmethod
+    def _read(directory):
+        try:
+            descriptor = os.open(STATE, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        except FileNotFoundError:
+            return None
+        except OSError as error:
+            if error.errno == errno.ELOOP:
+                raise ReadinessError('state file must not be a symlink') from None
+            raise
+        with os.fdopen(descriptor, 'rb') as source:
+            _private(os.fstat(source.fileno()))
+            raw = source.read(MAX_STATE_BYTES + 1)
+        return _decode(raw)
+
+    @staticmethod
+    def _lock(directory):
+        try:
+            descriptor = os.open(LOCK, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                                 0o600, dir_fd=directory)
+        except OSError as error:
+            if error.errno == errno.ELOOP:
+                raise ReadinessError('lock file must not be a symlink') from None
+            raise
+        try:
+            _private(os.fstat(descriptor))
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise ReadinessError('readiness store busy') from None
+                    time.sleep(0.025)
+        except BaseException:
+            os.close(descriptor)
+            raise
+        return descriptor
+
+    @staticmethod
+    def _write(directory, data):
+        validate_state(data)
+        raw = (json.dumps(data, ensure_ascii=True, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
+        if len(raw) > MAX_STATE_BYTES:
+            raise ReadinessError(f'state would exceed {MAX_STATE_BYTES} bytes')
+        temporary = f'.observations.{uuid.uuid4().hex}.tmp'
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory)
+        try:
+            with os.fdopen(descriptor, 'wb') as output:
+                output.write(raw)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, STATE, src_dir_fd=directory, dst_dir_fd=directory)
+            os.fsync(directory)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=directory)
+            except FileNotFoundError:
+                pass
+
+    def record_good(self, agent, source, logged_in, auth_method=None, api_provider=None, subscription_type=None, observed_at=None, now=None):
+        now = _now(now)
+        validate_label(agent, 'agent')
+        if observed_at is None:
+            observed_at = now.isoformat()
+        else:
+            observed = parse_timestamp(observed_at, 'observed time')
+            if observed > now + CLOCK_SKEW:
+                raise ReadinessError('observed time is in the future')
+
+        obs = {
+            'source': source,
+            'observed_at': observed_at,
+            'loggedIn': logged_in
+        }
+        if auth_method is not None:
+            obs['authMethod'] = auth_method
+        if api_provider is not None:
+            obs['apiProvider'] = api_provider
+        if subscription_type is not None:
+            obs['subscriptionType'] = subscription_type
+
+        self._merge_observation(agent, obs, is_good=True)
+        return obs
+
+    def record_failure(self, agent, source, error_msg, observed_at=None, now=None):
+        now = _now(now)
+        validate_label(agent, 'agent')
+        if observed_at is None:
+            observed_at = now.isoformat()
+        else:
+            observed = parse_timestamp(observed_at, 'observed time')
+            if observed > now + CLOCK_SKEW:
+                raise ReadinessError('observed time is in the future')
+
+        obs = {
+            'source': source,
+            'observed_at': observed_at,
+            'error': error_msg
+        }
+
+        self._merge_observation(agent, obs, is_good=False)
+        return obs
+
+    def _merge_observation(self, agent, obs, is_good):
+        _validate_observation(obs, is_good)
+        directory = self._open_directory(create=True)
+        try:
+            lock = self._lock(directory)
+            try:
+                data = self._read(directory) or {'schema_version': SCHEMA_VERSION, 'agents': {}}
+                agents = data['agents']
+                if agent not in agents and len(agents) >= MAX_AGENTS:
+                    raise ReadinessError(f'refusing more than {MAX_AGENTS} agents')
+
+                agent_data = agents.setdefault(agent, {})
+
+                if 'latest' in agent_data:
+                    stored = parse_timestamp(agent_data['latest']['observed_at'])
+                    observed = parse_timestamp(obs['observed_at'])
+                    if observed == stored:
+                        raise ReadinessError('duplicate reading: this agent already has that observed time')
+                    if observed < stored:
+                        raise ReadinessError('refusing a reading older than the stored one for this agent')
+
+                agent_data['latest'] = obs
+                if is_good:
+                    agent_data['last_good'] = obs
+
+                self._write(directory, data)
+            finally:
+                os.close(lock)
+        finally:
+            os.close(directory)
+
+    def show(self, agent=None, max_age_seconds=DEFAULT_MAX_AGE, now=None):
+        now = _now(now)
+        validate_max_age(max_age_seconds)
+        if agent is not None:
+            validate_label(agent, 'agent')
+        view = {'schema_version': SCHEMA_VERSION, 'checked_at': now.astimezone(timezone.utc).isoformat(),
+                'max_age_seconds': max_age_seconds, 'state': 'missing', 'error': None, 'agents': {}}
+        data = None
+        directory = self._open_directory(create=False)
+        if directory is not None:
+            try:
+                data = self._read(directory)
+            except ReadinessError as error:
+                view['state'], view['error'] = 'invalid', str(error)
+            finally:
+                os.close(directory)
+        if data is not None:
+            view['state'] = 'ok'
+        stored = data['agents'] if data else {}
+        for name in [agent] if agent is not None else sorted(stored):
+            agent_data = stored.get(name)
+            if not agent_data:
+                view['agents'][name] = {'status': 'unknown', 'authentication': 'unknown', 'capacity': 'unknown', 'dispatch_readiness': 'unknown'}
+                continue
+            view['agents'][name] = self._agent_view(agent_data, max_age_seconds, now)
+        return view
+
+    def _agent_view(self, agent_data, max_age_seconds, now):
+        latest = agent_data.get('latest')
+        if not latest:
+            return {'status': 'unknown', 'authentication': 'unknown', 'capacity': 'unknown', 'dispatch_readiness': 'unknown'}
+
+        observed = parse_timestamp(latest['observed_at'])
+        age = (now - observed).total_seconds()
+
+        status = 'unknown'
+        if observed > now + CLOCK_SKEW:
+            status = 'unknown'
+        elif age > max_age_seconds:
+            status = 'stale'
+        elif 'error' in latest:
+            status = 'failed'
+        else:
+            status = 'fresh'
+
+        view = {
+            'status': status,
+            'authentication': ('signed_in' if latest['loggedIn'] else 'signed_out') if status == 'fresh' else 'unknown',
+            'capacity': 'unknown',
+            'dispatch_readiness': 'unknown',
+            'source': latest['source'],
+            'observed_at': latest['observed_at'],
+            'age_seconds': round(age, 3),
+            'latest_observation': latest
+        }
+
+        if 'last_good' in agent_data:
+            last_good = agent_data['last_good']
+            lg_observed = parse_timestamp(last_good['observed_at'])
+            lg_age = (now - lg_observed).total_seconds()
+            view['last_good_observation'] = last_good
+            view['last_good_age_seconds'] = round(lg_age, 3)
+
+        return view
+
+UNIO_READINESS_STORE_PY
+cat > "$CONF_DIR/lib/readiness/tools/agent-readiness.py" <<'UNIO_READINESS_CLI_PY'
+#!/usr/bin/env python3
+# Unio — Copyright (C) 2026 Daniel Mitev; Daniel Mevit (@danielmevit)
+# https://github.com/danielmevit/unio
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE. No warranty.
+"""Explicit non-generating Claude authentication observation; show is local-only."""
+import argparse
+import json
+import os
+from pathlib import Path
+import selectors
+import signal
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from bridge.readiness import NATIVE_LABELS, ReadinessStore, ReadinessError
+
+PINNED_VERSION = '2.1.296 (Claude Code)'
+
+
+class NativeFailure(Exception):
+    def __init__(self, reason):
+        self.reason = reason
+
+
+def _native(argv, *, timeout, limit):
+    """Read a fixed native command with bounded aggregate output and group cleanup."""
+    try:
+        child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, start_new_session=True)
+    except OSError:
+        raise NativeFailure('launch_failed') from None
+    selector = selectors.DefaultSelector()
+    output = bytearray()
+    total = 0
+    deadline = time.monotonic() + timeout
+    try:
+        for pipe in (child.stdout, child.stderr):
+            os.set_blocking(pipe.fileno(), False)
+            selector.register(pipe, selectors.EVENT_READ)
+        while selector.get_map() or child.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise NativeFailure('timeout')
+            if not selector.get_map():
+                time.sleep(min(0.025, remaining))
+                continue
+            for key, _ in selector.select(min(0.1, remaining)):
+                try:
+                    chunk = os.read(key.fd, min(8192, limit + 1 - total))
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                total += len(chunk)
+                if total > limit:
+                    raise NativeFailure('output_overflow')
+                if key.fileobj is child.stdout:
+                    output.extend(chunk)
+        return subprocess.CompletedProcess(argv, child.returncode, output.decode('utf-8'), None)
+    finally:
+        selector.close()
+        # Descendants may keep pipes open after their parent exits. This group
+        # belongs to this metadata observation, never to an AI worker session.
+        for signum in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(child.pid, signum)
+            except ProcessLookupError:
+                pass
+        child.stdout.close()
+        child.stderr.close()
+        try:
+            child.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            raise NativeFailure('timeout') from None
+
+
+def _strict_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('duplicate key')
+        result[key] = value
+    return result
+
+
+def _constant(_):
+    raise ValueError('nonfinite number')
+
+
+def run_refresh(project_dir, now=None):
+    store = ReadinessStore(project_dir)
+    now = datetime.now(timezone.utc) if now is None else now
+    reason = None
+    try:
+        version = _native(['claude', '--version'], timeout=5, limit=256)
+        if version.returncode != 0:
+            reason = 'version_failed'
+        elif version.stdout.strip() != PINNED_VERSION:
+            reason = 'unsupported_version'
+        if reason is None:
+            proc = _native(['claude', 'auth', 'status', '--json'], timeout=10, limit=65536)
+            if proc.returncode != 0:
+                reason = 'native_failed'
+            else:
+                data = json.loads(proc.stdout, object_pairs_hook=_strict_object, parse_constant=_constant)
+                if not isinstance(data, dict) or type(data.get('loggedIn')) is not bool:
+                    raise ValueError('invalid status')
+                for name, allowed in NATIVE_LABELS.items():
+                    if name in data and (not isinstance(data[name], str) or data[name] not in allowed):
+                        raise ValueError('invalid label')
+                # Unknown fields, including account names and credentials, are
+                # discarded in memory and never printed or written.
+                store.record_good('claude', 'native', data['loggedIn'],
+                                  auth_method=data.get('authMethod'),
+                                  api_provider=data.get('apiProvider'),
+                                  subscription_type=data.get('subscriptionType'), now=now)
+                return 0
+    except ReadinessError:
+        raise
+    except NativeFailure as error:
+        reason = error.reason
+    except subprocess.TimeoutExpired:
+        reason = 'timeout'
+    except (ValueError, UnicodeError, RecursionError):
+        reason = 'invalid_status'
+    store.record_failure('claude', 'native', reason, now=now)
+    return 1
+
+
+def run_show(project_dir, agent=None, output_json=False, now=None):
+    view = ReadinessStore(project_dir).show(agent=agent, now=now)
+    if output_json:
+        print(json.dumps(view, indent=2))
+    else:
+        print('Authentication observation only; capacity and dispatch readiness remain Unknown.')
+        for name, data in view['agents'].items():
+            print(f"{name}: authentication={data['authentication']}; observation={data['status']}")
+            if 'observed_at' in data:
+                print(f"  source={data['source']}; observed={data['observed_at']}; age={data['age_seconds']}s")
+            if 'error' in data.get('latest_observation', {}):
+                print('  reason=' + data['latest_observation']['error'])
+            if 'last_good_observation' in data and data['status'] != 'fresh':
+                old = data['last_good_observation']
+                print(f"  historical only: loggedIn={old['loggedIn']}; observed={old['observed_at']}")
+    return view
+
+
+def main(argv=None, prog=None):
+    parser = argparse.ArgumentParser(description=__doc__, prog=prog)
+    parser.add_argument('--project', required=True, help='Unio workspace directory')
+    commands = parser.add_subparsers(dest='command', required=True)
+    commands.add_parser('refresh').add_argument('agent', choices=['claude'])
+    show = commands.add_parser('show')
+    show.add_argument('--agent')
+    show.add_argument('--json', action='store_true')
+    args = parser.parse_args(argv)
+    try:
+        if args.command == 'refresh':
+            code = run_refresh(args.project)
+            run_show(args.project, agent='claude', output_json=True)
+            return code
+        view = run_show(args.project, agent=args.agent, output_json=args.json)
+        return 2 if view['state'] == 'invalid' else 0
+    except (ReadinessError, OSError):
+        print('agent-readiness: unsafe, unavailable or busy local storage; no fresh reading claimed', file=sys.stderr)
+        return 2
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+UNIO_READINESS_CLI_PY
+# END EMBEDDED READINESS
 # BEGIN EMBEDDED DASHBOARD
 # Check the generated destination before replacing the dashboard helper.
 if [ -L "$CONF_DIR/lib" ] || { [ -e "$CONF_DIR/lib" ] && [ ! -d "$CONF_DIR/lib" ]; }; then
@@ -17613,6 +18632,41 @@ spec.loader.exec_module(cli)
 sys.exit(cli.main(sys.argv[2:], prog="unio capacity"))' "$cli" "$@"
 }
 
+cmd_readiness() { # explicit metadata only; show never invokes an agent
+  command -v python3 >/dev/null || die "readiness requires Python 3.9 or newer"
+  local cli="$CONF_DIR/lib/readiness/tools/agent-readiness.py" root="" arg explicit=false asks_help=false
+  [ -f "$cli" ] && [ -f "$CONF_DIR/lib/readiness/bridge/readiness.py" ] \
+    || die "readiness files missing; rerun the matching Unio installer"
+  [ $# -gt 0 ] || set -- --help
+  # Only leading options belong to readiness itself; the CLI rejects the rest.
+  for arg in "$@"; do
+    case "$arg" in
+      --project|--project=*) explicit=true; break;;
+      -h|--help) asks_help=true;;
+      -*) ;;
+      *) break;;
+    esac
+  done
+  for arg in "$@"; do
+    case "$arg" in -h|--help) asks_help=true;; esac
+  done
+  if ! $explicit; then
+    if root=$(find_root); then
+      # The store refuses symlinked paths; select the same root physically.
+      root=$(cd -- "$root" && pwd -P) || die "readiness: project directory unavailable"
+      set -- --project "$root" "$@"
+    elif ! $asks_help; then
+      die "readiness: no Unio workspace (coord/ and wt/) found above $PWD; pass --project PATH to select a project directory"
+    fi
+  fi
+  # Isolated, no site or user paths: the installed tree is the only import source.
+  exec python3 -I -S -B -c 'import importlib.util, sys
+spec = importlib.util.spec_from_file_location("unio_readiness_cli", sys.argv[1])
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+sys.exit(cli.main(sys.argv[2:], prog="unio readiness"))' "$cli" "$@"
+}
+
 # ------------------------------------------------------------------ score
 cmd_score() { # fleet scorecard straight from the ledger; myapp = full view
   local root="${1:-}"
@@ -18329,6 +19383,10 @@ switches
                                      (no duration = until 'unio on')
   unio on <agent>               re-enable an agent
   unio stop | resume            project kill switch for ALL new runs
+  unio readiness [--project PATH] show [--agent claude] [--json]
+                                     cached sign-in observation; capacity Unknown
+  unio readiness [--project PATH] refresh claude
+                                     explicit non-generating auth metadata check
   unio version                  installed version + config path
   unio license                  original credit and full AGPLv3 terms
 
@@ -18403,6 +19461,7 @@ case "${1:-help}" in
   browser)  shift; cmd_browser "$@";;
   dashboard) shift; cmd_dashboard "$@";;
   capacity) shift; cmd_capacity "$@";;
+  readiness) shift; cmd_readiness "$@";;
   off)      shift; cmd_off "$@";;
   on)       shift; cmd_on "$@";;
   smoke)    shift; cmd_smoke "$@";;
@@ -20738,7 +21797,7 @@ cat > "$COMP_DIR/unio" <<'COMPLETION_EOF'
 _unio() {
   local cur cmd root d cmds
   cur="${COMP_WORDS[COMP_CWORD]}"
-  cmds="new init run verify result handoff save diff sync review race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard capacity off on smoke selftest stop resume allow-retry version license help"
+  cmds="new init run verify result handoff save diff sync review race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard capacity readiness off on smoke selftest stop resume allow-retry version license help"
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$cmds" -- "$cur") ); return
   fi
@@ -20757,6 +21816,7 @@ _unio() {
     browser) COMPREPLY=( $(compgen -W "--project --port --observer-timeout --open-browser --enable-plan-drafts --enable-execution --enable-progress-output --progress-binding --progress-worker --enable-worker-files --files-worker --worker --reviewer --worker-company --reviewer-company --config-dir --task-template --help" -- "$cur") );;
     watch) COMPREPLY=( $(compgen -W "--once --json --interval" -- "$cur") );;
     dashboard) COMPREPLY=( $(compgen -W "ensure status stop --project --open-browser --json --help" -- "$cur") );;
+    readiness) COMPREPLY=( $(compgen -W "show refresh claude --agent --json --project" -- "$cur") );;
     capacity)
       local word action=""
       for word in "${COMP_WORDS[@]:2:COMP_CWORD-2}"; do

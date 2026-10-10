@@ -6,7 +6,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const { once } = require("node:events");
 const { chromium } = require(process.env.M2_PLAYWRIGHT_MODULE || "playwright");
 
@@ -14,6 +14,11 @@ const { chromium } = require(process.env.M2_PLAYWRIGHT_MODULE || "playwright");
   assert.ok(process.env.TMPDIR, "Set TMPDIR to workspace-local tmp before running browser checks");
   const fixture = fs.mkdtempSync(path.join(process.env.TMPDIR, "limits-browser-"));
   for (const name of ["repo", "coord", "wt"]) fs.mkdirSync(path.join(fixture, name));
+  const seed = spawnSync("python3", ["-I", "-S", "-B", "-c",
+    "import sys; sys.path.insert(0,sys.argv[1]); from bridge.readiness import ReadinessStore; ReadinessStore(sys.argv[2]).record_good('claude','native',True,auth_method='claude.ai')",
+    path.resolve(__dirname, "../.."), fixture], { encoding: "utf8" });
+  assert.equal(seed.status, 0, seed.stderr);
+  const cacheBefore = fs.readFileSync(path.join(fixture, "coord/readiness/observations.json"));
   const data = path.join(fixture, "fake");
   fs.mkdirSync(data);
   const iso = (offset) => new Date(Date.now() + offset * 1000).toISOString().replace("Z", "+00:00");
@@ -127,9 +132,9 @@ sys.stdout.buffer.write((data / name).read_bytes())
       Object.fromEntries([...dl.children].map((row) => [row.querySelector("dt").textContent, row.querySelector("dd").textContent])));
     const codexRoute = await route("codex");
     assert.ok(codexRoute.includes("Registered lead (reservation)"));
-    assert.deepEqual(await facts("codex"), { Budget: "codex, shared with codex-reviewer", Running: "0 + registered lead = 1 of 1", Tool: "installed" });
-    // The authentication caveat is stated once for every agent, not per card.
-    assert.ok((await page.textContent("#limits-caveat")).includes("Authentication Unknown for every agent"));
+    assert.deepEqual(await facts("codex"), { Budget: "codex, shared with codex-reviewer", Running: "0 + registered lead = 1 of 1", Tool: "installed", "Sign-in": "Unknown" });
+    assert.ok((await page.textContent("#limits-caveat")).includes("Sign-in does not establish remaining allowance"));
+    assert.ok((await facts("claude"))["Sign-in"].startsWith("Signed in · fresh native observation"));
     const reviewer = await route("codex-reviewer");
     assert.ok(reviewer.includes("Benched OFF"));
     assert.equal((await facts("codex-reviewer")).Budget, "codex, shared with codex");
@@ -137,7 +142,7 @@ sys.stdout.buffer.write((data / name).read_bytes())
     assert.equal((await facts("claude")).Running, "1 of 1");
     assert.equal(await page.locator(".limits-section img").count(), 0);
     assert.equal((await facts("<img src=x onerror=alert(1)>")).Tool, "missing");
-    ok("each route: shared group, binary, ON/OFF, native workflow count, lead role, authentication Unknown, literal labels");
+    ok("each route: shared group, binary, ON/OFF, native workflow count, cached Claude sign-in distinct from allowance, literal labels");
 
     assert.equal(await page.locator('#limits-groups [data-group="codex"]').count(), 1, "shared budget shown once");
     const codexGroup = page.locator('#limits-groups [data-group="codex"]');
@@ -202,7 +207,8 @@ sys.stdout.buffer.write((data / name).read_bytes())
     assert.ok(limitsCalls < limitsRequests, "server cache serves polls without rerunning reads: " + limitsCalls + "/" + limitsRequests);
     const status = await page.evaluate(async () => (await fetch("/api/limits", { method: "POST", body: "{}" })).status);
     assert.equal(status, 405);
-    assert.deepEqual(fs.readdirSync(path.join(fixture, "coord")), []);
+    assert.deepEqual(fs.readdirSync(path.join(fixture, "coord")), ["readiness"]);
+    assert.deepEqual(fs.readFileSync(path.join(fixture, "coord/readiness/observations.json")), cacheBefore);
     assert.deepEqual(problems.filter((p) => !p.includes("405")), []);
     ok("only fixed native reads ran; cached polling; same-origin GET only; writes refused; no page errors");
     console.log("Limits browser: " + passed + " assertion groups passed. Fixture retained: " + fixture);

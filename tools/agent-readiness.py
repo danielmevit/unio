@@ -149,15 +149,15 @@ def run_show(project_dir, agent=None, output_json=False, now=None):
     return view
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def main(argv=None, prog=None):
+    parser = argparse.ArgumentParser(description=__doc__, prog=prog)
     parser.add_argument('--project', required=True, help='Unio workspace directory')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('refresh').add_argument('agent', choices=['claude'])
     show = commands.add_parser('show')
     show.add_argument('--agent')
     show.add_argument('--json', action='store_true')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         if args.command == 'refresh':
             code = run_refresh(args.project)

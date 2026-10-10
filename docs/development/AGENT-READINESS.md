@@ -1,10 +1,21 @@
 # Authentication observations
 
-This development slice distinguishes **signed in** from **able to take work**.
+This feature distinguishes **signed in** from **able to take work**.
 It observes Claude Code authentication without asking a model. Allowance and
 combined dispatch readiness remain Unknown, including after a signed-in result.
 
-## Use the source tool
+## Use the command
+
+The next release candidate adds the native command below. It is not included in
+the published v0.5.9 installer.
+
+```bash
+unio readiness refresh claude
+unio readiness show --agent claude --json
+unio readiness --project '/path/to/workspace' show --json
+```
+
+The development source tool provides the same operations:
 
 ```bash
 python3 -B 'tools/agent-readiness.py' --project '/path/to/workspace' refresh claude
@@ -19,8 +30,10 @@ not permit a worker run or change the project's policy or off/on settings.
 Only the checked Claude Code **2.1.296** is supported. Refresh runs exactly
 `claude --version`, then `claude auth status --json` if the version matches.
 Other versions and agents do not trigger a generating command or fallback.
-This slice is source-only: the installed `unio readiness` command and browser
-integration remain separate packaging work.
+The browser's **AI agents & limits** section reads the same cached observation.
+It never refreshes authentication or starts an additional CLI call. Other agents
+remain Unknown. A signed-in label establishes neither remaining allowance nor
+permission to start work.
 
 ## What is recorded
 
@@ -66,4 +79,6 @@ Focused checks cover exact argv, signed-in/out, private-field rejection,
 historical/stale/skew handling, storage permissions and links, bounded locking,
 output overflow and descendant cleanup. The original Gemini candidate and its
 six failed personal-review probes remain recorded separately; passing its
-initial tests did not establish acceptance.
+initial tests did not establish acceptance. Installed-command checks exercise
+the real installer with a fake Claude executable. Browser and API checks verify
+that rendering the cached observation adds no CLI calls or cache writes.

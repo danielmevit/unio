@@ -1,5 +1,11 @@
 ### Added
-- Created `tools/agent-readiness.py` to refresh and show `claude` authentication readiness.
-- Added `bridge/readiness.py` providing isolated storage (`coord/readiness/`) and validation for agent observations.
-- Created `tests/unio-readiness.py` with mock subprocess and temporary directory storage to verify schema versioning and privacy filters.
-- Added `docs/development/AGENT-READINESS.md` detailing the limits, checked fields, and pending packaging.
+
+- Add `unio readiness refresh claude` and `unio readiness show` for explicit,
+  bounded Claude Code sign-in observations, without asking a model. Only
+  allowlisted fields enter the private cache; stale or failed readings are
+  Unknown, and sign-in never establishes allowance or permission to run.
+- Show cached sign-in observations in the dashboard without refreshing a
+  provider or adding CLI calls. Other agents remain Unknown.
+- Cover storage safety, subprocess bounds, installed commands and browser/API
+  reads with isolated checks. Codex corrected and integrated Gemini's initial
+  candidate after personal review identified gaps.

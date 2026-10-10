@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-FILES = ('server.py', 'launcher.py', 'progress.py', 'worker_files.py',
+FILES = ('server.py', 'readiness.py', 'launcher.py', 'progress.py', 'worker_files.py',
          'plan_store.py', 'job_store.py', 'execution_service.py', 'index.html',
          'activity.js', 'activity.css', 'drafts.js', 'jobs.js', 'worker_console.js')
 BEGIN = '# BEGIN EMBEDDED BROWSER\n'
@@ -57,7 +57,7 @@ def main():
     if sys.argv[1:] == ['--check']:
         if old != updated:
             raise SystemExit('embedded browser differs; run python3 -B tools/embed-browser.py')
-        print('embedded browser: all 13 files byte-identical')
+        print('embedded browser: all %d files byte-identical' % len(FILES))
     elif not sys.argv[1:]:
         installer.write_text(updated)
     else:
