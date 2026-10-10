@@ -103,12 +103,23 @@ receipt and must not be used as validation evidence.
 
 The owner authorized a fresh Mistral attempt after earlier connection failures
 and requested Copilot as well. GLM 5.3/high through Vibe was assigned this concrete
-correction; its outcome is pending. Copilot Auto Balance returned a routine
-planner documentation proposal in18.745seconds, native0/adapter0. The lead
+correction; it connected, made useful partial edits and ended at its local
+two-million-token cap: Source/native/adapter 3, token_limit, 2,012,431 cumulative
+tokens in 315.121 seconds, estimated $3.0068354 within the existing subscription.
+This was not a connection failure or evidence of exhausted monthly allowance.
+The partial commit is preserved; the existing lead completed the bounded process
+collection, schema handling, installed checks and operator documentation.
+All 15 focused tests passed; native committed verification passed all four
+commands with all seven touched paths inside scope. Personal lead review accepted
+the corrected source candidate. This is not an independent AI review or a
+published release. Original rejected/partial results remain preserved.
+
+Copilot Auto Balance returned a routine
+planner documentation proposal in 18.745 seconds, Source/native/adapter 0. The lead
 adapted its walkthrough into [the planning contract](READY-TASK-PLAN.md),
 clarifying that an idle Gemini account is not a claim of free pricing. Effective
-model/lab/effort and remaining allowance remain Unknown. Its final native Source
-snapshot is still pending; proposal delivery alone is not implementation.
+model/lab/effort and remaining allowance remain Unknown. Proposal delivery alone
+is not implementation.
 An earlier connection failure does not prove
 current unavailability, exhausted allowance or poor reasoning. Recheck through
 one useful authorized task, preserve its outcome, and avoid blind retry loops.

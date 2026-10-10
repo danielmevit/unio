@@ -1,11 +1,12 @@
 # Functionality first: milestone review and delivery plan
 
-Current delivery update, 2026-10-10: v0.5.9 is published and installed. Recovery,
+Current delivery update, 2026-10-11: v0.5.9 is published and installed. Recovery,
 packaged browser startup, manual capacity, Codex refresh, the managed dashboard
 and optional subscription adapters have shipped. Perplexity account-backed
 proposal trials are complete. Recovery archival/usage and cached Claude sign-in
-are candidates for v0.5.10; the checked save-performance probe and active CLI
-fleet overview follow in v0.5.11. See the [roadmap](ROADMAP.md) for current scope
+are candidates for v0.5.10; the checked save-performance probe and CLI fleet
+overview follow in v0.5.11. The read-only task planner and measured save-engine
+optimization remain next functional work. See the [roadmap](ROADMAP.md) for current scope
 and the [version plan](../VERSION-PLAN.md) for publication status. The audit
 below preserves its 2026-10-08 baseline; its counts and pending statements are
 historical.
