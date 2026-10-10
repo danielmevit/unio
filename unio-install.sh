@@ -3956,7 +3956,7 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
         </div>
 
         <div class="map-controls task-filters" role="group" aria-label="Task filters">
-          <select id="map-worker-filter" aria-label="Filter by worker"><option value="">All Workers</option></select>
+          <span class="worker-filter"><span id="map-worker-logo" class="worker-filter-logo" aria-hidden="true"></span><select id="map-worker-filter" aria-label="Filter by worker"><option value="">All Workers</option></select></span>
           <select id="map-state-filter" aria-label="Filter by state">
             <option value="">Current work</option>
             <option value="all">All states</option>
@@ -4856,6 +4856,18 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     });
     for (const option of existing.values()) option.remove();
     if (select.value !== mapWorkerFilter) select.value = mapWorkerFilter;
+    updateWorkerLogo();
+  }
+  // The closed worker filter shows the chosen worker's logo beside its name.
+  function updateWorkerLogo() {
+    const slot = document.getElementById("map-worker-logo");
+    if (!slot) return;
+    const worker = mapWorkerFilter;
+    if (slot.dataset.worker === worker) return;
+    slot.dataset.worker = worker;
+    slot.replaceChildren(...(worker ? [optionLogo(worker)] : []));
+    slot.dataset.agentMark = worker ? agentIdentity(worker).mark : "";
+    slot.parentElement.classList.toggle("has-logo", !!worker);
   }
 
   function syncCategoryOptions(categoriesList) {
@@ -5718,6 +5730,28 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     if (!manual || !codex)
       list.append(text("p", (!manual && !codex ? "Manual and automatic Codex readings are" : !manual ? "Manual readings are" : "Automatic Codex readings are")
         + " unavailable from the installed CLI and stay Unknown.", "small limits-unsupported"));
+    balanceCardGrids();
+  }
+
+  // Card grids keep balanced rows: as many columns as fit (at most four),
+  // then spread evenly, so 6 cards are 2 rows of 3 and 7 are 2 rows of 4.
+  function balanceGrid(grid) {
+    const cards = grid.querySelectorAll(":scope > .limits-card").length;
+    if (!cards) return;
+    const gap = 6, minCard = 250, maxCols = 4;
+    const fit = Math.max(1, Math.min(maxCols, Math.floor((grid.clientWidth + gap) / (minCard + gap))));
+    const cols = String(Math.ceil(cards / Math.ceil(cards / fit)));
+    if (grid.style.getPropertyValue("--cols") !== cols) grid.style.setProperty("--cols", cols);
+  }
+  function balanceCardGrids() {
+    for (const id of ["limits-routes", "limits-groups"]) {
+      const grid = document.getElementById(id);
+      if (grid) balanceGrid(grid);
+    }
+  }
+  {
+    const routes = document.getElementById("limits-routes");
+    if (routes) new ResizeObserver(balanceCardGrids).observe(routes);
   }
 
   async function refreshLimits() {
@@ -6585,6 +6619,19 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .next-line code { white-space: normal; overflow-wrap: anywhere; overflow-x: visible; }
 @media (max-width: 1200px) { .task-row.row { grid-template-columns: minmax(0, 1fr) 176px; } }
 @media (max-width: 720px) { .task-row.row { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- Worker filter: the chosen worker's logo inside the closed control ---- */
+.worker-filter { position: relative; display: flex; flex: 1 1 160px; min-width: 0; }
+.worker-filter select { flex: 1; width: 100%; }
+.worker-filter-logo { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: flex; pointer-events: none; z-index: 1; }
+.worker-filter-logo .option-logo { width: 18px; height: 18px; fill: var(--tone, var(--text-main)); }
+.worker-filter.has-logo select { padding-left: 38px; }
+@media (max-width: 720px) { .worker-filter { flex-basis: auto; } }
+
+/* ---- Agent cards: balanced rows (columns set from the card count) --------- */
+.limits-routes, .limits-groups { grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); }
+.view-switch button, .task-summary .summary-name, .state-pill, .track li { white-space: nowrap; }
+.view-switch { flex: none; }
 UNIO_BROWSER_ACTIVITY_CSS
 cat > "$CONF_DIR/lib/browser/drafts.js" <<'UNIO_BROWSER_DRAFTS_JS'
 /* Unio — Copyright (C) 2026 Daniel Mitev; Daniel Mevit (@danielmevit).

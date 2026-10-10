@@ -800,3 +800,16 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .next-line code { white-space: normal; overflow-wrap: anywhere; overflow-x: visible; }
 @media (max-width: 1200px) { .task-row.row { grid-template-columns: minmax(0, 1fr) 176px; } }
 @media (max-width: 720px) { .task-row.row { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- Worker filter: the chosen worker's logo inside the closed control ---- */
+.worker-filter { position: relative; display: flex; flex: 1 1 160px; min-width: 0; }
+.worker-filter select { flex: 1; width: 100%; }
+.worker-filter-logo { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: flex; pointer-events: none; z-index: 1; }
+.worker-filter-logo .option-logo { width: 18px; height: 18px; fill: var(--tone, var(--text-main)); }
+.worker-filter.has-logo select { padding-left: 38px; }
+@media (max-width: 720px) { .worker-filter { flex-basis: auto; } }
+
+/* ---- Agent cards: balanced rows (columns set from the card count) --------- */
+.limits-routes, .limits-groups { grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); }
+.view-switch button, .task-summary .summary-name, .state-pill, .track li { white-space: nowrap; }
+.view-switch { flex: none; }

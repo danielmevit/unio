@@ -797,6 +797,18 @@
     });
     for (const option of existing.values()) option.remove();
     if (select.value !== mapWorkerFilter) select.value = mapWorkerFilter;
+    updateWorkerLogo();
+  }
+  // The closed worker filter shows the chosen worker's logo beside its name.
+  function updateWorkerLogo() {
+    const slot = document.getElementById("map-worker-logo");
+    if (!slot) return;
+    const worker = mapWorkerFilter;
+    if (slot.dataset.worker === worker) return;
+    slot.dataset.worker = worker;
+    slot.replaceChildren(...(worker ? [optionLogo(worker)] : []));
+    slot.dataset.agentMark = worker ? agentIdentity(worker).mark : "";
+    slot.parentElement.classList.toggle("has-logo", !!worker);
   }
 
   function syncCategoryOptions(categoriesList) {
@@ -1659,6 +1671,28 @@
     if (!manual || !codex)
       list.append(text("p", (!manual && !codex ? "Manual and automatic Codex readings are" : !manual ? "Manual readings are" : "Automatic Codex readings are")
         + " unavailable from the installed CLI and stay Unknown.", "small limits-unsupported"));
+    balanceCardGrids();
+  }
+
+  // Card grids keep balanced rows: as many columns as fit (at most four),
+  // then spread evenly, so 6 cards are 2 rows of 3 and 7 are 2 rows of 4.
+  function balanceGrid(grid) {
+    const cards = grid.querySelectorAll(":scope > .limits-card").length;
+    if (!cards) return;
+    const gap = 6, minCard = 250, maxCols = 4;
+    const fit = Math.max(1, Math.min(maxCols, Math.floor((grid.clientWidth + gap) / (minCard + gap))));
+    const cols = String(Math.ceil(cards / Math.ceil(cards / fit)));
+    if (grid.style.getPropertyValue("--cols") !== cols) grid.style.setProperty("--cols", cols);
+  }
+  function balanceCardGrids() {
+    for (const id of ["limits-routes", "limits-groups"]) {
+      const grid = document.getElementById(id);
+      if (grid) balanceGrid(grid);
+    }
+  }
+  {
+    const routes = document.getElementById("limits-routes");
+    if (routes) new ResizeObserver(balanceCardGrids).observe(routes);
   }
 
   async function refreshLimits() {
