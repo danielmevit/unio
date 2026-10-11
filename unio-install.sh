@@ -16351,6 +16351,9 @@ def review_digest(path, limit=REVIEW_LOG_LIMIT):
         final=os.fstat(stream.fileno())
         if (initial.st_size,initial.st_mtime_ns,initial.st_ctime_ns) != (final.st_size,final.st_mtime_ns,final.st_ctime_ns):
             fail('review evidence changed while reading')
+        current=os.stat(path,follow_symlinks=False)
+        if (current.st_dev,current.st_ino)!=(final.st_dev,final.st_ino) or os.path.realpath(path)!=os.path.abspath(path):
+            fail('review evidence replaced while reading')
     return dict(sha256=digest.hexdigest(),bytes=size)
 
 def review_unique(pairs):
@@ -16393,7 +16396,7 @@ def review_record_valid(d):
                 or not re.fullmatch('[0-9a-f]{64}',value['sha256'])): fail('invalid review stream digest')
     return d
 
-def review_receipt(root,worker,task,reviewer,state,code,complete,reasons,before,after,pf,raw,group):
+def review_receipt(root,worker,task,reviewer,state,code,complete,reasons,before,after,pf,raw,group,material_hash):
     locations(root,worker,task); ident(reviewer)
     name=os.path.basename(raw)
     directory=safe(root,'coord','reports',name)
@@ -16404,9 +16407,13 @@ def review_receipt(root,worker,task,reviewer,state,code,complete,reasons,before,
            requested_effort='unknown',effective_effort='unknown',state=state,
            process_exit_code=int(code) if code else None,material_complete=complete=='yes',
            reasons=reasons.split(',') if reasons else [],before=json.loads(before),
-           after=json.loads(after) if after else None,material_sha256=review_digest(pf,400000)['sha256'],
+           after=json.loads(after) if after else None,material_sha256=material_hash,
            stdout=review_digest(safe(root,'coord','reports',name,'stdout.log')),
            stderr=review_digest(safe(root,'coord','reports',name,'stderr.log')))
+    material_changed=review_digest(pf,400000)['sha256']!=material_hash
+    if material_changed:
+        d.update(state='unknown' if d['process_exit_code'] in (None,0) else 'failed',
+                 material_complete=False,reasons=sorted(set(d['reasons']+['material_changed'])))
     review_record_valid(d)
     target=safe(root,'coord','reports',name,'receipt.json')
     fd,temp=tempfile.mkstemp(prefix='.receipt-',dir=directory)
@@ -16420,6 +16427,7 @@ def review_receipt(root,worker,task,reviewer,state,code,complete,reasons,before,
         finally: os.close(directory_fd)
     finally:
         os.unlink(temp)
+    if material_changed: fail('common review material changed')
 
 def review_expect(worker,task,expected):
     for value in (worker,task):
@@ -16432,13 +16440,16 @@ def review_expect(worker,task,expected):
     return sorted(set(values))
 
 def review_read(path):
-    review_digest(path,65536)
-    # Bound the read again: a replaced/growing file cannot bypass the digest bound.
+    if os.path.realpath(path)!=os.path.abspath(path): fail('unsafe review receipt path')
     fd=os.open(path,os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd,'rb') as stream:
         info=os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1: fail('unsupported review receipt')
         raw=stream.read(65537)
+        final=os.fstat(stream.fileno()); current=os.stat(path,follow_symlinks=False)
+        if ((info.st_size,info.st_mtime_ns,info.st_ctime_ns)!=(final.st_size,final.st_mtime_ns,final.st_ctime_ns)
+                or (current.st_dev,current.st_ino)!=(final.st_dev,final.st_ino)
+                or os.path.realpath(path)!=os.path.abspath(path)): fail('review receipt changed while reading')
     if len(raw)>65536: fail('oversized review receipt')
     return review_record_valid(json.loads(raw.decode('utf-8'),object_pairs_hook=review_unique,
                                          parse_constant=lambda _:fail('nonfinite review field')))
@@ -16459,7 +16470,7 @@ def reviews(root,worker,task,expected,mode):
                 if re.fullmatch(re.escape(task)+r'\.review\.[A-Za-z0-9]{8}',entry.name):
                     names.append(entry.name)
                     if len(names)>256: observation.append('review_folder_bound'); break
-    rows=[]; records=[]; unresolved=0
+    rows=[]; records=[]; unresolved=0; receipt_ids=set()
     for name in sorted(names[:256]):
         row=dict(receipt_id=None,reviewer=None,policy_group=None,state='unknown',current=False,
                  stale=False,process_exit_code=None,reasons=[])
@@ -16470,14 +16481,19 @@ def reviews(root,worker,task,expected,mode):
             d=review_read(path)
             if d['worker']!=worker: continue
             if d['task']!=task: fail('review task mismatch')
+            if d['id'] in receipt_ids: fail('duplicate review receipt ID')
+            receipt_ids.add(d['id'])
             for stream in ('stdout','stderr'):
                 if review_digest(safe(root,'coord','reports',name,stream+'.log'))!=d[stream]: fail('review stream mismatch')
             bound=d['before']==d['after']==current_rev and d['material_sha256']==material_hash
             row.update(receipt_id=d['id'],reviewer=d['reviewer'],policy_group=d['policy_group'],state=d['state'],
                        stale=not bound,current=bound and not observation,process_exit_code=d['process_exit_code'],
                        reasons=d['reasons'] if bound else sorted(set(d['reasons']+['stale_evidence'])))
+            if d['after'] is None and d['before']==current_rev and d['material_sha256']==material_hash:
+                row.update(current=False,stale=False,reasons=sorted(set(d['reasons']+['review_outcome_unknown'])))
+                unresolved+=1
             records.append((row,d))
-        except (ValueError,OSError,KeyError,TypeError,UnicodeError):
+        except (ValueError,OSError,KeyError,TypeError,UnicodeError,RecursionError):
             row['reasons']=['invalid_review_evidence']; unresolved+=1
         rows.append(row)
     try:
@@ -16772,6 +16788,7 @@ try:
         sys.stdout.buffer.write(b''.join(os.fsencode(p)+b'\0' for p in sorted(set(sum(ch.values(),[])))))
     elif cmd=='material': material(*a)
     elif cmd=='review-receipt': review_receipt(*a)
+    elif cmd=='review-material-hash': print(review_digest(a[0],400000)['sha256'])
     elif cmd=='reviews-arguments': review_expect(*a)
     elif cmd=='reviews': sys.exit(reviews(*a))
     elif cmd=='verdict': verdict(*a)
@@ -21650,7 +21667,8 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   complete=yes
   # Allocate evidence before invoking a reviewer: an interrupted attempt keeps
   # its raw streams as an explicitly unbound folder instead of losing them.
-  local raw raw_state review_group="" update_rc=0
+  local raw raw_state material_hash review_group="" update_rc=0
+  material_hash=$(quality review-material-hash "$pf") || { rm -rf "$nd"; return 2; }
   raw=$(mktemp -d "$root/coord/reports/$task.review.XXXXXXXX") || { rm -rf "$nd"; return 2; }
   stdout="$raw/stdout.log"; stderr="$raw/stderr.log"
   : > "$stdout"; : > "$stderr"
@@ -21667,7 +21685,7 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   if ! policy_admit_hold "$root" "$reviewer" "$reviewer" "$task" review "$pf"; then
     quality update "$root" "$worker" "$task" review "$before" unknown "$reviewer" "" no budget_refused || update_rc=$?
     quality review-receipt "$root" "$worker" "$task" "$reviewer" unknown "" no budget_refused \
-      "$before" "$before" "$pf" "$raw" "$POLICY_GROUP" || { rm -rf "$nd"; return 2; }
+      "$before" "$before" "$pf" "$raw" "$POLICY_GROUP" "$material_hash" || { rm -rf "$nd"; return 2; }
     rm -rf "$nd"; return 2
   fi
   review_group="$POLICY_GROUP"
@@ -21690,7 +21708,7 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   raw_state="$state"
   if ! after=$(quality snapshot "$root" "$worker" "$task"); then
     quality review-receipt "$root" "$worker" "$task" "$reviewer" "$raw_state" "$rc" "$complete" post_snapshot_failed \
-      "$before" "" "$pf" "$raw" "$review_group" || true
+      "$before" "" "$pf" "$raw" "$review_group" "$material_hash" || true
     rm -rf "$nd"; return 2
   fi
   if [ "$before" != "$after" ]; then
@@ -21699,7 +21717,7 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   fi
   quality update "$root" "$worker" "$task" review "$before" "$state" "$reviewer" "$rc" "$complete" "$reasons" || update_rc=$?
   quality review-receipt "$root" "$worker" "$task" "$reviewer" "$raw_state" "$rc" "$complete" "$reasons" \
-    "$before" "$after" "$pf" "$raw" "$review_group" || { rm -rf "$nd"; return 2; }
+    "$before" "$after" "$pf" "$raw" "$review_group" "$material_hash" || { rm -rf "$nd"; return 2; }
   {
     echo
     echo "### review $(date -Is) — reviewer=$reviewer author=$worker exit=$rc decision=$state"
