@@ -160,7 +160,7 @@ const { chromium } = require(process.env.M2_PLAYWRIGHT_MODULE || "playwright");
     assert.equal(await page.locator("#tasks img").count(), 0);
     assert.ok(
       (await page.locator("#limits").textContent()).includes(
-        "authentication unknown · capacity unknown",
+        "Tool activity does not check sign-in or remaining allowance.",
       ),
     );
     assert.ok(
