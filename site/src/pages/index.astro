@@ -965,6 +965,9 @@ const faqs = [
     .readout:nth-child(3) { border-left: 0; padding-left: 0; }
   }
   @media (max-width: 980px) {
+    /* once the footer no longer fits one row it stacks, every row centered */
+    .foot-inner { flex-direction: column; align-items: center; text-align: center; }
+    .foot-hud .tabs { justify-content: center; }
     .hero { grid-template-columns: minmax(0, 1fr); padding-top: 48px; }
     .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .install { grid-template-columns: minmax(0, 1fr); gap: 28px; }
@@ -993,6 +996,5 @@ const faqs = [
     .panel-bar { flex-wrap: wrap; }
     .console code { font-size: 0.78rem; }
     .intel li { flex-direction: column; gap: 8px; }
-    .foot-inner { flex-direction: column; align-items: flex-start; }
   }
 </style>
