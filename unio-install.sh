@@ -3974,9 +3974,11 @@ class ExecutionService:
             return self._view(store, job, binding, state, observe=False)
 
     @_public
-    def start(self, job_id, approval_key, reservation_key):
+    def start(self, job_id, approval_key, reservation_key, *, preflight=None):
         _input(HEX32, approval_key)
         _input(HEX32, reservation_key)
+        if preflight is not None and not callable(preflight):
+            raise ExecutionError('invalid_request')
         with self._locked(), JobStore(self._workspace) as store:
             job, binding, state = self._load_job(store, job_id)
             inputs = dict(approval_key=approval_key)
@@ -3996,6 +3998,10 @@ class ExecutionService:
             _real_path(path.parent, True)
             if os.path.lexists(path) and _read(path, OUTPUT_LIMIT) != binding['task'].encode():
                 raise ExecutionError('binding_stale')
+            if preflight is not None:
+                # Fresh starts only, under the coordination lock: a refusal leaves
+                # the approval intact with no reservation, action or native task.
+                preflight(copy.deepcopy(binding))
             try:
                 reservation = store.reserve(job_id, approval_key, reservation_key)
             except ValueError as error:
