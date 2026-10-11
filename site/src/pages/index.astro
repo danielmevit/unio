@@ -300,11 +300,7 @@ const faqs = [
             <svg class="mark" viewBox="0 0 23 27" aria-hidden="true">{markDots.map((d, i) => <rect x={d.x * 4} y={d.y * 4} width="3" height="3" rx="0.7" style={`--d: ${markDelays[i]}ms`} />)}</svg>
             <span class="wordmark">Unio</span>
           </span>
-          <span class="badge-ver">v{version}</span>
         </a>
-        <p class="hud-readout">
-          <span class="sync"><i aria-hidden="true"></i>In sync</span><span>AGPL-3.0</span><span>Linux · WSL</span><span>Free</span>
-        </p>
         <nav class="tabs" aria-label="Main">
           <a class="tab tab-wide" href="#how">How it works</a>
           <a class="tab tab-wide" href="#faq">FAQ</a>
@@ -517,9 +513,8 @@ const faqs = [
       // positions on a canvas and taking every separate blob of ink as a
       // dot), then lays an exact square over each one and animates it like
       // the U mark: a ring from the top-left, each dot growing from small to
-      // full, its color going through the Cradle tones. The hero keeps
-      // shifting; section titles shift once and settle. Hero on load,
-      // section titles the first time they come into view.
+      // full, each dot shifting through the Cradle tones on its own, without
+      // end. Hero on load, section titles the first time they come into view.
       const findDots = (title: HTMLElement) => {
         const box = title.getBoundingClientRect();
         const style = getComputedStyle(title);
@@ -531,6 +526,7 @@ const faqs = [
         ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
         ctx.fillStyle = "#fff";
         const upper = style.textTransform === "uppercase";
+        const letters: { l: number; t: number; r: number; b: number }[] = [];
         const walker = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
           const text = node.textContent ?? "";
@@ -543,6 +539,7 @@ const faqs = [
             if (!r) continue;
             const ascent = ctx.measureText(ch).fontBoundingBoxAscent;
             ctx.fillText(ch, r.left - box.left, r.top - box.top + ascent);
+            letters.push({ l: r.left - box.left, t: r.top - box.top, r: r.right - box.left, b: r.bottom - box.top });
           }
         }
         // every separate blob of ink is one dot
@@ -565,74 +562,83 @@ const faqs = [
           const pad = 0.75;
           if ((x1 - x0 + 1) * (y1 - y0 + 1) > 2) dots.push({ x: (x0 - pad) / dpr, y: (y0 - pad) / dpr, w: (x1 - x0 + 1 + 2 * pad) / dpr, h: (y1 - y0 + 1 + 2 * pad) / dpr });
         }
-        return { dots, width: box.width, height: box.height };
+        return { dots, letters, width: box.width, height: box.height };
       };
       const SVGNS = "http://www.w3.org/2000/svg";
-      const lightUp = (title: HTMLElement, { loop = false, instant = false } = {}) => {
+      const lightUp = (title: HTMLElement, instant = false) => {
         title.querySelector(":scope > .title-dots")?.remove();
-        const { dots, width, height } = findDots(title);
-        if (!dots.length) { title.classList.add("dots-done"); return; }
+        const { dots, letters, width, height } = findDots(title);
+        if (!dots.length) return;
         const svg = document.createElementNS(SVGNS, "svg");
-        svg.setAttribute("class", "title-dots" + (loop ? " loop" : "") + (instant ? " instant" : ""));
+        svg.setAttribute("class", "title-dots" + (instant ? " instant" : ""));
         svg.setAttribute("aria-hidden", "true");
         svg.setAttribute("width", String(width)); svg.setAttribute("height", String(height));
         svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-        // ring from the top-left: delay by distance, with a little jitter
-        const far = Math.max(...dots.map((d) => Math.hypot(d.x, d.y))) || 1;
         let seed = 11;
-        const jitter = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280 - 0.5) * 60;
-        const BANDS = 16;
-        const bands = Array.from({ length: BANDS }, (_, i) => {
-          const g = document.createElementNS(SVGNS, "g");
-          g.style.setProperty("--d", Math.round((i / (BANDS - 1)) * 9) * 100 + "ms");
-          svg.appendChild(g);
-          return g;
-        });
-        for (const d of dots) {
+        const chance = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+        // dot pitch: the usual distance from a dot to its nearest neighbor
+        const centres = dots.map((d) => ({ x: d.x + d.w / 2, y: d.y + d.h / 2 }));
+        const nearest = centres.map((a, i) => Math.min(...centres.map((b, j) => (i === j ? Infinity : Math.hypot(a.x - b.x, a.y - b.y)))));
+        const pitch = nearest.sort((a, b) => a - b)[nearest.length >> 1] || 1;
+        // clusters: 2 x 2 dots within one letter, never across letters
+        const cell = pitch * 2;
+        const clusters = new Map<string, { g: SVGGElement; x: number }>();
+        const far = Math.max(...centres.map((c) => Math.hypot(c.x, c.y))) || 1;
+        dots.forEach((d, i) => {
+          const c = centres[i];
+          const li = letters.findIndex((L) => c.x >= L.l - 1 && c.x <= L.r + 1 && c.y >= L.t - 1 && c.y <= L.b + 1);
+          const L = letters[li] ?? { l: 0, t: 0 };
+          const key = li + ":" + Math.floor((c.x - L.l) / cell) + ":" + Math.floor((c.y - L.t) / cell);
+          let cluster = clusters.get(key);
+          if (!cluster) {
+            const g = document.createElementNS(SVGNS, "g");
+            svg.appendChild(g);
+            cluster = { g, x: c.x };
+            clusters.set(key, cluster);
+          }
           const rect = document.createElementNS(SVGNS, "rect");
           rect.setAttribute("x", d.x.toFixed(2)); rect.setAttribute("y", d.y.toFixed(2));
           rect.setAttribute("width", d.w.toFixed(2)); rect.setAttribute("height", d.h.toFixed(2));
           rect.setAttribute("rx", (Math.min(d.w, d.h) * 0.12).toFixed(2));
-          const reach = Math.hypot(d.x, d.y) / far;
-          const delay = instant ? 0 : Math.max(0, Math.round(reach * 900 + jitter()));
-          rect.style.setProperty("--d", delay + "ms");
-          bands[Math.min(BANDS - 1, Math.round(reach * (BANDS - 1)))].appendChild(rect);
+          // build: a ring from the top-left, with a little jitter
+          const ring = (Math.hypot(c.x, c.y) / far) * 900;
+          rect.style.setProperty("--d", (instant ? 0 : Math.max(0, Math.round(ring + (chance() - 0.5) * 60))) + "ms");
+          cluster.g.appendChild(rect);
+        });
+        // color: a wave from one end of the word to the other (1.8 s across,
+        // half the 3.6 s cycle, so several tones show at once), each cluster
+        // up to one tone ahead by chance. Negative delays: already moving.
+        for (const { g, x } of clusters.values()) {
+          const phase = (x / (width || 1)) * 1800 + chance() * 600;
+          g.style.setProperty("--p", Math.round(phase / 100) * 100 - 3600 + "ms");
         }
-        const last = bands[BANDS - 1];
         title.classList.add("dot-title");
         title.appendChild(svg);
-        // the hero keeps shifting: its dots stay over the dim text for good
-        // (paused while the hero is out of view, so it costs nothing then)
-        if (loop) {
-          new IntersectionObserver(([e]) => svg.classList.toggle("paused", !e.isIntersecting)).observe(title);
-          return;
-        }
-        // section titles: once the last dot has settled, the real text takes over
-        last.addEventListener("animationend", (e) => {
-          if ((e as AnimationEvent).animationName !== "dot-tone") return;
-          title.classList.add("dots-done");
-          svg.remove();
-        });
       };
+      // pause titles out of view; redraw a title's dots when its size changes
+      const inView = new IntersectionObserver((entries) => {
+        for (const e of entries) e.target.querySelector(":scope > .title-dots")?.classList.toggle("paused", !e.isIntersecting);
+      });
+      const sizes = new WeakMap<Element, number>();
+      const resized = new ResizeObserver((entries) => {
+        for (const e of entries) {
+          const w = Math.round(e.contentRect.width);
+          if (sizes.get(e.target) === w) continue;
+          const first = !sizes.has(e.target);
+          sizes.set(e.target, w);
+          if (!first) lightUp(e.target as HTMLElement, true);
+        }
+      });
+      const start = (title: HTMLElement) => { lightUp(title); inView.observe(title); resized.observe(title); };
       if (document.documentElement.classList.contains("dot-titles")) {
         document.fonts.ready.then(() => {
           const hero = document.querySelector<HTMLElement>(".hero h1");
-          if (hero) {
-            lightUp(hero, { loop: true });
-            // the hero's size follows its column; redraw its dots when it changes
-            let lastWidth = hero.getBoundingClientRect().width;
-            new ResizeObserver(() => {
-              const now = hero.getBoundingClientRect().width;
-              if (Math.abs(now - lastWidth) < 1) return;
-              lastWidth = now;
-              lightUp(hero, { loop: true, instant: true });
-            }).observe(hero);
-          }
+          if (hero) start(hero);
           const reached = new IntersectionObserver((entries) => {
             for (const entry of entries) {
               if (!entry.isIntersecting) continue;
               reached.unobserve(entry.target);
-              lightUp(entry.target as HTMLElement);
+              start(entry.target as HTMLElement);
             }
           }, { threshold: 0.6 });
           for (const h2 of document.querySelectorAll<HTMLElement>(".section-head h2")) reached.observe(h2);
@@ -817,7 +823,7 @@ const faqs = [
 
   /* Micro labels — small uppercase mono, the UI's smallest voice */
   .micro, .index, .tag, .panel-title, .stats, .legend, .foot-note,
-  .readout dt, .card-bar, .row-who, .hud-readout {
+  .readout dt, .card-bar, .row-who {
     font-family: var(--mono);
     font-size: 0.72rem;
     font-weight: 600;
@@ -870,17 +876,8 @@ const faqs = [
     50% { fill: var(--m-steel); } 66.6% { fill: var(--m-periwinkle); } 83.3% { fill: var(--m-lavender); }
   }
   /* The wordmark in the squashed all-caps display face */
-  .wordmark { font-family: var(--wide); font-stretch: 68%; font-weight: 800; font-size: 1.02rem; line-height: 1; letter-spacing: 0.04em; text-transform: uppercase; }
-  .badge-ver {
-    display: grid; place-items: center; padding: 0 12px 0 10px;
-    background: var(--chip); color: var(--label);
-    font-family: var(--mono); font-stretch: normal; font-weight: 600; text-transform: none;
-  }
-  .hud-readout { display: flex; gap: 16px; color: var(--muted); }
-  .hud-readout span + span::before { content: "/"; margin-right: 16px; color: var(--line-alt); }
-  .sync { display: inline-flex; align-items: center; gap: 8px; color: var(--label); }
-  .sync i { width: 7px; height: 7px; border-radius: var(--r-xs); background: var(--passed); animation: pip 2.4s ease-in-out infinite; }
-  @keyframes pip { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  /* the wordmark in the title face: Doto, dot-matrix like the mark beside it */
+  .wordmark { font-family: var(--section-title); font-weight: 900; font-size: 1.3rem; line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; }
 
   /* "Scripts": tiny low-contrast system text, the way game HUDs annotate panels */
   .script, .fig-label, .slot-code, .slot-foot, .console-foot, .stamp {
@@ -891,33 +888,28 @@ const faqs = [
   .stamp { color: #8a8a8a; }
   .script { display: grid; gap: 2px; margin-top: 22px; line-height: 1.5; }
   /* Dot titles: the hero and section titles light up dot by dot like the U
-     mark. Before that they sit dim; at rest they are a soft off-white. */
+     mark and keep shifting through the tones. Before that they sit dim;
+     with reduced motion they are a soft off-white. */
   :is(.hero h1, .section-head h2) { color: var(--title); }
-  .dot-titles :is(.hero h1, .section-head h2):not(.dots-done) { color: var(--title-dim); }
+  .dot-titles :is(.hero h1, .section-head h2) { color: var(--title-dim); }
   .dot-title { position: relative; }
   .dot-title > .title-dots { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
-  /* each dot grows on its own; the color runs per band of dots at the same
-     distance from the top-left (16 animations instead of hundreds) */
+  /* Each dot grows in on its own (--d, a ring from the top-left). The color
+     runs per cluster of neighboring dots inside one letter (a g element,
+     --p): a wave from one end of the word to the other, each cluster a
+     little ahead or behind, endlessly. Colors step 10 times a second and
+     every --p is a whole 100 ms, so all clusters change on the same frames:
+     a slow drift looks the same at a fraction of the cost. Paused while the
+     title is out of view. */
   .title-dots rect {
     transform-box: fill-box; transform-origin: center; opacity: 0;
     animation: dot-grow 0.22s ease-out var(--d) forwards;
   }
-  .title-dots g { fill: var(--t-rust); animation: dot-tone 3.2s linear var(--d) forwards; }
-  /* the endless hero loop repaints its dots only 10 times a second (6 steps
-     per 0.6 s tone; band delays are whole 100 ms steps, so every band
-     changes on the same frames): a slow drift looks the same, at a
-     fraction of the cost */
-  .title-dots.loop g { animation: dot-loop 3.6s steps(6, end) var(--d) infinite; }
+  .title-dots g { fill: var(--t-rust); animation: dot-loop 3.6s steps(6, end) var(--p) infinite; }
   .title-dots.instant rect { animation: dot-shown 0s forwards; }
-  .title-dots.paused g { animation-play-state: paused; }
+  .title-dots.paused :is(rect, g) { animation-play-state: paused; }
   @keyframes dot-grow { from { opacity: 1; transform: scale(0.36); } to { opacity: 1; transform: none; } }
   @keyframes dot-shown { to { opacity: 1; } }
-  /* once through the Cradle tones, then the resting title color */
-  @keyframes dot-tone {
-    0% { fill: var(--t-rust); } 15% { fill: var(--t-mustard); } 30% { fill: var(--t-sea); }
-    45% { fill: var(--t-steel); } 60% { fill: var(--t-periwinkle); } 75% { fill: var(--t-lavender); }
-    100% { fill: var(--title); }
-  }
   @keyframes dot-loop {
     0%, 100% { fill: var(--t-rust); } 16.6% { fill: var(--t-mustard); } 33.3% { fill: var(--t-sea); }
     50% { fill: var(--t-steel); } 66.6% { fill: var(--t-periwinkle); } 83.3% { fill: var(--t-lavender); }
@@ -1060,7 +1052,7 @@ const faqs = [
   .bus-line li { position: relative; z-index: 1; width: 9px; height: 9px; border-radius: var(--r-xs); background: var(--tone, var(--label)); }
   .bus-line .bus-open { background: var(--deep); border: 1px dashed var(--muted); }
   @media (prefers-reduced-motion: reduce) {
-    .bus-line::after, .sync i { animation: none; }
+    .bus-line::after { animation: none; }
     .bus-line::after { display: none; }
   }
 
@@ -1245,7 +1237,6 @@ const faqs = [
   }
   @media (max-width: 1280px) {
     .slots { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-    .hud-readout { display: none; }
   }
   @media (max-width: 1100px) {
     .faq { grid-template-columns: minmax(0, 1fr); }

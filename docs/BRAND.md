@@ -94,8 +94,9 @@ when that code changes.
 | `brand/unio-mark_light.svg` / `brand/unio-mark_dark.svg` | The mark alone, for small spaces. The website favicon is `site/public/favicon.svg`. |
 
 The mark is a **dot-matrix U**: slightly rounded square dots on a 6 × 7 grid,
-many dots (AIs) making one thing. The wordmark "UNIO" is Archivo at 68 % width,
-weight 800, uppercase. On the website the badge's U builds itself as a ring
+many dots (AIs) making one thing. The wordmark "UNIO" is Doto, weight 900,
+uppercase (the website header shows only the mark and the wordmark, beside
+the navigation). The README logo files keep their original lettering. On the website the badge's U builds itself as a ring
 from the top-left dot, then its dots drift through the agent tones; the
 dashboard's loading screen uses the same animation.
 
@@ -108,17 +109,21 @@ All fonts are open source and self-hosted (Fontsource packages in
 | --- | --- | --- |
 | **Titles** | **Doto** (variable, weight **800**), uppercase | Hero title and every section title; token `--section-title` |
 | Body, labels, readouts | IBM Plex Mono 400 / 500 / 600 | Token `--mono` |
-| Buttons, tabs, card titles, wordmark | Archivo (variable width; 125 % for UI, 68 % for the wordmark) | Token `--wide` |
+| Wordmark "UNIO" in the header | Doto, weight 900 | `.wordmark` |
+| Buttons, tabs, card titles | Archivo (variable width, 125 %) | Token `--wide` |
 
 - **Doto** is the title face because it is a dot-matrix font, the same idea as
   the U mark. Keep it at weight 800 so the dots read as dots at every size;
   lighter weights look faint, 900 merges the dots.
 - Titles light up dot by dot like the U mark: they start dim (`--title-dim`),
-  then each dot grows in as a ring from the top-left, in the agent tones.
-  The hero keeps shifting through the tones (paused while out of view);
-  section titles shift once when first reached and settle to the soft
-  off-white `--title` (`#d4d4d4`, never pure white). With reduced motion
-  they simply show in `--title`.
+  then each dot grows in as a ring from the top-left (hero on load, section
+  titles when first reached). Then the agent tones flow through the word
+  endlessly as a wave from one end to the other: the different AIs moving
+  in and out, together always forming the whole word. The color moves in
+  small clusters of neighboring dots inside one letter, each cluster a
+  little ahead or behind, so it is alive but never scattered. Titles pause
+  while out of view. With reduced motion they show still in the soft
+  off-white `--title` (`#d4d4d4`, never pure white).
 - Doto is monospaced at 0.6 em per character. The hero title "YOUR AIs, /
   IN SYNC." is sized from its column (`font-size: 18.4cqi`) so its first line
   fills the column exactly; change that value if the title text changes.
