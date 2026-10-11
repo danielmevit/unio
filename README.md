@@ -1,5 +1,5 @@
-![Unio](docs/brand/unio-logo_animated-light.svg#gh-light-mode-only)
-![Unio](docs/brand/unio-logo_animated-dark.svg#gh-dark-mode-only)
+![Unio](docs/brand/logo/single/unio-logo_animated-light.svg#gh-light-mode-only)
+![Unio](docs/brand/logo/single/unio-logo_animated-dark.svg#gh-dark-mode-only)
 
 # Unio — Your AIs, in sync.
 
@@ -101,7 +101,7 @@ dashboard stays up until `unio dashboard stop`, which never stops workers.
 [FAQ](#faq) · [Under the hood](#for-the-curious-and-the-nerdy) ·
 [What's next](#whats-next)
 
-![](docs/brand/pattern-even.svg)
+![](docs/brand/patterns/band-1.svg)
 
 ## A task, step by step
 
@@ -118,7 +118,7 @@ Say you want to add search to a small website:
    finished AI run is not proof the work is right; the checks and your
    review are.
 
-![](docs/brand/pattern-odd.svg)
+![](docs/brand/patterns/band-2-mirrored.svg)
 
 ## Good to know
 
@@ -138,7 +138,7 @@ Say you want to add search to a small website:
 - AI tools send your prompts and code to their providers. Keep secrets out
   of tasks and repositories.
 
-![](docs/brand/pattern-even.svg)
+![](docs/brand/patterns/band-3.svg)
 
 ## Try it free (no AI calls)
 
@@ -203,7 +203,7 @@ Start with one helper and add another when you want a second perspective.
  instead of switching its safety checks off. Unio's own refusals,
  such as `STOP is active`, say why in their message.
 
-![](docs/brand/pattern-odd.svg)
+![](docs/brand/patterns/band-4-mirrored.svg)
 
 ## Work modes and coordination budget
 
@@ -263,7 +263,7 @@ weekly windows separately from your manual readings. A failed refresh turns
 that group Unknown and keeps the earlier reading as history only. Other
 providers stay manual or Unknown.
 
-![](docs/brand/pattern-even-plus.svg)
+![](docs/brand/patterns/band-5.svg)
 
 ## FAQ
 
@@ -400,7 +400,7 @@ only sensible on a throwaway virtual machine.
 
 </details>
 
-![](docs/brand/pattern-odd-plus.svg)
+![](docs/brand/patterns/band-1-mirrored.svg)
 
 ## For the curious and the nerdy
 
@@ -479,7 +479,7 @@ bash tools/check-docs.sh
 CodeGraph is optional; an unindexed project stays unindexed. Pandoc is only
 needed to rebuild the Word manuals with `tools/make-docx.sh`.
 
-![](docs/brand/pattern-even-plus.svg)
+![](docs/brand/patterns/band-2.svg)
 
 ## What's next
 
@@ -508,7 +508,7 @@ Continuing this project with another AI? Paste the prompt from
 [workspace rules](docs/development/WORKSPACE-RULES.md). The [M1 status](docs/M1-STATUS.md)
 and [findings index](docs/RESEARCH-FINDINGS.md) hold the details.
 
-![](docs/brand/pattern-odd-plus.svg)
+![](docs/brand/patterns/band-3-mirrored.svg)
 
 ## License
 
@@ -530,7 +530,7 @@ separate paid agreement. The software comes without warranty, and liability
 limits apply subject to applicable law. Read the
 [licensing and commercial-use guide](docs/LICENSING.md) for details.
 
-![](docs/brand/pattern-even-plus.svg)
+![](docs/brand/patterns/band-4.svg)
 
 ## Keywords
 

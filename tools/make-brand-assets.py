@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
-"""Draw the Unio logo and the README dot patterns into docs/brand/.
+"""Draw the Unio logos and dot bands into docs/brand/.
 
 The logo is the word UNIO set in Doto (SIL OFL 1.1, The Doto Project
-Authors). Each of Doto's dots is its own outline, so the script takes every
-dot's center from the font and draws it as an even rounded square at 80 % of
-the dot spacing, the same way the website draws its titles. Colored versions
-use the agent tones; the animated ones build in as a ring from the top-left,
-then let the tones flow through the word as a wave, in clusters of
-neighboring dots inside one letter, without end.
+Authors). Each of Doto's dots is its own outline, so the script reads every
+dot's place on the letter's grid and draws it as an even rounded square at
+80 % of the dot spacing, the same way the website draws its titles.
+
+  logo/single/   strokes one dot wide, as in the font (the website's logo)
+  logo/double/   strokes two dots wide: every dot grows to a 2 x 2 block
+  patterns/      dot bands: a checkerboard 3 to 5 rows thick, its edges
+                 rising and falling along the band; five shapes, each also
+                 mirrored
+
+Every logo comes in one ink, the agent tones (a still moment of the wave) and
+animated (a ring build-in from the top-left, then the tones flow through the
+word as a wave, in clusters of neighboring dots, without end), for light and
+for dark backgrounds.
 
 Needs fontTools and the site's Doto package:
     cd site && npm install && cd .. && python3 tools/make-brand-assets.py
@@ -39,44 +47,56 @@ ROUND = SQUARE * 0.12
 CYCLE = 3600            # ms for one pass through the six tones
 
 
-def word_dots(text='UNIO', wght=800):
-    """Dot centers of `text` in Doto, in font units, y down."""
+# ---- letters as grids of dots ---------------------------------------------
+
+def letter_grids(text='UNIO', wght=800):
+    """Each letter of `text` as a set of (column, row) dots, from Doto."""
     font = instantiateVariableFont(TTFont(FONT), {'wght': wght, 'ROND': 0})
-    glyphs, cmap, hmtx = font.getGlyphSet(), font.getBestCmap(), font['hmtx']
-    dots, letters, x = [], [], 0
-    for i, ch in enumerate(text):
-        name = cmap[ord(ch)]
+    glyphs, cmap = font.getGlyphSet(), font.getBestCmap()
+    raw = []
+    for ch in text:
         pen = RecordingPen()
-        glyphs[name].draw(pen)
-        points = []
+        glyphs[cmap[ord(ch)]].draw(pen)
+        centers, points = [], []
         for op, args in pen.value:
             points.extend(args)
             if op in ('closePath', 'endPath') and points:
                 xs = [p[0] for p in points]
                 ys = [p[1] for p in points]
-                dots.append({'x': x + (min(xs) + max(xs)) / 2, 'y': -(min(ys) + max(ys)) / 2, 'letter': i})
+                centers.append(((min(xs) + max(xs)) / 2, -(min(ys) + max(ys)) / 2))
                 points = []
-        letters.append(x)
-        x += hmtx[name][0]
-    return dots, letters
-
-
-def logo_layout():
-    dots, letters = word_dots()
-    centers = [(d['x'], d['y']) for d in dots]
-    nearest = sorted(min(math.dist(a, b) for b in centers if b is not a) for a in centers)
+        raw.append(centers)
+    # dot spacing: the usual distance to the nearest dot within a letter
+    nearest = sorted(min(math.dist(a, b) for j, b in enumerate(cs) if j != i)
+                     for cs in raw for i, a in enumerate(cs))
     pitch = nearest[len(nearest) // 2]
-    k = PITCH / pitch
-    x0 = min(d['x'] for d in dots)
-    y0 = min(d['y'] for d in dots)
-    for d in dots:
-        d['x'] = (d['x'] - x0) * k + PITCH
-        d['y'] = (d['y'] - y0) * k + PITCH
-    width = max(d['x'] for d in dots) + PITCH
-    height = max(d['y'] for d in dots) + PITCH
-    letter_x = [(lx - x0) * k + PITCH for lx in letters]
-    return dots, letter_x, width, height
+    top = min(c[1] for cs in raw for c in cs)
+    grids = []
+    for cs in raw:
+        left = min(c[0] for c in cs)
+        grids.append({(round((x - left) / pitch), round((y - top) / pitch)) for x, y in cs})
+    return grids
 
+
+def thicken(grid):
+    """Every dot grows to a 2 x 2 block: strokes two dots wide."""
+    return {(c + dc, r + dr) for c, r in grid for dc in (0, 1) for dr in (0, 1)}
+
+
+def layout(grids, gap):
+    """Place letters side by side with `gap` empty columns between them;
+    return dots (x, y, letter) in output units and the drawing size."""
+    dots, col = [], 0
+    for i, grid in enumerate(grids):
+        for c, r in grid:
+            dots.append({'x': (col + c + 1) * PITCH, 'y': (r + 1) * PITCH, 'letter': i, 'left': (col + 1) * PITCH})
+        col += max(c for c, _ in grid) + 1 + gap
+    width = (col - gap + 1) * PITCH + PITCH
+    height = (max(r for g in grids for _, r in g) + 2) * PITCH + PITCH
+    return dots, width, height
+
+
+# ---- drawing --------------------------------------------------------------
 
 def square(x, y, fill=None, extra=''):
     fill_attr = f' fill="{fill}"' if fill else ''
@@ -84,13 +104,20 @@ def square(x, y, fill=None, extra=''):
             f'height="{SQUARE:.2f}" rx="{ROUND:.2f}"{fill_attr}{extra}/>')
 
 
-def clusters(dots, letter_x, width, seed=11):
+def svg(width, height, body, label='Unio', style=''):
+    # a band has no label: it is decoration, hidden from screen readers
+    a11y = f'role="img" aria-label="{label}"><title>{label}</title>' if label else 'aria-hidden="true">'
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '
+            f'viewBox="0 0 {width:.2f} {height:.2f}" {a11y}{style}{body}</svg>\n')
+
+
+def clusters(dots, width, seed=11):
     """Group dots into 2 x 2 clusters inside one letter; give each a phase
     (ms into the tone cycle): a wave along the word plus a little chance."""
     rng = random.Random(seed)
     groups = {}
     for d in dots:
-        key = (d['letter'], int((d['x'] - letter_x[d['letter']]) // (PITCH * 2)), int(d['y'] // (PITCH * 2)))
+        key = (d['letter'], int((d['x'] - d['left']) // (PITCH * 2)), int((d['y'] - PITCH) // (PITCH * 2)))
         groups.setdefault(key, []).append(d)
     out = []
     for members in groups.values():
@@ -100,31 +127,21 @@ def clusters(dots, letter_x, width, seed=11):
     return out
 
 
-def svg(width, height, body, label='Unio', style=''):
-    # a pattern has no label: it is decoration, hidden from screen readers
-    a11y = f'role="img" aria-label="{label}"><title>{label}</title>' if label else 'aria-hidden="true">'
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '
-            f'viewBox="0 0 {width:.2f} {height:.2f}" {a11y}{style}{body}</svg>\n')
-
-
 def tone_at(phase_ms, tones):
     """The tone a cluster shows at time 0 of the (stepped) cycle."""
     return tones[int((CYCLE - phase_ms) % CYCLE // (CYCLE / 6))]
 
 
-def write_logos():
-    dots, letter_x, width, height = logo_layout()
-    groups = clusters(dots, letter_x, width)
+def write_logos(folder, dots, width, height):
+    folder.mkdir(parents=True, exist_ok=True)
+    groups = clusters(dots, width)
+    far = max(math.hypot(d['x'], d['y']) for d in dots)
     for mode, ink, tones in (('light', INK_LIGHT, TONES_LIGHT), ('dark', INK_DARK, TONES_DARK)):
-        # plain: one ink
         body = f'<g fill="{ink}">' + ''.join(square(d['x'], d['y']) for d in dots) + '</g>'
-        (OUT / f'unio-logo_{mode}.svg').write_text(svg(width, height, body))
-        # tones: a still frame of the wave
+        (folder / f'unio-logo_{mode}.svg').write_text(svg(width, height, body))
         body = ''.join(f'<g fill="{tone_at(phase, tones)}">' + ''.join(square(d['x'], d['y']) for d in members) + '</g>'
                        for members, phase in groups)
-        (OUT / f'unio-logo_tones-{mode}.svg').write_text(svg(width, height, body))
-        # animated: build in as a ring, then the tones flow without end
-        far = max(math.hypot(d['x'], d['y']) for d in dots)
+        (folder / f'unio-logo_tones-{mode}.svg').write_text(svg(width, height, body))
         rng = random.Random(7)
         keyframes = ' '.join(f'{i * 100 / 6:.1f}% {{ fill: {tone}; }}' for i, tone in enumerate(tones)) + f' 100% {{ fill: {tones[0]}; }}'
         style = ('<style>'
@@ -140,41 +157,52 @@ def write_logos():
             rects = ''.join(square(d['x'], d['y'], extra=f' style="animation-delay:{max(0, round(math.hypot(d["x"], d["y"]) / far * 900 + (rng.random() - .5) * 60))}ms"')
                             for d in members)
             body += f'<g style="animation-delay:{phase - CYCLE}ms">{rects}</g>'
-        (OUT / f'unio-logo_animated-{mode}.svg').write_text(svg(width, height, body, style=style))
+        (folder / f'unio-logo_animated-{mode}.svg').write_text(svg(width, height, body, style=style))
 
 
-def write_pattern(name, start, extras, seed, columns=80):
-    """Two checkerboard rows of dots; `start` is where the first row begins
-    ('odd' = 1st, 3rd, ... square; 'even' = 2nd, 4th, ...), the second row
-    takes the other half. With `extras`, a third and a fourth row (above and
-    below) carry stray dots that grow more frequent toward the right end."""
+def smooth(rng, columns, period):
+    """A gently wandering value in 0..1 along the band (value noise)."""
+    knots = [rng.random() for _ in range(columns // period + 3)]
+    out = []
+    for c in range(columns):
+        i, f = divmod(c / period, 1)
+        f = f * f * (3 - 2 * f)
+        out.append(knots[int(i)] * (1 - f) + knots[int(i) + 1] * f)
+    return out
+
+
+def write_band(name, seed, columns=80, mirror=False):
+    """A checkerboard band 3 to 5 rows thick: its top edge (row 0 or 1) and
+    bottom edge (row 3 or 4) each wander along the band, so the thickness
+    rises and falls. Tones flow from one end to the other."""
     rng = random.Random(seed)
-    first = 0 if start == 'odd' else 1
-    rows = {1: first, 2: 1 - first, 0: 1 - first, 3: first}   # checkerboard parity per row
-    width, height = columns * PITCH, 4 * PITCH
+    top = smooth(rng, columns, rng.choice((7, 9, 11)))
+    bottom = smooth(rng, columns, rng.choice((6, 8, 10)))
+    parity = seed % 2
     body = ''
-    for row, parity in rows.items():
-        for col in range(columns):
-            if col % 2 != parity:
+    for col in range(columns):
+        first = 0 if top[col] > 0.5 else 1
+        last = 4 if bottom[col] > 0.5 else 3
+        for row in range(first, last + 1):
+            if (row + col + parity) % 2:
                 continue
-            reach = col / (columns - 1)
-            if row in (0, 3):
-                if not extras or rng.random() > 0.75 * max(0.0, (reach - 0.3) / 0.7) ** 1.6:
-                    continue
-            # tones flow along the band, a little out of step here and there
+            place = columns - 1 - col if mirror else col
+            reach = place / (columns - 1)
             tone = TONES_DARK[min(5, max(0, int(reach * 6 + rng.choice((-1, 0, 0, 0, 1)) * 0.5)))]
-            body += square(col * PITCH + PITCH / 2, row * PITCH + PITCH / 2, fill=tone)
-    (OUT / f'{name}.svg').write_text(svg(width, height, body, label=''))
+            body += square(place * PITCH + PITCH / 2, row * PITCH + PITCH / 2, fill=tone)
+    (OUT / 'patterns' / f'{name}.svg').write_text(svg(columns * PITCH, 5 * PITCH, body, label=''))
 
 
 def main():
-    OUT.mkdir(parents=True, exist_ok=True)
-    write_logos()
-    write_pattern('pattern-even', 'even', extras=False, seed=1)
-    write_pattern('pattern-odd', 'odd', extras=False, seed=2)
-    write_pattern('pattern-even-plus', 'even', extras=True, seed=3)
-    write_pattern('pattern-odd-plus', 'odd', extras=True, seed=4)
-    print('wrote', ', '.join(sorted(p.name for p in OUT.glob('*.svg'))))
+    grids = letter_grids()
+    write_logos(OUT / 'logo' / 'single', *layout(grids, gap=1))
+    write_logos(OUT / 'logo' / 'double', *layout([thicken(g) for g in grids], gap=2))
+    (OUT / 'patterns').mkdir(parents=True, exist_ok=True)
+    for i, seed in enumerate((5, 12, 23, 38, 41), start=1):
+        write_band(f'band-{i}', seed)
+        write_band(f'band-{i}-mirrored', seed, mirror=True)
+    for sub in ('logo/single', 'logo/double', 'patterns'):
+        print(sub + ':', ', '.join(sorted(p.name for p in (OUT / sub).glob('*.svg'))))
 
 
 if __name__ == '__main__':

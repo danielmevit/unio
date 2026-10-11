@@ -1,9 +1,9 @@
 # Unio brand kit
 
-![UNIO](unio-logo_animated-light.svg#gh-light-mode-only)
-![UNIO](unio-logo_animated-dark.svg#gh-dark-mode-only)
+![UNIO](logo/single/unio-logo_animated-light.svg#gh-light-mode-only)
+![UNIO](logo/single/unio-logo_animated-dark.svg#gh-dark-mode-only)
 
-The logos, patterns and story behind Unio's look. The full guide (name,
+The logos, dot bands and story behind Unio's look. The full guide (name,
 voice, typography, colors and UI rules) is
 [docs/BRAND.md](../BRAND.md#visual-identity).
 
@@ -27,46 +27,51 @@ how Unio works.
   already there, dim: the planned work. The dots light up as the work gets
   done.
 
+## Folders
+
+| Folder | What is in it |
+| --- | --- |
+| `logo/single/` | The logo with strokes one dot wide, as in the font. The website and the README use it. |
+| `logo/double/` | The same word with strokes two dots wide: every dot grown to a 2 × 2 block. Bolder, for larger or busier places. |
+| `patterns/` | Dot bands for breaking up long pages: five shapes, each also mirrored. |
+| `legacy/` | The earlier dot-matrix U, still the website's favicon and the dashboard's loading screen. |
+
 ## Logo
 
-The file names say which background they serve: `_light` for light mode,
-`_dark` for dark mode.
+Both `logo/single/` and `logo/double/` hold the same six files. The names say
+which background they serve: `_light` for light mode, `_dark` for dark mode.
 
 | File | What it is |
 | --- | --- |
 | `unio-logo_light.svg` / `unio-logo_dark.svg` | One ink: dark dots for light backgrounds, soft off-white dots for dark ones. Use when color would distract. |
 | `unio-logo_tones-light.svg` / `unio-logo_tones-dark.svg` | The agent tones, a still moment of the wave. The light version uses the deeper tones, which read on white. |
-| `unio-logo_animated-light.svg` / `unio-logo_animated-dark.svg` | The dots grow in as a ring from the top-left, then the tones flow through the word without end. Still for people who turn animation off. Used at the top of the README. |
+| `unio-logo_animated-light.svg` / `unio-logo_animated-dark.svg` | The dots grow in as a ring from the top-left, then the tones flow through the word without end. Still for people who turn animation off. |
 
-One ink and the agent tones, on light:
+Single and double, in the agent tones, on light:
 
-![UNIO, one ink](unio-logo_light.svg)
-![UNIO, agent tones](unio-logo_tones-light.svg)
+![UNIO, single dots](logo/single/unio-logo_tones-light.svg)
+![UNIO, double dots](logo/double/unio-logo_tones-light.svg)
 
-## Patterns
+## Dot bands
 
-Dot bands that break up long pages such as the README: two checkerboard rows
-in the agent tones, flowing from one end to the other.
+A checkerboard of dots in the agent tones, three to five rows thick: its top
+and bottom edges rise and fall along the band, and the tones flow from one
+end to the other. `band-1.svg` to `band-5.svg` are five different shapes;
+each `-mirrored` version is the same band flipped left to right, so there
+are ten in all. Put one between sections of a long page and don't repeat a
+band on the same page.
 
-| File | Pattern |
-| --- | --- |
-| `pattern-odd.svg` | The first row starts on the 1st square (1st, 3rd, 5th ...), the second row on the 2nd. |
-| `pattern-even.svg` | The first row starts on the 2nd square, the second row on the 1st. |
-| `pattern-odd-plus.svg` / `pattern-even-plus.svg` | The same, plus a third and a fourth row above and below, with stray dots that grow more frequent toward the right end. |
+![](patterns/band-1.svg)
 
-Alternate even and odd down a page, and save the "plus" bands for further
-down, so the page gets livelier toward the end.
-
-![](pattern-even.svg)
-
-![](pattern-odd-plus.svg)
+![](patterns/band-3-mirrored.svg)
 
 ## Making them
 
-Every SVG here except the older U mark is drawn by
+Every SVG here except the U in `legacy/` is drawn by
 [tools/make-brand-assets.py](../../tools/make-brand-assets.py) from the Doto
-font. It takes each dot's center from the font and draws an even rounded
-square at 80 % of the dot spacing, the same way the website draws its titles.
+font. It reads each dot's place on the letter's grid and draws an even
+rounded square at 80 % of the dot spacing, the same way the website draws its
+titles.
 
 ```sh
 cd site && npm install && cd ..
@@ -76,8 +81,3 @@ python3 tools/make-brand-assets.py
 It needs Python's `fontTools`. The lettering is
 [Doto](https://github.com/oliverlalan/Doto), © The Doto Project Authors,
 under the SIL Open Font License 1.1.
-
-## Older files
-
-`unio-mark_light.svg` / `unio-mark_dark.svg` are the earlier dot-matrix U.
-The website's favicon and the dashboard's loading screen still use that U.
