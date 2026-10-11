@@ -9,6 +9,28 @@ opportunity to appear; they do not guarantee a recommendation.
 Official guidance last checked: **2026-10-11**. Check items as you complete
 them; this document does not submit the site or change account settings.
 
+## Current status — 2026-10-11
+
+Website preparation is complete: the SEO changes are published, the Pages
+deployment succeeded, and the live homepage, canonical URL, generated sitemap
+index and sitemap were checked. The original Google verification file remains
+published. No search-account submission or indexing result has been recorded.
+
+The owner deferred account setup so development can return to Unio's functional
+improvements. Resume with these steps when convenient:
+
+- Sign into the verified Search Console property, submit the sitemap index
+  below, inspect the homepage and request indexing.
+- Check Search Console's generative AI inclusion setting.
+- Sign into Bing Webmaster Tools, import or verify the same property, and
+  submit the sitemap index.
+- Monitor actual indexing and search results; decide crawler/training choices
+  separately using section 4. No additional ChatGPT or Claude account
+  registration is required for their search crawlers to discover public pages.
+
+These account steps remain pending; a successful website deployment does not
+complete them. The detailed checklist below is retained for the eventual setup.
+
 ## 1. Publish and check the website
 
 - [ ] Publish the SEO changes and confirm the GitHub Pages deployment succeeds.
