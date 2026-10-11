@@ -17581,53 +17581,92 @@ def walk_worktree(wt, budget, tracked):
             tracked_dirs.add('/'.join(parts[:i]))
     files = {}
 
-    def visit(dfd, prefix):
+    def directory_names(dfd, prefix):
         names = sorted(os.listdir(dfd))
         if not prefix:
             names = [n for n in names if n != '.git']
         if len(names) > MAX_ENTRIES:
             raise Refuse('excessive', 'more than %d entries in one directory' % MAX_ENTRIES)
-        rels = [prefix + n for n in names]
-        ignored = ignored_names(wt, budget, rels)
-        for name, rel in zip(names, rels):
-            st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
-            known = rel in tracked or rel in tracked_dirs
-            if rel in ignored and not known:
-                # Omitted before any body is read; secret names still refuse.
-                check_secret(rel, 'ignored files')
-                continue
-            p = path_text(rel)
-            check_secret(p, 'the worktree')
-            if stat.S_ISDIR(st.st_mode):
-                if p in tracked:
-                    raise Refuse('unsupported_type', 'tracked file replaced by a directory: ' + p)
-                sub = open_dir(name, dfd)
-                try:
-                    if os.fstat(sub).st_ino != st.st_ino:
-                        raise Refuse('unstable', 'directory changed while reading: ' + p)
+        return names
+
+    def child_dir(dfd, name, p, st):
+        sub = open_dir(name, dfd)
+        try:
+            current = os.fstat(sub)
+            if (current.st_dev, current.st_ino) != (st.st_dev, st.st_ino):
+                raise Refuse('unstable', 'directory changed while reading: ' + p)
+            try:
+                os.stat('.git', dir_fd=sub, follow_symlinks=False)
+                raise Refuse('unsupported_type', 'nested repository: ' + p)
+            except FileNotFoundError:
+                pass
+            return sub
+        except BaseException:
+            os.close(sub)
+            raise
+
+    def visit(dfd, prefix, prepared=None, ignored=None):
+        names = directory_names(dfd, prefix)
+        if prepared is not None and names != prepared:
+            raise Refuse('unstable', 'directory entries changed while reading: ' + prefix)
+        if ignored is None:
+            ignored = ignored_names(wt, budget, [prefix + n for n in names])
+        offset = 0
+        while offset < len(names):
+            # Batch sibling ignore queries, not open directories. Preflight
+            # closes each child immediately; traversal remains depth-first.
+            # Keep at most 32 records and MAX_ENTRIES child names per query.
+            records, child_rels = [], []
+            while offset < len(names) and len(records) < 32:
+                budget.remaining()
+                name = names[offset]
+                rel = prefix + name
+                st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+                known = rel in tracked or rel in tracked_dirs
+                if rel in ignored and not known:
+                    # Omitted before opening the child or reading any body.
+                    check_secret(rel, 'ignored files')
+                    offset += 1
+                    continue
+                p = path_text(rel)
+                check_secret(p, 'the worktree')
+                children = None
+                if stat.S_ISDIR(st.st_mode):
+                    if p in tracked:
+                        raise Refuse('unsupported_type', 'tracked file replaced by a directory: ' + p)
+                    sub = child_dir(dfd, name, p, st)
                     try:
-                        os.stat('.git', dir_fd=sub, follow_symlinks=False)
-                        raise Refuse('unsupported_type', 'nested repository: ' + p)
-                    except FileNotFoundError:
-                        pass
-                    visit(sub, p + '/')
-                finally:
-                    os.close(sub)
-            elif stat.S_ISREG(st.st_mode):
-                if st.st_nlink != 1:
-                    raise Refuse('unsupported_type', 'hard link: ' + p)
-                if stat.S_IMODE(st.st_mode) & 0o7000:
-                    raise Refuse('unsupported_type', 'setuid/setgid/sticky file: ' + p)
-                if len(files) >= MAX_ENTRIES:
-                    raise Refuse('excessive', 'more than %d worktree files' % MAX_ENTRIES)
-                fst, body = read_at(dfd, name, MAX_BODY, budget, p)
-                if fst.st_ino != st.st_ino or fst.st_nlink != 1 or stat.S_IMODE(fst.st_mode) & 0o7000:
-                    raise Refuse('unstable', 'file changed while reading: ' + p)
-                files[p] = ('%04o' % (stat.S_IMODE(fst.st_mode) & 0o777), body)
-            elif stat.S_ISLNK(st.st_mode):
-                raise Refuse('unsupported_type', 'symbolic link: ' + p)
-            else:
-                raise Refuse('unsupported_type', 'FIFO, device or socket: ' + p)
+                        children = directory_names(sub, p + '/')
+                    finally:
+                        os.close(sub)
+                    if records and len(child_rels) + len(children) > MAX_ENTRIES:
+                        break
+                    child_rels.extend(p + '/' + n for n in children)
+                records.append((name, p, st, children))
+                offset += 1
+            child_ignored = ignored_names(wt, budget, child_rels)
+            for name, p, st, children in records:
+                if children is not None:
+                    sub = child_dir(dfd, name, p, st)
+                    try:
+                        visit(sub, p + '/', children, child_ignored)
+                    finally:
+                        os.close(sub)
+                elif stat.S_ISREG(st.st_mode):
+                    if st.st_nlink != 1:
+                        raise Refuse('unsupported_type', 'hard link: ' + p)
+                    if stat.S_IMODE(st.st_mode) & 0o7000:
+                        raise Refuse('unsupported_type', 'setuid/setgid/sticky file: ' + p)
+                    if len(files) >= MAX_ENTRIES:
+                        raise Refuse('excessive', 'more than %d worktree files' % MAX_ENTRIES)
+                    fst, body = read_at(dfd, name, MAX_BODY, budget, p)
+                    if fst.st_ino != st.st_ino or fst.st_nlink != 1 or stat.S_IMODE(fst.st_mode) & 0o7000:
+                        raise Refuse('unstable', 'file changed while reading: ' + p)
+                    files[p] = ('%04o' % (stat.S_IMODE(fst.st_mode) & 0o777), body)
+                elif stat.S_ISLNK(st.st_mode):
+                    raise Refuse('unsupported_type', 'symbolic link: ' + p)
+                else:
+                    raise Refuse('unsupported_type', 'FIFO, device or socket: ' + p)
 
     root_fd = open_dir(wt)
     try:

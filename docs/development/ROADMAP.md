@@ -64,6 +64,7 @@ low-tier lead.
 | 4 — CLI slice checked | Ready-task dispatch and dependency handling | Queue/reservation exists. Read-only planner passed focused/native checks and personal review. Owner-enabled single-attempt dispatch remains planned. |
 | 5 | Native independent review pipeline | Single reviews exist; built-in separate parallel review views and finding aggregation remain planned and mode-aware. |
 | 6 | Evidence-based routing and context efficiency | Ledger/score and curated guides exist; exact model/task profiles and automatic suggestions remain planned. |
+| 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
 ### Next useful slices
 
@@ -84,6 +85,11 @@ Their release status is in the [version plan](../VERSION-PLAN.md). Next:
 5. **Lead continuity and phone access:** supported session attachment, lead transfer
    after a handoff, then scoped pairing and message delivery. These need session
    ownership and transport work; a local dashboard is not remote control.
+6. **macOS and Windows:** audit platform assumptions, make the existing WSL2
+   route reproducible, port native macOS, then implement native Windows after
+   a backend feasibility checkpoint. Use actual host CI and save/restore checks
+   before declaring support. The [interactive session workspace](SESSION-WORKSPACE.md)
+   is a separate planned feature that reuses the current dashboard and engine.
 
 After planner acceptance, define the separate explicitly enabled dispatch slice:
 reuse the existing queue's approval/reservation/replay protections and recheck
@@ -97,10 +103,17 @@ version are separate states.
 
 Later ordering is a recommendation from this audit; new version numbers and
 task contracts follow bounded planning. Defer additional visual redesign,
-a broad Settings page, general desktop/cloud expansion and model benchmark
+a broad Settings page, general cloud expansion and model benchmark
 campaigns. The owner-requested session-only phone connection below is a bounded
 application feature, not a remote desktop. See the plan for concrete finish
 conditions and the [handoff](continue-with-ai-prompt.md) for the next task.
+
+Owner update, 2026-10-11: native macOS and Windows are now explicit delivery
+milestones rather than an unspecified desktop expansion. Begin with the bounded
+platform audit alongside independent functional work. A possible desktop app
+should host the existing interface; it must not introduce a second orchestrator.
+The owner is finishing small dashboard/site changes in a separate Opus session;
+preserve those scopes while advancing the functional core here.
 
 ## Pair a phone with one live session
 

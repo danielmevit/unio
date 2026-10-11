@@ -35,6 +35,11 @@ on 2026-10-06: finish 0.5.3, deliver 0.5.4, then allowance monitoring, agent
 connection reliability, smarter delegation, a built-in parallel review
 pipeline, reasoning/context efficiency and measured performance. The owner additionally requires
 [automatic work saving](WORK-SAVING.md) during runs and on failures in v0.5.4.
+On 2026-10-11 the owner added [macOS and Windows host support](development/CROSS-PLATFORM.md).
+An [interactive session workspace](development/SESSION-WORKSPACE.md) is a separate
+planned feature using the existing dashboard and engine. Neither has an assigned
+release number or implies current native support; the CLI save-performance slice
+remains the current functional task while owner UI/site work proceeds separately.
 On 2026-10-07 the owner added [lead cooldown restart](development/LEAD-COOLDOWN-RESTART.md):
 an owner-enabled supervisor waits outside the lead CLI and restarts it from
 the saved handoff after its allowance resets. The five-hour fallback is five
