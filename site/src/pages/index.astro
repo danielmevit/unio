@@ -291,7 +291,7 @@ const faqs = [
         <nav class="tabs" aria-label="Main">
           <a class="tab tab-wide" href="#how">How it works</a>
           <a class="tab tab-wide" href="#faq">FAQ</a>
-          <a class="tab" href={repo}>GitHub <span aria-hidden="true">↗</span></a>
+          <a class="tab" href={repo} target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span><span class="sr-only"> (opens in a new tab)</span></a>
           <a class="tab tab-on" href="#install">Install</a>
         </nav>
       </div>
@@ -310,7 +310,7 @@ const faqs = [
           </p>
           <div class="actions">
             <a class="btn btn-on" href="#install">Install Unio</a>
-            <a class="btn" href={repo}>View on GitHub <span aria-hidden="true">↗</span></a>
+            <a class="btn" href={repo} target="_blank" rel="noopener noreferrer">View on GitHub <span aria-hidden="true">↗</span><span class="sr-only"> (opens in a new tab)</span></a>
           </div>
           <dl class="readouts">
             {readouts.map((r) => (
@@ -434,7 +434,7 @@ const faqs = [
             <p>Then run <code>unio dashboard</code> to open the dashboard in your browser.</p>
             <p class="micro">Next</p>
             <ul class="menu">
-              {next.map((n) => <li><a href={n.href}>{n.label} <span aria-hidden="true">↗</span></a></li>)}
+              {next.map((n) => <li><a href={n.href} target="_blank" rel="noopener noreferrer">{n.label} <span aria-hidden="true">↗</span><span class="sr-only"> (opens in a new tab)</span></a></li>)}
             </ul>
           </div>
           <div class="console">
@@ -480,16 +480,16 @@ const faqs = [
 
     <footer class="foot-hud">
       <div class="wrap foot-inner">
-        <p>© {year} Daniel Mevit · Made by <a href="https://damt.xyz">damt.xyz</a></p>
+        <p>© {year} Daniel Mevit · Made by <a href="https://damt.xyz" target="_blank" rel="noopener noreferrer">damt.xyz<span class="sr-only"> (opens in a new tab)</span></a></p>
         <div class="stamp" aria-hidden="true">
           <svg class="barcode" viewBox={`0 0 ${barX} 14`} preserveAspectRatio="none">{bars.map((b) => <rect x={b.x} y="0" width={b.w} height="14" />)}</svg>
           <span>build {version} · published {builtOn}</span>
         </div>
         <nav class="tabs" aria-label="Project links">
-          <a class="tab" href={repo}>GitHub</a>
-          <a class="tab" href={`${repo}/releases`}>Releases</a>
-          <a class="tab" href={doc("CHANGELOG.md")}>Changelog</a>
-          <a class="tab" href={doc("LICENSE")} title="GNU Affero General Public License v3.0" aria-label="License: GNU Affero General Public License v3.0">AGPL</a>
+          <a class="tab" href={repo} target="_blank" rel="noopener noreferrer">GitHub<span class="sr-only"> (opens in a new tab)</span></a>
+          <a class="tab" href={`${repo}/releases`} target="_blank" rel="noopener noreferrer">Releases<span class="sr-only"> (opens in a new tab)</span></a>
+          <a class="tab" href={doc("CHANGELOG.md")} target="_blank" rel="noopener noreferrer">Changelog<span class="sr-only"> (opens in a new tab)</span></a>
+          <a class="tab" href={doc("LICENSE")} title="GNU Affero General Public License v3.0" aria-label="License: GNU Affero General Public License v3.0 (opens in a new tab)" target="_blank" rel="noopener noreferrer">AGPL</a>
         </nav>
       </div>
     </footer>
@@ -847,6 +847,8 @@ const faqs = [
     border-bottom: 1px solid var(--line);
   }
   .hud-inner { display: flex; align-items: center; gap: 18px; min-height: 56px; }
+  /* text for screen readers only */
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   /* The logo is the word itself: "UNIO" in Doto, the title face */
   .logo { display: inline-flex; align-items: center; min-height: 44px; color: var(--title); text-decoration: none; }
   .wordmark { display: inline-block; font-family: var(--section-title); font-weight: 900; font-size: 2.4rem; line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; }
