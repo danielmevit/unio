@@ -20,12 +20,16 @@ These slices passed focused/native checks and personal lead review. Combined
 release validation, publication and official-byte installation remain pending.
 Continue 0.5.x; do not shift this batch to 0.6.0.
 
-Current functional milestone is [concurrent review collection](../REVIEW-COLLECTION-CONTRACT.md).
-Its contract is frozen at `b0e5889`, after correcting the installer's stale
-scoreboard template. Read actual implementation commits, results and the newest
-local coordination log before continuing; a prepared contract or guide is not a
-completed implementation. Finish the bounded slice, then freeze the delivery
-scope for release checks instead of adding more features during that gate.
+[Concurrent review collection](../REVIEW-COLLECTION.md) is implemented in source:
+`unio review-set` freezes common material, admits explicit reviewers separately,
+preserves individual receipts and summarizes current evidence without acceptance.
+Six focused installed mock cases passed. The frozen contract is `b0e5889`;
+implementation started as a token-capped GLM partial and was completed by this
+existing lead. Preserve that Source failure separately from lead checks.
+The next milestone is release delivery: freeze the completed 0.5.10/0.5.11 scope,
+run the combined gate, check isolated installation and publish official bytes.
+Do not add finding aggregation, routing automation or other features during that
+gate. See the [current sequence and rough estimates](ROADMAP.md#next-useful-slices).
 
 Preserve the owner's newer dashboard/site/branding commits and any active writer
 in those scopes. The dashboard uses plain X controls, small status squares,
@@ -64,8 +68,8 @@ These are historical implementation facts, not new release claims:
   tests; actual grants, scope reservations and dependency evidence stay required.
 - Review receipt delivery `81ecc76`: native4/4/scope10, nine receipt methods,
   existing review compatibility and seven separate installed acceptance checks.
-  It reads evidence without a provider call or human acceptance. Concurrent
-  collection is the next separate slice, not implied by a summary.
+  It reads evidence without a provider call or human acceptance. The subsequent
+  concurrent collector adds explicit reviewer calls; the local summary stays read-only.
 - Scoreboard bundling and collection contract `b0e5889`: native4/4/scope3,
   including the previously failing branding test and canonical adapter check.
 

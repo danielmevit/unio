@@ -7,6 +7,16 @@ current instructions and the selected project's rules. These defaults apply
 whenever Unio is active; they are not permission to spend beyond an owner's
 approved plans, task scope or invocation budget.
 
+## Give a rough estimate before new features
+
+When introducing a new feature or milestone, tell the owner what the next
+useful slice delivers and give a rough elapsed-time range. Distinguish coding
+from required checks, publication and installation. Name material uncertainty,
+such as an unavailable worker or an unresolved dependency, and update the range
+when findings change it. Estimates guide priorities; they are not guarantees
+or automatic time limits on a healthy worker. Prefer finishing the current
+bounded slice and releasing checked work over continually expanding its scope.
+
 ## Show the dashboard link at session start
 
 Owner rule: at the beginning of every Unio lead session, after identifying

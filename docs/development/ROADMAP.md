@@ -2,7 +2,7 @@
 
 Your AIs, in sync.
 
-Current update, 2026-10-11: [v0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9)
+Current update, 2026-10-12: [v0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9)
 is the latest published release. Recovery, the browser launcher, manual capacity
 readings, explicit Codex metadata refresh, the managed dashboard and the saved
 dashboard redesign have shipped. Vibe, Perplexity and Copilot adapters are
@@ -41,6 +41,13 @@ are fixture-specific; history-scale real-workspace behavior needs further
 profiling. The bounded source slice passed six focused tests, 186 manual and
 61 automatic save checks, native scope/validation and personal lead review.
 It is not a new published release.
+The review pipeline now also has [concurrent collection](../REVIEW-COLLECTION.md):
+an explicit reviewer set receives the same complete material with independent
+account admission, private receipts and a combined read-only summary. Six
+focused installed mock cases passed, including real overlap, shared-budget
+refusal, changed inputs and interruption cleanup. Finding extraction and automatic
+follow-up remain later slices. Freeze the completed 0.5.10/0.5.11 delivery scope
+for combined release checks; do not add those later features during publication.
 Genuine lead-limit restart remains unobserved and experimental/opt-in.
 Earlier dated sections below preserve their historical context.
 
@@ -74,7 +81,7 @@ low-tier lead.
 | 2 | Simple daily use and measured performance | Launcher and managed dashboard shipped; daily-use guide and save probe are checked follow-ups. Save/scan optimization still needs measured comparisons. |
 | 3 — CLI slice checked | Shared-account allowance and worker readiness | Native slots, manual readings and Codex refresh shipped. Cached Claude authentication is in the 0.5.10 candidate; the 0.5.11 fleet CLI combines local slots, bench/binary facts and cached observations. Other automatic provider readings remain planned. |
 | 4 — CLI slice checked | Ready-task dispatch and dependency handling | Read-only planner and explicit owner-granted single-attempt dispatch passed focused/native checks and personal review. Automatic scheduling remains planned. |
-| 5 — receipt slice implemented | Native independent review pipeline | Development source preserves separate single-review receipts and summarizes exact-revision evidence; parallel collection and finding aggregation remain separate planned slices. |
+| 5 — collection slice checked | Native independent review pipeline | Development source preserves separate receipts, summarizes exact-revision evidence and collects explicit reviewer sets concurrently. Finding aggregation remains planned. |
 | 6 | Evidence-based routing and context efficiency | Ledger/score and curated guides exist; exact model/task profiles and automatic suggestions remain planned. |
 | 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
@@ -83,18 +90,21 @@ low-tier lead.
 The fleet CLI, read-only planner and explicit dispatch are checked source candidates.
 Their release status is in the [version plan](../VERSION-PLAN.md). Next:
 
-1. **Measured save optimization:** reduce demonstrated Git/ignore calls and
-   repeated save validation without weakening snapshot, secret or retention
-   checks. Generated workload timings identify overhead; subsequent real project
-   runs reproduced the helper timeout. No isolated cause or speedup is established.
-2. **Ship the checked CLI slices:** include the fleet, planner and explicit
-   single-attempt dispatch in the next versioned release validation. Keep the
-   published stable installation separate from these source candidates.
-3. **Review aggregation:** build on the [receipt and summary slice](../REVIEW-RECEIPTS.md)
-   to collect independent reviews concurrently over identical material.
-   Agreement must never become human acceptance automatically.
-4. **Evidence-based routing:** record model, route, effort, task category and
-   correction burden from useful work, then offer transparent suggestions.
+1. **Ship the completed patch scope:** freeze archival, fleet, planner, explicit
+   dispatch and review collection work for the full release gate, isolated install
+   and publication checks. Keep stable installation separate until official bytes
+   are verified. Initial estimate: 1–2 hours if no substantial gate failures.
+2. **Evidence-based routing:** record model, route, effort, task category and
+   correction burden from useful work, then offer transparent worker-selection
+   suggestions using availability and shared budgets. Initial estimate: 3–6 hours
+   for a bounded CLI slice; automatic routing is separate. Update these estimates
+   when implementation findings or worker availability change.
+3. **Measured save optimization:** sibling-ignore batching is checked and measured.
+   Investigate remaining real-history/helper timeouts with matched workloads;
+   no general speedup or universal timeout fix is established.
+4. **Review findings:** extract and organize findings from the now-checked
+   [concurrent collection](../REVIEW-COLLECTION.md) without hiding disagreement
+   or treating agreement as human acceptance.
 5. **Lead continuity and phone access:** supported session attachment, lead transfer
    after a handoff, then scoped pairing and message delivery. These need session
    ownership and transport work; a local dashboard is not remote control.

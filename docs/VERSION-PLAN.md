@@ -17,7 +17,7 @@ remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The comp
 
 | Version | Included work | State |
 | --- | --- | --- |
-| 0.5.11 | Recovery-save performance probe, local fleet overview, checked planner/explicit dispatch, and independent review receipts with a read-only summary | Planner/dispatch integrated and checked; receipt/summary implemented in development source; combined release validation and publication pending |
+| 0.5.11 | Recovery-save performance probe and measured sibling-ignore batching, local fleet overview, checked planner/explicit dispatch, independent review receipts and concurrent explicit reviewer collection | Functional slices implemented with focused checks; delivery scope frozen for combined release validation, installation and publication |
 | 0.5.10 | Bounded recovery-save archival and usage, explicit cached Claude sign-in, remembered task filters and daily-use guide | Integrated release candidate; complete merged-tree gate, installation and publication pending |
 | 0.5.9 | Saved dashboard redesign: readable task list, agent allowance cards, activity timeline and map readability; packaged Copilot Auto Balance and fleet guide | [Released and installed 2026-10-10](https://github.com/danielmevit/unio/releases/tag/v0.5.9); source0c2def4, complete gate, six browser suites, artifacts, upgrade/restore and official download/install checks passed |
 | 0.5.0 | Completed A/B/C/D rename; installer, commands, config, docs and prototypes | [Published 2026-10-06](https://github.com/danielmevit/unio/releases/tag/v0.5.0); source aebe23c; installed with owner approval |
@@ -38,9 +38,10 @@ pipeline, reasoning/context efficiency and measured performance. The owner addit
 On 2026-10-11 the owner added [macOS and Windows host support](development/CROSS-PLATFORM.md).
 An [interactive session workspace](development/SESSION-WORKSPACE.md) is a separate
 planned feature using the existing dashboard and engine. Neither has an assigned
-release number or implies current native support. The current functional slice
-connects the checked planner to explicit approved task dispatch while owner
-UI/site work proceeds separately.
+release number or implies current native support. The current delivery freezes
+the checked CLI slices, including [concurrent review collection](REVIEW-COLLECTION.md),
+for release checks while owner UI/site work proceeds separately. Finding
+aggregation and routing automation are later work, not additions to this gate.
 On 2026-10-07 the owner added [lead cooldown restart](development/LEAD-COOLDOWN-RESTART.md):
 an owner-enabled supervisor waits outside the lead CLI and restarts it from
 the saved handoff after its allowance resets. The five-hour fallback is five

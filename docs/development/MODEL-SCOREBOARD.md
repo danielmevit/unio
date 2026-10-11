@@ -1,9 +1,28 @@
 # Model scoreboard and delegation guide
 
-Updated 2026-10-11 from real Unio work. Read this before delegation, alongside
+Updated 2026-10-12 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
+
+## Concurrent review collection — 2026-10-12
+
+Vibe2.26.1 / GLM5.3 / high ended `REVIEW-COLLECTION-VIBE-1` with Source3
+at its 4M cumulative-token bound: 4,055,011 total tokens in361.726seconds,
+estimated usage cost$5.8832774 within the existing subscription. This was a
+configured token-cap stop, not evidence of a connection failure or a new charge.
+It left partial installer/gate/changelog edits without tests or an early commit.
+The lead committed that partial on the worker branch before continuing.
+No invocation retry or additional Codex session was started. With the capable
+replacement routes reserved or unavailable at takeover, the existing lead
+completed the bounded implementation and acceptance coverage. Worker Source
+failure remains separate from the final lead checks; no worker approval is inferred.
+
+Copilot1.0.95 / Auto Balance returned the separate guide proposal with
+Source0/native0/adapter0 in24.263seconds. The lead restored Markdown lost in
+terminal rendering and added executable quoted examples. Effective model/effort
+remain Unknown. Native0.5.9 automatic save helpers timed out for both runs;
+preserved Git commits are evidence of saved work, not successful recovery saves.
 
 ## Review receipt implementation — 2026-10-11
 
