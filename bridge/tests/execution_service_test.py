@@ -5,6 +5,7 @@
 import concurrent.futures
 from contextlib import contextmanager
 import copy
+import fcntl
 import hashlib
 import importlib.util
 import inspect
@@ -285,14 +286,93 @@ class ExecutionServiceTests(unittest.TestCase):
 
     def test_frozen_signatures_and_errors(self):
         signatures = dict(prepare='draft_id expected_hash request_key', approve='job_id expected_hash approval_key preview_hash',
-            start='job_id approval_key reservation_key', verify='job_id action_key', review='job_id action_key',
+            start='job_id approval_key reservation_key preflight', verify='job_id action_key', review='job_id action_key',
             accept='job_id revision_hash action_key', stop='job_id action_key', cancel='job_id', get='job_id', jobs='', close='')
         for name, names in signatures.items():
             self.assertEqual(list(inspect.signature(getattr(ExecutionService, name)).parameters), ['self'] + names.split())
+        # The only deliberate extension: an optional keyword-only start hook.
+        # Existing HTTP callers keep their three-positional-argument behavior.
+        hook = inspect.signature(ExecutionService.start).parameters['preflight']
+        self.assertIs(hook.kind, inspect.Parameter.KEYWORD_ONLY)
+        self.assertIs(hook.default, None)
         self.assertEqual(list(inspect.signature(ExecutionService).parameters),
             ['workspace','engine','worker','reviewer','config_dir','template_path','worker_company','reviewer_company'])
         for code, status in service.ERRORS.items():
             self.assertEqual(ExecutionError(code).status, status)
+
+    def test_start_preflight_refusal_preserves_approval_and_task_absence(self):
+        draft, view, approval = self.approved()
+        identity = view['job']['id']
+        def refuse(_binding):
+            raise ExecutionError('not_ready')
+        self.error('not_ready', self.instance.start, identity, approval, self.key(), preflight=refuse)
+        after = self.instance.get(identity)
+        self.assertEqual(after['job']['state'], 'approved')
+        self.assertEqual(after['execution'], dict(state='not_started', launcher_exit=None))
+        self.assertFalse((self.workspace / 'coord/tasks' / (view['preview']['task_id'] + '.md')).exists())
+        with JobStore(self.workspace) as store:
+            self.assertIsNone(store.get(identity)['reservation_key'])
+        self.assertEqual(self.calls(), [])
+        # A noncallable hook is refused before any coordination or mutation.
+        self.error('invalid_request', self.instance.start, identity, approval, self.key(), preflight=object())
+        self.assertEqual(self.instance.get(identity)['job']['state'], 'approved')
+        self.assertEqual(self.calls(), [])
+
+    def test_start_preflight_runs_under_lock_and_only_on_fresh_start(self):
+        draft, view = self.prepared()
+        identity = view['job']['id']
+        seen = []
+        def under_lock(binding):
+            seen.append(binding['job_id'])
+            binding['preview']['worker'] = 'mutated'  # a private copy, never the stored binding
+            descriptor = os.open(self.workspace / 'coord/ui-execution/lock', os.O_RDWR)
+            try:
+                with self.assertRaises(BlockingIOError):
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(descriptor)
+        # Not approved yet: the callback never runs for a refused start.
+        self.error('conflict', self.instance.start, identity, self.key(), self.key(), preflight=under_lock)
+        self.assertEqual(seen, [])
+        approval = self.key()
+        self.instance.approve(identity, draft['content_sha256'], approval, view['preview']['preview_hash'])
+        reservation = self.key()
+        started = self.instance.start(identity, approval, reservation, preflight=under_lock)
+        self.assertEqual(seen, [identity])
+        self.assertEqual(started['execution'], dict(state='launch_accepted', launcher_exit=0))
+        # A same-key replay returns the existing evidence without the callback.
+        replay = self.instance.start(identity, approval, reservation, preflight=under_lock)
+        self.assertEqual(seen, [identity])
+        self.assertEqual(replay['execution'], started['execution'])
+        self.assertEqual(len(self.calls('run')), 1)
+
+    def test_start_preflight_replay_keeps_unknown_without_callback(self):
+        draft, view, approval = self.approved()
+        identity = view['job']['id']; key = self.key()
+        seen = []
+        def record(binding):
+            seen.append(binding['job_id'])
+        write = self.instance._state_write
+        failed = False
+        def fail_receipt_once(state):
+            nonlocal failed
+            if state['execution']['state'] == 'launch_accepted' and not failed:
+                failed = True
+                raise OSError('PRIVATE receipt failure')
+            return write(state)
+        with patch.object(self.instance, '_state_write', side_effect=fail_receipt_once):
+            self.error('outcome_unknown', self.instance.start, identity, approval, key, preflight=record)
+        self.assertEqual(seen, [identity])
+        # The lost receipt stays unknown; its replay never reruns the callback
+        # or launches again, and a changed key never retries.
+        got = self.open().start(identity, approval, key, preflight=record)
+        self.assertEqual(seen, [identity])
+        self.assertEqual(got['job']['state'], 'completion_unknown')
+        self.assertIn('outcome_unknown', got['warnings'])
+        self.assertEqual(len(self.calls('run')), 1)
+        self.error('conflict', self.open().start, identity, approval, self.key(), preflight=record)
+        self.assertEqual(seen, [identity])
+        self.assertEqual(len(self.calls('run')), 1)
 
     def test_queue_backed_happy_flow_exact_public_view_and_acceptance(self):
         draft, view, approval, reservation = self.started()
