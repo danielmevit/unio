@@ -705,7 +705,7 @@ sys.stdout.buffer.write((root/'coord'/'snapshot.json').read_bytes())
         const s = getComputedStyle(document.documentElement);
         return ['--map-passed','--map-failed','--map-attention'].map(k => s.getPropertyValue(k).trim());
       });
-      assert.deepEqual(strokes, theme === 'light' ? ['#1a7f37','#cf222e','#9a6700'] : ['#3fb950','#f85149','#d29922']);
+      assert.deepEqual(strokes, theme === 'light' ? ['#357039','#9e2d26','#7e5908'] : ['#7acb7d','#f86b60','#e1aa40']);
       assert.ok(await page.evaluate(() => [...document.querySelectorAll('#work-map [data-kind="task"]')].every(g => {
         const root = getComputedStyle(document.documentElement), signal = g.dataset.signal;
         const token = signal === 'active' ? '--text-main' : signal === 'none' ? '--muted' : '--map-' + signal;

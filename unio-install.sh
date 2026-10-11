@@ -6441,9 +6441,14 @@ cat > "$CONF_DIR/lib/browser/activity.css" <<'UNIO_BROWSER_ACTIVITY_CSS'
   --text-chip: #363636;
   --bg-chip-warn: #e0e0e0;
   --text-chip-warn: #353535;
-  --map-passed: #1a7f37;
-  --map-failed: #cf222e;
-  --map-attention: #9a6700;
+  /* status colors: green = finished, the brand's rust = failed and its
+     mustard = needs attention, at one intensity and one perceived
+     brightness so none of the three stands out (OKLCH L 0.49 on light,
+     0.77 on dark; the red sits a little lower, L 0.47 / 0.70, with more
+     chroma, because a saturated red already looks brighter) */
+  --map-passed: #357039;
+  --map-failed: #9e2d26;
+  --map-attention: #7e5908;
 }
 
 [data-theme="light"] {
@@ -6491,9 +6496,9 @@ cat > "$CONF_DIR/lib/browser/activity.css" <<'UNIO_BROWSER_ACTIVITY_CSS'
   --text-chip: #c4c4c4;
   --bg-chip-warn: #383838;
   --text-chip-warn: #dddddd;
-  --map-passed: #3fb950;
-  --map-failed: #f85149;
-  --map-attention: #d29922;
+  --map-passed: #7acb7d;
+  --map-failed: #f86b60;
+  --map-attention: #e1aa40;
 }
 
 body {
@@ -7330,9 +7335,9 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
     --text-chip: #c4c4c4;
     --bg-chip-warn: #383838;
     --text-chip-warn: #dddddd;
-    --map-passed: #3fb950;
-    --map-failed: #f85149;
-    --map-attention: #d29922;
+    --map-passed: #7acb7d;
+    --map-failed: #f86b60;
+    --map-attention: #e1aa40;
     --t-rust: #cb7f72;
     --t-mustard: #caaa72;
     --t-sea: #74b4a5;

@@ -151,8 +151,13 @@ Dark charcoal grays, no accent color. Website tokens (`:root` in
 | `--ghost` | `#363636` | Readouts: present, but almost part of the background |
 | `--on` / `--on-text` | `#d2d2d2` / `#1c1c1c` | Selected / primary (inverted) |
 
-Status colors are semantic only and always paired with text: passed
-`#3fb950`, failed `#f85149`, needs attention `#d29922`.
+Status colors are green for finished and the Cradle rust and mustard for
+failed and needs attention, at one intensity and one perceived brightness so
+that none of the three stands out, and always paired with text: finished
+`#7acb7d`, failed `#f86b60`, needs attention `#e1aa40` on dark;
+`#357039`, `#9e2d26`, `#7e5908` on light. Green and mustard share OKLCH
+lightness 0.77 (dark) and 0.49 (light); the red sits a little lower (0.70 and
+0.47) with more chroma, because a saturated red already looks brighter.
 
 **Agent tones** (muted, from the owner's game-UI reference "The Cradle"), one
 per agent: its tile, its dots in the animated U, the sync-bus nodes.
