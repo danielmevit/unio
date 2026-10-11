@@ -10,10 +10,8 @@ dot's place on the letter's grid and draws it as an even rounded square at
 
   logo/single/   strokes one dot wide, as in the font (the website's logo)
   logo/double/   strokes two dots wide: every dot grows to a 2 x 2 block
-  patterns/      dot lines drawn like a Doto stroke: one row of dots with a
-                 dot or a short dash above or below here and there; five
-                 shapes, each also mirrored, and one clear line. Animated
-                 like the logo
+  patterns/      the dot line: one row of dots drawn like a Doto stroke,
+                 animated like the logo
 
 Every logo comes in one ink, the agent tones (a still moment of the wave) and
 animated (a ring build-in from the top-left, then the tones flow through the
@@ -215,10 +213,7 @@ def main():
     (OUT / 'patterns').mkdir(parents=True, exist_ok=True)
     for old in (OUT / 'patterns').glob('*.svg'):
         old.unlink()
-    write_line('line-clear', 1, extras=False)
-    for i, seed in enumerate((5, 12, 23, 38, 41), start=1):
-        write_line(f'line-{i}', seed)
-        write_line(f'line-{i}-mirrored', seed, mirror=True)
+    write_line('line', 1, extras=False)
     for sub in ('logo/single', 'logo/double', 'patterns'):
         print(sub + ':', ', '.join(sorted(p.name for p in (OUT / sub).glob('*.svg'))))
 

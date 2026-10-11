@@ -95,11 +95,11 @@ forming one word. Every dot is an even rounded square at 80 % of the dot
 spacing. On the website header it stands alone, with no pill or separate
 symbol, and animates like the titles.
 
-The logo files, the dot lines and the story of what the dots mean are in the
+The logo files, the dot line and the story of what the dots mean are in the
 [brand kit](brand/README.md): the logo with one-dot and two-dot strokes, each
 in one ink, the agent tones and animated, for light and dark backgrounds,
-plus eleven animated dot lines for breaking up long pages, all drawn from
-Doto by `tools/make-brand-assets.py`. The
+plus the animated dot line for breaking up long pages, all drawn from Doto
+by `tools/make-brand-assets.py`. The
 earlier dot-matrix U (`brand/legacy/`) is still the website favicon and the
 dashboard's loading screen.
 
