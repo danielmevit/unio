@@ -3973,10 +3973,6 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
         <p id="map-activity" class="small map-activity" role="status" aria-live="polite"></p>
         <p id="map-empty" class="small map-empty" hidden></p>
         <div id="tasks-map-container" class="map-container">
-          <details class="map-howto">
-            <summary>How to read the map</summary>
-            <p id="map-help" class="small map-help">Read left to right: project → worker → task. Connections show ownership, not execution order. Scroll to zoom at the pointer; hold the middle mouse button and drag to pan, or drag with the left button or touch. Use + / − to zoom, arrow keys to pan, 0 to fit, or Home to reset. Tab to a node, then Enter or Space to select.</p>
-          </details>
           <p class="small map-legend" aria-label="Node status legend">
             <span><i class="signal-passed" aria-hidden="true"></i>Finished: checks passed, review approved</span>
             <span><i class="signal-failed" aria-hidden="true"></i>Recorded failure</span>
@@ -3992,6 +3988,10 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
                 <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
                 <button id="map-fit" type="button" aria-pressed="true" aria-label="Fit view">Fit</button>
                 <button id="map-reset" type="button" aria-label="Reset to 100%">100%</button>
+                <span class="map-help-wrap">
+                  <button id="map-help-toggle" type="button" aria-label="How to read the map" aria-expanded="false" aria-controls="map-help">?</button>
+                  <p id="map-help" class="map-help" role="note">Read left to right: project → worker → task. Connections show ownership, not execution order. Scroll to zoom at the pointer; hold the middle mouse button and drag to pan, or drag with the left button or touch. Use + / − to zoom, arrow keys to pan, 0 to fit, or Home to reset. Tab to a node, then Enter or Space to select.</p>
+                </span>
               </div>
               <div class="map-scroll-area">
                 <svg id="work-map" tabindex="0" role="group" aria-label="Work map" aria-describedby="map-help"></svg>
@@ -4169,6 +4169,18 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       // the running-first hint describes the map's order, not the list's
       document.getElementById("map-activity").hidden = currentView !== "map";
     }
+  }
+
+  // "?" in the map controls: hover or keyboard focus shows how to read the
+  // map; a click or tap keeps it open until clicked again, Escape or a
+  // click elsewhere.
+  const helpToggle = document.getElementById("map-help-toggle");
+  if (helpToggle) {
+    const wrap = helpToggle.parentElement;
+    const setOpen = (open) => { wrap.classList.toggle("is-open", open); helpToggle.setAttribute("aria-expanded", String(open)); };
+    helpToggle.addEventListener("click", () => setOpen(!wrap.classList.contains("is-open")));
+    helpToggle.addEventListener("keydown", (event) => { if (event.key === "Escape") { setOpen(false); helpToggle.blur(); } });
+    document.addEventListener("pointerdown", (event) => { if (!wrap.contains(event.target)) setOpen(false); });
   }
 
   const mapBtn = document.getElementById("view-map");
@@ -6240,11 +6252,10 @@ footer a { display: inline-flex; align-items: center; min-height: 44px; color: v
    buttons, no extra frame. The zoom level wears the map's own background,
    so it stays readable when a node slides behind it. */
 .map-canvas-column { position: relative; }
-.map-camera-controls { position: absolute; bottom: 10px; left: 10px; z-index: 2; display: flex; align-items: center; gap: 6px; }
+.map-camera-controls { position: absolute; bottom: 10px; left: 10px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: calc(100% - 20px); }
 .map-camera-controls #map-zoom-level { align-self: stretch; display: grid; place-items: center; padding: 0 4px; background: var(--map-bg, var(--bg-main)); }
 .map-camera-controls button { min-width: 44px; }
 #map-zoom-level { min-width: 4ch; text-align: center; font-size: 12px; color: var(--muted); }
-.map-help { margin: 0 0 12px; max-width: 100ch; }
 .map-activity { margin: 0 0 12px; font-weight: 600; }
 .map-empty { margin: 0 0 12px; color: var(--muted); }
 .map-workspace { display: grid; grid-template-columns: minmax(0, 1fr); }
@@ -6717,9 +6728,19 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .raw-data pre { max-height: 360px; overflow: auto; }
 
 /* ---- Map: the how-to stays out of the way until asked for ----------------- */
-.map-howto { margin: 0 0 10px; }
-.map-howto > summary { min-height: 0; padding: 4px 0; font-family: var(--mono); font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; width: max-content; }
-.map-howto .map-help { margin: 4px 0 6px; }
+/* "?" at the end of the map controls: the how-to opens above the controls
+   on hover or keyboard focus, and a click or tap keeps it open */
+.map-help-wrap { display: flex; }
+.map-help {
+  position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 4;
+  width: max-content; max-width: min(440px, calc(100vw - 48px)); margin: 0; padding: 12px 14px;
+  font-size: 12.5px; line-height: 1.55; color: var(--text-main);
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+  visibility: hidden; opacity: 0; transition: opacity .12s, visibility 0s .12s;
+}
+.map-help-wrap:hover .map-help, .map-help-wrap:focus-within .map-help, .map-help-wrap.is-open .map-help {
+  visibility: visible; opacity: 1; transition: opacity .12s;
+}
 
 /* ---- Phones: filters two to a row instead of one long column -------------- */
 @media (max-width: 720px) {

@@ -113,6 +113,18 @@
     }
   }
 
+  // "?" in the map controls: hover or keyboard focus shows how to read the
+  // map; a click or tap keeps it open until clicked again, Escape or a
+  // click elsewhere.
+  const helpToggle = document.getElementById("map-help-toggle");
+  if (helpToggle) {
+    const wrap = helpToggle.parentElement;
+    const setOpen = (open) => { wrap.classList.toggle("is-open", open); helpToggle.setAttribute("aria-expanded", String(open)); };
+    helpToggle.addEventListener("click", () => setOpen(!wrap.classList.contains("is-open")));
+    helpToggle.addEventListener("keydown", (event) => { if (event.key === "Escape") { setOpen(false); helpToggle.blur(); } });
+    document.addEventListener("pointerdown", (event) => { if (!wrap.contains(event.target)) setOpen(false); });
+  }
+
   const mapBtn = document.getElementById("view-map");
   if (mapBtn) {
     mapBtn.addEventListener("click", () => { currentView = "map"; rememberView(); updateViewSwitch(); if (lastData) render(lastData); });

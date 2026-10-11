@@ -293,11 +293,10 @@ footer a { display: inline-flex; align-items: center; min-height: 44px; color: v
    buttons, no extra frame. The zoom level wears the map's own background,
    so it stays readable when a node slides behind it. */
 .map-canvas-column { position: relative; }
-.map-camera-controls { position: absolute; bottom: 10px; left: 10px; z-index: 2; display: flex; align-items: center; gap: 6px; }
+.map-camera-controls { position: absolute; bottom: 10px; left: 10px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: calc(100% - 20px); }
 .map-camera-controls #map-zoom-level { align-self: stretch; display: grid; place-items: center; padding: 0 4px; background: var(--map-bg, var(--bg-main)); }
 .map-camera-controls button { min-width: 44px; }
 #map-zoom-level { min-width: 4ch; text-align: center; font-size: 12px; color: var(--muted); }
-.map-help { margin: 0 0 12px; max-width: 100ch; }
 .map-activity { margin: 0 0 12px; font-weight: 600; }
 .map-empty { margin: 0 0 12px; color: var(--muted); }
 .map-workspace { display: grid; grid-template-columns: minmax(0, 1fr); }
@@ -770,9 +769,19 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .raw-data pre { max-height: 360px; overflow: auto; }
 
 /* ---- Map: the how-to stays out of the way until asked for ----------------- */
-.map-howto { margin: 0 0 10px; }
-.map-howto > summary { min-height: 0; padding: 4px 0; font-family: var(--mono); font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; width: max-content; }
-.map-howto .map-help { margin: 4px 0 6px; }
+/* "?" at the end of the map controls: the how-to opens above the controls
+   on hover or keyboard focus, and a click or tap keeps it open */
+.map-help-wrap { display: flex; }
+.map-help {
+  position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 4;
+  width: max-content; max-width: min(440px, calc(100vw - 48px)); margin: 0; padding: 12px 14px;
+  font-size: 12.5px; line-height: 1.55; color: var(--text-main);
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+  visibility: hidden; opacity: 0; transition: opacity .12s, visibility 0s .12s;
+}
+.map-help-wrap:hover .map-help, .map-help-wrap:focus-within .map-help, .map-help-wrap.is-open .map-help {
+  visibility: visible; opacity: 1; transition: opacity .12s;
+}
 
 /* ---- Phones: filters two to a row instead of one long column -------------- */
 @media (max-width: 720px) {

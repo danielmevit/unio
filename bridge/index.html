@@ -211,10 +211,6 @@
         <p id="map-activity" class="small map-activity" role="status" aria-live="polite"></p>
         <p id="map-empty" class="small map-empty" hidden></p>
         <div id="tasks-map-container" class="map-container">
-          <details class="map-howto">
-            <summary>How to read the map</summary>
-            <p id="map-help" class="small map-help">Read left to right: project → worker → task. Connections show ownership, not execution order. Scroll to zoom at the pointer; hold the middle mouse button and drag to pan, or drag with the left button or touch. Use + / − to zoom, arrow keys to pan, 0 to fit, or Home to reset. Tab to a node, then Enter or Space to select.</p>
-          </details>
           <p class="small map-legend" aria-label="Node status legend">
             <span><i class="signal-passed" aria-hidden="true"></i>Finished: checks passed, review approved</span>
             <span><i class="signal-failed" aria-hidden="true"></i>Recorded failure</span>
@@ -230,6 +226,10 @@
                 <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
                 <button id="map-fit" type="button" aria-pressed="true" aria-label="Fit view">Fit</button>
                 <button id="map-reset" type="button" aria-label="Reset to 100%">100%</button>
+                <span class="map-help-wrap">
+                  <button id="map-help-toggle" type="button" aria-label="How to read the map" aria-expanded="false" aria-controls="map-help">?</button>
+                  <p id="map-help" class="map-help" role="note">Read left to right: project → worker → task. Connections show ownership, not execution order. Scroll to zoom at the pointer; hold the middle mouse button and drag to pan, or drag with the left button or touch. Use + / − to zoom, arrow keys to pan, 0 to fit, or Home to reset. Tab to a node, then Enter or Space to select.</p>
+                </span>
               </div>
               <div class="map-scroll-area">
                 <svg id="work-map" tabindex="0" role="group" aria-label="Work map" aria-describedby="map-help"></svg>
