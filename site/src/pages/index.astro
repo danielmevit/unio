@@ -733,17 +733,18 @@ const faqs = [
   .sec-readout-right { justify-items: end; text-align: right; }
   /* typing: the untyped rest keeps its space, so nothing shifts or jumps */
   .sec-readout .rest { color: transparent; }
-  /* a thin blinking cursor; it stays at the end once the typing is done */
+  /* a thin blinking cursor in the text's own color; it stays at the end
+     once the typing is done */
   .sec-readout .typed.is-active::after {
     content: ""; display: inline-block; width: 1.5px; height: 1.2em; margin: 0 -4px 0 2.5px;
-    vertical-align: -0.25em; background: var(--label); animation: caret 1s steps(1) infinite;
+    vertical-align: -0.25em; background: currentColor; animation: caret 1s steps(1) infinite;
   }
   @keyframes caret { 50% { opacity: 0; } }
   /* without the typing, the cursor still marks the end, without blinking */
   @media (prefers-reduced-motion: reduce) {
     .sec-readout > span:last-child::after {
       content: ""; display: inline-block; width: 1.5px; height: 1.2em; margin: 0 -4px 0 2.5px;
-      vertical-align: -0.25em; background: var(--label);
+      vertical-align: -0.25em; background: currentColor;
     }
   }
   .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
