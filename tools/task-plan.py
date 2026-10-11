@@ -23,6 +23,7 @@ import stat
 import subprocess
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 SCHEMA_VERSION = 1
@@ -84,6 +85,8 @@ HEX40 = re.compile(r'^[0-9a-f]{40}$')
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
 WORKER_RE = re.compile(r'^[a-z][a-z0-9_-]{0,63}$')
 TASK_ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
+LABEL = re.compile(r'^[a-z][a-z0-9_-]{0,63}$')
+GIT_ID = re.compile(r'^(?:[0-9a-f]{40}|[0-9a-f]{64})$')
 KNOWN_JOB_COLUMNS = (
     'id', 'request_key', 'draft_id', 'draft_sha256', 'worker', 'created_at',
     'state', 'approval_key', 'approved_at', 'reservation_key', 'reserved_at',
@@ -338,18 +341,7 @@ def task_scopes_conflict(task_scopes, held_scopes):
     return False, None, None, None
 
 
-def parse_task_file(coord_dir, task_id, expected_sha256):
-    task_file = coord_dir / 'tasks' / (task_id + '.md')
-    ok, err = check_path_no_symlinks(coord_dir, Path('tasks') / (task_id + '.md'))
-    if not ok:
-        return None, None, 'unresolved', 'task_path_unsafe'
-    try:
-        raw, _ = read_regular(task_file, MAX_TASK_FILE_BYTES)
-    except FileNotFoundError:
-        return None, None, 'unresolved', 'missing_task_file'
-    except (OSError, ValueError):
-        return None, None, 'unresolved', 'cannot_read_task_file'
-
+def parse_task_markdown(raw, expected_sha256):
     actual_sha256 = hashlib.sha256(raw).hexdigest()
     if actual_sha256 != expected_sha256:
         return None, None, 'unresolved', 'task_hash_mismatch'
@@ -389,6 +381,179 @@ def parse_task_file(coord_dir, task_id, expected_sha256):
     return validated_scopes, actual_sha256, 'ok', None
 
 
+def parse_task_file(coord_dir, task_id, expected_sha256):
+    task_file = coord_dir / 'tasks' / (task_id + '.md')
+    ok, err = check_path_no_symlinks(coord_dir, Path('tasks') / (task_id + '.md'))
+    if not ok:
+        return None, None, 'unresolved', 'task_path_unsafe'
+    try:
+        raw, _ = read_regular(task_file, MAX_TASK_FILE_BYTES)
+    except FileNotFoundError:
+        return None, None, 'unresolved', 'missing_task_file'
+    except (OSError, ValueError):
+        return None, None, 'unresolved', 'cannot_read_task_file'
+
+    return parse_task_markdown(raw, expected_sha256)
+
+
+def parse_prepared_binding(coord_dir, job_id, task, base_revision):
+    binding_base = Path('ui-execution') / 'bindings'
+    filenames = (
+        f"{job_id}.json",
+        f"{job_id}.request.json",
+        f"{job_id}.scope.json",
+        f"{job_id}.validate.json",
+        f"{job_id}.md",
+    )
+    for fn in filenames:
+        ok, _ = check_path_no_symlinks(coord_dir, binding_base / fn)
+        if not ok:
+            return None, 'unresolved', 'prepared_path_unsafe', 'prepared binding path contains symlink or special file', None, None
+
+    binding_path = coord_dir / binding_base / f"{job_id}.json"
+    try:
+        raw_binding, _ = read_regular(binding_path, MAX_TASK_FILE_BYTES)
+    except FileNotFoundError:
+        return None, 'unresolved', 'missing_prepared_material', 'prepared binding file is missing', None, None
+    except (OSError, ValueError):
+        return None, 'unresolved', 'invalid_prepared_material', 'prepared binding file unreadable or exceeds limit', None, None
+
+    binding = parse_strict_json(raw_binding)
+    if binding is None:
+        return None, 'unresolved', 'invalid_prepared_material', 'prepared binding is not valid strict UTF-8 JSON', None, None
+
+    fields = {
+        'schema_version', 'job_id', 'request_key', 'draft_id', 'draft_sha256',
+        'base', 'base_revision', 'worker_revision', 'preview', 'fingerprints', 'startup'
+    }
+    if (not isinstance(binding, dict) or set(binding.keys()) != fields
+            or not is_int(binding['schema_version']) or binding['schema_version'] != 1
+            or not HEX32.fullmatch(binding['job_id'])
+            or not HEX32.fullmatch(binding['request_key'])
+            or not HEX32.fullmatch(binding['draft_id'])
+            or not HEX64.fullmatch(binding['draft_sha256'])
+            or not GIT_ID.fullmatch(binding['base_revision'])
+            or not GIT_ID.fullmatch(binding['worker_revision'])
+            or binding['worker_revision'] != binding['base_revision']
+            or not isinstance(binding['base'], str)
+            or not 1 <= len(binding['base']) <= 4096):
+        return None, 'unresolved', 'invalid_prepared_material', 'corrupt binding structure', None, None
+
+    if binding['job_id'] != job_id:
+        return None, 'unresolved', 'prepared_identity_mismatch', 'binding job_id does not match task job_id', None, None
+
+    preview = binding['preview']
+    if (not isinstance(preview, dict) or set(preview.keys()) != {
+            'task_id', 'task_sha256', 'preview_hash', 'worker', 'reviewer',
+            'worker_company', 'reviewer_company'}
+            or not is_valid_task_id(preview['task_id'])
+            or preview['task_id'] != 'ui-' + job_id
+            or not is_valid_worker_id(preview['worker'])
+            or not LABEL.fullmatch(preview['reviewer'])
+            or not HEX64.fullmatch(preview['task_sha256'])
+            or not HEX64.fullmatch(preview['preview_hash'])):
+        return None, 'unresolved', 'invalid_prepared_material', 'corrupt stored preview', None, None
+
+    if preview['task_id'] != task['id']:
+        return None, 'unresolved', 'prepared_identity_mismatch', 'binding task_id does not match inventory task ID', None, None
+
+    if preview['worker'] != task['worker']:
+        return None, 'unresolved', 'job_worker_mismatch', 'binding worker does not match inventory worker', None, None
+
+    if binding['base_revision'] != base_revision:
+        return None, 'unresolved', 'prepared_base_mismatch', f"prepared binding bound to different base revision ({binding['base_revision'][:12]} != {base_revision[:12]})", None, None
+
+    if preview['task_sha256'] != task['task_sha256']:
+        return None, 'unresolved', 'task_hash_mismatch', 'task_sha256 in binding preview does not match inventory', None, None
+
+    try:
+        raw_req, _ = read_regular(coord_dir / binding_base / f"{job_id}.request.json", MAX_TASK_FILE_BYTES)
+        raw_scope, _ = read_regular(coord_dir / binding_base / f"{job_id}.scope.json", MAX_TASK_FILE_BYTES)
+        raw_val, _ = read_regular(coord_dir / binding_base / f"{job_id}.validate.json", MAX_TASK_FILE_BYTES)
+        raw_task, _ = read_regular(coord_dir / binding_base / f"{job_id}.md", MAX_TASK_FILE_BYTES)
+    except FileNotFoundError:
+        return None, 'unresolved', 'missing_prepared_material', 'prepared companion file missing', None, None
+    except (OSError, ValueError):
+        return None, 'unresolved', 'invalid_prepared_material', 'prepared companion file unreadable or exceeds limit', None, None
+
+    req_obj = parse_strict_json(raw_req)
+    scope_obj = parse_strict_json(raw_scope)
+    val_obj = parse_strict_json(raw_val)
+    if req_obj is None or not isinstance(scope_obj, list) or not isinstance(val_obj, list):
+        return None, 'unresolved', 'invalid_prepared_material', 'malformed companion JSON', None, None
+
+    actual_task_sha256 = hashlib.sha256(raw_task).hexdigest()
+    if actual_task_sha256 != preview['task_sha256']:
+        return None, 'unresolved', 'altered_companion', 'compiled task markdown hash does not match preview', None, None
+
+    full_preview = dict(preview)
+    full_preview['request'] = req_obj
+    full_preview['scope'] = scope_obj
+    full_preview['validate'] = val_obj
+    public = {k: v for k, v in full_preview.items() if k != 'preview_hash'}
+    canonical_public = json.dumps(public, ensure_ascii=True, sort_keys=True, separators=(',', ':')).encode()
+    if hashlib.sha256(canonical_public).hexdigest() != preview['preview_hash']:
+        return None, 'unresolved', 'altered_companion', 'preview digest does not match preview_hash', None, None
+
+    try:
+        task_text = raw_task.decode('utf-8')
+    except UnicodeDecodeError:
+        return None, 'unresolved', 'task_file_invalid_utf8', 'task markdown is not valid UTF-8', None, None
+
+    if (task_text.count('\n## Allowed scope\n') != 1 or task_text.count('\n## Validate\n') != 1
+            or not isinstance(req_obj, str) or not 1 <= len(req_obj) <= 4000
+            or not 1 <= len(scope_obj) <= 100 or not 1 <= len(val_obj) <= 30
+            or not all(isinstance(v, str) for v in scope_obj + val_obj)
+            or not isinstance(preview['worker_company'], str) or not isinstance(preview['reviewer_company'], str)
+            or preview['worker_company'] == preview['reviewer_company']):
+        return None, 'unresolved', 'invalid_prepared_material', 'corrupt bound task structure', None, None
+
+    prefix = ('# ' + preview['task_id'] + '\n\nSaved request (one literal JSON string):\n'
+              + json.dumps(req_obj, ensure_ascii=True) + '\n\n')
+    suffix = ('\n\n## Allowed scope\n' + ''.join('- ' + p + '\n' for p in scope_obj)
+              + '\n## Validate\n' + ''.join('$ ' + c + '\n' for c in val_obj))
+    if not task_text.startswith(prefix) or not task_text.endswith(suffix):
+        return None, 'unresolved', 'altered_companion', 'compiled task disagrees with public preview', None, None
+
+    instructions = task_text[len(prefix):-len(suffix)]
+    if not 1 <= len(instructions) <= 12000 or re.search(r'^## (?:Allowed scope|Validate)(?:\r)?$', instructions, re.MULTILINE):
+        return None, 'unresolved', 'invalid_prepared_material', 'corrupt compiled instructions', None, None
+
+    for p in scope_obj:
+        if (not p or p.startswith('/') or '\\' in p
+                or any(part in ('', '.', '..') for part in p.split('/'))
+                or any(unicodedata.category(c) in ('Cc', 'Zl', 'Zp') for c in p)
+                or p != p.strip()):
+            return None, 'unresolved', 'invalid_prepared_material', 'corrupt compiled scope path', None, None
+    if len(set(scope_obj)) != len(scope_obj):
+        return None, 'unresolved', 'invalid_prepared_material', 'duplicate compiled scope path', None, None
+
+    for c in val_obj:
+        if (not c.strip() or len(c) > 2000
+                or any(ch in '\x00\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029' for ch in c)):
+            return None, 'unresolved', 'invalid_prepared_material', 'corrupt compiled validate command', None, None
+
+    for label in ('worker_company', 'reviewer_company'):
+        if not 1 <= len(preview[label]) <= 100 or any(ord(ch) < 32 or ord(ch) == 127 for ch in preview[label]):
+            return None, 'unresolved', 'invalid_prepared_material', 'corrupt company label', None, None
+
+    fingerprints = binding['fingerprints']
+    if (not isinstance(fingerprints, dict) or set(fingerprints.keys()) != {'engine', 'config', 'template'}
+            or any(not HEX64.fullmatch(v) for v in fingerprints.values())):
+        return None, 'unresolved', 'invalid_prepared_material', 'corrupt fingerprints', None, None
+
+    startup = binding['startup']
+    if (not isinstance(startup, dict) or set(startup.keys()) != {'engine', 'config', 'template'}
+            or any(not isinstance(v, str) for v in startup.values())):
+        return None, 'unresolved', 'invalid_prepared_material', 'corrupt startup metadata', None, None
+
+    scopes, _, parse_st, parse_reason = parse_task_markdown(raw_task, task['task_sha256'])
+    if parse_st != 'ok':
+        return None, 'unresolved', parse_reason, f"prepared task scope invalid: {parse_reason}", None, None
+
+    return scopes, 'ok', None, None, binding, req_obj
+
+
 def observe_browser_job(coord_dir, job_id, worker):
     db_path = coord_dir / 'ui-jobs.sqlite3'
     descriptor, conn = None, None
@@ -396,7 +561,7 @@ def observe_browser_job(coord_dir, job_id, worker):
     try:
         if any(os.path.lexists(str(db_path) + suffix)
                for suffix in ('-wal', '-shm', '-journal')):
-            return 'unresolved', 'unsupported_queue_sidecar'
+            return 'unresolved', 'unsupported_queue_sidecar', None, None
         descriptor, before = open_regular(db_path, MAX_DB_BYTES)
         # Keep a no-follow descriptor open throughout SQLite observation. The
         # controlled proc path binds this read-only connection to that inode.
@@ -415,42 +580,42 @@ def observe_browser_job(coord_dir, job_id, worker):
         types.JobStore._verify(conn)
         count = conn.execute('SELECT COUNT(*) FROM jobs').fetchone()[0]
         if count > MAX_DB_ROWS:
-            return 'unresolved', 'job_database_row_count_exceeded'
+            return 'unresolved', 'job_database_row_count_exceeded', None, None
         row = conn.execute(types.SELECT_JOB, (job_id,)).fetchone()
         if not row:
-            return 'unresolved', 'job_not_found'
+            return 'unresolved', 'job_not_found', None, None
         job = types.JobStore._record(row)
         if job['id'] != job_id or job['worker'] != worker:
-            return 'unresolved', 'job_worker_mismatch'
+            return 'unresolved', 'job_worker_mismatch', None, None
         draft_bytes, _ = read_regular(coord_dir / 'ui-plans' / (job['draft_id'] + '.json'),
                                       MAX_DRAFT_FILE_BYTES)
         if hashlib.sha256(draft_bytes).hexdigest() != job['draft_sha256']:
-            return 'unresolved', 'draft_hash_mismatch'
+            return 'unresolved', 'draft_hash_mismatch', None, None
         draft = parse_strict_json(draft_bytes)
         if (draft is None or set(draft) != {'schema_version', 'id', 'created_at', 'state', 'request'}
                 or type(draft['schema_version']) is not int or draft['schema_version'] != 1
                 or draft['id'] != job['draft_id'] or draft['state'] != 'draft'
                 or not isinstance(draft['created_at'], str)
                 or datetime.datetime.fromisoformat(draft['created_at']).tzinfo is None):
-            return 'unresolved', 'malformed_draft_record'
+            return 'unresolved', 'malformed_draft_record', None, None
         types.PlanStore._request(draft['request'])
         after = os.fstat(descriptor)
         if ((before.st_size, before.st_mtime_ns, before.st_ctime_ns)
                 != (after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
-            return 'unresolved', 'queue_changed_during_observation'
+            return 'unresolved', 'queue_changed_during_observation', None, None
         if any(os.path.lexists(str(db_path) + suffix)
                for suffix in ('-wal', '-shm', '-journal')):
-            return 'unresolved', 'unsupported_queue_sidecar'
+            return 'unresolved', 'unsupported_queue_sidecar', None, None
         if time.monotonic() >= deadline:
-            return 'unresolved', 'queue_observation_timeout'
+            return 'unresolved', 'queue_observation_timeout', None, None
         if job['state'] == 'approved':
-            return 'eligible', None
+            return 'eligible', None, job, draft
         return 'blocked', ('awaiting_owner_approval' if job['state'] == 'awaiting_owner_approval'
-                           else 'job_' + job['state'])
+                           else 'job_' + job['state']), job, draft
     except FileNotFoundError:
-        return 'unresolved', 'missing_queue_evidence'
+        return 'unresolved', 'missing_queue_evidence', None, None
     except (sqlite3.Error, OSError, ValueError, TypeError, UnicodeError, OverflowError, RecursionError):
-        return 'unresolved', 'invalid_queue_evidence'
+        return 'unresolved', 'invalid_queue_evidence', None, None
     finally:
         if conn is not None:
             conn.close()
@@ -654,19 +819,60 @@ def build_plan(root, inventory, raw_bytes, inv_age_seconds, timeout, runner=sys.
 
         # Parse task file and scope
         scopes, _, parse_st, parse_reason = parse_task_file(coord_dir, tid, task['task_sha256'])
+        is_prepared = False
+
         if parse_st != 'ok':
-            res['status'] = 'unresolved'
-            res['reasons'].append(parse_reason)
-            res['explanation'] = f"task markdown or scope invalid: {parse_reason}"
-            pre_results[tid] = res
-            continue
+            job_id = task.get('job_id')
+            if parse_reason == 'missing_task_file' and job_id and tid == f"ui-{job_id}":
+                p_scopes, p_st, p_reason, p_exp, p_binding, p_req = parse_prepared_binding(
+                    coord_dir, job_id, task, base_revision
+                )
+                if p_st != 'ok':
+                    res['status'] = 'unresolved'
+                    res['reasons'].append(p_reason)
+                    res['explanation'] = p_exp or f"prepared binding invalid: {p_reason}"
+                    pre_results[tid] = res
+                    continue
+
+                job_st, job_reason, job_record, draft_record = observe_browser_job(coord_dir, job_id, worker)
+                if job_st == 'unresolved':
+                    res['status'] = 'unresolved'
+                    res['reasons'].append(job_reason)
+                    res['explanation'] = f"browser queue observation unresolved: {job_reason}"
+                    pre_results[tid] = res
+                    continue
+                elif job_st == 'blocked':
+                    res['status'] = 'blocked'
+                    res['reasons'].append(job_reason)
+                    res['explanation'] = f"browser queue job blocked: {job_reason}"
+                    pre_results[tid] = res
+                    continue
+
+                if (job_record['draft_id'] != p_binding['draft_id']
+                        or job_record['draft_sha256'] != p_binding['draft_sha256']
+                        or job_record['request_key'] != p_binding['request_key']
+                        or draft_record['request'] != p_req):
+                    res['status'] = 'unresolved'
+                    res['reasons'].append('invalid_prepared_material')
+                    res['explanation'] = 'prepared binding inputs do not match queue record'
+                    pre_results[tid] = res
+                    continue
+
+                scopes = p_scopes
+                is_prepared = True
+            else:
+                res['status'] = 'unresolved'
+                res['reasons'].append(parse_reason)
+                res['explanation'] = f"task markdown or scope invalid: {parse_reason}"
+                pre_results[tid] = res
+                continue
 
         res['scopes'] = scopes
         res['_scope_valid'] = True
 
         # Check optional browser job
-        if task.get('job_id'):
-            job_st, job_reason = observe_browser_job(coord_dir, task['job_id'], worker)
+        if not is_prepared and task.get('job_id'):
+            job_st, job_reason, _, _ = observe_browser_job(coord_dir, task['job_id'], worker)
             if job_st == 'unresolved':
                 res['status'] = 'unresolved'
                 res['reasons'].append(job_reason)
