@@ -69,7 +69,7 @@ SVG here except the U in `legacy/`, plus the website's tab icon
 turns through the tones in the tab). It reads each dot's place on Doto's
 letter grid and draws an even rounded square at 80 % of the dot spacing, the
 same way the website draws its titles. The website's link-preview image
-(`site/public/assets/og.png`) is the toned logo on charcoal.
+(`site/public/assets/unio-preview.png`; a new name whenever it changes, since apps keep old previews by file name) is the toned logo on charcoal.
 
 ```sh
 cd site && npm install && cd ..
