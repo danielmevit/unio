@@ -1,7 +1,8 @@
 # Unio 0.5.10 — safer recovery and daily-use improvements
 
-Candidate notes: this version is not published. The latest stable release is
-[v0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9).
+Published from the frozen recovery and daily-use snapshot `db78932` after the
+complete release gate, installer, upgrade/rollback and official download checks.
+[Release and downloads](https://github.com/danielmevit/unio/releases/tag/v0.5.10).
 
 This release improves recovery and everyday use without adding another
 subscription or changing the selected work mode or tier.
@@ -54,4 +55,4 @@ tier controls, results, recovery and dashboard startup. Run
 The existing experimental lead cooldown limitation remains unchanged. Phone
 pairing and automatic acting-lead handover remain future milestones.
 
-[Latest published release and downloads](https://github.com/danielmevit/unio/releases/tag/v0.5.9).
+[Release and downloads](https://github.com/danielmevit/unio/releases/tag/v0.5.10).

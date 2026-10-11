@@ -19,7 +19,9 @@ Report background activity only when an actual process is still running.
 
 ## Current delivery state — 2026-10-12
 
-Official and installed stable remain **v0.5.9**, published from `0c2def4`.
+Official and installed stable are **v0.5.10**, published from `db78932`.
+Its full gate passed in 1215.704 seconds, all six official assets matched, and
+installation preceded publication with configuration and owner templates preserved.
 A source push does not publish or install a new release. Check GitHub's latest
 stable and `unio version` before changing the operator's runner; active frozen
 calls keep their original engine and configuration.
@@ -38,7 +40,7 @@ preserves individual receipts and summarizes current evidence without acceptance
 Six focused installed mock cases passed. The frozen contract is `b0e5889`;
 implementation started as a token-capped GLM partial and was completed by this
 existing lead. Preserve that Source failure separately from lead checks.
-The next milestone is release delivery: freeze the completed 0.5.10/0.5.11 scope,
+The next milestone is the remaining 0.5.11 release delivery: its scope is frozen;
 run the combined gate, check isolated installation and publish official bytes.
 Do not add finding aggregation, routing automation or other features during that
 gate. See the [current sequence and rough estimates](ROADMAP.md#next-useful-slices).

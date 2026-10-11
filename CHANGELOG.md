@@ -4,7 +4,7 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.11 — plan, dispatch and review together — unreleased candidate
+## 0.5.11 — plan, dispatch and review together — 2026-10-12
 
 See [release scope and usage](docs/RELEASE-0.5.11.md).
 
@@ -24,7 +24,7 @@ See [release scope and usage](docs/RELEASE-0.5.11.md).
 - Include the latest owner dashboard refinements and mandatory lead estimates,
   proactive progress summaries and continuity through authorized delivery.
 
-## 0.5.10 — safer recovery and daily-use improvements — unreleased candidate
+## 0.5.10 — safer recovery and daily-use improvements — 2026-10-12
 
 See [release scope and usage](docs/RELEASE-0.5.10.md).
 
