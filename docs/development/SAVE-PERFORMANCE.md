@@ -104,3 +104,24 @@ before body reads, secret-name refusal, no-follow traversal, both matching
 observations and complete published-save validation. Compare equivalent
 fixtures and history sizes before claiming a speedup. A larger timeout alone
 is not an optimization; do not weaken recovery validation to meet a deadline.
+
+## Real workspace timeout — 2026-10-11
+
+Two new native runs using the unchanged installed 0.5.9 engine reproduced
+`automatic baseline save unavailable (helper exit -9)` in the real workspace.
+The worker checkout had 344 tracked files; the active save directory had
+34 direct entries, including control entries. These counts are not equivalent
+to the generated fixture above or a count of fully validated saves.
+
+The automatic capture has a 30-second helper deadline. The provider invocation
+continued independently after its baseline save failed. Read-only inspection
+of the first worker reported no valid save, no corrupt evidence, and an
+`io_error` save attempt. This is recovery evidence, not a provider connection,
+allowance or model-quality result. Earlier successful saves remain preserved.
+
+Investigate validation of existing save history as well as worktree traversal.
+The current retention path scans the store and deeply validates existing
+entries before deciding what to archive. The observed timeout does not isolate
+which phase exhausted the deadline. Compare equivalent history sizes and file
+contents before attributing cost or claiming an optimization. Keep failed-save
+reporting separate from worker completion and preserve complete save validation.
