@@ -10,9 +10,18 @@ main { padding: 0; }
 .activity-section, .map-container { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; }
 .map-workspace { position: relative; }
 .map-scroll-area { height: 100vh; border: 0; border-radius: 0; }
+/* On touch screens a vertical swipe over the map scrolls the page; a
+   sideways drag still pans the map. Otherwise the map would trap a
+   finger and the page could not be scrolled past it. */
+@media (pointer: coarse) { #work-map { touch-action: pan-y; } }
+/* opening a worker's output or files needs a real Unio; on the website it
+   could never work, so the demo leaves that control out */
+.map-details-console, .map-details [data-field="console-open"] { display: none !important; }
 /* a node's details float over the map's right side instead of below it */
 .map-workspace .map-details {
-  position: absolute; top: 10px; right: 10px; bottom: 10px; z-index: 3; width: min(360px, calc(100% - 20px));
-  margin: 0; padding: 14px; overflow: auto;
+  /* as tall as its content, and scrollable only when that does not fit,
+     so a swipe over short details moves the page instead of getting stuck */
+  position: absolute; top: 10px; right: 10px; z-index: 3; width: min(360px, calc(100% - 20px));
+  max-height: calc(100% - 20px); margin: 0; padding: 14px; overflow: auto;
   background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
 }
