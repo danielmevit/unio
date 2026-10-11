@@ -23,6 +23,7 @@ ordinary use, start with the [project README](../../README.md) or the
 | [Model scoreboard and task fit](MODEL-SCOREBOARD.md) | Practical delegation guide with checked project outcomes and rework |
 | [Model experience feature](MODEL-EXPERIENCE.md) | Planned automatic model/task profiles built on the current ledger |
 | [Version plan](../VERSION-PLAN.md) | Work assigned to each version |
+| [AI discoverability checklist](AI-DISCOVERABILITY.md) | Website deployment, Search Console, Bing, crawler choices and checking visibility in AI answers |
 | [Milestone contracts](../NEXT-MILESTONE-CONTRACTS.md) | Implementation and acceptance boundaries |
 | [Lead cooldown usage](../LEAD-COOLDOWN.md) | Source-only Codex supervisor, explicit controls, supported environment and current acceptance limits |
 | [Lead cooldown restart](LEAD-COOLDOWN-RESTART.md) | Original milestone and acceptance goals; runtime now implemented in source |

@@ -1,0 +1,18 @@
+/* Website demo: only the work map, filling the frame. The rest of the
+   dashboard still runs underneath (it draws the map), but stays hidden. */
+html, body { height: 100%; overflow: hidden; }
+/* an allow-list, so whatever the dashboard adds later stays out too */
+.boot,
+main > :not(.activity-section:has(#tasks-map-container)),
+.activity-section:has(#tasks-map-container) > :not(#tasks-map-container),
+#tasks-map-container > :not(.map-workspace) { display: none !important; }
+main { padding: 0; }
+.activity-section, .map-container { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; }
+.map-workspace { position: relative; }
+.map-scroll-area { height: 100vh; border: 0; border-radius: 0; }
+/* a node's details float over the map's right side instead of below it */
+.map-workspace .map-details {
+  position: absolute; top: 10px; right: 10px; bottom: 10px; z-index: 3; width: min(360px, calc(100% - 20px));
+  margin: 0; padding: 14px; overflow: auto;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+}

@@ -27,7 +27,7 @@ RELEASE_VERSION = re.search(r'^UNIO_VERSION="([^"]+)"$',
 HELPER = SOURCE / 'tools' / 'runtime' / 'dashboard.py'
 BROWSER_FILES = ('server.py', 'readiness.py', 'launcher.py', 'progress.py', 'worker_files.py',
                  'plan_store.py', 'job_store.py', 'execution_service.py', 'index.html',
-                 'activity.js', 'activity.css', 'drafts.js', 'jobs.js', 'worker_console.js')
+                 'activity.js', 'activity.css', 'drafts.js', 'jobs.js', 'worker_console.js', 'theme.js')
 spec = importlib.util.spec_from_file_location('unio_dashboard_helper', HELPER)
 helper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helper)

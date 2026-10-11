@@ -8,6 +8,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Unio · project workspace</title>
     <link rel="stylesheet" href="activity.css" />
+    <script src="theme.js"></script>
     <script defer src="activity.js"></script>
     <script defer src="drafts.js"></script>
     <script defer src="jobs.js"></script>
@@ -16,7 +17,6 @@
   <body>
     <div class="boot" aria-hidden="true">
       <div class="boot-field"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <p class="boot-label">Reading recorded activity</p>
     </div>
     <a class="skip-link" href="#workspace">Skip to workspace</a>
     <main id="workspace" tabindex="-1">
@@ -195,7 +195,7 @@
         </div>
 
         <div class="map-controls task-filters" role="group" aria-label="Task filters">
-          <select id="map-worker-filter" aria-label="Filter by worker"><option value="">All Workers</option></select>
+          <span class="worker-filter"><span id="map-worker-logo" class="worker-filter-logo" aria-hidden="true"></span><select id="map-worker-filter" aria-label="Filter by worker"><option value="">All Workers</option></select></span>
           <select id="map-state-filter" aria-label="Filter by state">
             <option value="">Current work</option>
             <option value="all">All states</option>
@@ -211,19 +211,6 @@
         <p id="map-activity" class="small map-activity" role="status" aria-live="polite"></p>
         <p id="map-empty" class="small map-empty" hidden></p>
         <div id="tasks-map-container" class="map-container">
-          <div class="map-controls">
-            <div class="map-camera-controls" role="group" aria-label="Map viewport">
-              <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
-              <output id="map-zoom-level" aria-label="Map zoom">100%</output>
-              <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
-              <button id="map-fit" type="button" aria-pressed="true">Fit view</button>
-              <button id="map-reset" type="button">Reset 100%</button>
-            </div>
-          </div>
-          <details class="map-howto">
-            <summary>How to read the map</summary>
-            <p id="map-help" class="small map-help">Read left to right: project → worker → task. Connections show ownership, not execution order. Scroll to zoom at the pointer; hold the middle mouse button and drag to pan, or drag with the left button or touch. Use + / − to zoom, arrow keys to pan, 0 to fit, or Home to reset. Tab to a node, then Enter or Space to select.</p>
-          </details>
           <p class="small map-legend" aria-label="Node status legend">
             <span><i class="signal-passed" aria-hidden="true"></i>Finished: checks passed, review approved</span>
             <span><i class="signal-failed" aria-hidden="true"></i>Recorded failure</span>
@@ -233,6 +220,17 @@
           </p>
           <div class="map-workspace">
             <div class="map-canvas-column">
+              <div class="map-camera-controls" role="group" aria-label="Map viewport">
+                <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
+                <output id="map-zoom-level" aria-label="Map zoom">100%</output>
+                <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+                <button id="map-fit" type="button" aria-pressed="true" aria-label="Fit view">Fit</button>
+                <button id="map-reset" type="button" aria-label="Reset to 100%">100%</button>
+                <span class="map-help-wrap">
+                  <button id="map-help-toggle" type="button" aria-label="How to read the map" aria-expanded="false" aria-controls="map-help">?</button>
+                  <p id="map-help" class="map-help" role="note">Read left to right: project → worker → task. Connections show ownership, not execution order. Scroll to zoom at the pointer; hold the middle mouse button and drag to pan, or drag with the left button or touch. Use + / − to zoom, arrow keys to pan, 0 to fit, or Home to reset. Tab to a node, then Enter or Space to select.</p>
+                </span>
+              </div>
               <div class="map-scroll-area">
                 <svg id="work-map" tabindex="0" role="group" aria-label="Work map" aria-describedby="map-help"></svg>
               </div>
@@ -265,12 +263,12 @@
         <div id="limits-groups" class="limits-groups"></div>
       </section>
       <div class="observer-details">
-        <details>
-          <summary>Tools and operator limits</summary>
-          <div id="limits"></div>
+        <details class="drawer">
+          <summary><span>Tools and limits</span><span id="limits-count" class="drawer-count"></span></summary>
+          <div id="limits" class="tools"></div>
         </details>
-        <details>
-          <summary>Recent recorded events and warnings</summary>
+        <details class="drawer">
+          <summary><span>Activity log</span><span id="events-count" class="drawer-count"></span></summary>
           <div id="events" class="timeline"></div>
           <details class="raw-data">
             <summary>Raw data</summary>

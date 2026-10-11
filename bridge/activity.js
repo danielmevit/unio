@@ -95,6 +95,7 @@
   let suppressMapClick = false;
   const MIN_MAP_SCALE = 0.05, MAX_MAP_SCALE = 3;
   const MAP_PAGE_SIZE = 24;
+  const MAP_GRID = 14; // map units between the background dots
   let lastData = null;
   // Selection is an exact node key plus its tuple; never a display label.
   let selected = null;
@@ -110,6 +111,18 @@
       // the running-first hint describes the map's order, not the list's
       document.getElementById("map-activity").hidden = currentView !== "map";
     }
+  }
+
+  // "?" in the map controls: hover or keyboard focus shows how to read the
+  // map; a click or tap keeps it open until clicked again, Escape or a
+  // click elsewhere.
+  const helpToggle = document.getElementById("map-help-toggle");
+  if (helpToggle) {
+    const wrap = helpToggle.parentElement;
+    const setOpen = (open) => { wrap.classList.toggle("is-open", open); helpToggle.setAttribute("aria-expanded", String(open)); };
+    helpToggle.addEventListener("click", () => setOpen(!wrap.classList.contains("is-open")));
+    helpToggle.addEventListener("keydown", (event) => { if (event.key === "Escape") { setOpen(false); helpToggle.blur(); } });
+    document.addEventListener("pointerdown", (event) => { if (!wrap.contains(event.target)) setOpen(false); });
   }
 
   const mapBtn = document.getElementById("view-map");
@@ -238,26 +251,7 @@
     // hidden, so switching views never shows an older observation.
     renderSummary(tally);
     renderTaskList(data, pageTasks, categories);
-    // Tools and operator limits: one honest line for what is never observed,
-    // then only what actually happened (benched tools, failed attempts).
-    const limits = document.getElementById("limits");
-    limits.replaceChildren();
-    if (data.agents.length)
-      limits.append(text("p", "Tool activity does not check sign-in or remaining allowance. Cached observations appear in AI agents & limits.", "small"));
-    else
-      limits.append(text("p", "No tool observations recorded. Authentication and capacity remain unknown.", "small"));
-    const missing = data.agents.filter((a) => a.binary && a.binary.present === false).map((a) => a.name);
-    if (missing.length) limits.append(text("p", "Tool missing: " + missing.join(", ") + ".", "small"));
-    for (const agent of data.agents) {
-      const retryAt = agent.bench.operator_retry_at !== null ? " · operator retry epoch " + agent.bench.operator_retry_at + "; not a provider reset" : "";
-      if (agent.bench.off || retryAt) limits.append(text("p", agent.name + (agent.bench.off ? " is benched (OFF)" : "") + retryAt + ".", "small"));
-    }
-    const troubled = data.retries.filter((retry) => retry.failed_attempts > 0 || retry.blocked || retry.retry_granted);
-    for (const retry of troubled)
-      limits.append(text("p", retry.task + ": " + retry.failed_attempts + " failed " + (retry.failed_attempts === 1 ? "attempt" : "attempts") + " · "
-        + (retry.blocked ? "BLOCKED" : retry.retry_granted ? "one retry granted" : "brake clear"), "small"));
-    if (!troubled.length && data.retries.length)
-      limits.append(text("p", "No failed attempts recorded; the loop brake is clear for every task.", "small"));
+    renderTools(data);
     renderTimeline(data);
     setText(document.getElementById("events-raw"), JSON.stringify(
       { recent_events: data.recent_events, warnings: data.warnings },
@@ -439,30 +433,152 @@
       default: return [label(String(e.event || "event")) + (e.task ? " · " + e.task : ""), "neutral"];
     }
   }
+  // The closed drawers say whether they are worth opening.
+  function setDrawerCount(id, value, tone) {
+    const el = document.getElementById(id);
+    el.textContent = value;
+    el.dataset.tone = tone || "";
+  }
+
+  // Tools and limits: what is never observed is said once; below it only
+  // what actually happened, one row each: a missing or switched-off tool,
+  // or a task with failed attempts and the state of its loop brake.
+  function toolRow(badge, name, detail, pill, tone) {
+    const row = text("div", "", "tool-row");
+    row.dataset.tone = tone || "";
+    row.append(badge || text("span", ""), text("strong", name, "tool-name"), text("p", detail, "tool-detail"), text("span", pill, "tool-pill"));
+    return row;
+  }
+  function renderTools(data) {
+    const box = document.getElementById("limits");
+    box.replaceChildren();
+    box.append(text("p", data.agents.length
+      ? "Tool activity does not check sign-in or remaining allowance. Cached observations appear in AI agents & limits."
+      : "No tool observations recorded. Authentication and capacity remain unknown.", "drawer-note"));
+    const missing = data.agents.filter((a) => a.binary && a.binary.present === false);
+    for (const a of missing) box.append(toolRow(agentBadge(a.name), a.name, "Its command-line tool is not installed.", "Missing", "failed"));
+    const off = data.agents.filter((a) => a.bench.off || a.bench.operator_retry_at !== null);
+    for (const a of off) {
+      const at = a.bench.operator_retry_at;
+      const detail = at === null ? "Switched off by the operator."
+        : "Operator retry " + (typeof at === "number" ? new Date(at * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : String(at)) + "; not a provider reset.";
+      box.append(toolRow(agentBadge(a.name), a.name, detail, a.bench.off ? "Off" : "Retry set", "attention"));
+    }
+    // a task name shown with a lab logo only when exactly one worker has it
+    const workersOf = new Map();
+    for (const r of data.results || []) workersOf.set(r.task, (workersOf.get(r.task) || new Set()).add(r.worker));
+    const troubled = data.retries.filter((retry) => retry.failed_attempts > 0 || retry.blocked || retry.retry_granted);
+    for (const retry of troubled) {
+      const owners = workersOf.get(retry.task);
+      const n = retry.failed_attempts, worker = owners && owners.size === 1 ? [...owners][0] : "";
+      box.append(toolRow(worker ? agentBadge(worker) : null, retry.task, n + " failed " + (n === 1 ? "attempt" : "attempts"),
+        retry.blocked ? "Blocked" : retry.retry_granted ? "Retry granted" : "Brake clear",
+        retry.blocked ? "failed" : retry.retry_granted ? "attention" : ""));
+    }
+    if (data.agents.length && !missing.length && !off.length && !troubled.length)
+      box.append(text("p", "All clear: every tool is installed and on, and no task has failed attempts.", "small"));
+    const parts = [];
+    if (missing.length) parts.push(missing.length + " missing");
+    if (off.length) parts.push(off.length + " off");
+    const blocked = troubled.filter((r) => r.blocked).length;
+    if (blocked) parts.push(blocked + " blocked");
+    const attempts = troubled.reduce((sum, r) => sum + r.failed_attempts, 0);
+    if (attempts) parts.push(attempts + " failed " + (attempts === 1 ? "attempt" : "attempts"));
+    setDrawerCount("limits-count", parts.length ? parts.join(" · ") : data.agents.length ? "All clear" : "", parts.length ? "attention" : "");
+  }
+
+  // Activity log: one row per task run instead of one per event, newest
+  // first and read left to right ("T7-glm started 01:07 · ran 16s ·
+  // checks 1/1 · approved by qwen · merged"). Warnings stay pinned above.
+  const LOG_VISIBLE = 8;
+  let logShowAll = false;
+  const clock = (at) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  function stepText(e) {
+    const n = (v) => (typeof v === "number" ? v : "?");
+    const at = Date.parse(e.ts);
+    switch (e.event) {
+      case "run_start": return "started" + (Number.isFinite(at) ? " " + clock(at) : "");
+      case "run": return e.exit === 0 ? "ran" + (typeof e.duration_s === "number" ? " " + span(e.duration_s) : " to the end")
+        : "ended with exit " + n(e.exit) + (e.wall ? " (time limit)" : "");
+      case "verify": {
+        const run = n(e.validate_run), failed = n(e.validate_failed);
+        const scope = e.scope && e.scope !== "OK" ? " (scope " + label(String(e.scope)).toLowerCase() + ")" : "";
+        return (e.verdict === "PASS" ? "checks " + run + "/" + run : e.verdict === "FAIL" ? "failed " + failed + " of " + run + " checks"
+          : "checks " + label(String(e.verdict || "unknown")).toLowerCase()) + scope;
+      }
+      case "review": return e.decision === "approved" ? "approved by " + (e.reviewer || "a reviewer")
+        : e.decision === "changes_requested" ? "changes asked by " + (e.reviewer || "a reviewer")
+          : "review " + label(String(e.decision || "no decision")).toLowerCase();
+      case "merge": return "merged";
+      default: return label(String(e.event || "event")).toLowerCase();
+    }
+  }
   function renderTimeline(data) {
     const box = document.getElementById("events");
     box.replaceChildren();
-    for (const warning of data.warnings || []) {
+    const warnings = data.warnings || [];
+    for (const warning of warnings) {
       const row = text("div", "", "timeline-row timeline-warning");
       row.append(text("span", "Warning", "timeline-time"), text("p", String(warning), "timeline-text"));
       box.append(row);
     }
-    const events = (data.recent_events || []).slice().sort((a, b) => (Date.parse(b.ts) || 0) - (Date.parse(a.ts) || 0));
-    let day = "";
+    // Oldest first, so each run collects its events in order. A row is one
+    // run of one task on one worker: a start, or a second run end, opens a
+    // new row, so a later result never covers an earlier one. A merge takes
+    // the worker's whole branch, so it is a row of its own.
+    const events = (data.recent_events || []).slice().sort((a, b) => (Date.parse(a.ts) || 0) - (Date.parse(b.ts) || 0));
+    const runs = [], open = new Map();
     for (const e of events) {
-      const at = Date.parse(e.ts);
+      const key = JSON.stringify([e.worker || "", e.task || ""]);
+      let run = e.task && e.event !== "run_start" && e.event !== "merge" ? open.get(key) : null;
+      if (run && e.event === "run" && run.events.some((x) => x.event === "run")) run = null;
+      if (!run) {
+        run = { task: e.task || "", worker: e.worker || "", events: [], at: 0 };
+        runs.push(run);
+        if (e.task && e.event !== "merge") open.set(key, run);
+      }
+      run.events.push(e);
+      run.at = Math.max(run.at, Date.parse(e.ts) || 0);
+    }
+    for (const run of runs) {
+      // the row's color is the latest event that decided something
+      const tones = run.events.map((e) => eventLine(e)[1]).filter((t) => t !== "neutral");
+      run.tone = tones.length ? tones[tones.length - 1] : "neutral";
+    }
+    runs.sort((a, b) => b.at - a.at);
+    // the newest few, plus every failed run: a failure is never folded away
+    const shown = logShowAll ? runs : runs.filter((run, i) => i < LOG_VISIBLE || run.tone === "failed");
+    let day = "";
+    for (const run of shown) {
+      const last = run.events[run.events.length - 1];
+      const at = Date.parse(last.ts);
       const thisDay = Number.isFinite(at) ? new Date(at).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "Unknown day";
       if (thisDay !== day) { day = thisDay; box.append(text("p", day, "timeline-day")); }
-      const [line, tone] = eventLine(e);
       const row = text("div", "", "timeline-row");
-      row.dataset.tone = tone;
-      const when = text("time", Number.isFinite(at) ? new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "--:--", "timeline-time");
-      when.dateTime = e.ts || "";
-      when.title = exactTime(e.ts);
-      row.append(when, e.worker ? agentBadge(e.worker) : text("span", ""), text("p", line, "timeline-text"));
+      row.dataset.tone = run.tone;
+      const when = text("time", Number.isFinite(at) ? clock(at) : "--:--", "timeline-time");
+      when.dateTime = last.ts || "";
+      when.title = exactTime(last.ts);
+      const line = text("p", "", "timeline-text");
+      const merge = run.events.length === 1 && run.events[0].event === "merge";
+      line.append(text("strong", merge ? (run.worker || "A worker") + "'s branch" : run.task || run.worker || "Unknown task", "timeline-task"),
+        document.createTextNode(run.events.map(stepText).join(" · ")));
+      row.append(when, run.worker ? agentBadge(run.worker) : text("span", ""), line);
       box.append(row);
     }
-    if (!events.length && !(data.warnings || []).length) box.append(text("p", "No recorded events yet.", "small"));
+    if (shown.length < runs.length || logShowAll && runs.length > LOG_VISIBLE) {
+      const more = text("button", logShowAll ? "Show the newest " + LOG_VISIBLE : "Show all " + runs.length + " rows", "log-more");
+      more.type = "button";
+      more.addEventListener("click", () => { logShowAll = !logShowAll; renderTimeline(data); });
+      box.append(more);
+    }
+    if (!events.length && !warnings.length) box.append(text("p", "No recorded events yet.", "small"));
+    const parts = [];
+    if (runs.length) parts.push(runs.length + (runs.length === 1 ? " row" : " rows"));
+    const failedRuns = runs.filter((run) => run.tone === "failed").length;
+    if (failedRuns) parts.push(failedRuns + " failed");
+    if (warnings.length) parts.push(warnings.length + (warnings.length === 1 ? " warning" : " warnings"));
+    setDrawerCount("events-count", parts.join(" · "), warnings.length || failedRuns ? "attention" : "");
   }
 
   const GROUPS = [["attention", "Needs you"], ["active", "Running"], ["finished", "Finished"]];
@@ -473,13 +589,26 @@
       button.setAttribute("aria-pressed", mapStateFilter === state ? "true" : "false");
     }
   }
+  // The list is rebuilt only when what it shows changes (the relative times
+  // count as a change once a minute), and a reader's open "Technical details"
+  // stay open across a rebuild, so polling never closes what someone opened.
+  let taskListSignature = "";
   function renderTaskList(data, pageTasks, categories) {
     const tasks = document.getElementById("tasks");
+    const minute = Math.floor((Date.parse(data.observed_at) || 0) / 60000);
+    const signature = JSON.stringify([minute, data.results.length, pageTasks.map((r) => [r, categories.get(r).category, isLatestForWorker(data, r)])]);
+    if (signature === taskListSignature && tasks.childElementCount) return;
+    taskListSignature = signature;
+    const rowKey = (row) => JSON.stringify([row.dataset.worker, row.dataset.task]);
+    const open = new Set([...tasks.querySelectorAll(".task-row")].filter((row) => row.querySelector(".task-tech[open]")).map(rowKey));
     tasks.replaceChildren();
     for (const [category, title] of GROUPS) {
       const records = pageTasks.filter((r) => categories.get(r).category === category);
       if (!records.length) continue;
-      records.sort((a, b) => (Date.parse(b.recorded_at) || 0) - (Date.parse(a.recorded_at) || 0));
+      // Newest first; in Needs you, failures come before work that is only
+      // waiting for its next step (a review, a check), so they never get buried.
+      const failedFirst = (r) => (category === "attention" && taskSignal(r, categories.get(r)) === "failed" ? 0 : 1);
+      records.sort((a, b) => failedFirst(a) - failedFirst(b) || (Date.parse(b.recorded_at) || 0) - (Date.parse(a.recorded_at) || 0));
       const group = text("section", "", "task-group");
       group.dataset.group = category;
       const heading = text("h3", "", "task-group-title");
@@ -515,6 +644,7 @@
       tasks.append(group);
     }
     if (!data.results.length) tasks.append(text("p", "No structured task evidence yet.", "small"));
+    for (const row of tasks.querySelectorAll(".task-row")) if (open.has(rowKey(row))) row.querySelector(".task-tech").open = true;
   }
 
   // JSON arrays cannot collide for different tuples, whatever the names hold.
@@ -640,6 +770,12 @@
     }
     const w = width / mapCamera.scale, h = height / mapCamera.scale;
     svg.setAttribute("viewBox", [mapCamera.x - w / 2, mapCamera.y - h / 2, w, h].join(" "));
+    // The dot grid lives in map space, so it pans and zooms with the nodes;
+    // far out, every other dot drops away so it never turns dense.
+    let tile = MAP_GRID * mapCamera.scale;
+    while (tile < 9) tile *= 2;
+    svg.parentElement.style.backgroundSize = tile + "px " + tile + "px";
+    svg.parentElement.style.backgroundPosition = (width / 2 - mapCamera.x * mapCamera.scale) + "px " + (height / 2 - mapCamera.y * mapCamera.scale) + "px";
     svg.dataset.view = mapFitView ? "fit" : "actual";
     svg.dataset.cameraX = String(mapCamera.x);
     svg.dataset.cameraY = String(mapCamera.y);
@@ -797,6 +933,18 @@
     });
     for (const option of existing.values()) option.remove();
     if (select.value !== mapWorkerFilter) select.value = mapWorkerFilter;
+    updateWorkerLogo();
+  }
+  // The closed worker filter shows the chosen worker's logo beside its name.
+  function updateWorkerLogo() {
+    const slot = document.getElementById("map-worker-logo");
+    if (!slot) return;
+    const worker = mapWorkerFilter;
+    if (slot.dataset.worker === worker) return;
+    slot.dataset.worker = worker;
+    slot.replaceChildren(...(worker ? [optionLogo(worker)] : []));
+    slot.dataset.agentMark = worker ? agentIdentity(worker).mark : "";
+    slot.parentElement.classList.toggle("has-logo", !!worker);
   }
 
   function syncCategoryOptions(categoriesList) {
@@ -1261,7 +1409,16 @@
     const btn = document.createElement("button");
     btn.type = "button";
     btn.id = "map-clear-sel";
-    btn.textContent = "Clear selection";
+    // a plain X; its name stays "Clear selection" for screen readers
+    btn.setAttribute("aria-label", "Clear selection");
+    btn.title = "Close";
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 14 14");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "M3 3l8 8M11 3l-8 8");
+    svg.appendChild(path);
+    btn.appendChild(svg);
     btn.addEventListener("click", clearSelection);
     return btn;
   }
@@ -1666,6 +1823,28 @@
     if (!manual || !codex)
       list.append(text("p", (!manual && !codex ? "Manual and automatic Codex readings are" : !manual ? "Manual readings are" : "Automatic Codex readings are")
         + " unavailable from the installed CLI and stay Unknown.", "small limits-unsupported"));
+    balanceCardGrids();
+  }
+
+  // Card grids keep balanced rows: as many columns as fit (at most four),
+  // then spread evenly, so 6 cards are 2 rows of 3 and 7 are 2 rows of 4.
+  function balanceGrid(grid) {
+    const cards = grid.querySelectorAll(":scope > .limits-card").length;
+    if (!cards) return;
+    const gap = 6, minCard = 250, maxCols = 4;
+    const fit = Math.max(1, Math.min(maxCols, Math.floor((grid.clientWidth + gap) / (minCard + gap))));
+    const cols = String(Math.ceil(cards / Math.ceil(cards / fit)));
+    if (grid.style.getPropertyValue("--cols") !== cols) grid.style.setProperty("--cols", cols);
+  }
+  function balanceCardGrids() {
+    for (const id of ["limits-routes", "limits-groups"]) {
+      const grid = document.getElementById(id);
+      if (grid) balanceGrid(grid);
+    }
+  }
+  {
+    const routes = document.getElementById("limits-routes");
+    if (routes) new ResizeObserver(balanceCardGrids).observe(routes);
   }
 
   async function refreshLimits() {
@@ -1682,16 +1861,18 @@
     renderLimits();
   }
 
-  // The loading screen (the dot U) stays until the first observation has
-  // finished, whatever its result, and at least long enough not to flash.
-  const bootStarted = performance.now();
+  // The loading screen (the dot U) stays only until the first observation
+  // has finished, whatever its result; the person is let in right away,
+  // even if the animation is still running.
   let booted = false;
   function markReady() {
     if (booted) return;
     booted = true;
-    const wait = Math.max(0, 600 - (performance.now() - bootStarted));
-    setTimeout(() => document.documentElement.classList.add("is-ready"), wait);
+    document.documentElement.classList.add("is-ready");
   }
+  // A slow first read never holds anyone on the loading screen: after 2.5 s
+  // the page opens and its own status line says it is still loading.
+  setTimeout(markReady, 2500);
 
   async function refresh() {
     if (busy) return;
@@ -1706,9 +1887,12 @@
       // Remove old states so a failed observation cannot look current.
       clearMapAfterFailure();
       document.getElementById("tasks").replaceChildren();
+      taskListSignature = "";
       document.getElementById("limits").replaceChildren();
       document.getElementById("events").textContent = "";
       document.getElementById("events-raw").textContent = "";
+      setDrawerCount("limits-count", "");
+      setDrawerCount("events-count", "");
       status.className = "error";
       status.textContent =
         "Local activity is unavailable. No current state is claimed.";

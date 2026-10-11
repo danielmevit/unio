@@ -138,7 +138,8 @@ class HTTPTests(unittest.TestCase):
         self.assertIn("frame-ancestors 'none'", headers['Content-Security-Policy'])
         self.assertNotIn('Access-Control-Allow-Origin', headers)
         for path, kind in (('/', 'text/html'), ('/activity.js', 'text/javascript'), ('/drafts.js', 'text/javascript'),
-                           ('/worker_console.js', 'text/javascript'), ('/activity.css', 'text/css')):
+                           ('/worker_console.js', 'text/javascript'), ('/activity.css', 'text/css'),
+                           ('/theme.js', 'text/javascript')):
             with self.subTest(path=path):
                 code, headers, body = self.request(path=path)
                 self.assertEqual(code, 200)

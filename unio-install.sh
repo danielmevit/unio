@@ -38,7 +38,7 @@ for browser_dir in "$CONF_DIR/lib" "$CONF_DIR/lib/browser"; do
     exit 1
   fi
 done
-for browser_name in server.py readiness.py launcher.py progress.py worker_files.py plan_store.py job_store.py execution_service.py index.html activity.js activity.css drafts.js jobs.js worker_console.js; do
+for browser_name in server.py readiness.py launcher.py progress.py worker_files.py plan_store.py job_store.py execution_service.py index.html activity.js activity.css drafts.js jobs.js worker_console.js theme.js; do
   browser_file="$CONF_DIR/lib/browser/$browser_name"
   if [ -L "$browser_file" ] || { [ -e "$browser_file" ] && { [ ! -f "$browser_file" ] || [ "$(stat -c '%h' -- "$browser_file")" != 1 ]; }; }; then
     echo "unio: refusing unsafe browser file: $browser_file" >&2
@@ -605,6 +605,7 @@ class ActivityHandler(BaseHTTPRequestHandler):
         routes = {'/':('index.html','text/html; charset=utf-8'),
                   '/activity.js':('activity.js','text/javascript; charset=utf-8'),
                   '/drafts.js':('drafts.js','text/javascript; charset=utf-8'),
+                  '/theme.js':('theme.js','text/javascript; charset=utf-8'),
                   '/activity.css':('activity.css','text/css; charset=utf-8')}
         if self.path in routes:
             name, content_type = routes[self.path]
@@ -4186,6 +4187,7 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Unio · project workspace</title>
     <link rel="stylesheet" href="activity.css" />
+    <script src="theme.js"></script>
     <script defer src="activity.js"></script>
     <script defer src="drafts.js"></script>
     <script defer src="jobs.js"></script>
@@ -4194,7 +4196,6 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
   <body>
     <div class="boot" aria-hidden="true">
       <div class="boot-field"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <p class="boot-label">Reading recorded activity</p>
     </div>
     <a class="skip-link" href="#workspace">Skip to workspace</a>
     <main id="workspace" tabindex="-1">
@@ -4373,7 +4374,7 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
         </div>
 
         <div class="map-controls task-filters" role="group" aria-label="Task filters">
-          <select id="map-worker-filter" aria-label="Filter by worker"><option value="">All Workers</option></select>
+          <span class="worker-filter"><span id="map-worker-logo" class="worker-filter-logo" aria-hidden="true"></span><select id="map-worker-filter" aria-label="Filter by worker"><option value="">All Workers</option></select></span>
           <select id="map-state-filter" aria-label="Filter by state">
             <option value="">Current work</option>
             <option value="all">All states</option>
@@ -4389,19 +4390,6 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
         <p id="map-activity" class="small map-activity" role="status" aria-live="polite"></p>
         <p id="map-empty" class="small map-empty" hidden></p>
         <div id="tasks-map-container" class="map-container">
-          <div class="map-controls">
-            <div class="map-camera-controls" role="group" aria-label="Map viewport">
-              <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
-              <output id="map-zoom-level" aria-label="Map zoom">100%</output>
-              <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
-              <button id="map-fit" type="button" aria-pressed="true">Fit view</button>
-              <button id="map-reset" type="button">Reset 100%</button>
-            </div>
-          </div>
-          <details class="map-howto">
-            <summary>How to read the map</summary>
-            <p id="map-help" class="small map-help">Read left to right: project → worker → task. Connections show ownership, not execution order. Scroll to zoom at the pointer; hold the middle mouse button and drag to pan, or drag with the left button or touch. Use + / − to zoom, arrow keys to pan, 0 to fit, or Home to reset. Tab to a node, then Enter or Space to select.</p>
-          </details>
           <p class="small map-legend" aria-label="Node status legend">
             <span><i class="signal-passed" aria-hidden="true"></i>Finished: checks passed, review approved</span>
             <span><i class="signal-failed" aria-hidden="true"></i>Recorded failure</span>
@@ -4411,6 +4399,17 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
           </p>
           <div class="map-workspace">
             <div class="map-canvas-column">
+              <div class="map-camera-controls" role="group" aria-label="Map viewport">
+                <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
+                <output id="map-zoom-level" aria-label="Map zoom">100%</output>
+                <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+                <button id="map-fit" type="button" aria-pressed="true" aria-label="Fit view">Fit</button>
+                <button id="map-reset" type="button" aria-label="Reset to 100%">100%</button>
+                <span class="map-help-wrap">
+                  <button id="map-help-toggle" type="button" aria-label="How to read the map" aria-expanded="false" aria-controls="map-help">?</button>
+                  <p id="map-help" class="map-help" role="note">Read left to right: project → worker → task. Connections show ownership, not execution order. Scroll to zoom at the pointer; hold the middle mouse button and drag to pan, or drag with the left button or touch. Use + / − to zoom, arrow keys to pan, 0 to fit, or Home to reset. Tab to a node, then Enter or Space to select.</p>
+                </span>
+              </div>
               <div class="map-scroll-area">
                 <svg id="work-map" tabindex="0" role="group" aria-label="Work map" aria-describedby="map-help"></svg>
               </div>
@@ -4443,12 +4442,12 @@ cat > "$CONF_DIR/lib/browser/index.html" <<'UNIO_BROWSER_INDEX_HTML'
         <div id="limits-groups" class="limits-groups"></div>
       </section>
       <div class="observer-details">
-        <details>
-          <summary>Tools and operator limits</summary>
-          <div id="limits"></div>
+        <details class="drawer">
+          <summary><span>Tools and limits</span><span id="limits-count" class="drawer-count"></span></summary>
+          <div id="limits" class="tools"></div>
         </details>
-        <details>
-          <summary>Recent recorded events and warnings</summary>
+        <details class="drawer">
+          <summary><span>Activity log</span><span id="events-count" class="drawer-count"></span></summary>
           <div id="events" class="timeline"></div>
           <details class="raw-data">
             <summary>Raw data</summary>
@@ -4571,6 +4570,7 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
   let suppressMapClick = false;
   const MIN_MAP_SCALE = 0.05, MAX_MAP_SCALE = 3;
   const MAP_PAGE_SIZE = 24;
+  const MAP_GRID = 14; // map units between the background dots
   let lastData = null;
   // Selection is an exact node key plus its tuple; never a display label.
   let selected = null;
@@ -4586,6 +4586,18 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       // the running-first hint describes the map's order, not the list's
       document.getElementById("map-activity").hidden = currentView !== "map";
     }
+  }
+
+  // "?" in the map controls: hover or keyboard focus shows how to read the
+  // map; a click or tap keeps it open until clicked again, Escape or a
+  // click elsewhere.
+  const helpToggle = document.getElementById("map-help-toggle");
+  if (helpToggle) {
+    const wrap = helpToggle.parentElement;
+    const setOpen = (open) => { wrap.classList.toggle("is-open", open); helpToggle.setAttribute("aria-expanded", String(open)); };
+    helpToggle.addEventListener("click", () => setOpen(!wrap.classList.contains("is-open")));
+    helpToggle.addEventListener("keydown", (event) => { if (event.key === "Escape") { setOpen(false); helpToggle.blur(); } });
+    document.addEventListener("pointerdown", (event) => { if (!wrap.contains(event.target)) setOpen(false); });
   }
 
   const mapBtn = document.getElementById("view-map");
@@ -4714,26 +4726,7 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     // hidden, so switching views never shows an older observation.
     renderSummary(tally);
     renderTaskList(data, pageTasks, categories);
-    // Tools and operator limits: one honest line for what is never observed,
-    // then only what actually happened (benched tools, failed attempts).
-    const limits = document.getElementById("limits");
-    limits.replaceChildren();
-    if (data.agents.length)
-      limits.append(text("p", "Tool activity does not check sign-in or remaining allowance. Cached observations appear in AI agents & limits.", "small"));
-    else
-      limits.append(text("p", "No tool observations recorded. Authentication and capacity remain unknown.", "small"));
-    const missing = data.agents.filter((a) => a.binary && a.binary.present === false).map((a) => a.name);
-    if (missing.length) limits.append(text("p", "Tool missing: " + missing.join(", ") + ".", "small"));
-    for (const agent of data.agents) {
-      const retryAt = agent.bench.operator_retry_at !== null ? " · operator retry epoch " + agent.bench.operator_retry_at + "; not a provider reset" : "";
-      if (agent.bench.off || retryAt) limits.append(text("p", agent.name + (agent.bench.off ? " is benched (OFF)" : "") + retryAt + ".", "small"));
-    }
-    const troubled = data.retries.filter((retry) => retry.failed_attempts > 0 || retry.blocked || retry.retry_granted);
-    for (const retry of troubled)
-      limits.append(text("p", retry.task + ": " + retry.failed_attempts + " failed " + (retry.failed_attempts === 1 ? "attempt" : "attempts") + " · "
-        + (retry.blocked ? "BLOCKED" : retry.retry_granted ? "one retry granted" : "brake clear"), "small"));
-    if (!troubled.length && data.retries.length)
-      limits.append(text("p", "No failed attempts recorded; the loop brake is clear for every task.", "small"));
+    renderTools(data);
     renderTimeline(data);
     setText(document.getElementById("events-raw"), JSON.stringify(
       { recent_events: data.recent_events, warnings: data.warnings },
@@ -4915,30 +4908,152 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       default: return [label(String(e.event || "event")) + (e.task ? " · " + e.task : ""), "neutral"];
     }
   }
+  // The closed drawers say whether they are worth opening.
+  function setDrawerCount(id, value, tone) {
+    const el = document.getElementById(id);
+    el.textContent = value;
+    el.dataset.tone = tone || "";
+  }
+
+  // Tools and limits: what is never observed is said once; below it only
+  // what actually happened, one row each: a missing or switched-off tool,
+  // or a task with failed attempts and the state of its loop brake.
+  function toolRow(badge, name, detail, pill, tone) {
+    const row = text("div", "", "tool-row");
+    row.dataset.tone = tone || "";
+    row.append(badge || text("span", ""), text("strong", name, "tool-name"), text("p", detail, "tool-detail"), text("span", pill, "tool-pill"));
+    return row;
+  }
+  function renderTools(data) {
+    const box = document.getElementById("limits");
+    box.replaceChildren();
+    box.append(text("p", data.agents.length
+      ? "Tool activity does not check sign-in or remaining allowance. Cached observations appear in AI agents & limits."
+      : "No tool observations recorded. Authentication and capacity remain unknown.", "drawer-note"));
+    const missing = data.agents.filter((a) => a.binary && a.binary.present === false);
+    for (const a of missing) box.append(toolRow(agentBadge(a.name), a.name, "Its command-line tool is not installed.", "Missing", "failed"));
+    const off = data.agents.filter((a) => a.bench.off || a.bench.operator_retry_at !== null);
+    for (const a of off) {
+      const at = a.bench.operator_retry_at;
+      const detail = at === null ? "Switched off by the operator."
+        : "Operator retry " + (typeof at === "number" ? new Date(at * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : String(at)) + "; not a provider reset.";
+      box.append(toolRow(agentBadge(a.name), a.name, detail, a.bench.off ? "Off" : "Retry set", "attention"));
+    }
+    // a task name shown with a lab logo only when exactly one worker has it
+    const workersOf = new Map();
+    for (const r of data.results || []) workersOf.set(r.task, (workersOf.get(r.task) || new Set()).add(r.worker));
+    const troubled = data.retries.filter((retry) => retry.failed_attempts > 0 || retry.blocked || retry.retry_granted);
+    for (const retry of troubled) {
+      const owners = workersOf.get(retry.task);
+      const n = retry.failed_attempts, worker = owners && owners.size === 1 ? [...owners][0] : "";
+      box.append(toolRow(worker ? agentBadge(worker) : null, retry.task, n + " failed " + (n === 1 ? "attempt" : "attempts"),
+        retry.blocked ? "Blocked" : retry.retry_granted ? "Retry granted" : "Brake clear",
+        retry.blocked ? "failed" : retry.retry_granted ? "attention" : ""));
+    }
+    if (data.agents.length && !missing.length && !off.length && !troubled.length)
+      box.append(text("p", "All clear: every tool is installed and on, and no task has failed attempts.", "small"));
+    const parts = [];
+    if (missing.length) parts.push(missing.length + " missing");
+    if (off.length) parts.push(off.length + " off");
+    const blocked = troubled.filter((r) => r.blocked).length;
+    if (blocked) parts.push(blocked + " blocked");
+    const attempts = troubled.reduce((sum, r) => sum + r.failed_attempts, 0);
+    if (attempts) parts.push(attempts + " failed " + (attempts === 1 ? "attempt" : "attempts"));
+    setDrawerCount("limits-count", parts.length ? parts.join(" · ") : data.agents.length ? "All clear" : "", parts.length ? "attention" : "");
+  }
+
+  // Activity log: one row per task run instead of one per event, newest
+  // first and read left to right ("T7-glm started 01:07 · ran 16s ·
+  // checks 1/1 · approved by qwen · merged"). Warnings stay pinned above.
+  const LOG_VISIBLE = 8;
+  let logShowAll = false;
+  const clock = (at) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  function stepText(e) {
+    const n = (v) => (typeof v === "number" ? v : "?");
+    const at = Date.parse(e.ts);
+    switch (e.event) {
+      case "run_start": return "started" + (Number.isFinite(at) ? " " + clock(at) : "");
+      case "run": return e.exit === 0 ? "ran" + (typeof e.duration_s === "number" ? " " + span(e.duration_s) : " to the end")
+        : "ended with exit " + n(e.exit) + (e.wall ? " (time limit)" : "");
+      case "verify": {
+        const run = n(e.validate_run), failed = n(e.validate_failed);
+        const scope = e.scope && e.scope !== "OK" ? " (scope " + label(String(e.scope)).toLowerCase() + ")" : "";
+        return (e.verdict === "PASS" ? "checks " + run + "/" + run : e.verdict === "FAIL" ? "failed " + failed + " of " + run + " checks"
+          : "checks " + label(String(e.verdict || "unknown")).toLowerCase()) + scope;
+      }
+      case "review": return e.decision === "approved" ? "approved by " + (e.reviewer || "a reviewer")
+        : e.decision === "changes_requested" ? "changes asked by " + (e.reviewer || "a reviewer")
+          : "review " + label(String(e.decision || "no decision")).toLowerCase();
+      case "merge": return "merged";
+      default: return label(String(e.event || "event")).toLowerCase();
+    }
+  }
   function renderTimeline(data) {
     const box = document.getElementById("events");
     box.replaceChildren();
-    for (const warning of data.warnings || []) {
+    const warnings = data.warnings || [];
+    for (const warning of warnings) {
       const row = text("div", "", "timeline-row timeline-warning");
       row.append(text("span", "Warning", "timeline-time"), text("p", String(warning), "timeline-text"));
       box.append(row);
     }
-    const events = (data.recent_events || []).slice().sort((a, b) => (Date.parse(b.ts) || 0) - (Date.parse(a.ts) || 0));
-    let day = "";
+    // Oldest first, so each run collects its events in order. A row is one
+    // run of one task on one worker: a start, or a second run end, opens a
+    // new row, so a later result never covers an earlier one. A merge takes
+    // the worker's whole branch, so it is a row of its own.
+    const events = (data.recent_events || []).slice().sort((a, b) => (Date.parse(a.ts) || 0) - (Date.parse(b.ts) || 0));
+    const runs = [], open = new Map();
     for (const e of events) {
-      const at = Date.parse(e.ts);
+      const key = JSON.stringify([e.worker || "", e.task || ""]);
+      let run = e.task && e.event !== "run_start" && e.event !== "merge" ? open.get(key) : null;
+      if (run && e.event === "run" && run.events.some((x) => x.event === "run")) run = null;
+      if (!run) {
+        run = { task: e.task || "", worker: e.worker || "", events: [], at: 0 };
+        runs.push(run);
+        if (e.task && e.event !== "merge") open.set(key, run);
+      }
+      run.events.push(e);
+      run.at = Math.max(run.at, Date.parse(e.ts) || 0);
+    }
+    for (const run of runs) {
+      // the row's color is the latest event that decided something
+      const tones = run.events.map((e) => eventLine(e)[1]).filter((t) => t !== "neutral");
+      run.tone = tones.length ? tones[tones.length - 1] : "neutral";
+    }
+    runs.sort((a, b) => b.at - a.at);
+    // the newest few, plus every failed run: a failure is never folded away
+    const shown = logShowAll ? runs : runs.filter((run, i) => i < LOG_VISIBLE || run.tone === "failed");
+    let day = "";
+    for (const run of shown) {
+      const last = run.events[run.events.length - 1];
+      const at = Date.parse(last.ts);
       const thisDay = Number.isFinite(at) ? new Date(at).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "Unknown day";
       if (thisDay !== day) { day = thisDay; box.append(text("p", day, "timeline-day")); }
-      const [line, tone] = eventLine(e);
       const row = text("div", "", "timeline-row");
-      row.dataset.tone = tone;
-      const when = text("time", Number.isFinite(at) ? new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "--:--", "timeline-time");
-      when.dateTime = e.ts || "";
-      when.title = exactTime(e.ts);
-      row.append(when, e.worker ? agentBadge(e.worker) : text("span", ""), text("p", line, "timeline-text"));
+      row.dataset.tone = run.tone;
+      const when = text("time", Number.isFinite(at) ? clock(at) : "--:--", "timeline-time");
+      when.dateTime = last.ts || "";
+      when.title = exactTime(last.ts);
+      const line = text("p", "", "timeline-text");
+      const merge = run.events.length === 1 && run.events[0].event === "merge";
+      line.append(text("strong", merge ? (run.worker || "A worker") + "'s branch" : run.task || run.worker || "Unknown task", "timeline-task"),
+        document.createTextNode(run.events.map(stepText).join(" · ")));
+      row.append(when, run.worker ? agentBadge(run.worker) : text("span", ""), line);
       box.append(row);
     }
-    if (!events.length && !(data.warnings || []).length) box.append(text("p", "No recorded events yet.", "small"));
+    if (shown.length < runs.length || logShowAll && runs.length > LOG_VISIBLE) {
+      const more = text("button", logShowAll ? "Show the newest " + LOG_VISIBLE : "Show all " + runs.length + " rows", "log-more");
+      more.type = "button";
+      more.addEventListener("click", () => { logShowAll = !logShowAll; renderTimeline(data); });
+      box.append(more);
+    }
+    if (!events.length && !warnings.length) box.append(text("p", "No recorded events yet.", "small"));
+    const parts = [];
+    if (runs.length) parts.push(runs.length + (runs.length === 1 ? " row" : " rows"));
+    const failedRuns = runs.filter((run) => run.tone === "failed").length;
+    if (failedRuns) parts.push(failedRuns + " failed");
+    if (warnings.length) parts.push(warnings.length + (warnings.length === 1 ? " warning" : " warnings"));
+    setDrawerCount("events-count", parts.join(" · "), warnings.length || failedRuns ? "attention" : "");
   }
 
   const GROUPS = [["attention", "Needs you"], ["active", "Running"], ["finished", "Finished"]];
@@ -4949,13 +5064,26 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       button.setAttribute("aria-pressed", mapStateFilter === state ? "true" : "false");
     }
   }
+  // The list is rebuilt only when what it shows changes (the relative times
+  // count as a change once a minute), and a reader's open "Technical details"
+  // stay open across a rebuild, so polling never closes what someone opened.
+  let taskListSignature = "";
   function renderTaskList(data, pageTasks, categories) {
     const tasks = document.getElementById("tasks");
+    const minute = Math.floor((Date.parse(data.observed_at) || 0) / 60000);
+    const signature = JSON.stringify([minute, data.results.length, pageTasks.map((r) => [r, categories.get(r).category, isLatestForWorker(data, r)])]);
+    if (signature === taskListSignature && tasks.childElementCount) return;
+    taskListSignature = signature;
+    const rowKey = (row) => JSON.stringify([row.dataset.worker, row.dataset.task]);
+    const open = new Set([...tasks.querySelectorAll(".task-row")].filter((row) => row.querySelector(".task-tech[open]")).map(rowKey));
     tasks.replaceChildren();
     for (const [category, title] of GROUPS) {
       const records = pageTasks.filter((r) => categories.get(r).category === category);
       if (!records.length) continue;
-      records.sort((a, b) => (Date.parse(b.recorded_at) || 0) - (Date.parse(a.recorded_at) || 0));
+      // Newest first; in Needs you, failures come before work that is only
+      // waiting for its next step (a review, a check), so they never get buried.
+      const failedFirst = (r) => (category === "attention" && taskSignal(r, categories.get(r)) === "failed" ? 0 : 1);
+      records.sort((a, b) => failedFirst(a) - failedFirst(b) || (Date.parse(b.recorded_at) || 0) - (Date.parse(a.recorded_at) || 0));
       const group = text("section", "", "task-group");
       group.dataset.group = category;
       const heading = text("h3", "", "task-group-title");
@@ -4991,6 +5119,7 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       tasks.append(group);
     }
     if (!data.results.length) tasks.append(text("p", "No structured task evidence yet.", "small"));
+    for (const row of tasks.querySelectorAll(".task-row")) if (open.has(rowKey(row))) row.querySelector(".task-tech").open = true;
   }
 
   // JSON arrays cannot collide for different tuples, whatever the names hold.
@@ -5116,6 +5245,12 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     }
     const w = width / mapCamera.scale, h = height / mapCamera.scale;
     svg.setAttribute("viewBox", [mapCamera.x - w / 2, mapCamera.y - h / 2, w, h].join(" "));
+    // The dot grid lives in map space, so it pans and zooms with the nodes;
+    // far out, every other dot drops away so it never turns dense.
+    let tile = MAP_GRID * mapCamera.scale;
+    while (tile < 9) tile *= 2;
+    svg.parentElement.style.backgroundSize = tile + "px " + tile + "px";
+    svg.parentElement.style.backgroundPosition = (width / 2 - mapCamera.x * mapCamera.scale) + "px " + (height / 2 - mapCamera.y * mapCamera.scale) + "px";
     svg.dataset.view = mapFitView ? "fit" : "actual";
     svg.dataset.cameraX = String(mapCamera.x);
     svg.dataset.cameraY = String(mapCamera.y);
@@ -5273,6 +5408,18 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     });
     for (const option of existing.values()) option.remove();
     if (select.value !== mapWorkerFilter) select.value = mapWorkerFilter;
+    updateWorkerLogo();
+  }
+  // The closed worker filter shows the chosen worker's logo beside its name.
+  function updateWorkerLogo() {
+    const slot = document.getElementById("map-worker-logo");
+    if (!slot) return;
+    const worker = mapWorkerFilter;
+    if (slot.dataset.worker === worker) return;
+    slot.dataset.worker = worker;
+    slot.replaceChildren(...(worker ? [optionLogo(worker)] : []));
+    slot.dataset.agentMark = worker ? agentIdentity(worker).mark : "";
+    slot.parentElement.classList.toggle("has-logo", !!worker);
   }
 
   function syncCategoryOptions(categoriesList) {
@@ -5737,7 +5884,16 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     const btn = document.createElement("button");
     btn.type = "button";
     btn.id = "map-clear-sel";
-    btn.textContent = "Clear selection";
+    // a plain X; its name stays "Clear selection" for screen readers
+    btn.setAttribute("aria-label", "Clear selection");
+    btn.title = "Close";
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 14 14");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "M3 3l8 8M11 3l-8 8");
+    svg.appendChild(path);
+    btn.appendChild(svg);
     btn.addEventListener("click", clearSelection);
     return btn;
   }
@@ -6142,6 +6298,28 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     if (!manual || !codex)
       list.append(text("p", (!manual && !codex ? "Manual and automatic Codex readings are" : !manual ? "Manual readings are" : "Automatic Codex readings are")
         + " unavailable from the installed CLI and stay Unknown.", "small limits-unsupported"));
+    balanceCardGrids();
+  }
+
+  // Card grids keep balanced rows: as many columns as fit (at most four),
+  // then spread evenly, so 6 cards are 2 rows of 3 and 7 are 2 rows of 4.
+  function balanceGrid(grid) {
+    const cards = grid.querySelectorAll(":scope > .limits-card").length;
+    if (!cards) return;
+    const gap = 6, minCard = 250, maxCols = 4;
+    const fit = Math.max(1, Math.min(maxCols, Math.floor((grid.clientWidth + gap) / (minCard + gap))));
+    const cols = String(Math.ceil(cards / Math.ceil(cards / fit)));
+    if (grid.style.getPropertyValue("--cols") !== cols) grid.style.setProperty("--cols", cols);
+  }
+  function balanceCardGrids() {
+    for (const id of ["limits-routes", "limits-groups"]) {
+      const grid = document.getElementById(id);
+      if (grid) balanceGrid(grid);
+    }
+  }
+  {
+    const routes = document.getElementById("limits-routes");
+    if (routes) new ResizeObserver(balanceCardGrids).observe(routes);
   }
 
   async function refreshLimits() {
@@ -6158,16 +6336,18 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     renderLimits();
   }
 
-  // The loading screen (the dot U) stays until the first observation has
-  // finished, whatever its result, and at least long enough not to flash.
-  const bootStarted = performance.now();
+  // The loading screen (the dot U) stays only until the first observation
+  // has finished, whatever its result; the person is let in right away,
+  // even if the animation is still running.
   let booted = false;
   function markReady() {
     if (booted) return;
     booted = true;
-    const wait = Math.max(0, 600 - (performance.now() - bootStarted));
-    setTimeout(() => document.documentElement.classList.add("is-ready"), wait);
+    document.documentElement.classList.add("is-ready");
   }
+  // A slow first read never holds anyone on the loading screen: after 2.5 s
+  // the page opens and its own status line says it is still loading.
+  setTimeout(markReady, 2500);
 
   async function refresh() {
     if (busy) return;
@@ -6182,9 +6362,12 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
       // Remove old states so a failed observation cannot look current.
       clearMapAfterFailure();
       document.getElementById("tasks").replaceChildren();
+      taskListSignature = "";
       document.getElementById("limits").replaceChildren();
       document.getElementById("events").textContent = "";
       document.getElementById("events-raw").textContent = "";
+      setDrawerCount("limits-count", "");
+      setDrawerCount("events-count", "");
       status.className = "error";
       status.textContent =
         "Local activity is unavailable. No current state is claimed.";
@@ -6215,6 +6398,7 @@ cat > "$CONF_DIR/lib/browser/activity.css" <<'UNIO_BROWSER_ACTIVITY_CSS'
 
   --text-main: #242424;
   --bg-main: #f2f2f2;
+  --map-bg: #e4e4e4;
   --muted: #606060;
   --line: #d6d6d6;
   --accent: #333333;
@@ -6264,6 +6448,7 @@ cat > "$CONF_DIR/lib/browser/activity.css" <<'UNIO_BROWSER_ACTIVITY_CSS'
   color-scheme: dark;
   --text-main: #e8e8e8;
   --bg-main: #1c1c1c;
+  --map-bg: #0d0d0d;
   --muted: #a6a6a6;
   --line: #3d3d3d;
   --accent: #d2d2d2;
@@ -6365,7 +6550,7 @@ input { min-height: 44px; font-size: 13px; }
 .reopen-details { border-top: 1px solid var(--line-alt); margin-top: 22px; padding-top: 10px; }
 #draft-status, #job-status { font-size: 13px; margin: 14px 0 0; }
 #draft-status:empty, #job-status:empty { display: none; }
-.error { color: var(--text-error); background: var(--bg-error); border-left: 3px solid var(--border-error); padding: 12px; border-radius: 3px; overflow-wrap: anywhere; }
+.error { color: var(--text-error); background: var(--bg-error); border: 1px solid var(--border-error); padding: 12px; border-radius: 3px; overflow-wrap: anywhere; }
 #draft-reference { overflow-wrap: anywhere; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; background: var(--bg-pre); border: 1px solid var(--border-pre); border-radius: 5px; padding: 14px 16px; font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; max-width: 100%; margin: 0 0 16px; tab-size: 2; }
 summary { cursor: pointer; color: var(--text-summary); font-size: 13px; font-weight: 550; min-height: 44px; padding: 12px 0; overflow-wrap: anywhere; }
@@ -6496,10 +6681,14 @@ footer a { display: inline-flex; align-items: center; min-height: 44px; color: v
   cursor: pointer;
 }
 .history-toggle input { width: auto; min-height: auto; flex: none; }
-.map-camera-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+/* The zoom controls float inside the map's bottom-left corner: just the
+   buttons, no extra frame. The zoom level wears the map's own background,
+   so it stays readable when a node slides behind it. */
+.map-canvas-column { position: relative; }
+.map-camera-controls { position: absolute; bottom: 10px; left: 10px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: calc(100% - 20px); }
+.map-camera-controls #map-zoom-level { align-self: stretch; display: grid; place-items: center; padding: 0 4px; background: var(--map-bg, var(--bg-main)); }
 .map-camera-controls button { min-width: 44px; }
 #map-zoom-level { min-width: 4ch; text-align: center; font-size: 12px; color: var(--muted); }
-.map-help { margin: 0 0 12px; max-width: 100ch; }
 .map-activity { margin: 0 0 12px; font-weight: 600; }
 .map-empty { margin: 0 0 12px; color: var(--muted); }
 .map-workspace { display: grid; grid-template-columns: minmax(0, 1fr); }
@@ -6507,7 +6696,9 @@ footer a { display: inline-flex; align-items: center; min-height: 44px; color: v
 .map-scroll-area {
   overflow: hidden;
   border: 1px solid var(--line);
-  background: var(--bg-main);
+  /* a step less bright than the page in both themes (near-black in dark),
+     with a barely visible dot grid, like a technical board */
+  background: var(--map-bg, var(--bg-main)) radial-gradient(circle, color-mix(in srgb, var(--text-main) 4.5%, transparent) 1px, transparent 1.5px) 0 0 / 14px 14px;
   border-radius: 5px;
   height: clamp(320px, 55vh, 560px);
 }
@@ -6547,10 +6738,17 @@ footer a { display: inline-flex; align-items: center; min-height: 44px; color: v
 .map-details-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
 }
+.map-details-header h3 { min-width: 0; }
+/* close: a plain X, no frame until hovered */
+#map-clear-sel {
+  flex: none; display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; margin: 0 -6px 0 0; padding: 0;
+  background: none; border-color: transparent; color: var(--muted);
+}
+#map-clear-sel:hover { color: var(--text-main); border-color: var(--line); }
+#map-clear-sel svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .map-details-header h3 { overflow-wrap: anywhere; }
 .node-status { stroke: var(--muted); stroke-width: 3; stroke-linecap: round; pointer-events: none; }
 [data-signal="passed"] > .node-status { stroke: var(--map-passed); }
@@ -6703,7 +6901,6 @@ button, input, textarea, .map-controls select, #theme-selector { border-radius: 
   margin: 0 -14px 10px; padding: 8px 14px; font-size: 11.5px; font-weight: 700;
   background: var(--bg-composer); border-bottom: 1px solid var(--line);
   border-radius: calc(var(--r-sm) - 1px) calc(var(--r-sm) - 1px) 0 0;
-  box-shadow: inset 3px 0 0 var(--tone, var(--line-alt));
 }
 .limits-card:hover { border-color: var(--text-label); box-shadow: 0 0 0 1px var(--text-label); }
 .limits-meter { border-radius: var(--r-xs); }
@@ -6731,56 +6928,72 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .boot {
   position: fixed; inset: 0; z-index: 100; display: grid; place-content: center; justify-items: center; gap: 20px;
   background: var(--bg-main); pointer-events: none;
-  animation: boot-away .3s ease 6s forwards;
+  /* Safety exit if no script ever marks the page ready. It moves the screen
+     away instead of fading it: sharing opacity/visibility with the fade
+     below made Firefox hold the screen up until this ran. */
+  animation: boot-away 0s linear 8s forwards;
 }
 .is-ready .boot { opacity: 0; visibility: hidden; transition: opacity .35s ease, visibility 0s .35s; }
-@keyframes boot-away { to { opacity: 0; visibility: hidden; } }
+@keyframes boot-away { to { transform: translateY(-100%); } }
 .boot-field { display: grid; grid-template-columns: repeat(10, 14px); gap: 4px; }
 .boot-field i { width: 14px; height: 14px; border-radius: 3px; background: var(--bg-composer); }
-/* each dot of the U waits dim like the field, then pops into a tone in turn */
-.boot-field i.on { animation: boot-dot .3s ease-out, boot-tone 3.6s linear infinite; }
-@keyframes boot-dot { from { transform: scale(.55); } to { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .boot-field i.on { background: var(--accent); } }
+/* Each dot of the U waits dim like the field, then appears small and grows
+   to full size. It grows by uncovering a full-size square (clip-path) rather
+   than scaling it, so the edges stay crisp the whole time. Its colored layer
+   already starts in a tone, so while the page is still busy loading a dot
+   never shows up gray. */
+.boot-field i { position: relative; }
+.boot-field i.on::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: var(--t-rust); opacity: 0;
+  animation: boot-dot .2s ease-out forwards, boot-tone 3.6s linear infinite;
+}
+@keyframes boot-dot {
+  from { opacity: 1; clip-path: inset(32% round 1px); }
+  to { opacity: 1; clip-path: inset(0 round 3px); }
+}
+@media (prefers-reduced-motion: reduce) { .boot-field i.on::after { opacity: 1; clip-path: none; background: var(--accent); } }
 @keyframes boot-tone {
   0%, 100% { background: var(--t-rust); } 16.6% { background: var(--t-mustard); } 33.3% { background: var(--t-sea); }
   50% { background: var(--t-steel); } 66.6% { background: var(--t-periwinkle); } 83.3% { background: var(--t-lavender); }
 }
-.boot-label { margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.boot-field i:nth-child(23) { animation-delay: 0ms, 0ms; }
-.boot-field i:nth-child(24) { animation-delay: 30ms, 30ms; }
-.boot-field i:nth-child(27) { animation-delay: 60ms, 60ms; }
-.boot-field i:nth-child(28) { animation-delay: 90ms, 90ms; }
-.boot-field i:nth-child(33) { animation-delay: 120ms, 120ms; }
-.boot-field i:nth-child(34) { animation-delay: 150ms, 150ms; }
-.boot-field i:nth-child(37) { animation-delay: 180ms, 180ms; }
-.boot-field i:nth-child(38) { animation-delay: 210ms, 210ms; }
-.boot-field i:nth-child(43) { animation-delay: 240ms, 240ms; }
-.boot-field i:nth-child(44) { animation-delay: 270ms, 270ms; }
-.boot-field i:nth-child(47) { animation-delay: 300ms, 300ms; }
-.boot-field i:nth-child(48) { animation-delay: 330ms, 330ms; }
-.boot-field i:nth-child(53) { animation-delay: 360ms, 360ms; }
-.boot-field i:nth-child(54) { animation-delay: 390ms, 390ms; }
-.boot-field i:nth-child(57) { animation-delay: 420ms, 420ms; }
-.boot-field i:nth-child(58) { animation-delay: 450ms, 450ms; }
-.boot-field i:nth-child(63) { animation-delay: 480ms, 480ms; }
-.boot-field i:nth-child(64) { animation-delay: 510ms, 510ms; }
-.boot-field i:nth-child(67) { animation-delay: 540ms, 540ms; }
-.boot-field i:nth-child(68) { animation-delay: 570ms, 570ms; }
-.boot-field i:nth-child(73) { animation-delay: 600ms, 600ms; }
-.boot-field i:nth-child(74) { animation-delay: 630ms, 630ms; }
-.boot-field i:nth-child(75) { animation-delay: 660ms, 660ms; }
-.boot-field i:nth-child(76) { animation-delay: 690ms, 690ms; }
-.boot-field i:nth-child(77) { animation-delay: 720ms, 720ms; }
-.boot-field i:nth-child(78) { animation-delay: 750ms, 750ms; }
-.boot-field i:nth-child(84) { animation-delay: 780ms, 780ms; }
-.boot-field i:nth-child(85) { animation-delay: 810ms, 810ms; }
-.boot-field i:nth-child(86) { animation-delay: 840ms, 840ms; }
-.boot-field i:nth-child(87) { animation-delay: 870ms, 870ms; }
+/* Dots switch on as a ring growing from the top-left dot of the U: each
+   dot's delay follows its distance from there, with a little jitter. */
+.boot-field i:nth-child(23)::after { animation-delay: 0ms, 0ms; }
+.boot-field i:nth-child(33)::after { animation-delay: 97ms, 97ms; }
+.boot-field i:nth-child(24)::after { animation-delay: 100ms, 100ms; }
+.boot-field i:nth-child(34)::after { animation-delay: 140ms, 140ms; }
+.boot-field i:nth-child(43)::after { animation-delay: 198ms, 198ms; }
+.boot-field i:nth-child(44)::after { animation-delay: 227ms, 227ms; }
+.boot-field i:nth-child(53)::after { animation-delay: 269ms, 269ms; }
+.boot-field i:nth-child(54)::after { animation-delay: 316ms, 316ms; }
+.boot-field i:nth-child(37)::after { animation-delay: 380ms, 380ms; }
+.boot-field i:nth-child(27)::after { animation-delay: 401ms, 401ms; }
+.boot-field i:nth-child(63)::after { animation-delay: 403ms, 403ms; }
+.boot-field i:nth-child(47)::after { animation-delay: 409ms, 409ms; }
+.boot-field i:nth-child(64)::after { animation-delay: 414ms, 414ms; }
+.boot-field i:nth-child(73)::after { animation-delay: 462ms, 462ms; }
+.boot-field i:nth-child(74)::after { animation-delay: 465ms, 465ms; }
+.boot-field i:nth-child(28)::after { animation-delay: 476ms, 476ms; }
+.boot-field i:nth-child(57)::after { animation-delay: 486ms, 486ms; }
+.boot-field i:nth-child(38)::after { animation-delay: 487ms, 487ms; }
+.boot-field i:nth-child(48)::after { animation-delay: 505ms, 505ms; }
+.boot-field i:nth-child(75)::after { animation-delay: 515ms, 515ms; }
+.boot-field i:nth-child(58)::after { animation-delay: 536ms, 536ms; }
+.boot-field i:nth-child(76)::after { animation-delay: 537ms, 537ms; }
+.boot-field i:nth-child(67)::after { animation-delay: 546ms, 546ms; }
+.boot-field i:nth-child(84)::after { animation-delay: 559ms, 559ms; }
+.boot-field i:nth-child(77)::after { animation-delay: 597ms, 597ms; }
+.boot-field i:nth-child(85)::after { animation-delay: 601ms, 601ms; }
+.boot-field i:nth-child(68)::after { animation-delay: 615ms, 615ms; }
+.boot-field i:nth-child(86)::after { animation-delay: 637ms, 637ms; }
+.boot-field i:nth-child(78)::after { animation-delay: 662ms, 662ms; }
+.boot-field i:nth-child(87)::after { animation-delay: 702ms, 702ms; }
 
 /* ---- Tasks, readable: summary, grouped list, plain states ---------------- */
 .task-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 4px 0 18px; }
 .task-summary button {
-  display: flex; align-items: baseline; gap: 10px; justify-content: flex-start;
+  display: grid; grid-auto-flow: column; justify-content: start; align-content: center; align-items: baseline; column-gap: 10px;
   min-height: 64px; padding: 10px 16px; text-align: left; background: var(--paper);
   border-radius: var(--r-xs);
 }
@@ -6803,10 +7016,9 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
   display: grid; gap: 10px 22px; align-items: center; padding: 14px 16px 10px;
   grid-template-columns: minmax(0, 1.5fr) auto minmax(150px, .7fr) minmax(0, 1.2fr);
   background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
-  box-shadow: inset 3px 0 0 var(--signal-color, var(--line-alt));
   transition: border-color .16s, box-shadow .16s;
 }
-.task-row:hover { border-color: var(--text-label); box-shadow: inset 3px 0 0 var(--signal-color, var(--line-alt)), 0 0 0 1px var(--text-label); }
+.task-row:hover { border-color: var(--text-label); box-shadow: 0 0 0 1px var(--text-label); }
 [data-signal="passed"] { --signal-color: var(--map-passed); }
 [data-signal="failed"] { --signal-color: var(--map-failed); }
 [data-signal="attention"] { --signal-color: var(--map-attention); }
@@ -6831,17 +7043,21 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .track li::before { content: ""; width: 8px; height: 8px; border-radius: 2px; border: 1.5px solid var(--line-alt); }
 .track li[data-step="done"] { color: var(--text-main); }
 .track li[data-step="done"]::before { background: var(--map-passed); border-color: var(--map-passed); }
-.track li[data-step="failed"] { color: var(--text-main); border-color: var(--map-failed); }
+.track li[data-step="failed"] { color: var(--text-main); }
 .track li[data-step="failed"]::before { background: var(--map-failed); border-color: var(--map-failed); }
 .track li[data-step="running"]::before { background: var(--text-main); border-color: var(--text-main); }
 .track li[data-step="unknown"]::before { border-style: dashed; }
 
 .task-status { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .state-pill {
-  display: inline-block; padding: 3px 8px; border-radius: var(--r-xs);
+  display: inline-flex; align-items: center; gap: 7px; padding: 3px 8px; border-radius: var(--r-xs);
   font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--text-main); background: var(--bg-label); box-shadow: inset 3px 0 0 var(--signal-color, var(--line-alt));
-  padding-left: 11px;
+  color: var(--text-main); background: var(--bg-label);
+}
+/* status is a small square, like the Run / Checks / Review steps and the
+   map legend; no colored edges on rows or cards */
+.state-pill::before, .tool-pill::before, .timeline-time::before {
+  content: ""; flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--signal-color, var(--line-alt));
 }
 .task-when { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 
@@ -6862,7 +7078,7 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .task-tech p { margin: 0 0 4px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
 
 /* details panel: the same plain summary first */
-.task-brief { display: grid; gap: 10px; margin: 14px 0 16px; padding: 14px; background: var(--bg-composer); border-radius: var(--r-sm); box-shadow: inset 3px 0 0 var(--signal-color, var(--line-alt)); }
+.task-brief { display: grid; gap: 10px; margin: 14px 0 16px; padding: 14px; background: var(--bg-composer); border-radius: var(--r-sm); }
 .task-brief .track { flex-wrap: wrap; }
 .map-details .task-tech { border-top: 1px solid var(--line); }
 
@@ -6905,33 +7121,73 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .timeline-day { margin: 12px 0 4px; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .timeline-day:first-child { margin-top: 0; }
 .timeline-row {
-  display: grid; grid-template-columns: 44px 104px minmax(0, 1fr); align-items: center; gap: 12px;
+  display: grid; grid-template-columns: 62px 104px minmax(0, 1fr); align-items: center; gap: 12px;
   padding: 6px 12px; border-radius: var(--r-sm); background: var(--paper);
-  box-shadow: inset 3px 0 0 var(--signal-color, var(--line));
 }
 .timeline-row[data-tone="passed"] { --signal-color: var(--map-passed); }
 .timeline-row[data-tone="failed"] { --signal-color: var(--map-failed); }
 .timeline-row[data-tone="attention"] { --signal-color: var(--map-attention); }
-.timeline-time { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.timeline-time { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 .timeline-row .agent-badge { grid-row: auto; flex-direction: row; gap: 6px; min-width: 0; }
 .timeline-row .agent-logo { width: 16px; height: 16px; }
 .timeline-text { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
-.timeline-warning { grid-template-columns: 70px minmax(0, 1fr); --signal-color: var(--map-attention); }
+.timeline-warning { grid-template-columns: 88px minmax(0, 1fr); --signal-color: var(--map-attention); }
 .timeline-warning .timeline-time { color: var(--map-attention); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.timeline-task { margin-right: 8px; font-weight: 650; }
+.log-more { justify-self: start; min-height: 44px; margin-top: 6px; padding: 6px 14px; }
 .raw-data > summary { font-size: 12px; }
+
+/* ---- Drawers: Tools and limits, Activity log ------------------------------
+   A label like every other section label; when closed it still says
+   whether it is worth opening. */
+.drawer > summary { font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.drawer-count { margin-left: 12px; font-weight: 600; letter-spacing: .02em; text-transform: none; color: var(--muted); }
+.drawer-count[data-tone="attention"] { color: var(--map-attention); }
+.drawer-note { margin: 0 0 10px; font-size: 12.5px; color: var(--muted); }
+.tools { display: grid; gap: 2px; margin: 0 0 14px; }
+.tool-row {
+  display: grid; grid-template-columns: 104px minmax(120px, 220px) minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  padding: 8px 12px; border-radius: var(--r-sm); background: var(--paper);
+}
+.tool-row[data-tone="failed"] { --signal-color: var(--map-failed); }
+.tool-row[data-tone="attention"] { --signal-color: var(--map-attention); }
+.tool-row .agent-badge { grid-row: auto; flex-direction: row; gap: 6px; min-width: 0; }
+.tool-row .agent-logo { width: 16px; height: 16px; }
+.tool-name { font-size: 13px; overflow-wrap: anywhere; }
+.tool-detail { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.tool-pill {
+  display: inline-flex; align-items: center; gap: 7px; padding: 3px 8px; border-radius: var(--r-xs); white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-main); background: var(--bg-label);
+}
+@media (max-width: 720px) {
+  .tool-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .tool-row .agent-badge { display: none; }
+  .tool-detail { grid-column: 1 / -1; grid-row: 2; }
+}
 .raw-data pre { max-height: 360px; overflow: auto; }
 
 /* ---- Map: the how-to stays out of the way until asked for ----------------- */
-.map-howto { margin: 0 0 10px; }
-.map-howto > summary { min-height: 0; padding: 4px 0; font-family: var(--mono); font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; width: max-content; }
-.map-howto .map-help { margin: 4px 0 6px; }
+/* "?" at the end of the map controls: the how-to opens above the controls
+   on hover or keyboard focus, and a click or tap keeps it open */
+.map-help-wrap { display: flex; }
+.map-help {
+  position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 4;
+  width: max-content; max-width: min(440px, calc(100vw - 48px)); margin: 0; padding: 12px 14px;
+  font-size: 12.5px; line-height: 1.55; color: var(--text-main);
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+  visibility: hidden; opacity: 0; transition: opacity .12s, visibility 0s .12s;
+}
+.map-help-wrap:hover .map-help, .map-help-wrap:focus-within .map-help, .map-help-wrap.is-open .map-help {
+  visibility: visible; opacity: 1; transition: opacity .12s;
+}
 
 /* ---- Phones: filters two to a row instead of one long column -------------- */
 @media (max-width: 720px) {
   .task-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .task-filters select, .task-filters input[type="search"] { min-width: 0; }
   .task-filters #map-reset-filters, .task-filters .map-counts { grid-column: 1 / -1; }
-  .timeline-row { grid-template-columns: 46px minmax(0, 1fr); }
+  .timeline-row { grid-template-columns: 62px minmax(0, 1fr); }
   .timeline-row .agent-badge { display: none; }
 }
 
@@ -7004,11 +7260,82 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
   .task-row.row { grid-template-columns: minmax(0, 1fr); }
   .track { grid-template-columns: 62px 112px 90px; }
 }
-.task-row.row { grid-template-columns: minmax(0, 1fr) 272px 176px 384px; }
+.task-row.row { grid-template-columns: minmax(0, 1fr) calc(272px + clamp(16px, 2vw, 40px)) 176px 384px; }
 /* a long command wraps instead of being cut off; Copy takes it whole */
 .next-line code { white-space: normal; overflow-wrap: anywhere; overflow-x: visible; }
 @media (max-width: 1200px) { .task-row.row { grid-template-columns: minmax(0, 1fr) 176px; } }
 @media (max-width: 720px) { .task-row.row { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- Worker filter: the chosen worker's logo inside the closed control ---- */
+.worker-filter { position: relative; display: flex; flex: 1 1 160px; min-width: 0; }
+.worker-filter select { flex: 1; width: 100%; }
+.worker-filter-logo { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: flex; pointer-events: none; z-index: 1; }
+.worker-filter-logo .option-logo { width: 18px; height: 18px; fill: var(--tone, var(--text-main)); }
+.worker-filter.has-logo select { padding-left: 38px; }
+@media (max-width: 720px) { .worker-filter { flex-basis: auto; } }
+
+/* ---- Agent cards: balanced rows (columns set from the card count) --------- */
+.limits-routes, .limits-groups { grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); }
+.view-switch button, .task-summary .summary-name, .state-pill, .track li { white-space: nowrap; }
+.view-switch { flex: none; }
+
+/* Before the theme script runs, follow the system: in dark mode the page
+   paints dark from the first frame instead of flashing light. Same values as
+   [data-theme="dark"]; work_map_browser.cjs checks the two never drift. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --text-main: #e8e8e8;
+    --bg-main: #1c1c1c;
+    --map-bg: #0d0d0d;
+    --muted: #a6a6a6;
+    --line: #3d3d3d;
+    --accent: #d2d2d2;
+    --paper: #252525;
+    --bg-label: #333333;
+    --text-label: #c4c4c4;
+    --bg-composer: #2b2b2b;
+    --btn-border: #686868;
+    --btn-text: #e8e8e8;
+    --btn-hover-bg: #3d3d3d;
+    --btn-hover-border: #8b8b8b;
+    --btn-primary-hover: #eeeeee;
+    --btn-danger-text: #eeeeee;
+    --btn-danger-border: #858585;
+    --btn-danger-hover: #383838;
+    --btn-disabled-bg: #2e2e2e;
+    --btn-disabled-text: #888888;
+    --btn-disabled-border: #464646;
+    --btn-primary-text: #1c1c1c;
+    --focus-ring: #e2e2e2;
+    --text-placeholder: #a0a0a0;
+    --line-alt: #555555;
+    --text-error: #eeeeee;
+    --bg-error: #383838;
+    --border-error: #a0a0a0;
+    --bg-pre: #222222;
+    --border-pre: #3b3b3b;
+    --text-summary: #b4b4b4;
+    --text-stage: #a6a6a6;
+    --text-stage-help: #bdbdbd;
+    --text-warn: #dddddd;
+    --bg-warn: #383838;
+    --text-status: #b4b4b4;
+    --text-chip: #c4c4c4;
+    --bg-chip-warn: #383838;
+    --text-chip-warn: #dddddd;
+    --map-passed: #3fb950;
+    --map-failed: #f85149;
+    --map-attention: #d29922;
+    --t-rust: #cb7f72;
+    --t-mustard: #caaa72;
+    --t-sea: #74b4a5;
+    --t-steel: #91a2b6;
+    --t-periwinkle: #8795c9;
+    --t-lavender: #a094d1;
+    --footer-bg: #151515;
+  }
+}
 UNIO_BROWSER_ACTIVITY_CSS
 cat > "$CONF_DIR/lib/browser/drafts.js" <<'UNIO_BROWSER_DRAFTS_JS'
 /* Unio — Copyright (C) 2026 Daniel Mitev; Daniel Mevit (@danielmevit).
@@ -8157,6 +8484,21 @@ cat > "$CONF_DIR/lib/browser/worker_console.js" <<'UNIO_BROWSER_WORKER_CONSOLE_J
   });
 })();
 UNIO_BROWSER_WORKER_CONSOLE_JS
+cat > "$CONF_DIR/lib/browser/theme.js" <<'UNIO_BROWSER_THEME_JS'
+/* Unio — Copyright (C) 2026 Daniel Mitev; Daniel Mevit (@danielmevit).
+   https://github.com/danielmevit/unio
+   SPDX-License-Identifier: AGPL-3.0-only; see LICENSE and NOTICE. No warranty. */
+// Runs before the first paint (loaded without defer): applies a saved Light or
+// Dark choice at once, so the page never flashes the other theme while the
+// deferred scripts load. System needs nothing here; the stylesheet follows it.
+// activity.js stays the authority and re-applies the theme when it runs.
+(function () {
+  try {
+    var saved = localStorage.getItem("unio-theme-preference");
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+  } catch (_) {}
+})();
+UNIO_BROWSER_THEME_JS
 # END EMBEDDED BROWSER
 # BEGIN EMBEDDED CAPACITY
 # Check every generated destination before replacing any capacity file.

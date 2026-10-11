@@ -556,6 +556,7 @@ class ActivityHandler(BaseHTTPRequestHandler):
         routes = {'/':('index.html','text/html; charset=utf-8'),
                   '/activity.js':('activity.js','text/javascript; charset=utf-8'),
                   '/drafts.js':('drafts.js','text/javascript; charset=utf-8'),
+                  '/theme.js':('theme.js','text/javascript; charset=utf-8'),
                   '/activity.css':('activity.css','text/css; charset=utf-8')}
         if self.path in routes:
             name, content_type = routes[self.path]

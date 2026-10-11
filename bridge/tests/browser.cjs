@@ -59,6 +59,14 @@ const { chromium } = require(process.env.M2_PLAYWRIGHT_MODULE || "playwright");
         exit: 124,
         limit_signal: "runner_log_pattern",
       },
+      // Activity log integrity: the same task name on two workers, a failed
+      // run followed by a passing one, a merge, and seven newer runs that
+      // would push the failure past the newest eight.
+      { event: "run", worker: "alpha", task: "shared", exit: 1, ts: "2026-01-01T10:00:00Z" },
+      { event: "run", worker: "alpha", task: "shared", exit: 0, duration_s: 5, ts: "2026-01-01T10:05:00Z" },
+      { event: "run", worker: "beta", task: "shared", exit: 0, duration_s: 7, ts: "2026-01-01T10:06:00Z" },
+      { event: "merge", worker: "alpha", ts: "2026-01-01T10:07:00Z" },
+      ...Array.from({ length: 7 }, (_, i) => ({ event: "run", worker: "gamma", task: "later-" + i, exit: 0, duration_s: 1, ts: "2026-01-02T10:0" + i + ":00Z" })),
     ],
     warnings: ["Literal <script>alert(1)</script> " + "long_observer_warning_".repeat(90)],
     evidence: "recorded; use result to recheck revision and readiness",
@@ -161,7 +169,7 @@ const { chromium } = require(process.env.M2_PLAYWRIGHT_MODULE || "playwright");
       ),
     );
     assert.ok(
-      (await page.locator("#limits").textContent()).includes("BLOCKED"),
+      (await page.locator("#limits").textContent()).includes("Blocked"),
     );
     // Read-only mode exposes only view controls: the list's only extra
     // buttons copy a suggested command to the clipboard.
@@ -185,7 +193,7 @@ const { chromium } = require(process.env.M2_PLAYWRIGHT_MODULE || "playwright");
     );
     assert.deepEqual(
       buttons.filter((name) => name !== "map-node"),
-      ["Refresh", "List", "Work map", "Reset filters", "−", "+", "Fit view", "Reset 100%"],
+      ["Refresh", "List", "Work map", "Reset filters", "−", "+", "Fit", "100%", "?"],
     );
     assert.equal(buttons.filter((name) => name === "map-node").length, 3);
     assert.equal(
@@ -232,8 +240,22 @@ const { chromium } = require(process.env.M2_PLAYWRIGHT_MODULE || "playwright");
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     );
-    await page.getByText("Recent recorded events and warnings", {exact:true}).click();
+    await page.getByText("Activity log", {exact:true}).click();
     assert.ok((await page.locator("#events").textContent()).includes("Literal <script>"));
+    {
+      const rows = await page.locator("#events .timeline-row:not(.timeline-warning)").evaluateAll((els) =>
+        els.map((el) => ({ text: el.querySelector(".timeline-text").textContent, tone: el.dataset.tone, mark: (el.querySelector(".agent-badge") || {}).dataset })));
+      const shared = rows.filter((r) => r.text.startsWith("shared"));
+      assert.equal(shared.length, 1, "past the newest eight only the failed run stays: a failure is never folded away");
+      assert.ok(shared[0].tone === "failed" && shared[0].text.includes("exit 1"), "a failed run keeps its own red row");
+      assert.ok(!rows.some((r) => r.text.includes("exit 1") && r.text.includes("ran 5s")), "two runs never share a row");
+      assert.ok(!rows.some((r) => r.text.startsWith("shared") && r.text.includes("merged")), "a merge is not pinned on one task");
+      assert.match(await page.locator("#events-count").textContent(), /· 2 failed ·/);
+      await page.locator("#events .log-more").click();
+      const all = await page.locator("#events .timeline-row:not(.timeline-warning) .timeline-text").allTextContents();
+      assert.equal(all.filter((t) => t.startsWith("shared")).length, 3, "the same task name on two workers stays two separate rows");
+      assert.ok(all.some((t) => t.startsWith("alpha's branch") && t.includes("merged")));
+    }
     assert.equal(await page.locator("#events script").count(), 0);
     assert.ok(await page.locator("#events").evaluate((el) => el.scrollWidth <= el.clientWidth + 1));
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
