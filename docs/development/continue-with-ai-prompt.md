@@ -49,6 +49,10 @@ Ignore queries fell from 66 to 6 on that fixture. Read
 [the measured limits](SAVE-PERFORMANCE.md#sibling-ignore-batching--2026-10-11-source-candidate)
 and the newest local receipts for full functional/native acceptance; no
 general real-workspace timeout fix or release is implied.
+The completed slice passed all 186 manual and 61 automatic saving checks,
+plus native scope and six validation commands. The lead personally reviewed
+the patch; no additional AI reviewer was launched. Final handoff changes are
+documentation only, with runtime identity checked against the verified source.
 
 The owner added [native macOS and Windows support](CROSS-PLATFORM.md), with
 an initial file/function inventory and staged acceptance. Windows currently

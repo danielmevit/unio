@@ -27,14 +27,16 @@ a concrete failure to investigate.
 Owner dashboard/site updates through `9f6a4f2` are now reconciled with the CLI
 candidates. The delivered interface is preserved; further visual redesign is
 not the current priority. The first save-latency worker produced a profile and
-unvalidated partial changes before reaching its configured token cap. No full
-save-engine speedup is accepted yet.
+unvalidated partial changes before reaching its configured token cap. That
+partial remains excluded.
 The subsequent bounded lead implementation batches sibling ignore checks,
 keeping depth-first traversal and retention behavior. Six focused tests passed;
 two full saves with identical starting history completed under the existing
 deadline while baseline attempts refused. The [measurements](SAVE-PERFORMANCE.md#sibling-ignore-batching--2026-10-11-source-candidate)
 are fixture-specific; history-scale real-workspace behavior needs further
-profiling. Check current acceptance receipts before treating it as released.
+profiling. The bounded source slice passed six focused tests, 186 manual and
+61 automatic save checks, native scope/validation and personal lead review.
+It is not a new published release.
 Genuine lead-limit restart remains unobserved and experimental/opt-in.
 Earlier dated sections below preserve their historical context.
 
