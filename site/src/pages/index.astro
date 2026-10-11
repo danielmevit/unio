@@ -258,6 +258,10 @@ const faqs = [
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script is:inline>
+      // the dot titles start dim and light up dot by dot (see the page script)
+      try { if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("dot-titles"); } catch (e) {}
+    </script>
     <title>{title}</title>
     <meta name="description" content={description} />
     <meta name="author" content="Daniel Mevit" />
@@ -508,6 +512,133 @@ const faqs = [
     </footer>
 
     <script>
+      // Dot titles. Doto's dots are part of its letters, so the page finds
+      // each title's dots (drawing the title's characters at their real
+      // positions on a canvas and taking every separate blob of ink as a
+      // dot), then lays an exact square over each one and animates it like
+      // the U mark: a ring from the top-left, each dot growing from small to
+      // full, its color going through the Cradle tones. The hero keeps
+      // shifting; section titles shift once and settle. Hero on load,
+      // section titles the first time they come into view.
+      const findDots = (title: HTMLElement) => {
+        const box = title.getBoundingClientRect();
+        const style = getComputedStyle(title);
+        const dpr = Math.max(2, Math.ceil(devicePixelRatio || 1));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(box.width * dpr); canvas.height = Math.ceil(box.height * dpr);
+        const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+        ctx.scale(dpr, dpr);
+        ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+        ctx.fillStyle = "#fff";
+        const upper = style.textTransform === "uppercase";
+        const walker = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const text = node.textContent ?? "";
+          for (let i = 0; i < text.length; i++) {
+            const ch = upper ? text[i].toUpperCase() : text[i];
+            if (!ch.trim()) continue;
+            const range = document.createRange();
+            range.setStart(node, i); range.setEnd(node, i + 1);
+            const r = range.getClientRects()[0];
+            if (!r) continue;
+            const ascent = ctx.measureText(ch).fontBoundingBoxAscent;
+            ctx.fillText(ch, r.left - box.left, r.top - box.top + ascent);
+          }
+        }
+        // every separate blob of ink is one dot
+        const { width: w, height: h, data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const seen = new Uint8Array(w * h), stack: number[] = [], dots: { x: number; y: number; w: number; h: number }[] = [];
+        for (let start = 0; start < w * h; start++) {
+          if (seen[start] || data[start * 4 + 3] < 128) continue;
+          let x0 = w, y0 = h, x1 = 0, y1 = 0;
+          stack.push(start); seen[start] = 1;
+          while (stack.length) {
+            const p = stack.pop()!, x = p % w, y = (p - x) / w;
+            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+            for (const q of [p - 1, p + 1, p - w, p + w]) {
+              if (q < 0 || q >= w * h || seen[q] || Math.abs((q % w) - x) > 1 || data[q * 4 + 3] < 128) continue;
+              seen[q] = 1; stack.push(q);
+            }
+          }
+          // the blob is traced from its solid core; pad it by the faint
+          // anti-aliased edge so the square fully covers the letter's dot
+          const pad = 0.75;
+          if ((x1 - x0 + 1) * (y1 - y0 + 1) > 2) dots.push({ x: (x0 - pad) / dpr, y: (y0 - pad) / dpr, w: (x1 - x0 + 1 + 2 * pad) / dpr, h: (y1 - y0 + 1 + 2 * pad) / dpr });
+        }
+        return { dots, width: box.width, height: box.height };
+      };
+      const SVGNS = "http://www.w3.org/2000/svg";
+      const lightUp = (title: HTMLElement, { loop = false, instant = false } = {}) => {
+        title.querySelector(":scope > .title-dots")?.remove();
+        const { dots, width, height } = findDots(title);
+        if (!dots.length) { title.classList.add("dots-done"); return; }
+        const svg = document.createElementNS(SVGNS, "svg");
+        svg.setAttribute("class", "title-dots" + (loop ? " loop" : "") + (instant ? " instant" : ""));
+        svg.setAttribute("aria-hidden", "true");
+        svg.setAttribute("width", String(width)); svg.setAttribute("height", String(height));
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        // ring from the top-left: delay by distance, with a little jitter
+        const far = Math.max(...dots.map((d) => Math.hypot(d.x, d.y))) || 1;
+        let seed = 11;
+        const jitter = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280 - 0.5) * 60;
+        const BANDS = 16;
+        const bands = Array.from({ length: BANDS }, (_, i) => {
+          const g = document.createElementNS(SVGNS, "g");
+          g.style.setProperty("--d", Math.round((i / (BANDS - 1)) * 9) * 100 + "ms");
+          svg.appendChild(g);
+          return g;
+        });
+        for (const d of dots) {
+          const rect = document.createElementNS(SVGNS, "rect");
+          rect.setAttribute("x", d.x.toFixed(2)); rect.setAttribute("y", d.y.toFixed(2));
+          rect.setAttribute("width", d.w.toFixed(2)); rect.setAttribute("height", d.h.toFixed(2));
+          rect.setAttribute("rx", (Math.min(d.w, d.h) * 0.12).toFixed(2));
+          const reach = Math.hypot(d.x, d.y) / far;
+          const delay = instant ? 0 : Math.max(0, Math.round(reach * 900 + jitter()));
+          rect.style.setProperty("--d", delay + "ms");
+          bands[Math.min(BANDS - 1, Math.round(reach * (BANDS - 1)))].appendChild(rect);
+        }
+        const last = bands[BANDS - 1];
+        title.classList.add("dot-title");
+        title.appendChild(svg);
+        // the hero keeps shifting: its dots stay over the dim text for good
+        // (paused while the hero is out of view, so it costs nothing then)
+        if (loop) {
+          new IntersectionObserver(([e]) => svg.classList.toggle("paused", !e.isIntersecting)).observe(title);
+          return;
+        }
+        // section titles: once the last dot has settled, the real text takes over
+        last.addEventListener("animationend", (e) => {
+          if ((e as AnimationEvent).animationName !== "dot-tone") return;
+          title.classList.add("dots-done");
+          svg.remove();
+        });
+      };
+      if (document.documentElement.classList.contains("dot-titles")) {
+        document.fonts.ready.then(() => {
+          const hero = document.querySelector<HTMLElement>(".hero h1");
+          if (hero) {
+            lightUp(hero, { loop: true });
+            // the hero's size follows its column; redraw its dots when it changes
+            let lastWidth = hero.getBoundingClientRect().width;
+            new ResizeObserver(() => {
+              const now = hero.getBoundingClientRect().width;
+              if (Math.abs(now - lastWidth) < 1) return;
+              lastWidth = now;
+              lightUp(hero, { loop: true, instant: true });
+            }).observe(hero);
+          }
+          const reached = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+              if (!entry.isIntersecting) continue;
+              reached.unobserve(entry.target);
+              lightUp(entry.target as HTMLElement);
+            }
+          }, { threshold: 0.6 });
+          for (const h2 of document.querySelectorAll<HTMLElement>(".section-head h2")) reached.observe(h2);
+        });
+      }
+
       // Outer corners of each card group: a card's corner counts as outer
       // when no card sits next to it on that side, neither across nor up or
       // down. Worked out from where the cards actually are, so it follows
@@ -618,6 +749,8 @@ const faqs = [
     --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
     /* the hero and section titles: Doto, a dot-matrix face like the U mark */
     --section-title: "Doto Variable", ui-monospace, monospace;
+    --title: #d4d4d4;     /* titles at rest: a soft off-white, not pure white */
+    --title-dim: #444444; /* titles before their dots light up: visible, faint */
     --wide: "Archivo Variable", "Arial Black", system-ui, sans-serif;
     --gutter: clamp(16px, 2.6vw, 64px);
     /* Corners: nothing is perfectly square. Groups of buttons round their
@@ -757,6 +890,39 @@ const faqs = [
   /* the footer's version / build / date is real information: readable */
   .stamp { color: #8a8a8a; }
   .script { display: grid; gap: 2px; margin-top: 22px; line-height: 1.5; }
+  /* Dot titles: the hero and section titles light up dot by dot like the U
+     mark. Before that they sit dim; at rest they are a soft off-white. */
+  :is(.hero h1, .section-head h2) { color: var(--title); }
+  .dot-titles :is(.hero h1, .section-head h2):not(.dots-done) { color: var(--title-dim); }
+  .dot-title { position: relative; }
+  .dot-title > .title-dots { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+  /* each dot grows on its own; the color runs per band of dots at the same
+     distance from the top-left (16 animations instead of hundreds) */
+  .title-dots rect {
+    transform-box: fill-box; transform-origin: center; opacity: 0;
+    animation: dot-grow 0.22s ease-out var(--d) forwards;
+  }
+  .title-dots g { fill: var(--t-rust); animation: dot-tone 3.2s linear var(--d) forwards; }
+  /* the endless hero loop repaints its dots only 10 times a second (6 steps
+     per 0.6 s tone; band delays are whole 100 ms steps, so every band
+     changes on the same frames): a slow drift looks the same, at a
+     fraction of the cost */
+  .title-dots.loop g { animation: dot-loop 3.6s steps(6, end) var(--d) infinite; }
+  .title-dots.instant rect { animation: dot-shown 0s forwards; }
+  .title-dots.paused g { animation-play-state: paused; }
+  @keyframes dot-grow { from { opacity: 1; transform: scale(0.36); } to { opacity: 1; transform: none; } }
+  @keyframes dot-shown { to { opacity: 1; } }
+  /* once through the Cradle tones, then the resting title color */
+  @keyframes dot-tone {
+    0% { fill: var(--t-rust); } 15% { fill: var(--t-mustard); } 30% { fill: var(--t-sea); }
+    45% { fill: var(--t-steel); } 60% { fill: var(--t-periwinkle); } 75% { fill: var(--t-lavender); }
+    100% { fill: var(--title); }
+  }
+  @keyframes dot-loop {
+    0%, 100% { fill: var(--t-rust); } 16.6% { fill: var(--t-mustard); } 33.3% { fill: var(--t-sea); }
+    50% { fill: var(--t-steel); } 66.6% { fill: var(--t-periwinkle); } 83.3% { fill: var(--t-lavender); }
+  }
+
   /* a readout closes each section (spaced like the hero's), on alternating sides */
   .sec-readout-right { justify-items: end; text-align: right; }
   /* typing: the untyped rest keeps its space, so nothing shifts or jumps */

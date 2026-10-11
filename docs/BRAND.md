@@ -113,6 +113,12 @@ All fonts are open source and self-hosted (Fontsource packages in
 - **Doto** is the title face because it is a dot-matrix font, the same idea as
   the U mark. Keep it at weight 800 so the dots read as dots at every size;
   lighter weights look faint, 900 merges the dots.
+- Titles light up dot by dot like the U mark: they start dim (`--title-dim`),
+  then each dot grows in as a ring from the top-left, in the agent tones.
+  The hero keeps shifting through the tones (paused while out of view);
+  section titles shift once when first reached and settle to the soft
+  off-white `--title` (`#d4d4d4`, never pure white). With reduced motion
+  they simply show in `--title`.
 - Doto is monospaced at 0.6 em per character. The hero title "YOUR AIs, /
   IN SYNC." is sized from its column (`font-size: 18.4cqi`) so its first line
   fills the column exactly; change that value if the title text changes.
