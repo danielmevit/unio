@@ -57,7 +57,9 @@ def open_regular(path, limit):
                              dir_fd=directory)
         try:
             info = os.fstat(descriptor)
-            if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+            if info.st_size > limit:
+                raise ValueError('input_file_exceeds_bound')
+            if not stat.S_ISREG(info.st_mode):
                 raise ValueError('unsupported input file')
             return descriptor, info
         except BaseException:
@@ -1035,8 +1037,14 @@ def main(argv=None):
     inv_path = Path(args.inventory)
     try:
         raw_bytes, st = read_regular(inv_path, MAX_INVENTORY_BYTES)
-    except (OSError, ValueError):
-        fail('inventory must be an accessible bounded regular file without symlink components')
+    except FileNotFoundError:
+        fail('inventory file does not exist')
+    except ValueError as error:
+        if str(error) == 'input_file_exceeds_bound':
+            fail('inventory file exceeds 256 KiB limit')
+        fail('inventory file must be regular and bounded')
+    except OSError:
+        fail('inventory file must not be a symlink or have symlink components; it must be readable')
 
     inv_age = max(0.0, time.time() - st.st_mtime)
     inventory, _ = validate_inventory(raw_bytes)

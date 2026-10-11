@@ -6,14 +6,17 @@ dispatch without running executors, provider calls, verification commands,
 creating queues or databases, or mutating state.
 
 ```bash
-unio plan --inventory /path/to/inventory.json
-unio plan --inventory /path/to/inventory.json --json
-unio plan --inventory /path/to/inventory.json --project "/work/my project" --timeout 15
+unio plan --inventory "/path/to/inventory.json"
+unio plan --inventory "/path/to/inventory.json" --json
+unio plan --inventory "/path/to/inventory.json" --project "/work/my project" --timeout 15
 ```
 
 Run it from inside a Unio workspace, or select the project workspace containing
 `coord/` and `wt/` with `--project`. `--help` works outside projects. The default
 whole-observation timeout is 10 seconds (range 1–60).
+It covers Git queries and local fleet collection together. Unavailable or
+timed-out evidence stays unresolved. Git children are bounded and reaped;
+the command does not poll a provider or execute task validation commands.
 
 ## Inventory Schema (schema_version 1)
 
@@ -48,6 +51,12 @@ boolean-as-integer, and unknown fields are strictly rejected.
   ]
 }
 ```
+
+The example uses illustrative hashes. From the repository checkout, obtain
+the actual base with `git rev-parse HEAD` and a task hash with
+`sha256sum "../coord/tasks/TASK-1.md"`. Replace the example values before use.
+Keep accepted records under the lead/owner's control: they are explicit
+statements of accepted integration, not evidence inferred from worker output.
 
 ### Required Fields
 
@@ -95,3 +104,16 @@ A status of `ready` indicates a local recommendation under observed conditions.
 It is not launch authority, an approval, or a guarantee of provider availability.
 Live provider readiness and admission must always be rechecked at dispatch.
 Exit 0 indicates a valid plan (with any task statuses); exit 2 indicates invalid input, arguments, or an unsupported project.
+
+## Existing queue observations
+
+When `job_id` is supplied, the planner validates the existing queue schema,
+approval/reservation record and exact immutable draft hash. It uses pure
+validators without constructing queue or draft stores. Missing state stays
+absent; corrupt or unsupported evidence is unresolved. An approved queue
+record makes a task eligible for consideration, and never grants dispatch.
+
+SQLite reads use read-only immutable mode bound to an open file descriptor.
+Active journal, WAL or shared-memory sidecars make the observation unresolved.
+Inventory, task and draft reads reject special files and symlink components
+and enforce byte limits. Queue credentials and raw task text are not displayed.

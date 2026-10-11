@@ -7,6 +7,7 @@ ordinary use, start with the [project README](../../README.md) or the
 | Document | Purpose |
 | --- | --- |
 | [Roadmap](ROADMAP.md) | Priorities, milestones and future development |
+| [Task planner](../TASK-PLAN.md) | Source CLI recommendations with dependency, file-scope and shared-account explanations; no dispatch |
 | [Functionality-first milestone review](FUNCTIONALITY-FIRST-PLAN.md) | Original plan versus shipped work, scope drift, recommended order and concrete finish conditions |
 | [Dark theme and live work map](LIVE-WORKSPACE-VIEW.md) | Planned browser themes and a focused, connected overview of agents and tasks |
 | [Recovery validation, 2026-10-08](RECOVERY-ACCEPTANCE-2026-10-08.md) | Completed components, preserved gate failures, remaining acceptance and performance findings |

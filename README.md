@@ -49,13 +49,20 @@ session, preserving their work and the agreed checks.
 through WSL, plus a [local browser workspace](bridge/README.md) in the source
 archive. Use it to prepare and run tasks, follow worker output and inspect files.
 
-*Install [Unio 0.5.10](https://github.com/danielmevit/unio/releases/tag/v0.5.10). Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
+*Install [Unio 0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
 
-**Added in 0.5.10:** remember task filters across dashboard reloads, archive
+**0.5.10 source candidate:** remember task filters across dashboard reloads, archive
 older recovery saves without deleting their history, and inspect local storage
 with `unio save usage`. Explicit `unio readiness refresh claude` records sign-in
 for the dashboard; sign-in and remaining allowance stay separate.
 See the [release guide](docs/RELEASE-0.5.10.md) and [daily-use guide](docs/DAILY-USE.md).
+
+**CLI follow-up in development:** inspect shared-account slots and cached
+readings with [the fleet overview](docs/FLEET-STATUS.md), then use
+[the task planner](docs/TASK-PLAN.md) to explain ready and blocked work from
+task hashes, accepted revisions and overlapping files. These source additions
+are awaiting release. The planner recommends work; it never starts an agent
+or approves a task.
 
 **Added in 0.5.9:** a clearer dashboard with readable task rows, agent allowance
 cards, an activity timeline and a remembered list/map view. The installer also

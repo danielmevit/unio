@@ -1,5 +1,11 @@
 # Explain ready and blocked work before dispatch
 
+2026-10-11 update: the [read-only CLI planner](../TASK-PLAN.md) is implemented
+as a source candidate after the fleet overview. It uses an explicit inventory,
+native task hashes/scopes, accepted Git revisions and optional observation of
+existing queue records. Dispatch is still unimplemented. The original planning
+boundary below is retained; current published/installed 0.5.9 lacks this command.
+
 Next functional slice after the CLI fleet overview. This is the proposed
 implementation boundary, not a shipped scheduler or authorization to start work.
 
@@ -91,8 +97,8 @@ show its reason, relevant input revision and observation age.
 
 Ready means a recommendation, not approval, a reservation or permission to
 dispatch. Later dispatch requires explicit approval and fresh authority and
-admission checks; retries are never implicit. The read-only planner and its
-later dispatch capability still require implementation.
+admission checks; retries are never implicit. The read-only planner is now a
+source candidate; its later dispatch capability still requires implementation.
 
 See the [current roadmap](ROADMAP.md), [work policy](../WORK-MODES.md),
 [queue contract](../NEXT-MILESTONE-CONTRACTS.md#2-queue-library-contract) and

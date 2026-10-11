@@ -679,6 +679,95 @@ sys.exit(1)
 
         self.assertEqual(before_files, after_files, "Coordination directory was modified!")
 
+    def test_queue_malformed_evidence_is_unresolved(self):
+        h = self.make_task_file('QUEUE', ['src/queue.py'])
+        job_id, draft_id = 'a' * 32, 'b' * 32
+        inv = self.make_inventory(tasks=[dict(id='QUEUE', task_sha256=h, worker='grok',
+                                             depends_on=[], job_id=job_id)])
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('fixture_job_types', SOURCE_ROOT / 'bridge/job_store.py')
+        types = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(types)
+        db = self.coord / 'ui-jobs.sqlite3'
+        conn = sqlite3.connect(db)
+        conn.execute(types.CREATE_JOBS)
+        conn.execute('PRAGMA user_version=2')
+        plans = self.coord / 'ui-plans'
+        plans.mkdir()
+        stamp = datetime.now(timezone.utc).isoformat()
+
+        def body(identity):
+            return json.dumps(dict(schema_version=1, id=identity, created_at=stamp,
+                                   state='draft', request='Offline fixture')).encode()
+
+        raw = body(draft_id)
+        (plans / (draft_id + '.json')).write_bytes(raw)
+        conn.execute('INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            (job_id, 'c' * 32, draft_id, hashlib.sha256(raw).hexdigest(), 'grok', stamp,
+             'approved', None, None, None, None, None, None))
+        conn.commit()
+        report = json.loads(self.invoke_plan(inv, '--json').stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('invalid_queue_evidence', report['tasks'][0]['reasons'])
+
+        # Invalid draft IDs must be rejected before forming a file path.
+        outside = '../outside'
+        raw = body(outside)
+        (self.coord / 'outside.json').write_bytes(raw)
+        conn.execute('UPDATE jobs SET draft_id=?,draft_sha256=?,approval_key=?,approved_at=?',
+            (outside, hashlib.sha256(raw).hexdigest(), 'd' * 32, stamp))
+        conn.commit()
+        report = json.loads(self.invoke_plan(inv, '--json').stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        conn.close()
+
+        db.write_bytes(b'not a SQLite database')
+        res = self.invoke_plan(inv, '--json')
+        self.assertEqual(json.loads(res.stdout)['tasks'][0]['status'], 'unresolved')
+        self.assertNotIn('Traceback', res.stderr)
+
+    def test_special_files_parent_links_and_git_deadline(self):
+        inv = self.make_inventory()
+        fifo = self.root / 'inventory-fifo'
+        os.mkfifo(fifo)
+        self.invoke_plan(fifo, check_code=2)
+        link = self.root / 'inventory-parent-link'
+        link.symlink_to(self.root, target_is_directory=True)
+        self.invoke_plan(link / inv.name, check_code=2)
+        task_hash = self.make_task_file('FIFO', ['src/safe.py'])
+        task_path = self.coord / 'tasks/FIFO.md'
+        task_path.unlink()
+        os.mkfifo(task_path)
+        fifo_inv = self.make_inventory(tasks=[dict(id='FIFO', task_sha256=task_hash,
+                                                  worker='grok', depends_on=[])])
+        self.assertEqual(json.loads(self.invoke_plan(fifo_inv, '--json').stdout)
+                         ['tasks'][0]['status'], 'unresolved')
+
+        # A Git process that closes output and leaves a descendant must not
+        # escape the shared deadline or survive the observation.
+        fake_bin = self.root / 'fake-bin'
+        fake_bin.mkdir()
+        pid_file = self.root / 'git-child.pid'
+        fake_git = fake_bin / 'git'
+        fake_git.write_text('#!' + sys.executable + '\nimport os,time\n'
+            'pid=os.fork()\nif pid==0:\n'
+            f' open({str(pid_file)!r},"w").write(str(os.getpid()))\n'
+            ' os.close(1);os.close(2);time.sleep(30);os._exit(0)\n'
+            'os.close(1);os.close(2);time.sleep(30)\n')
+        fake_git.chmod(0o755)
+        env = dict(GIT_ENV, PATH=str(fake_bin) + os.pathsep + os.environ['PATH'])
+        started = time.monotonic()
+        res = subprocess.run([sys.executable, '-I', '-S', '-B', str(PLAN_HELPER),
+            str(self.runner), '--project', str(self.project), '--inventory', str(inv),
+            '--timeout', '1', '--json'], env=env, capture_output=True, text=True, timeout=5)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertLess(time.monotonic() - started, 4)
+        self.assertTrue(pid_file.is_file())
+        proc = Path('/proc') / pid_file.read_text().strip() / 'stat'
+        if proc.exists():
+            text = proc.read_text()
+            self.assertEqual(text[text.rindex(')') + 2:].split()[0], 'Z')
+
 
 class InstalledPlanCli(unittest.TestCase):
     @classmethod
@@ -701,8 +790,10 @@ class InstalledPlanCli(unittest.TestCase):
             GIT_COMMITTER_EMAIL='test@example.com'
         )
 
+        standalone = cls.base / 'standalone-installer.sh'
+        standalone.write_bytes(INSTALLER.read_bytes())
         res = subprocess.run(
-            ['bash', str(INSTALLER)],
+            ['bash', str(standalone)],
             env=cls.env, cwd=cls.base,
             capture_output=True, text=True, timeout=60
         )
@@ -733,6 +824,42 @@ class InstalledPlanCli(unittest.TestCase):
         comp_text = comp_file.read_text()
         self.assertIn('plan)', comp_text)
         self.assertIn('--inventory', comp_text)
+
+    def test_installed_command_keeps_absent_queue_absent(self):
+        project = self.base / 'installed project'
+        (project / 'coord/tasks').mkdir(parents=True)
+        (project / 'wt').mkdir()
+        repo = project / 'repo'
+        repo.mkdir()
+        git_run(repo, 'init', '-q', '-b', 'main')
+        (repo / 'file.txt').write_text('fixture\n')
+        git_run(repo, 'add', 'file.txt')
+        git_run(repo, 'commit', '-qm', 'fixture')
+        (project / 'coord/base').write_text('main\n')
+        marker = self.base / 'provider-was-called'
+        sentinel = self.base / 'provider-sentinel'
+        sentinel.write_text('#!/bin/sh\ntouch ' + shlex.quote(str(marker)) + '\n')
+        sentinel.chmod(0o755)
+        (self.conf / 'agents.conf').write_text('idle=' + shlex.quote(str(sentinel)) + '\n')
+        body = '# Test\n\n## Allowed scope\n- src/feature.py\n\n## Validate\n$ touch validate-was-run\n'
+        (project / 'coord/tasks/READY.md').write_text(body)
+        inventory = self.base / 'installed-inventory.json'
+        inventory.write_text(json.dumps(dict(schema_version=1,
+            base_revision=git_run(repo, 'rev-parse', 'HEAD'), accepted=[], tasks=[dict(
+                id='READY', task_sha256=sha256_text(body), worker='idle-one', depends_on=[])])))
+        before = {str(p.relative_to(project / 'coord')): p.read_bytes()
+                  for p in (project / 'coord').rglob('*') if p.is_file()}
+        res = subprocess.run([str(self.engine), 'plan', '--inventory', str(inventory),
+            '--project', str(project), '--json'], cwd=self.base, env=self.env,
+            capture_output=True, text=True, timeout=20)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(json.loads(res.stdout)['tasks'][0]['status'], 'ready')
+        after = {str(p.relative_to(project / 'coord')): p.read_bytes()
+                 for p in (project / 'coord').rglob('*') if p.is_file()}
+        self.assertEqual(before, after)
+        self.assertFalse(marker.exists())
+        self.assertFalse((repo / 'validate-was-run').exists())
+        self.assertFalse((project / 'coord/ui-jobs.sqlite3').exists())
 
 
 if __name__ == '__main__':
