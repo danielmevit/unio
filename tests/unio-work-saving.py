@@ -32,9 +32,11 @@ source = Path(__file__).resolve().parent.parent
 passed = [0]
 
 
-def check(label, condition=True):
+def check(label, condition=True, detail=None):
     if not condition:
         print('FAIL ' + label)
+        if detail:
+            print(detail, flush=True)
         sys.exit(1)
     passed[0] += 1
     print('  ok %s' % label)
@@ -607,8 +609,10 @@ with tempfile.TemporaryDirectory(prefix='work-saving-') as directory:
           all(retained_entries[p]['index'] is None and retained_entries[p]['worktree'] is not None
               for p in ('tracked.log', 'ign/req.txt')))
     check('retained save inspects successfully', unio('save', 'inspect', retained_id, '--json').returncode == 0)
+    retained_restore = unio('save', 'restore', retained_id, 'mock-z')
     check('retained save restores into a clean different worker',
-          unio('save', 'restore', retained_id, 'mock-z').returncode == 0)
+          retained_restore.returncode == 0,
+          'exit %d\n%s\n%s' % (retained_restore.returncode, retained_restore.stdout, retained_restore.stderr))
     check('restored HEAD, full index, status and required bytes/modes exactly match', view(z) == retained_view)
     check('retained source raw index, HEAD and all on-disk state unchanged', snap(y) == retained_before)
 
