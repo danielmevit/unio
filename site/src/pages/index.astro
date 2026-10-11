@@ -93,6 +93,39 @@ const markDots = MARK.flatMap((row, y) => [...row].flatMap((c, x) => (c === "1" 
 // dashboard's loading screen.
 const markDelays = [0, 100, 401, 476, 97, 140, 380, 487, 198, 227, 409, 505, 269, 316, 486, 536, 403, 414, 546, 615, 462, 465, 515, 537, 597, 662, 559, 601, 637, 702];
 
+// Readouts closing each section: real facts from that section, in the
+// hero readout's style. They type themselves in when reached and alternate
+// sides, starting on the right (the hero's sits on the left).
+const sectionReadouts: Record<string, string[]> = {
+  works: [
+    "agents://11 on the grid · + any cli that takes a task without a chat",
+    "sign-in · each tool its own plan · no api keys",
+  ],
+  features: [
+    "team://1 lead · n workers · reviewers from another lab",
+    "1 copy + 1 branch per worker · changes never mixed",
+    "done = checks pass + review approves",
+    "limit hit → written handoff → next agent continues",
+  ],
+  how: [
+    "flow://describe → plan → build → check → decide",
+    "evidence kept per task · run · checks · review",
+    "merge · always your call",
+  ],
+  install: [
+    "install://bash unio-install.sh → unio selftest",
+    "selftest · no ai calls · nothing spent",
+    "linux · windows via wsl · dashboard read-only by default",
+  ],
+  notes: [
+    "limits://per tool · never pooled",
+    "sandbox · none · use a spare machine or vm",
+    "secrets · keep them out of tasks",
+    "handoff · written notes, not memory",
+  ],
+};
+const readoutSide = (id: string) => (["works", "how", "notes"].includes(id) ? "sec-readout-right" : "sec-readout-left");
+
 const agents = [
   { name: "Claude Code", mark: "claude" },
   { name: "Codex", mark: "openai" },
@@ -297,7 +330,7 @@ const faqs = [
               </div>
             ))}
           </dl>
-          <p class="script" aria-hidden="true">
+          <p class="script sec-readout" aria-hidden="true">
             <span>unio://workspace · lead ⇄ workers ⇄ reviewers</span>
             <span>isolation 1 branch / worker · checks before merge</span>
             <span>build {version} · {builtOn} · agpl-3.0-only</span>
@@ -352,6 +385,7 @@ const faqs = [
           If an AI can take a task from the terminal without a chat window, one
           line of configuration adds it to your team.
         </p>
+        <p class={`script sec-readout ${readoutSide("works")}`} aria-hidden="true">{sectionReadouts.works.map((line) => <span>{line}</span>)}</p>
       </section>
 
       <section class="section wrap" id="features" aria-labelledby="features-title">
@@ -371,6 +405,7 @@ const faqs = [
             </article>
           ))}
         </div>
+        <p class={`script sec-readout ${readoutSide("features")}`} aria-hidden="true">{sectionReadouts.features.map((line) => <span>{line}</span>)}</p>
       </section>
 
       <section class="section wrap" id="how" aria-labelledby="how-title">
@@ -389,6 +424,7 @@ const faqs = [
             </li>
           ))}
         </ol>
+        <p class={`script sec-readout ${readoutSide("how")}`} aria-hidden="true">{sectionReadouts.how.map((line) => <span>{line}</span>)}</p>
       </section>
 
       <section class="section wrap" id="install" aria-labelledby="install-title">
@@ -411,7 +447,7 @@ const faqs = [
               {next.map((n) => <li><a href={n.href}>{n.label} <span aria-hidden="true">↗</span></a></li>)}
             </ul>
           </div>
-          <div class="console brackets">
+          <div class="console">
             <div class="panel-bar">
               <span class="panel-title">Terminal</span>
               <button class="tab copy" type="button" data-copy={commands.join("\n")}>Copy</button>
@@ -420,6 +456,7 @@ const faqs = [
             <div class="console-foot" aria-hidden="true"><span>tty · bash · stand-in agents</span><span>0 provider calls</span></div>
           </div>
         </div>
+        <p class={`script sec-readout ${readoutSide("install")}`} aria-hidden="true">{sectionReadouts.install.map((line) => <span>{line}</span>)}</p>
       </section>
 
       <section class="section wrap" id="notes" aria-labelledby="notes-title">
@@ -431,6 +468,7 @@ const faqs = [
         <ul class="intel">
           {notes.map((n) => <li><span class="tag">{n.tag}</span><p>{n.body}</p></li>)}
         </ul>
+        <p class={`script sec-readout ${readoutSide("notes")}`} aria-hidden="true">{sectionReadouts.notes.map((line) => <span>{line}</span>)}</p>
       </section>
 
       <section class="section wrap" id="faq" aria-labelledby="faq-title">
@@ -467,6 +505,73 @@ const faqs = [
     </footer>
 
     <script>
+      // Outer corners of each card group: a card's corner counts as outer
+      // when no card sits next to it on that side, neither across nor up or
+      // down. Worked out from where the cards actually are, so it follows
+      // the column count at every width and FAQ answers opening.
+      const markEdges = (group: Element) => {
+        const cards = [...group.children].filter((c) => c.getClientRects().length) as HTMLElement[];
+        const at = (values: number[]) => { const keys: number[] = []; for (const v of values.sort((a, b) => a - b)) if (!keys.some((k) => Math.abs(k - v) < 3)) keys.push(v); return (v: number) => keys.findIndex((k) => Math.abs(k - v) < 3); };
+        const boxes = cards.map((c) => c.getBoundingClientRect());
+        const rowOf = at(boxes.map((b) => b.top)), colOf = at(boxes.map((b) => b.left));
+        const spots = new Set(boxes.map((b) => rowOf(b.top) + ":" + colOf(b.left)));
+        const has = (r: number, c: number) => spots.has(r + ":" + c);
+        cards.forEach((card, i) => {
+          const r = rowOf(boxes[i].top), c = colOf(boxes[i].left), edge = [];
+          if (!has(r, c - 1) && !has(r - 1, c)) edge.push("tl");
+          if (!has(r, c + 1) && !has(r - 1, c)) edge.push("tr");
+          if (!has(r, c + 1) && !has(r + 1, c)) edge.push("br");
+          if (!has(r, c - 1) && !has(r + 1, c)) edge.push("bl");
+          card.dataset.edge = edge.join(" ");
+        });
+      };
+      const groups = document.querySelectorAll(".slots, .grid, .rows, .intel, .faq");
+      const edges = new ResizeObserver((entries) => { for (const entry of entries) markEdges(entry.target); });
+      for (const group of groups) { markEdges(group); edges.observe(group); }
+
+      // The readouts (the hero's and each section's) type themselves in the
+      // first time they come into view (the hero's right away), one line after
+      // another, and the cursor keeps blinking at the end. With
+      // reduced motion, or without IntersectionObserver, they simply show.
+      const readoutEls = document.querySelectorAll<HTMLElement>(".sec-readout");
+      const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (readoutEls.length && !calm && "IntersectionObserver" in window) {
+        const prepare = (el: HTMLElement) => {
+          for (const line of el.querySelectorAll<HTMLElement>(":scope > span")) {
+            const full = line.textContent ?? "";
+            const typed = document.createElement("span");
+            typed.className = "typed";
+            const rest = document.createElement("span");
+            rest.className = "rest";
+            rest.textContent = full;
+            line.replaceChildren(typed, rest);
+          }
+        };
+        const type = async (el: HTMLElement) => {
+          const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+          const lines = [...el.querySelectorAll<HTMLElement>(":scope > span")];
+          for (const line of lines) {
+            const typed = line.querySelector<HTMLElement>(".typed")!, rest = line.querySelector<HTMLElement>(".rest")!;
+            typed.classList.add("is-active");
+            const chars = [...(rest.textContent ?? "")];
+            for (let i = 0; i < chars.length; i++) {
+              typed.textContent += chars[i];
+              rest.textContent = chars.slice(i + 1).join("");
+              await wait(chars[i] === " " ? 6 : 16);
+            }
+            if (line !== lines[lines.length - 1]) { typed.classList.remove("is-active"); await wait(140); }
+          }
+        };
+        const seen = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            seen.unobserve(entry.target);
+            type(entry.target as HTMLElement);
+          }
+        }, { threshold: 0.6 });
+        for (const el of readoutEls) { prepare(el); seen.observe(el); }
+      }
+
       for (const button of document.querySelectorAll<HTMLButtonElement>("button.copy")) {
         button.addEventListener("click", async () => {
           try {
@@ -648,6 +753,24 @@ const faqs = [
   /* the footer's version / build / date is real information: readable */
   .stamp { color: #8a8a8a; }
   .script { display: grid; gap: 2px; margin-top: 22px; line-height: 1.5; }
+  /* a readout closes each section (spaced like the hero's), on alternating sides */
+  .sec-readout-right { justify-items: end; text-align: right; }
+  /* typing: the untyped rest keeps its space, so nothing shifts or jumps */
+  .sec-readout .rest { color: transparent; }
+  /* a thin blinking cursor in the text's own color; it stays at the end
+     once the typing is done */
+  .sec-readout .typed.is-active::after {
+    content: ""; display: inline-block; width: 1.5px; height: 1.2em; margin: 0 -4px 0 2.5px;
+    vertical-align: -0.25em; background: currentColor; animation: caret 1s steps(1) infinite;
+  }
+  @keyframes caret { 50% { opacity: 0; } }
+  /* without the typing, the cursor still marks the end, without blinking */
+  @media (prefers-reduced-motion: reduce) {
+    .sec-readout > span:last-child::after {
+      content: ""; display: inline-block; width: 1.5px; height: 1.2em; margin: 0 -4px 0 2.5px;
+      vertical-align: -0.25em; background: currentColor;
+    }
+  }
   .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
   .tab {
     display: inline-flex; align-items: center; gap: 6px;
@@ -678,22 +801,6 @@ const faqs = [
   .btn-on { background: var(--on); border-color: var(--on); color: var(--on-text); }
   .btn-on:hover { background: var(--on-hover); color: var(--on-text); }
 
-  /* Corner brackets around a panel */
-  .brackets { position: relative; }
-  .brackets::before {
-    content: ""; position: absolute; inset: -7px; pointer-events: none;
-    --c: var(--line-alt);
-    background:
-      linear-gradient(var(--c), var(--c)) top left / 14px 1px,
-      linear-gradient(var(--c), var(--c)) top left / 1px 14px,
-      linear-gradient(var(--c), var(--c)) top right / 14px 1px,
-      linear-gradient(var(--c), var(--c)) top right / 1px 14px,
-      linear-gradient(var(--c), var(--c)) bottom left / 14px 1px,
-      linear-gradient(var(--c), var(--c)) bottom left / 1px 14px,
-      linear-gradient(var(--c), var(--c)) bottom right / 14px 1px,
-      linear-gradient(var(--c), var(--c)) bottom right / 1px 14px;
-    background-repeat: no-repeat;
-  }
 
   /* Hero */
   .hero {
@@ -807,7 +914,7 @@ const faqs = [
     position: relative;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem;
     aspect-ratio: 1 / 1.12; padding: 1.2rem 6px calc(1.3rem + 10px);
-    background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+    background: var(--paper); border: 1px solid var(--line); border-radius: var(--tl, var(--r-sm)) var(--tr, var(--r-sm)) var(--br, var(--r-sm)) var(--bl, var(--r-sm));
     color: var(--label);
   }
   .slot-code { position: absolute; top: 6px; left: 8px; }
@@ -836,11 +943,11 @@ const faqs = [
 
   /* Feature cards */
   .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); }
-  .card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm); }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--tl, var(--r-sm)) var(--tr, var(--r-sm)) var(--br, var(--r-sm)) var(--bl, var(--r-sm)); }
   .card-bar {
     display: flex; justify-content: space-between;
     padding: 8px 14px; background: var(--deep); border-bottom: 1px solid var(--line);
-    color: var(--muted); border-radius: calc(var(--r-sm) - 1px) calc(var(--r-sm) - 1px) 0 0;
+    color: var(--muted); border-radius: calc(var(--tl, var(--r-sm)) - 1px) calc(var(--tr, var(--r-sm)) - 1px) 0 0;
   }
   .card-body { padding: 16px 14px 18px; }
   .card h3 { font-size: 0.86rem; line-height: 1.3; }
@@ -853,7 +960,7 @@ const faqs = [
     grid-template-columns: 3rem minmax(170px, 0.9fr) minmax(0, 2.4fr) 11rem;
     gap: 16px; align-items: center;
     padding: 14px 16px;
-    background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+    background: var(--paper); border: 1px solid var(--line); border-radius: var(--tl, var(--r-sm)) var(--tr, var(--r-sm)) var(--br, var(--r-sm)) var(--bl, var(--r-sm));
   }
   .row-num { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
   .row-title { font-size: 0.82rem; }
@@ -867,7 +974,8 @@ const faqs = [
   /* Install */
   /* The terminal keeps its right edge and gives up width on the left, so the
      text column has room to breathe. */
-  .install { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: clamp(56px, 8vw, 200px); align-items: start; }
+  /* side by side, the terminal ends on the same line as the last link */
+  .install { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: clamp(56px, 8vw, 200px); align-items: stretch; }
   .install-copy p + p { margin-top: 12px; }
   .install-copy { color: var(--label); }
   .install-copy .micro { margin-top: 28px; }
@@ -878,7 +986,7 @@ const faqs = [
     font-size: 0.82rem; text-decoration: none;
   }
   .menu a:hover { background: var(--paper); padding-inline: 10px; border-radius: var(--r-xs); }
-  .console { background: var(--deep); border: 1px solid var(--line); border-radius: var(--r-md); }
+  .console { display: flex; flex-direction: column; background: var(--deep); border: 1px solid var(--line); border-radius: var(--r-md); }
   .console .copy { border-radius: var(--r-sm); }
   .console-foot {
     display: flex; justify-content: space-between; gap: 12px; padding: 7px 14px;
@@ -886,14 +994,14 @@ const faqs = [
     border-radius: 0 0 calc(var(--r-md) - 1px) calc(var(--r-md) - 1px);
   }
   .console .panel-bar { background: var(--paper); }
-  .console pre { margin: 0; padding: 16px; overflow-x: auto; }
+  .console pre { flex: 1; margin: 0; padding: 16px; overflow-x: auto; }
   .console code { display: grid; background: none; padding: 0; color: var(--text); font-size: 0.86rem; line-height: 1.85; }
   .line { white-space: pre; }
   .prompt { color: var(--muted); user-select: none; }
 
   /* Intel rows */
   .intel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); margin: 0; padding: 0; list-style: none; }
-  .intel li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm); }
+  .intel li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--tl, var(--r-sm)) var(--tr, var(--r-sm)) var(--br, var(--r-sm)) var(--bl, var(--r-sm)); }
   .tag { flex: none; padding: 2px 7px; background: var(--chip); color: var(--label); border-radius: var(--r-xs); }
   .intel p { color: var(--muted); font-size: 0.88rem; }
 
@@ -901,7 +1009,7 @@ const faqs = [
   .faq { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
   /* A closed question keeps its own height; open questions in the same row
      match the taller one. */
-  .faq details { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm); align-self: start; }
+  .faq details { background: var(--paper); border: 1px solid var(--line); border-radius: var(--tl, var(--r-sm)) var(--tr, var(--r-sm)) var(--br, var(--r-sm)) var(--bl, var(--r-sm)); align-self: start; }
   .faq details[open] { align-self: stretch; }
   .faq summary {
     display: flex; justify-content: space-between; align-items: center; gap: 16px;
@@ -909,7 +1017,7 @@ const faqs = [
   }
   .faq summary::-webkit-details-marker { display: none; }
   .faq summary::after { content: "▾"; color: var(--muted); transition: transform 0.15s; }
-  .faq details[open] summary { background: var(--on); color: var(--on-text); border-radius: calc(var(--r-sm) - 1px) calc(var(--r-sm) - 1px) 0 0; }
+  .faq details[open] summary { background: var(--on); color: var(--on-text); border-radius: calc(var(--tl, var(--r-sm)) - 1px) calc(var(--tr, var(--r-sm)) - 1px) 0 0; }
   .faq details[open] summary::after { color: var(--on-text); transform: rotate(180deg); }
   .faq details p { padding: 14px 16px 16px; color: var(--muted); font-size: 0.9rem; }
   @media (prefers-reduced-motion: reduce) { .faq summary::after { transition: none; } }
@@ -924,6 +1032,15 @@ const faqs = [
   .foot-hud .tabs { margin-left: 0; }
   .stamp { display: flex; align-items: center; gap: 10px; margin-inline: auto; }
   .barcode { width: 92px; height: 14px; fill: var(--ghost); }
+
+  /* A group of cards reads as one shape: corners on the group's outer edge
+     are rounder, inner corners stay tight (like the segmented buttons).
+     The page script marks the outer corners from the live layout, so it
+     holds for any number of columns; each card's own radius reads them. */
+  :is(.slots, .grid, .rows, .intel, .faq) > [data-edge~="tl"] { --tl: var(--r-out); }
+  :is(.slots, .grid, .rows, .intel, .faq) > [data-edge~="tr"] { --tr: var(--r-out); }
+  :is(.slots, .grid, .rows, .intel, .faq) > [data-edge~="br"] { --br: var(--r-out); }
+  :is(.slots, .grid, .rows, .intel, .faq) > [data-edge~="bl"] { --bl: var(--r-out); }
 
   /* Hover: panels answer the pointer with a thicker edge and a lift in
      shade; tiles also take their agent's tone. */
