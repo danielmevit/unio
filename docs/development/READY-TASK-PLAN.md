@@ -1,7 +1,8 @@
 # Explain ready and blocked work before dispatch
 
 2026-10-11 update: the [read-only CLI planner](../TASK-PLAN.md) is implemented
-as a source candidate after the fleet overview. It uses an explicit inventory,
+as a checked source candidate after the fleet overview. Focused offline tests,
+native scope/validation and personal lead review passed. It uses an explicit inventory,
 native task hashes/scopes, accepted Git revisions and optional observation of
 existing queue records. Dispatch is still unimplemented. The original planning
 boundary below is retained; current published/installed 0.5.9 lacks this command.

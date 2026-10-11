@@ -17,10 +17,11 @@ checked [save-performance probe](SAVE-PERFORMANCE.md) and a checked
 [local fleet overview](../FLEET-STATUS.md). The fleet candidate passed its
 installed offline checks and native scope verification after lead completion.
 These are source candidates, not published releases. Continue with 0.5.x patches.
-The next CLI slice now includes an implemented
+The next CLI slice now includes a checked
 [read-only task planner](../TASK-PLAN.md): explain dependency evidence, file
-conflicts and shared-account limits before dispatch. Final focused checks are
-being completed; automatic dispatch remains planned. New real-workspace runs
+conflicts and shared-account limits before dispatch. Its focused suite and
+native scope/validation passed after personal corrections; automatic dispatch
+remains planned. New real-workspace runs
 also reproduced the automatic-save timeout, giving the next performance task
 a concrete failure to investigate.
 Genuine lead-limit restart remains unobserved and experimental/opt-in.
@@ -55,22 +56,22 @@ low-tier lead.
 | Complete | v0.5.4 recovery, release and install | Published and installed after release checks. Genuine lead-limit restart remains unobserved; the feature is experimental and opt-in. |
 | 2 | Simple daily use and measured performance | Launcher and managed dashboard shipped; daily-use guide and save probe are checked follow-ups. Save/scan optimization still needs measured comparisons. |
 | 3 — CLI slice checked | Shared-account allowance and worker readiness | Native slots, manual readings and Codex refresh shipped. Cached Claude authentication is in the 0.5.10 candidate; the 0.5.11 fleet CLI combines local slots, bench/binary facts and cached observations. Other automatic provider readings remain planned. |
-| 4 — CLI source candidate | Ready-task dispatch and dependency handling | Queue/reservation exists. Read-only planner implemented with personal corrections; final focused verification follows. Owner-enabled single-attempt dispatch remains planned. |
+| 4 — CLI slice checked | Ready-task dispatch and dependency handling | Queue/reservation exists. Read-only planner passed focused/native checks and personal review. Owner-enabled single-attempt dispatch remains planned. |
 | 5 | Native independent review pipeline | Single reviews exist; built-in separate parallel review views and finding aggregation remain planned and mode-aware. |
 | 6 | Evidence-based routing and context efficiency | Ledger/score and curated guides exist; exact model/task profiles and automatic suggestions remain planned. |
 
 ### Next useful slices
 
-The fleet CLI slice is checked and the read-only planner is a source candidate.
+The fleet CLI and read-only planner slices are checked source candidates.
 Their release status is in the [version plan](../VERSION-PLAN.md). Next:
 
-1. **Finish the [task planner](../TASK-PLAN.md):** retain exact task/revision
-   evidence and complete focused committed-tree verification. It explains work;
-   it neither authorizes nor dispatches it.
-2. **Measured save optimization:** reduce demonstrated Git/ignore calls and
+1. **Measured save optimization:** reduce demonstrated Git/ignore calls and
    repeated save validation without weakening snapshot, secret or retention
    checks. Generated workload timings identify overhead; subsequent real project
    runs reproduced the helper timeout. No isolated cause or speedup is established.
+2. **Owner-enabled dispatch:** define a single-attempt executor using the
+   checked planner and existing queue authority. Recheck exact task/revision,
+   approval, reservation and native admission at launch; never implicitly retry.
 3. **Review aggregation:** preserve separate reviews of the same revision and
    summarize their findings without turning agreement into human acceptance.
 4. **Evidence-based routing:** record model, route, effort, task category and
