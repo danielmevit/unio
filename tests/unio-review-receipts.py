@@ -162,8 +162,15 @@ class ReviewReceipts(unittest.TestCase):
 
     def test_stale_history_and_mid_review_drift(self):
         self.unio('review','mock','evidence','revone')
-        self.task.write_text(self.task.read_text()+'\nNew owner instructions.\n')
+        original=self.task.read_text()
+        self.task.write_text(original+'\nNew owner instructions.\n')
         self.assertEqual(self.summary(code=2)['counts']['stale'],1)
+        self.unio('verify','mock','evidence',code=1)
+        self.task.write_text(original)
+        worker=self.root/'project/wt/mock'
+        (worker/'hello.txt').write_text('updated candidate')
+        self.call(['git','add','hello.txt'],cwd=worker)
+        self.call(['git','commit','-qm','updated candidate'],cwd=worker)
         self.unio('verify','mock','evidence')
         self.unio('review','mock','evidence','revone')
         self.assertEqual(self.summary()['counts']['stale'],1)
