@@ -16305,7 +16305,7 @@ def gate(root,worker,task):
     if v['state'] != 'passed' or v['revision'] != d['current_revision']:
         fail('review requires current passed validation; run verify')
 
-def material(root,worker,task):
+def material_bytes(root,worker,task):
     wt,tf,_=locations(root,worker,task)
     ch=changed(root,worker,task)
     if any(ch[k] for k in ('staged','unstaged','untracked')):
@@ -16323,7 +16323,213 @@ def material(root,worker,task):
     if len(data)>300000: fail('incomplete review material: exceeds 300000 bytes; nothing was clipped or reviewed')
     try: data.decode('utf-8')
     except UnicodeDecodeError: fail('incomplete review material: non-UTF-8 data')
-    sys.stdout.buffer.write(data+b'\nEnd with exactly one standalone line: VERDICT: APPROVE or VERDICT: REQUEST-CHANGES\n')
+    return data+b'\nEnd with exactly one standalone line: VERDICT: APPROVE or VERDICT: REQUEST-CHANGES\n'
+
+def material(root,worker,task):
+    sys.stdout.buffer.write(material_bytes(root,worker,task))
+
+REVIEW_LOG_LIMIT = 16 * 1024 * 1024
+REVIEW_FIELDS = {'schema_version','id','worker','task','reviewer','recorded_at',
+                'policy_group','requested_model','effective_model','requested_effort',
+                'effective_effort','state','process_exit_code','material_complete',
+                'reasons','before','after','material_sha256','stdout','stderr'}
+
+def review_digest(path, limit=REVIEW_LOG_LIMIT):
+    if os.path.realpath(path) != os.path.abspath(path): fail('unsafe review evidence path')
+    fd=os.open(path,os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd,'rb') as stream:
+        initial=os.fstat(stream.fileno())
+        if not stat.S_ISREG(initial.st_mode) or initial.st_nlink != 1 or initial.st_size > limit:
+            fail('unsupported or oversized review evidence')
+        digest=hashlib.sha256(); size=0
+        while True:
+            chunk=stream.read(min(65536,limit-size+1))
+            if not chunk: break
+            size+=len(chunk)
+            if size > limit: fail('oversized review evidence')
+            digest.update(chunk)
+        final=os.fstat(stream.fileno())
+        if (initial.st_size,initial.st_mtime_ns,initial.st_ctime_ns) != (final.st_size,final.st_mtime_ns,final.st_ctime_ns):
+            fail('review evidence changed while reading')
+        current=os.stat(path,follow_symlinks=False)
+        if (current.st_dev,current.st_ino)!=(final.st_dev,final.st_ino) or os.path.realpath(path)!=os.path.abspath(path):
+            fail('review evidence replaced while reading')
+    return dict(sha256=digest.hexdigest(),bytes=size)
+
+def review_unique(pairs):
+    result={}
+    for key,value in pairs:
+        if key in result: fail('duplicate review receipt field')
+        result[key]=value
+    return result
+
+def review_record_valid(d):
+    if not isinstance(d,dict) or set(d)!=REVIEW_FIELDS or type(d['schema_version']) is not int or d['schema_version']!=1:
+        fail('invalid review receipt schema')
+    for name in ('worker','task','reviewer'):
+        if not isinstance(d[name],str) or len(d[name])>128: fail('invalid review identity')
+        ident(d[name])
+    for name,length in (('id',32),('material_sha256',64)):
+        if not isinstance(d[name],str) or not re.fullmatch('[0-9a-f]{'+str(length)+'}',d[name]): fail('invalid review hash/ID')
+    if not isinstance(d['recorded_at'],str) or len(d['recorded_at'])>64 or datetime.datetime.fromisoformat(d['recorded_at']).utcoffset() is None:
+        fail('invalid review timestamp')
+    if d['policy_group'] is not None:
+        if not isinstance(d['policy_group'],str) or len(d['policy_group'])>128: fail('invalid review group')
+        ident(d['policy_group'])
+    if any(d[k]!='unknown' for k in ('requested_model','effective_model','requested_effort','effective_effort')):
+        fail('unsupported review model provenance')
+    if not revision(d['before']) or (d['after'] is not None and not revision(d['after'])): fail('invalid review revision')
+    reasons=d['reasons']; code=d['process_exit_code']; state=d['state']
+    if not isinstance(reasons,list) or len(reasons)>16 or any(not isinstance(s,str) or not re.fullmatch('[a-z][a-z0-9_:-]{0,159}',s) for s in reasons):
+        fail('invalid review reasons')
+    if type(d['material_complete']) is not bool or (code is not None and (type(code) is not int or code<0)):
+        fail('invalid review process evidence')
+    if state not in ('approved','changes_requested','unknown','failed'): fail('invalid review state')
+    if state in ('approved','changes_requested') and (code!=0 or not d['material_complete']): fail('inconsistent review approval')
+    if state=='failed' and code in (None,0): fail('inconsistent review failure')
+    if code is None and (state!='unknown' or d['material_complete']): fail('uninvoked review cannot be complete')
+    if code not in (None,0) and state!='failed': fail('nonzero review cannot approve')
+    for stream in ('stdout','stderr'):
+        value=d[stream]
+        if (not isinstance(value,dict) or set(value)!={'sha256','bytes'} or type(value['bytes']) is not int
+                or not 0<=value['bytes']<=REVIEW_LOG_LIMIT or not isinstance(value['sha256'],str)
+                or not re.fullmatch('[0-9a-f]{64}',value['sha256'])): fail('invalid review stream digest')
+    return d
+
+def review_receipt(root,worker,task,reviewer,state,code,complete,reasons,before,after,pf,raw,group,material_hash):
+    locations(root,worker,task); ident(reviewer)
+    name=os.path.basename(raw)
+    directory=safe(root,'coord','reports',name)
+    if directory!=os.path.abspath(raw) or not re.fullmatch(re.escape(task)+r'\.review\.[A-Za-z0-9]{8}',name):
+        fail('invalid review receipt destination')
+    d=dict(schema_version=1,id=uuid.uuid4().hex,worker=worker,task=task,reviewer=reviewer,
+           recorded_at=stamp(),policy_group=group or None,requested_model='unknown',effective_model='unknown',
+           requested_effort='unknown',effective_effort='unknown',state=state,
+           process_exit_code=int(code) if code else None,material_complete=complete=='yes',
+           reasons=reasons.split(',') if reasons else [],before=json.loads(before),
+           after=json.loads(after) if after else None,material_sha256=material_hash,
+           stdout=review_digest(safe(root,'coord','reports',name,'stdout.log')),
+           stderr=review_digest(safe(root,'coord','reports',name,'stderr.log')))
+    material_changed=review_digest(pf,400000)['sha256']!=material_hash
+    if material_changed:
+        d.update(state='unknown' if d['process_exit_code'] in (None,0) else 'failed',
+                 material_complete=False,reasons=sorted(set(d['reasons']+['material_changed'])))
+    review_record_valid(d)
+    target=safe(root,'coord','reports',name,'receipt.json')
+    fd,temp=tempfile.mkstemp(prefix='.receipt-',dir=directory)
+    try:
+        with os.fdopen(fd,'w') as out:
+            json.dump(d,out,ensure_ascii=True,sort_keys=True); out.write('\n'); out.flush(); os.fsync(out.fileno())
+        # Link publication is atomic and exclusive: never replace an old receipt.
+        os.link(temp,target,follow_symlinks=False)
+        directory_fd=os.open(directory,os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try: os.fsync(directory_fd)
+        finally: os.close(directory_fd)
+    finally:
+        os.unlink(temp)
+    if material_changed: fail('common review material changed')
+
+def review_expect(worker,task,expected):
+    for value in (worker,task):
+        if not isinstance(value,str) or len(value)>128: fail('invalid review identity')
+        ident(value)
+    values=expected.split(',') if expected else []
+    if len(values)>16: fail('at most 16 expected review aliases')
+    for value in values:
+        if not re.fullmatch('[a-zA-Z0-9_][a-zA-Z0-9_-]{0,127}',value): fail('invalid expected review alias')
+    return sorted(set(values))
+
+def review_read(path):
+    if os.path.realpath(path)!=os.path.abspath(path): fail('unsafe review receipt path')
+    fd=os.open(path,os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd,'rb') as stream:
+        info=os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1: fail('unsupported review receipt')
+        raw=stream.read(65537)
+        final=os.fstat(stream.fileno()); current=os.stat(path,follow_symlinks=False)
+        if ((info.st_size,info.st_mtime_ns,info.st_ctime_ns)!=(final.st_size,final.st_mtime_ns,final.st_ctime_ns)
+                or (current.st_dev,current.st_ino)!=(final.st_dev,final.st_ino)
+                or os.path.realpath(path)!=os.path.abspath(path)): fail('review receipt changed while reading')
+    if len(raw)>65536: fail('oversized review receipt')
+    return review_record_valid(json.loads(raw.decode('utf-8'),object_pairs_hook=review_unique,
+                                         parse_constant=lambda _:fail('nonfinite review field')))
+
+def reviews(root,worker,task,expected,mode):
+    expected=review_expect(worker,task,expected)
+    locations(root,worker,task)
+    current_rev=None; material_hash=None; observation=[]
+    try:
+        if observed_lock(root,worker)=='held': observation.append('worker_busy')
+        current_rev=snapshot(root,worker,task)
+        material_hash=hashlib.sha256(material_bytes(root,worker,task)).hexdigest()
+    except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
+    reports=safe(root,'coord','reports'); names=[]
+    if os.path.exists(reports):
+        with os.scandir(reports) as files:
+            for entry in files:
+                if re.fullmatch(re.escape(task)+r'\.review\.[A-Za-z0-9]{8}',entry.name):
+                    names.append(entry.name)
+                    if len(names)>256: observation.append('review_folder_bound'); break
+    rows=[]; records=[]; unresolved=0; receipt_ids=set()
+    for name in sorted(names[:256]):
+        row=dict(receipt_id=None,reviewer=None,policy_group=None,state='unknown',current=False,
+                 stale=False,process_exit_code=None,reasons=[])
+        try:
+            path=safe(root,'coord','reports',name,'receipt.json')
+            if not os.path.exists(path):
+                row['reasons']=['unbound_legacy_evidence']; unresolved+=1; rows.append(row); continue
+            d=review_read(path)
+            if d['worker']!=worker: continue
+            if d['task']!=task: fail('review task mismatch')
+            if d['id'] in receipt_ids: fail('duplicate review receipt ID')
+            receipt_ids.add(d['id'])
+            for stream in ('stdout','stderr'):
+                if review_digest(safe(root,'coord','reports',name,stream+'.log'))!=d[stream]: fail('review stream mismatch')
+            bound=d['before']==d['after']==current_rev and d['material_sha256']==material_hash
+            row.update(receipt_id=d['id'],reviewer=d['reviewer'],policy_group=d['policy_group'],state=d['state'],
+                       stale=not bound,current=bound and not observation,process_exit_code=d['process_exit_code'],
+                       reasons=d['reasons'] if bound else sorted(set(d['reasons']+['stale_evidence'])))
+            if d['after'] is None and d['before']==current_rev and d['material_sha256']==material_hash:
+                row.update(current=False,stale=False,reasons=sorted(set(d['reasons']+['review_outcome_unknown'])))
+                unresolved+=1
+            records.append((row,d))
+        except (ValueError,OSError,KeyError,TypeError,UnicodeError,RecursionError):
+            row['reasons']=['invalid_review_evidence']; unresolved+=1
+        rows.append(row)
+    try:
+        if observed_lock(root,worker)=='held': observation.append('worker_busy')
+        if snapshot(root,worker,task)!=current_rev: observation.append('revision_changed')
+    except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
+    if observation:
+        for row in rows: row['current']=False
+    current_rows=[row for row,d in records if row['current']]
+    aliases=sorted({row['reviewer'] for row in current_rows if row['process_exit_code'] is not None})
+    groups=sorted({row['policy_group'] for row in current_rows if row['policy_group'] is not None})
+    missing=sorted(set(expected)-set(aliases))
+    counts={state:sum(row['state']==state for row in current_rows) for state in ('approved','changes_requested','unknown','failed')}
+    counts.update(stale=sum(row['stale'] for row in rows),unresolved=unresolved,recorded=len(rows),current=len(current_rows))
+    incomplete=bool(observation or unresolved or missing or counts['unknown'] or counts['failed'] or not current_rows)
+    if counts['changes_requested']: decision='changes_requested'; exit_code=1
+    elif observation or unresolved: decision='incomplete'; exit_code=2
+    elif not current_rows: decision='not_run'; exit_code=2
+    elif incomplete: decision='incomplete'; exit_code=2
+    else: decision='all_recorded_approved'; exit_code=0
+    out=dict(schema_version=1,worker=worker,task=task,current_revision=current_rev,material_sha256=material_hash,
+             decision=decision,incomplete=incomplete,expected_reviewers=expected,missing_reviewers=missing,
+             distinct_reviewers=aliases,policy_groups=groups,ai_lab_independence='unknown',counts=counts,
+             reasons=sorted(set(observation)),entries=rows,human_acceptance=False)
+    if mode=='--json': print(json.dumps(out,ensure_ascii=True,indent=2))
+    else:
+        print('Recorded reviews: '+decision+(' (incomplete)' if incomplete else ''))
+        print('Distinct reviewer aliases: '+(', '.join(aliases) or 'none')+'; AI-lab independence: unknown')
+        print('Missing expected reviewers: '+(', '.join(missing) or 'none'))
+        print('Current: {current}; stale: {stale}; unresolved: {unresolved}'.format(**counts))
+        for row in rows:
+            print('  {}: {} ({}){}'.format(row['reviewer'] or 'unbound',row['state'],
+                'current' if row['current'] else 'stale' if row['stale'] else 'unresolved',
+                ' — '+', '.join(row['reasons']) if row['reasons'] else ''))
+        print('Human acceptance: false. No provider calls or merge authority.')
+    return exit_code
 
 def verdict(path):
     lines=regular(path).decode('utf-8',errors='replace').splitlines()
@@ -16581,6 +16787,10 @@ try:
         ch=changed(*a)
         sys.stdout.buffer.write(b''.join(os.fsencode(p)+b'\0' for p in sorted(set(sum(ch.values(),[])))))
     elif cmd=='material': material(*a)
+    elif cmd=='review-receipt': review_receipt(*a)
+    elif cmd=='review-material-hash': print(review_digest(a[0],400000)['sha256'])
+    elif cmd=='reviews-arguments': review_expect(*a)
+    elif cmd=='reviews': sys.exit(reviews(*a))
     elif cmd=='verdict': verdict(*a)
     elif cmd=='agents': agents(*a)
     elif cmd=='watch': watch(*a)
@@ -21455,6 +21665,13 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
     rm -rf "$nd"; return 2
   fi
   complete=yes
+  # Allocate evidence before invoking a reviewer: an interrupted attempt keeps
+  # its raw streams as an explicitly unbound folder instead of losing them.
+  local raw raw_state material_hash review_group="" update_rc=0
+  material_hash=$(quality review-material-hash "$pf") || { rm -rf "$nd"; return 2; }
+  raw=$(mktemp -d "$root/coord/reports/$task.review.XXXXXXXX") || { rm -rf "$nd"; return 2; }
+  stdout="$raw/stdout.log"; stderr="$raw/stderr.log"
+  : > "$stdout"; : > "$stderr"
   host_warning || return $?
   # Native guard: the independent reviewer is its own workflow in the
   # reviewer's budget group. Admit before the reviewer provider starts; a
@@ -21466,9 +21683,12 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   trap 'exit 130' INT
   trap 'exit 143' TERM
   if ! policy_admit_hold "$root" "$reviewer" "$reviewer" "$task" review "$pf"; then
-    quality update "$root" "$worker" "$task" review "$before" unknown "$reviewer" "" no budget_refused || { rm -rf "$nd"; return 2; }
+    quality update "$root" "$worker" "$task" review "$before" unknown "$reviewer" "" no budget_refused || update_rc=$?
+    quality review-receipt "$root" "$worker" "$task" "$reviewer" unknown "" no budget_refused \
+      "$before" "$before" "$pf" "$raw" "$POLICY_GROUP" "$material_hash" || { rm -rf "$nd"; return 2; }
     rm -rf "$nd"; return 2
   fi
+  review_group="$POLICY_GROUP"
   echo "[review] $reviewer reviewing $worker's '$task' (timeout ${UNIO_REVIEW_TIMEOUT:-900}s)"
   # Same interruptible wait as run: a signal must stop this provider and let
   # EXIT reap the reviewer slot. A foreground wait would defer the trap.
@@ -21485,17 +21705,19 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   else
     case "$state" in approved) ret=0;; changes_requested) ret=1;; *) ret=2; reasons=unknown_verdict;; esac
   fi
-  after=$(quality snapshot "$root" "$worker" "$task") || { rm -rf "$nd"; return 2; }
+  raw_state="$state"
+  if ! after=$(quality snapshot "$root" "$worker" "$task"); then
+    quality review-receipt "$root" "$worker" "$task" "$reviewer" "$raw_state" "$rc" "$complete" post_snapshot_failed \
+      "$before" "" "$pf" "$raw" "$review_group" "$material_hash" || true
+    rm -rf "$nd"; return 2
+  fi
   if [ "$before" != "$after" ]; then
     reasons="${reasons:+$reasons,}candidate_changed_during_review"
     if [ "$rc" = 0 ]; then state=unknown; ret=2; fi
   fi
-  quality update "$root" "$worker" "$task" review "$before" "$state" "$reviewer" "$rc" "$complete" "$reasons" || return 2
-  # Preserve separate raw streams locally; stderr can never supply a verdict.
-  local raw
-  raw=$(mktemp -d "$root/coord/reports/$task.review.XXXXXXXX")
-  mv "$stdout" "$raw/stdout.log"
-  mv "$stderr" "$raw/stderr.log"
+  quality update "$root" "$worker" "$task" review "$before" "$state" "$reviewer" "$rc" "$complete" "$reasons" || update_rc=$?
+  quality review-receipt "$root" "$worker" "$task" "$reviewer" "$raw_state" "$rc" "$complete" "$reasons" \
+    "$before" "$after" "$pf" "$raw" "$review_group" "$material_hash" || { rm -rf "$nd"; return 2; }
   {
     echo
     echo "### review $(date -Is) — reviewer=$reviewer author=$worker exit=$rc decision=$state"
@@ -21508,7 +21730,36 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   ledger_add "$root" "$(printf '{"event":"review","ts":"%s","task":"%s","worker":"%s","reviewer":"%s","exit":%d,"decision":"%s"}' \
     "$(date -Is)" "$task" "$worker" "$reviewer" "$rc" "$state")"
   rm -rf "$nd"
+  [ "$update_rc" = 0 ] || return 2
   return "$ret"
+}
+
+cmd_reviews() { # local, read-only aggregation; never invokes reviewer commands
+  if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then
+    [ "$#" = 1 ] || return 2
+    echo 'usage: unio reviews <worker> <task> [--expect agent[,agent...]] [--json]'
+    echo 'Read recorded reviews; no provider call, retry, human acceptance or merge.'
+    return 0
+  fi
+  if [ "$#" -lt 2 ]; then
+    echo 'usage: unio reviews <worker> <task> [--expect agent[,agent...]] [--json]' >&2; return 2
+  fi
+  local worker="$1" task="${2%.md}" expected="" mode="text" seen_expect=0 seen_json=0 root
+  shift 2
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --expect)
+        [ "$#" -ge 2 ] && [ "$seen_expect" = 0 ] && [ -n "$2" ] || { echo 'unio reviews: invalid or duplicate --expect' >&2; return 2; }
+        expected="$2"; seen_expect=1; shift 2;;
+      --json)
+        [ "$seen_json" = 0 ] || { echo 'unio reviews: duplicate --json' >&2; return 2; }
+        mode=--json; seen_json=1; shift;;
+      *) echo 'unio reviews: unsupported argument' >&2; return 2;;
+    esac
+  done
+  quality reviews-arguments "$worker" "$task" "$expected" || return 2
+  root=$(find_root) || { echo 'unio reviews: not inside a Unio project' >&2; return 2; }
+  quality reviews "$root" "$worker" "$task" "$expected" "$mode"
 }
 
 cmd_evidence() {
@@ -22651,6 +22902,10 @@ work
                                      VERDICT: REQUEST-CHANGES. exit 0 approve,
                                      1 changes requested or reviewer failure,
                                      2 unknown, incomplete or stale
+  unio reviews <w> <task> [--expect agent[,agent...]] [--json]
+                                     read separate exact-revision review receipts;
+                                     missing, stale and failed evidence stays visible.
+                                     No provider call or human acceptance.
   unio result <w> <task>        structured result from coord/results,
                                      rechecked against the current worktree:
                                      stale, ready_for_human_review (never human
@@ -22814,6 +23069,7 @@ case "${1:-help}" in
   on)       shift; cmd_on "$@";;
   smoke)    shift; cmd_smoke "$@";;
   review)   shift; cmd_review "$@";;
+  reviews)  shift; cmd_reviews "$@";;
   race)     shift; cmd_race "$@";;
   sabotage) shift; cmd_sabotage "$@";;
   sweep-saboteurs) shift; cmd_sweep_saboteurs "$@";;
@@ -25233,7 +25489,7 @@ cat > "$COMP_DIR/unio" <<'COMPLETION_EOF'
 _unio() {
   local cur cmd root d cmds
   cur="${COMP_WORDS[COMP_CWORD]}"
-  cmds="new init run verify result handoff save diff sync review race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan dispatch capacity readiness off on smoke selftest stop resume allow-retry version license help"
+  cmds="new init run verify result handoff save diff sync review reviews race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan dispatch capacity readiness off on smoke selftest stop resume allow-retry version license help"
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$cmds" -- "$cur") ); return
   fi
@@ -25289,6 +25545,11 @@ _unio() {
       if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "$workers" -- "$cur") )
       elif [ "$COMP_CWORD" -eq 3 ]; then COMPREPLY=( $(compgen -W "$tasks" -- "$cur") )
       elif [ "$COMP_CWORD" -eq 4 ]; then COMPREPLY=( $(compgen -W "$agents" -- "$cur") ); fi;;
+    reviews)
+      if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "$workers" -- "$cur") )
+      elif [ "$COMP_CWORD" -eq 3 ]; then COMPREPLY=( $(compgen -W "$tasks" -- "$cur") )
+      elif [ "$prev" = --expect ]; then COMPREPLY=( $(compgen -W "$agents" -- "$cur") )
+      else COMPREPLY=( $(compgen -W "--expect --json --help" -- "$cur") ); fi;;
     agents)
       if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "--json" -- "$cur") ); fi;;
     integrations)

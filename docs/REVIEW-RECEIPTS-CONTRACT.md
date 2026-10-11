@@ -1,6 +1,6 @@
 # Independent review receipts: first implementation slice
 
-Frozen 2026-10-11 after explicit dispatch integration. Planned source work,
+Frozen 2026-10-11 after explicit dispatch integration. Development source,
 not part of published/installed v0.5.9. This slice preserves each existing
 single review and adds a read-only summary. Parallel reviewer orchestration
 is a later slice; no new provider call, retry or acceptance is authorized by

@@ -5,6 +5,22 @@ the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
 
+## Review receipt implementation — 2026-10-11
+
+Vibe 2.26.1 / GLM5.3 / high ended `REVIEW-RECEIPTS-VIBE-1` with Source2:
+backend connection failure after276.956seconds and764820 cumulative tokens,
+with no committed or working-tree changes. The valid exported session and
+failed receipt remain preserved. This is an infrastructure outcome, not a
+code-quality verdict. No retry was made. With capable replacements occupied
+or unavailable, the existing lead implemented the bounded contract directly;
+its checks and personal acceptance are separate evidence from that Source.
+
+Copilot1.0.95 / Auto Balance returned the separate usage proposal with
+Source0/native0/adapter0 in15.867seconds. The lead repaired terminal-rendered
+Markdown and checked examples against the contract. Effective model and effort
+remain Unknown. Perplexity's earlier GLMThinking proposal informed the contract,
+with unsupported schema/crash/reviewer assumptions rejected before implementation.
+
 ## Explicit dispatch completion — 2026-10-11
 
 Three independent-account tasks ran through Unio from the same saved dispatch

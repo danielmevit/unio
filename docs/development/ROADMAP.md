@@ -74,7 +74,7 @@ low-tier lead.
 | 2 | Simple daily use and measured performance | Launcher and managed dashboard shipped; daily-use guide and save probe are checked follow-ups. Save/scan optimization still needs measured comparisons. |
 | 3 — CLI slice checked | Shared-account allowance and worker readiness | Native slots, manual readings and Codex refresh shipped. Cached Claude authentication is in the 0.5.10 candidate; the 0.5.11 fleet CLI combines local slots, bench/binary facts and cached observations. Other automatic provider readings remain planned. |
 | 4 — CLI slice checked | Ready-task dispatch and dependency handling | Read-only planner and explicit owner-granted single-attempt dispatch passed focused/native checks and personal review. Automatic scheduling remains planned. |
-| 5 | Native independent review pipeline | Single reviews exist; built-in separate parallel review views and finding aggregation remain planned and mode-aware. |
+| 5 — receipt slice implemented | Native independent review pipeline | Development source preserves separate single-review receipts and summarizes exact-revision evidence; parallel collection and finding aggregation remain separate planned slices. |
 | 6 | Evidence-based routing and context efficiency | Ledger/score and curated guides exist; exact model/task profiles and automatic suggestions remain planned. |
 | 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
@@ -90,8 +90,9 @@ Their release status is in the [version plan](../VERSION-PLAN.md). Next:
 2. **Ship the checked CLI slices:** include the fleet, planner and explicit
    single-attempt dispatch in the next versioned release validation. Keep the
    published stable installation separate from these source candidates.
-3. **Review aggregation:** preserve separate reviews of the same revision and
-   summarize their findings without turning agreement into human acceptance.
+3. **Review aggregation:** build on the [receipt and summary slice](../REVIEW-RECEIPTS.md)
+   to collect independent reviews concurrently over identical material.
+   Agreement must never become human acceptance automatically.
 4. **Evidence-based routing:** record model, route, effort, task category and
    correction burden from useful work, then offer transparent suggestions.
 5. **Lead continuity and phone access:** supported session attachment, lead transfer
