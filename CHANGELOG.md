@@ -4,6 +4,26 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.11 — plan, dispatch and review together — unreleased candidate
+
+See [release scope and usage](docs/RELEASE-0.5.11.md).
+
+- Batch sibling Git ignore queries during recovery capture. Matched fixtures
+  improved from timed-out baseline attempts to roughly 26-second saves; broad
+  real-workspace timeout elimination remains unproven. Include an offline probe.
+- Explain local fleet blocks, cached readiness and shared-account slots with
+  `unio fleet`; inspect dependencies, task material and write conflicts with
+  `unio plan` without launching agents.
+- Prepare, explicitly approve and start one saved task with `unio dispatch`.
+  Bind grants and reservations to exact material; preserve replay and Unknown.
+- Preserve immutable individual review receipts and inspect same-revision
+  evidence with read-only `unio reviews`. Explicit `unio review-set` launches
+  two to eight reviewers concurrently on identical frozen common material.
+- Preserve refusal, interruption and request-changes evidence without automatic
+  retries, substitutions, merging or human acceptance.
+- Include the latest owner dashboard refinements and mandatory lead estimates,
+  proactive progress summaries and continuity through authorized delivery.
+
 ## 0.5.10 — safer recovery and daily-use improvements — unreleased candidate
 
 See [release scope and usage](docs/RELEASE-0.5.10.md).
