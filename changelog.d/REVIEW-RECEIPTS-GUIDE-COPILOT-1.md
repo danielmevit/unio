@@ -1,0 +1,1 @@
+- Add an operator guide for independent review receipts and `unio reviews`, including expected reviewers, stale or missing evidence, decision precedence and the distinction between recorded approval and owner acceptance.
