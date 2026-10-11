@@ -31,6 +31,7 @@ shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
 UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" "$QUALITY_CHECK_DIR/bin/unio" selftest
 bash tests/unio-quality.sh
 python3 -B tests/unio-review-receipts.py
+python3 -B tests/unio-review-collection.py
 python3 tests/unio-loop-brake.py
 python3 tests/unio-limit-wall.py
 python3 tests/unio-watch.py

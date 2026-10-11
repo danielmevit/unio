@@ -16540,7 +16540,222 @@ def verdict(path):
     lines=regular(path).decode('utf-8',errors='replace').splitlines()
     markers=[line for line in lines if re.search(r'(?i)\bverdict\s*:',line)]
     decisions={'VERDICT: APPROVE':'approved','VERDICT: REQUEST-CHANGES':'changes_requested'}
-    print(decisions.get(markers[0],'unknown') if len(markers)==1 else 'unknown')
+    return decisions.get(markers[0],'unknown') if len(markers)==1 else 'unknown'
+
+# Concurrent review collection: one frozen common material, several explicit
+# reviewer attempts, each with its own admission identity and raw evidence.
+# The descriptor below is lifecycle evidence only, never an acceptance store.
+COLLECTION_FIELDS={'schema_version','id','worker','task','reviewers','started_at','finished_at',
+                   'state','before','after','material_sha256','attempts','reasons'}
+ATTEMPT_FIELDS={'reviewer','policy_task','raw_directory','receipt_id'}
+CHILD_FIELDS={'schema_version','reviewer','policy_task','admitted','policy_group','invoked',
+              'process_exit_code','reasons'}
+
+def collection_valid(d):
+    if not isinstance(d,dict) or set(d)!=COLLECTION_FIELDS or type(d['schema_version']) is not int or d['schema_version']!=1:
+        fail('invalid collection descriptor schema')
+    for name in ('worker','task'):
+        if not isinstance(d[name],str) or len(d[name])>128: fail('invalid collection identity')
+        ident(d[name])
+    for name,length in (('id',32),('material_sha256',64)):
+        if not isinstance(d[name],str) or not re.fullmatch('[0-9a-f]{'+str(length)+'}',d[name]): fail('invalid collection hash/ID')
+    for name in ('started_at','finished_at'):
+        value=d[name]
+        if name=='started_at' and value is None: fail('invalid collection timestamp')
+        if value is not None and (not isinstance(value,str) or len(value)>64
+                                  or datetime.datetime.fromisoformat(value).utcoffset() is None):
+            fail('invalid collection timestamp')
+    if d['state'] not in ('running','completed','interrupted','unknown'): fail('invalid collection state')
+    if not revision(d['before']) or (d['after'] is not None and not revision(d['after'])): fail('invalid collection revision')
+    reviewers=d['reviewers']
+    if not isinstance(reviewers,list) or not 2<=len(reviewers)<=8 or len(set(reviewers))!=len(reviewers):
+        fail('invalid collection reviewers')
+    for value in reviewers:
+        if not isinstance(value,str) or not re.fullmatch('[a-zA-Z0-9_][a-zA-Z0-9_-]{0,127}',value): fail('invalid collection reviewer alias')
+    attempts=d['attempts']
+    if not isinstance(attempts,list) or len(attempts)!=len(reviewers): fail('invalid collection attempts')
+    for i,attempt in enumerate(attempts):
+        if not isinstance(attempt,dict) or set(attempt)!=ATTEMPT_FIELDS: fail('invalid collection attempt')
+        if attempt['reviewer']!=reviewers[i]: fail('collection attempt order mismatch')
+        if attempt['policy_task']!='rset-%s-%d'%(d['id'],i+1): fail('invalid collection admission label')
+        if not isinstance(attempt['raw_directory'],str) or not re.fullmatch(re.escape(d['task'])+r'\.review\.[A-Za-z0-9]{8}',attempt['raw_directory']):
+            fail('invalid collection raw directory')
+        if attempt['receipt_id'] is not None and (not isinstance(attempt['receipt_id'],str)
+                or not re.fullmatch('[0-9a-f]{32}',attempt['receipt_id'])): fail('invalid collection receipt binding')
+    reasons=d['reasons']
+    if not isinstance(reasons,list) or len(reasons)>16 or any(not isinstance(s,str) or not re.fullmatch('[a-z][a-z0-9_:-]{0,159}',s) for s in reasons):
+        fail('invalid collection reasons')
+    return d
+
+def collection_read(path):
+    if os.path.realpath(path)!=os.path.abspath(path): fail('unsafe collection descriptor path')
+    fd=os.open(path,os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd,'rb') as stream:
+        info=os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1: fail('unsupported collection descriptor')
+        raw=stream.read(65537)
+        final=os.fstat(stream.fileno()); current=os.stat(path,follow_symlinks=False)
+        if ((info.st_size,info.st_mtime_ns,info.st_ctime_ns)!=(final.st_size,final.st_mtime_ns,final.st_ctime_ns)
+                or (current.st_dev,current.st_ino)!=(final.st_dev,final.st_ino)
+                or os.path.realpath(path)!=os.path.abspath(path)): fail('collection descriptor changed while reading')
+    if len(raw)>65536: fail('oversized collection descriptor')
+    return collection_valid(json.loads(raw.decode('utf-8'),object_pairs_hook=review_unique,
+                                       parse_constant=lambda _:fail('nonfinite collection field')))
+
+def collection_atomic(path,d):
+    directory=os.path.dirname(path)
+    for name in os.listdir(directory):
+        stale=os.path.join(directory,name)
+        if name.startswith('.collection-') and not os.path.islink(stale):
+            os.unlink(stale)
+    fd,temp=tempfile.mkstemp(prefix='.collection-',dir=directory)
+    try:
+        with os.fdopen(fd,'w') as out:
+            json.dump(d,out,ensure_ascii=True,sort_keys=True); out.write('\n'); out.flush(); os.fsync(out.fileno())
+        os.replace(temp,path)
+    finally:
+        if os.path.exists(temp): os.unlink(temp)
+
+def child_result_valid(d):
+    if not isinstance(d,dict) or set(d)!=CHILD_FIELDS or type(d['schema_version']) is not int or d['schema_version']!=1:
+        fail('invalid attempt evidence schema')
+    for name in ('reviewer','policy_task'):
+        if not isinstance(d[name],str) or len(d[name])>128: fail('invalid attempt identity')
+        ident(d[name])
+    for name in ('admitted','invoked'):
+        if type(d[name]) is not bool: fail('invalid attempt evidence')
+    if d['policy_group'] is not None and (not isinstance(d['policy_group'],str) or len(d['policy_group'])>128):
+        fail('invalid attempt group')
+    if d['policy_group'] is not None: ident(d['policy_group'])
+    code=d['process_exit_code']
+    if code is not None and (type(code) is not int or not 0<=code<=255): fail('invalid attempt exit')
+    reasons=d['reasons']
+    if not isinstance(reasons,list) or len(reasons)>16 or any(not isinstance(s,str) or not re.fullmatch('[a-z][a-z0-9_:-]{0,159}',s) for s in reasons):
+        fail('invalid attempt reasons')
+    return d
+
+def child_result_read(path):
+    if os.path.realpath(path)!=os.path.abspath(path): fail('unsafe attempt evidence path')
+    fd=os.open(path,os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd,'rb') as stream:
+        info=os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1: fail('unsupported attempt evidence')
+        raw=stream.read(65537)
+        final=os.fstat(stream.fileno()); current=os.stat(path,follow_symlinks=False)
+        if ((info.st_size,info.st_mtime_ns,info.st_ctime_ns)!=(final.st_size,final.st_mtime_ns,final.st_ctime_ns)
+                or (current.st_dev,current.st_ino)!=(final.st_dev,final.st_ino)
+                or os.path.realpath(path)!=os.path.abspath(path)): fail('attempt evidence changed while reading')
+    if len(raw)>65536: fail('oversized attempt evidence')
+    return child_result_valid(json.loads(raw.decode('utf-8'),object_pairs_hook=review_unique,
+                                         parse_constant=lambda _:fail('nonfinite attempt field')))
+
+def review_set_create(root,worker,task,reviewers_csv,before_json,material_hash,raws_csv):
+    locations(root,worker,task)
+    reviewers=reviewers_csv.split(',') if reviewers_csv else []
+    raws=raws_csv.split(',') if raws_csv else []
+    if len(reviewers)!=len(raws) or not 2<=len(reviewers)<=8: fail('invalid reviewer set')
+    if len(set(reviewers))!=len(reviewers): fail('duplicate reviewer alias')
+    for value in reviewers:
+        if not re.fullmatch('[a-zA-Z0-9_][a-zA-Z0-9_-]{0,127}',value): fail('invalid reviewer alias')
+    before=json.loads(before_json)
+    if not revision(before): fail('invalid revision')
+    if not isinstance(material_hash,str) or not re.fullmatch('[0-9a-f]{64}',material_hash): fail('invalid material hash')
+    for raw in raws:
+        if not re.fullmatch(re.escape(task)+r'\.review\.[A-Za-z0-9]{8}',raw): fail('invalid raw directory name')
+        path=safe(root,'coord','reports',raw)
+        if not os.path.isdir(path) or os.path.islink(path): fail('raw directory is missing')
+        for stream in ('stdout.log','stderr.log'):
+            if not os.path.isfile(os.path.join(path,stream)): fail('raw stream is missing')
+    cid=uuid.uuid4().hex
+    directory=tempfile.mkdtemp(prefix=task+'.review-set.',dir=safe(root,'coord','reports'))
+    d=dict(schema_version=1,id=cid,worker=worker,task=task,reviewers=reviewers,
+           started_at=stamp(),finished_at=None,state='running',before=before,after=None,
+           material_sha256=material_hash,
+           attempts=[dict(reviewer=reviewers[i],policy_task='rset-%s-%d'%(cid,i+1),
+                          raw_directory=raws[i],receipt_id=None) for i in range(len(reviewers))],
+           reasons=[])
+    collection_valid(d)
+    collection_atomic(os.path.join(directory,'collection.json'),d)
+    print('%s %s'%(cid,directory))
+
+def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
+    if state_arg not in ('completed','interrupted'): fail('unknown finalization state')
+    locations(root,worker,task)
+    name=os.path.basename(directory)
+    if not re.fullmatch(re.escape(task)+r'\.review-set\.[A-Za-z0-9_]{8}',name): fail('invalid collection directory')
+    directory=safe(root,'coord','reports',name)
+    d=collection_read(os.path.join(directory,'collection.json'))
+    if d['worker']!=worker or d['task']!=task: fail('collection identity mismatch')
+    if d['state']!='running': fail('collection is not running')
+    specs=json.loads(attempts_json)
+    if (not isinstance(specs,list) or len(specs)!=len(d['attempts'])
+            or any(not isinstance(s,dict) or set(s)!={'pf','exit'} or not isinstance(s['pf'],str)
+                   or type(s['exit']) is not int or not 0<=s['exit']<=255 for s in specs)):
+        fail('invalid attempt evidence')
+    for s in specs:
+        if os.path.realpath(s['pf'])!=os.path.abspath(s['pf']) or not os.path.isfile(s['pf']):
+            fail('unsafe attempt material copy')
+    before_json=json.dumps(d['before'],sort_keys=True,separators=(',',':'))
+    if state_arg=='interrupted':
+        # Best-effort record: children were stopped before receipt publication,
+        # so their raw evidence stays explicitly unbound.
+        d.update(state='interrupted',finished_at=stamp(),reasons=['signaled'])
+        collection_valid(d)
+        collection_atomic(os.path.join(directory,'collection.json'),d)
+        print('%s interrupted 0 signaled'%d['id'])
+        return
+    reasons=[]
+    after=None
+    try: after=snapshot(root,worker,task)
+    except (ValueError,OSError,KeyError,TypeError): reasons.append('post_snapshot_failed')
+    drift=after is not None and after!=d['before']
+    if drift: reasons.append('candidate_changed_during_review')
+    after_json=json.dumps(after,sort_keys=True,separators=(',',':')) if after is not None else ''
+    bound=0
+    for i,attempt in enumerate(d['attempts']):
+        raw=safe(root,'coord','reports',attempt['raw_directory'])
+        result=None
+        try: result=child_result_read(os.path.join(raw,'attempt.json'))
+        except (ValueError,OSError,KeyError,TypeError): pass
+        if specs[i]['exit']!=0 or result is None:
+            reasons.append('child_failed'); continue
+        if result['reviewer']!=attempt['reviewer'] or result['policy_task']!=attempt['policy_task']:
+            reasons.append('child_failed'); continue
+        if not result['admitted']:
+            state,code,complete,rreasons,after_arg='unknown',None,'no',['budget_refused'],before_json
+        elif not result['invoked']:
+            state,code,complete,rreasons,after_arg='unknown',None,'no',['stop_active'],before_json
+        else:
+            code=result['process_exit_code']
+            try: state=verdict(safe(root,'coord','reports',attempt['raw_directory'],'stdout.log'))
+            except (ValueError,OSError): state='unknown'
+            if code!=0: state='failed'
+            rreasons=[]
+            if drift:
+                rreasons.append('candidate_changed_during_review')
+                if code==0: state='unknown'
+            state,complete,after_arg=state,'yes',after_json
+        try:
+            review_receipt(root,worker,task,attempt['reviewer'],state,
+                           str(code) if code is not None else '',complete,','.join(rreasons),
+                           before_json,after_arg,specs[i]['pf'],raw,result['policy_group'] or '',d['material_sha256'])
+        except (ValueError,OSError,KeyError,TypeError):
+            if not os.path.exists(os.path.join(raw,'receipt.json')):
+                reasons.append('receipt_failed'); continue
+            reasons.append('material_changed')
+        receipt=review_read(os.path.join(raw,'receipt.json'))
+        if (receipt['worker']!=worker or receipt['task']!=task or receipt['reviewer']!=attempt['reviewer']
+                or receipt['material_sha256']!=d['material_sha256']):
+            fail('published receipt does not match its attempt')
+        attempt['receipt_id']=receipt['id']
+        bound+=1
+        collection_valid(d)
+        collection_atomic(os.path.join(directory,'collection.json'),d)
+    final='unknown' if after is None else 'completed'
+    d.update(state=final,finished_at=stamp(),after=after,reasons=sorted(set(reasons))[:16])
+    collection_valid(d)
+    collection_atomic(os.path.join(directory,'collection.json'),d)
+    print('%s %s %d %s'%(d['id'],final,bound,','.join(sorted(set(reasons))[:16])))
 
 def agent_data(conf,offdir):
     output=[]
@@ -16796,7 +17011,9 @@ try:
     elif cmd=='review-material-hash': print(review_digest(a[0],400000)['sha256'])
     elif cmd=='reviews-arguments': review_expect(*a)
     elif cmd=='reviews': sys.exit(reviews(*a))
-    elif cmd=='verdict': verdict(*a)
+    elif cmd=='verdict': print(verdict(*a))
+    elif cmd=='review-set-create': review_set_create(*a)
+    elif cmd=='review-set-finalize': review_set_finalize(*a)
     elif cmd=='agents': agents(*a)
     elif cmd=='watch': watch(*a)
     elif cmd=='handoff': handoff(*a)
@@ -21767,6 +21984,230 @@ cmd_reviews() { # local, read-only aggregation; never invokes reviewer commands
   quality reviews "$root" "$worker" "$task" "$expected" "$mode"
 }
 
+# ------------------------------------------- concurrent review collection
+rs_child_result() { # $1=path $2=reviewer $3=label $4=admitted $5=group $6=invoked $7=code $8=reasons
+  python3 - "$@" <<'RS_CHILD_PY'
+import json, os, sys, tempfile
+path, reviewer, label, admitted, group, invoked, code, reasons = sys.argv[1:9]
+doc = dict(schema_version=1, reviewer=reviewer, policy_task=label, admitted=admitted == '1',
+           policy_group=group or None, invoked=invoked == '1',
+           process_exit_code=int(code) if code else None,
+           reasons=[r for r in reasons.split(',') if r])
+fd, temp = tempfile.mkstemp(prefix='.attempt-', dir=os.path.dirname(path))
+try:
+    with os.fdopen(fd, 'w') as out:
+        json.dump(doc, out, ensure_ascii=True, sort_keys=True); out.write('\n')
+        out.flush(); os.fsync(out.fileno())
+    os.replace(temp, path)
+finally:
+    if os.path.exists(temp): os.unlink(temp)
+RS_CHILD_PY
+}
+
+rs_child() { # $1=root $2=reviewer $3=label $4=material $5=workdir $6=rawdir $7=command
+  # One owned reviewer attempt: its own admission identity, provider process,
+  # cleanup trap and result evidence. It must never hold the worker lock.
+  exec 9>&-
+  local root="$1" reviewer="$2" label="$3" pf="$4" nd="$5" raw="$6" rcmd="$7"
+  local stdout="$raw/stdout.log" stderr="$raw/stderr.log" rc=0 group=""
+  POLICY_CLEANUP_ROOT="$root"
+  trap 'policy_release_slot "$POLICY_CLEANUP_ROOT"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  if ! policy_admit_hold "$root" "$reviewer" "$reviewer" "$label" review "$pf"; then
+    rs_child_result "$raw/attempt.json" "$reviewer" "$label" 0 "" 0 "" budget_refused
+    exit 0
+  fi
+  group="$POLICY_GROUP"
+  # Recheck STOP immediately before this reviewer's provider starts.
+  if [ -e "$root/coord/STOP" ]; then
+    policy_release_slot "$root"
+    rs_child_result "$raw/attempt.json" "$reviewer" "$label" 1 "$group" 0 "" stop_active
+    exit 0
+  fi
+  echo "[review-set] $reviewer admitted in group $group (timeout ${UNIO_REVIEW_TIMEOUT:-900}s)"
+  POLICY_PROVIDER_PID=""
+  ( cd "$nd" && TASKFILE="$POLICY_EFFECTIVE" UNIO_ORIGINAL_TASKFILE="$pf" timeout --kill-after=5s "${UNIO_REVIEW_TIMEOUT:-900}" bash -c "$rcmd" </dev/null ) \
+    >"$stdout" 2>"$stderr" 9>&- {POLICY_IN}>&- {POLICY_RD}>&- {POLICY_WR}>&- &
+  POLICY_PROVIDER_PID=$!
+  wait "$POLICY_PROVIDER_PID" || rc=$?
+  POLICY_PROVIDER_PID=""
+  policy_release_slot "$root"
+  rs_child_result "$raw/attempt.json" "$reviewer" "$label" 1 "$group" 1 "$rc" ""
+  exit 0
+}
+
+rs_signal() { # $1=signal exit — stop only the owned children; each reaps itself
+  RS_SIGNALED=1
+  RS_SIGNAL_RC="$1"
+  local pid
+  for pid in "${RS_PIDS[@]}"; do kill -TERM -- "$pid" 2>/dev/null || true; done
+  return 0
+}
+
+rs_wait_children() { # reap every owned child, surviving trap-interrupted waits
+  local i rc
+  for i in "${!RS_PIDS[@]}"; do
+    while :; do
+      if wait "${RS_PIDS[$i]}"; then rc=0; break; fi
+      rc=$?
+      # A trapped signal interrupts wait while the child still runs; wait again.
+      if [ "$RS_SIGNALED" = 1 ] && [ "$rc" -gt 128 ] && kill -0 "${RS_PIDS[$i]}" 2>/dev/null; then
+        continue
+      fi
+      break
+    done
+    RS_EXIT[$i]=$rc
+  done
+  return 0
+}
+
+rs_exit_cleanup() { # parent EXIT: stop and reap owned children, drop scratch
+  local pid alive n=0
+  for pid in "${RS_PIDS[@]}"; do kill -TERM -- "$pid" 2>/dev/null || true; done
+  while [ "$n" -lt 200 ]; do
+    alive=0
+    for pid in "${RS_PIDS[@]}"; do kill -0 -- "$pid" 2>/dev/null && alive=1; done
+    [ "$alive" = 0 ] && break
+    n=$((n + 1)); sleep 0.05
+  done
+  for pid in "${RS_PIDS[@]}"; do kill -KILL -- "$pid" 2>/dev/null || true; done
+  for pid in "${RS_PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
+  rm -rf -- "${RS_SCRATCH[@]}" 2>/dev/null || true
+  return 0
+}
+
+review_set_usage() {
+  echo 'usage: unio review-set <worker> <task-id> <reviewer1> <reviewer2> [reviewer3 ...]' >&2
+  echo '2-8 distinct configured reviewers judge the same complete material.' >&2
+  return 2
+}
+
+review_set_alias_ok() { # $1=alias — same shape as check_id, but a refusal is exit 2
+  case "$1" in
+    ''|.|..|-*|*/*|*\\*|*..*|*[[:cntrl:][:space:]]*) return 1;;
+  esac
+  return 0
+}
+
+cmd_review_set() { # one explicitly requested reviewer set over the same material
+  if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then
+    [ "$#" -eq 1 ] || { echo 'unio review-set: --help takes no other argument' >&2; return 2; }
+    echo 'usage: unio review-set <worker> <task-id> <reviewer1> <reviewer2> [reviewer3 ...]'
+    echo 'Collect 2-8 distinct explicit reviewer verdicts on the same complete material.'
+    echo 'Native per-group budget slots; partial admission stays explicit; never'
+    echo 'retry, substitute, queue, merge or grant human acceptance. Exit 0 only'
+    echo 'for a complete unchanged collection with every recorded reviewer approving,'
+    echo '1 for current changes requested, 2 for any other outcome or invalid input.'
+    return 0
+  fi
+  # Argument validation precedes any project state read.
+  [ "$#" -ge 4 ] || { review_set_usage; return 2; }
+  [ "$#" -le 10 ] || { echo 'unio review-set: at most 8 reviewers' >&2; return 2; }
+  local worker="$1" task="$2" r
+  shift 2
+  for r in "$@"; do
+    case "$r" in --*) echo 'unio review-set: options are not accepted' >&2; return 2;; esac
+  done
+  for r in "$worker" "$task" "$@"; do
+    review_set_alias_ok "$r" || { echo "unio review-set: malformed alias '$r'" >&2; return 2; }
+  done
+  if printf '%s\n' "$@" | sort | uniq -d | grep -q .; then
+    echo 'unio review-set: duplicate reviewer alias' >&2; return 2
+  fi
+  local root
+  root=$(find_root) || { echo 'unio review-set: not inside a Unio project' >&2; return 2; }
+  task="${task%.md}"
+  local tf="$root/coord/tasks/$task.md"
+  [ -f "$tf" ] || { echo "unio review-set: no task file: $tf" >&2; return 2; }
+  [ -d "$root/wt/$worker" ] || { echo "unio review-set: no worktree: $root/wt/$worker" >&2; return 2; }
+  quality paths "$root" "$worker" "$task" || return $?
+  [ ! -e "$root/coord/STOP" ] || { echo 'unio review-set: STOP is active; collection refused' >&2; return 2; }
+  mkdir -p "$root/coord/.locks"
+  exec 9>>"$root/coord/.locks/$worker.lock"
+  flock -n 9 || { echo "unio review-set: worker '$worker' is busy — collection refused" >&2; return 2; }
+  quality gate "$root" "$worker" "$task" || return 2
+  local before
+  before=$(quality snapshot "$root" "$worker" "$task") || return 2
+  local author="${worker%%-*}" conf rcmd
+  conf=$(conf_for_root "$root")
+  local -a reviewers=("$@") rcmds=()
+  for r in "${reviewers[@]}"; do
+    is_off "$r" && { echo "unio review-set: reviewer '$r' is benched" >&2; return 2; }
+    [ "$r" != "$author" ] || { echo "unio review-set: reviewer must differ from the author agent '$author'" >&2; return 2; }
+    rcmd=$(agent_cmd "$r" "$conf") || { echo "unio review-set: no agents.conf entry for reviewer '$r'" >&2; return 2; }
+    rcmds+=("$rcmd")
+  done
+  # Freeze the common material and its hash once, before any reviewer starts.
+  local nd pf material_hash
+  nd=$(mktemp -d) || return 2
+  pf="$nd/material.md"
+  if ! quality material "$root" "$worker" "$task" > "$pf"; then
+    echo 'unio review-set: incomplete review material; collection refused' >&2
+    rm -rf -- "$nd"; return 2
+  fi
+  material_hash=$(quality review-material-hash "$pf") || { rm -rf -- "$nd"; return 2; }
+  # Raw evidence folders exist, with empty streams, before any call.
+  local -a raws=()
+  local raw
+  for r in "${reviewers[@]}"; do
+    raw=$(mktemp -d "$root/coord/reports/$task.review.XXXXXXXX") || { rm -rf -- "$nd" "${raws[@]}"; return 2; }
+    : > "$raw/stdout.log"; : > "$raw/stderr.log"
+    raws+=("$raw")
+  done
+  local reviewers_csv raws_csv out cid cdir
+  reviewers_csv=$(IFS=,; printf '%s' "${reviewers[*]}")
+  raws_csv=""
+  for raw in "${raws[@]}"; do raws_csv="${raws_csv:+$raws_csv,}$(basename -- "$raw")"; done
+  out=$(quality review-set-create "$root" "$worker" "$task" "$reviewers_csv" "$before" "$material_hash" "$raws_csv") \
+    || { rm -rf -- "$nd" "${raws[@]}"; return 2; }
+  read -r cid cdir <<< "$out"
+  [[ "$cid" =~ ^[0-9a-f]{32}$ ]] && [ -d "$cdir" ] || { rm -rf -- "$nd" "${raws[@]}"; return 2; }
+  # Each child gets its own frozen copy of the common material.
+  local -a pfs=() nds=()
+  local i cnd
+  for i in "${!reviewers[@]}"; do
+    cnd=$(mktemp -d) || { rm -rf -- "$nd" "${raws[@]}"; return 2; }
+    cp -- "$pf" "$cnd/material.md" || { rm -rf -- "$nd" "$cnd" "${raws[@]}"; return 2; }
+    nds+=("$cnd"); pfs+=("$cnd/material.md")
+  done
+  RS_PIDS=(); RS_EXIT=(); RS_SCRATCH=("$nd" "${nds[@]}")
+  RS_SIGNALED=0; RS_SIGNAL_RC=0
+  trap 'rs_signal 130' INT
+  trap 'rs_signal 143' TERM
+  trap 'rs_exit_cleanup' EXIT
+  for i in "${!reviewers[@]}"; do
+    rs_child "$root" "${reviewers[$i]}" "rset-$cid-$((i + 1))" "${pfs[$i]}" "${nds[$i]}" "${raws[$i]}" "${rcmds[$i]}" &
+    RS_PIDS[$i]=$!
+  done
+  rs_wait_children
+  local state_arg=completed
+  [ "$RS_SIGNALED" = 0 ] || state_arg=interrupted
+  local specs="" spec fin_state=unknown
+  for i in "${!RS_PIDS[@]}"; do
+    spec=$(printf '{"pf":"%s","exit":%s}' "${pfs[$i]}" "${RS_EXIT[$i]:-1}")
+    specs="${specs:+$specs,}$spec"
+  done
+  if out=$(quality review-set-finalize "$root" "$worker" "$task" "$cdir" "$state_arg" "[$specs]"); then
+    local rid rstate
+    read -r rid rstate _ <<< "$out"
+    [ "$rid" = "$cid" ] && fin_state="$rstate"
+  fi
+  # Release the worker lock before asking the read-only summary.
+  exec 9>&-
+  if [ "$RS_SIGNALED" = 1 ]; then
+    echo "review-set collection $cid interrupted; raw evidence stays unbound"
+    return "$RS_SIGNAL_RC"
+  fi
+  local csv
+  csv=$(IFS=,; printf '%s' "${reviewers[*]}")
+  echo "review-set collection $cid: reviewers=$csv state=$fin_state"
+  local sum_rc=0
+  quality reviews "$root" "$worker" "$task" "$csv" text || sum_rc=$?
+  [ "$fin_state" = completed ] || return 2
+  return "$sum_rc"
+}
+
 cmd_evidence() {
   local operation="$1" worker="${2:-}" task="${3:-}" root
   check_id "$worker" worker; check_id "$task" task
@@ -22911,6 +23352,15 @@ work
                                      read separate exact-revision review receipts;
                                      missing, stale and failed evidence stays visible.
                                      No provider call or human acceptance.
+  unio review-set <w> <task> <agent> <agent> [agent...]
+                                     collect 2-8 distinct explicit reviewer
+                                     verdicts on the same frozen material in
+                                     parallel; native per-group budget slots,
+                                     partial admission stays explicit, never
+                                     retry, substitute, queue, merge or grant
+                                     human acceptance. exit 0 all recorded
+                                     approved, 1 current changes requested,
+                                     2 any other outcome or invalid input
   unio result <w> <task>        structured result from coord/results,
                                      rechecked against the current worktree:
                                      stale, ready_for_human_review (never human
@@ -23075,6 +23525,7 @@ case "${1:-help}" in
   smoke)    shift; cmd_smoke "$@";;
   review)   shift; cmd_review "$@";;
   reviews)  shift; cmd_reviews "$@";;
+  review-set) shift; cmd_review_set "$@";;
   race)     shift; cmd_race "$@";;
   sabotage) shift; cmd_sabotage "$@";;
   sweep-saboteurs) shift; cmd_sweep_saboteurs "$@";;
@@ -25596,6 +26047,10 @@ _unio() {
       elif [ "$COMP_CWORD" -eq 3 ]; then COMPREPLY=( $(compgen -W "$tasks" -- "$cur") )
       elif [ "$prev" = --expect ]; then COMPREPLY=( $(compgen -W "$agents" -- "$cur") )
       else COMPREPLY=( $(compgen -W "--expect --json --help" -- "$cur") ); fi;;
+    review-set)
+      if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "$workers" -- "$cur") )
+      elif [ "$COMP_CWORD" -eq 3 ]; then COMPREPLY=( $(compgen -W "$tasks" -- "$cur") )
+      else COMPREPLY=( $(compgen -W "$agents" -- "$cur") ); fi;;
     agents)
       if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "--json" -- "$cur") ); fi;;
     integrations)
