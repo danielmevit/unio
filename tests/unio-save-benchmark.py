@@ -34,7 +34,7 @@ root="$(dirname "$PWD")"
 case "$cmd" in
   version) echo "Unio 0.5.9-fake ($0)"; echo "Your AIs, in sync." ;;
   init)
-    if [ -n "${FAKE_HANG_INIT:-}" ]; then sleep 30; fi
+    if [ -n "${FAKE_HANG_INIT:-}" ]; then printf entered > "$root/init-entered"; sleep 30; fi
     mkdir -p "$root/coord/tasks" "$root/coord/.locks" "$root/wt"
     printf '%s' "$HOME" > "$root/home-observed"
     printf '%s' "${GIT_DIR:-}" > "$root/git-dir-observed"
@@ -219,11 +219,17 @@ with tempfile.TemporaryDirectory(prefix='save-benchmark-test-') as directory:
           r.returncode == 0 and hung['timed_out'] is True and hung['exit_code'] is None
           and elapsed < 30 and 'bounded' in doc['failures'][0])
 
+    # Allow real Git fixture setup to finish before testing the fake hung
+    # engine. A 0.2s global step bound can stop Git first on WSL/9p.
+    started = time.monotonic()
     r = probe('--engine', str(engine), '--scratch', str(scratch), '--workspace', 'hung-init',
-              '--step-timeout', '0.2', env={'FAKE_HANG_INIT': '1'})
+              '--step-timeout', '3', env={'FAKE_HANG_INIT': '1'})
+    elapsed = time.monotonic() - started
     doc = json.loads(r.stdout)
     check('a timed-out init is a fixture failure, never treated as success',
           r.returncode == 1 and doc['measurements'] is None
+          and (scratch / 'hung-init/project/init-entered').read_text() == 'entered'
+          and elapsed < 30
           and any('engine init failed' in f for f in doc['failures']))
 
     # ---- explicit cleanup removes exactly the new workspace -------------
