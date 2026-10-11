@@ -217,9 +217,16 @@ class Preflight:
         # refuse conservatively whenever the scope or the queue evidence of a
         # listed possibly active job cannot be established.
         coord = Path(self.grant['project']) / 'coord'
+        integrated = {task['id'] for task in report['tasks']
+                      if task['status'] == 'blocked' and 'already_integrated' in task['reasons']}
         for row in inventory['tasks']:
             other = row.get('job_id')
             if not other or other == job_id:
+                continue
+            # Queue reservations are durable even after owner integration.
+            # Only the planner's checked matching hash and ancestor revision
+            # release that scope; a successful run alone never does.
+            if row['id'] in integrated:
                 continue
             queue_state, queue_reason, _, _ = planner.observe_browser_job(coord, other, row['worker'])
             if queue_state == 'unresolved':

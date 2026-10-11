@@ -5,6 +5,31 @@ the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
 
+## Explicit dispatch completion — 2026-10-11
+
+Three independent-account tasks ran through Unio from the same saved dispatch
+base. Vibe 2.26.1 / GLM 5.3 / high returned Source 3 after 4,037,615 cumulative
+tokens against a 4M-token bound. Its scope guard and seven CLI tests were saved;
+four service tests passed, while two CLI fixture expectations needed correction.
+This bounded termination is not evidence of a provider connection failure.
+The existing lead completed the remaining integration without a retry or a
+second Codex session, including a regression for accepted dependencies whose
+queue records remain reserved. Final acceptance remains a separate lead check.
+
+Copilot 1.0.95 / Auto Balance returned a documentation proposal with Source 0.
+The lead corrected missing command prefixes, inventory field names, a template
+format error and unrelated plan claims before using it. Effective model/effort
+remain Unknown. Use such proposals as routine support, checked against code.
+
+OpenCode 1.18.35 / `opencode/longcat-2.5-preview-free` / medium returned Source 0
+and committed only its two assigned installer-test/fragment paths. Both native
+validation commands passed. Native scope verification failed because the task
+branch inherited four core-dispatch paths absent from the project base; that
+integration setup failure is preserved, rather than reported as worker approval.
+This supports predefined offline installation checks, not core implementation
+or independent security acceptance. Go quota was exhausted; this task used a
+separately verified zero-price Zen route, with no Go or paid fallback.
+
 ## Two views of the evidence
 
 `unio score` already summarizes the append-only ledger: runs, process success

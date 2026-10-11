@@ -61,7 +61,7 @@ def revision():
                 task_sha256=hashlib.sha256(tf.read_bytes()).hexdigest(), worktree_sha256=work)
 if args[0] == 'run':
     assert tf.is_file()
-    (wt / 'source.txt').write_text('implemented\n')
+    (wt / 'source.txt').write_text('implemented ' + task + '\n')
     subprocess.check_call(['git', '-C', str(wt), 'add', 'source.txt'],
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.check_call(['git', '-C', str(wt), 'commit', '-qm', 'mock work'],
@@ -203,9 +203,9 @@ class TaskDispatchTests(unittest.TestCase):
                                report['preview_sha256'], '--approval-key', approval)
         return draft, report, approval, json.loads(result.stdout)
 
-    def inventory(self, rows, base_revision=None):
+    def inventory(self, rows, base_revision=None, accepted=()):
         data = dict(schema_version=1, base_revision=base_revision or self.base_revision,
-                    tasks=rows, accepted=[])
+                    tasks=rows, accepted=list(accepted))
         path = self.root / ('inventory-%d.json' % time.monotonic_ns())
         path.write_text(json.dumps(data))
         return path, hashlib.sha256(path.read_bytes()).hexdigest()
@@ -446,7 +446,7 @@ class TaskDispatchTests(unittest.TestCase):
                          '## Validate\n$ echo check\n')
         inv, inv_hash = self.inventory([row, dict(id='aaa-plain',
             task_sha256=hashlib.sha256(plain.read_bytes()).hexdigest(),
-            worker=self.worker, depends_on=[])])
+            worker='other-worker', depends_on=[])])
         report = refused(inv, inv_hash, reason='plan_blocked')
         self.assertIn('scope_conflict', report['plan']['reasons'])
         # Full group: the shared budget group shows every slot occupied.
@@ -520,10 +520,35 @@ class TaskDispatchTests(unittest.TestCase):
         published.unlink()
         result = self.start(prepared, approval, inv, inv_hash, check_code=1)
         report = json.loads(result.stdout)
-        self.assertEqual(report['reason'], 'reserved_scope_unknown')
+        self.assertEqual(report['reason'], 'plan_unresolved')
+        self.assertIn('disjointness_unknown', report['plan']['reasons'])
         self.assertEqual(self.queue_job(identity)['state'], 'approved')
+        self.assertIsNone(self.queue_job(identity)['reservation_key'])
+        self.assertFalse((self.coord / 'tasks' / (prepared['task']['id'] + '.md')).exists())
         self.assertEqual(len(self.engine_calls('run')), 1)
         published.write_bytes(saved)
+
+    def test_integrated_reserved_job_releases_scope_for_accepted_dependency(self):
+        other = self.reserved_other_job()
+        # Integration is explicit evidence, separate from the still-reserved
+        # queue record and from the mocked successful native run.
+        git(self.repo, 'merge', '--ff-only', 'agent/other-worker')
+        self.base_revision = git(self.repo, 'rev-parse', 'HEAD')
+        git(self.wt, 'merge', '--ff-only', 'main')
+        other_task = other['preview']['task_id']
+        accepted = dict(id=other_task, task_sha256=other['preview']['task_sha256'],
+                        revision=self.base_revision)
+        draft, prepared, approval, _ = self.approved()
+        rows = [self.job_row(prepared, depends_on=[accepted]),
+                dict(id=other_task, task_sha256=accepted['task_sha256'],
+                     worker='other-worker', depends_on=[], job_id=other['job']['id'])]
+        inv, inv_hash = self.inventory(rows, accepted=[accepted])
+        self.assertEqual(self.queue_job(other['job']['id'])['state'], 'reserved')
+        result = self.start(prepared, approval, inv, inv_hash)
+        report = json.loads(result.stdout)
+        self.assertEqual(report['outcome'], 'launch_accepted')
+        self.assertEqual(report['plan']['status'], 'ready')
+        self.assertEqual(len(self.engine_calls('run')), 2)
 
     def test_reserved_job_with_disjoint_scope_does_not_block(self):
         other = self.reserved_other_job(scope=('other.txt',))

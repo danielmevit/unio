@@ -1,6 +1,6 @@
 # Explicit dispatch: implementation contract
 
-Status: planned source work, not part of installed v0.5.9. This bounded slice
+Status: implemented in development source, not part of installed v0.5.9. This bounded slice
 connects the checked task planner to the existing execution service. It does
 not introduce a scheduler, automatic approvals, retries or a new job store.
 

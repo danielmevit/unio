@@ -109,7 +109,10 @@ binding and a fresh `ready` recommendation under the shared execution lock.
 STOP, unmet dependencies, conflicting scopes, full account groups and stale or
 unsupported evidence refuse before reservation and native task publication.
 Listed reserved or uncertain jobs retain conflicting scopes even before their
-detached worker acquires a native slot. The supplied inventory cannot establish
+detached worker acquires a native slot. A prior scope is released only when the
+planner verifies matching accepted task/hash evidence and its integrated
+revision is an ancestor of the current base. A successful run alone is
+insufficient. The supplied inventory cannot establish
 the scope of every omitted or unmanaged session. Unknown allowance remains
 unknown; native admission still checks the actual worker/account slot.
 

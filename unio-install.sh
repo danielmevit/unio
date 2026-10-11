@@ -12444,6 +12444,13 @@ Prepare, approve and start each delegate to one ExecutionService call. A fresh
 start first rebuilds the checked task plan inside the service lock; replays
 return existing evidence. No scheduler, retry, automatic approval, review,
 acceptance or merge. Launcher acceptance is not task success.
+
+A fresh start also refuses while another inventory-listed reserved or
+completion-unknown job holds an intersecting write scope, even when every
+native group shows zero occupied slots: a reserved job can precede detached
+native slot acquisition. Only jobs listed in the supplied inventory are
+checked; omitted or unmanaged jobs are a documented limit of that inventory,
+not a promise of complete scope detection.
 """
 
 import argparse
@@ -12641,6 +12648,37 @@ class Preflight:
                              report['head_revision'] == binding['base_revision']))
         if task['status'] != 'ready' or report['head_revision'] != binding['base_revision']:
             return 'not_ready', 'plan_' + task['status']
+        # A reserved or completion-unknown job can hold its write scope before
+        # it acquires a detached native slot, so zero occupied group slots do
+        # not clear it. Reuse the read-only queue evidence and scope helpers;
+        # refuse conservatively whenever the scope or the queue evidence of a
+        # listed possibly active job cannot be established.
+        coord = Path(self.grant['project']) / 'coord'
+        integrated = {task['id'] for task in report['tasks']
+                      if task['status'] == 'blocked' and 'already_integrated' in task['reasons']}
+        for row in inventory['tasks']:
+            other = row.get('job_id')
+            if not other or other == job_id:
+                continue
+            # Queue reservations are durable even after owner integration.
+            # Only the planner's checked matching hash and ancestor revision
+            # release that scope; a successful run alone never does.
+            if row['id'] in integrated:
+                continue
+            queue_state, queue_reason, _, _ = planner.observe_browser_job(coord, other, row['worker'])
+            if queue_state == 'unresolved':
+                if queue_reason != 'job_not_found':
+                    return 'conflict', 'reserved_evidence_unavailable'
+                continue
+            if queue_state == 'eligible' or queue_reason not in ('job_reserved',
+                                                                'job_completion_unknown'):
+                continue
+            scopes, _, parsed, _ = planner.parse_task_file(coord, row['id'], row['task_sha256'])
+            if parsed != 'ok':
+                return 'conflict', 'reserved_scope_unknown'
+            if any(planner.scopes_conflict(scope, held)
+                   for scope in scopes for held in preview['scope']):
+                return 'conflict', 'reserved_scope_conflict'
         return None, None
 
 
