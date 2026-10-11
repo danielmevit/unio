@@ -18,6 +18,9 @@ import time
 import unittest
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(SOURCE_ROOT / 'bridge'))
+from execution_service import ExecutionService
+from plan_store import PlanStore
 PLAN_HELPER = SOURCE_ROOT / 'tools/task-plan.py'
 FLEET_HELPER = SOURCE_ROOT / 'tools/fleet-status.py'
 INSTALLER = SOURCE_ROOT / 'unio-install.sh'
@@ -767,6 +770,190 @@ sys.exit(1)
         if proc.exists():
             text = proc.read_text()
             self.assertEqual(text[text.rindex(')') + 2:].split()[0], 'Z')
+
+    def test_prepared_material_observation(self):
+        # Setup git worktree and base for ExecutionService
+        (self.coord / 'base').write_text('main\n')
+        wt_worker = self.wt / 'grok'
+        git_run(self.repo, 'worktree', 'add', '-q', '-b', 'agent/grok', str(wt_worker))
+
+        engine = self.project / 'mock-engine'
+        engine.write_text("#!/bin/sh\nexit 0\n")
+        engine.chmod(0o755)
+
+        config_dir = self.project / 'config'
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / 'agents.conf').write_text("grok=agent\nclaude=agent\n")
+
+        template_path = self.project / 'template.json'
+        template_path.write_text(json.dumps({
+            'schema_version': 1,
+            'instructions': 'Implement the literal saved request.',
+            'scope': ['file.txt'],
+            'validate': ['echo validate']
+        }))
+
+        # Create draft via PlanStore and prepare/approve via real ExecutionService
+        plans = PlanStore(self.project)
+        draft = plans.create("Implement feature X.")
+        plans.close()
+
+        service = ExecutionService(
+            self.project,
+            engine,
+            'grok',
+            'claude',
+            config_dir,
+            template_path,
+            'Grok Lab',
+            'Claude Lab'
+        )
+        prep_view = service.prepare(draft['id'], draft['content_sha256'], '1' * 32)
+        job_id = prep_view['job']['id']
+        preview_hash = prep_view['preview']['preview_hash']
+        app_view = service.approve(job_id, draft['content_sha256'], '2' * 32, preview_hash)
+        service.close()
+
+        task_id = 'ui-' + job_id
+        task_sha256 = app_view['preview']['task_sha256']
+        inv_tasks = [
+            {'id': task_id, 'task_sha256': task_sha256, 'worker': 'grok', 'depends_on': [], 'job_id': job_id}
+        ]
+        inv = self.make_inventory(tasks=inv_tasks, base_revision=self.commit1)
+
+        # 1. Native task is absent, prepared material plans ready with unchanged coordination bytes
+        self.assertFalse((self.coord / 'tasks' / f"{task_id}.md").exists())
+        before_coord = {
+            str(p.relative_to(self.coord)): (p.stat().st_size, p.stat().st_mtime_ns)
+            for p in self.coord.rglob('*') if p.is_file()
+        }
+
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['summary']['ready'], 1)
+        self.assertEqual(report['tasks'][0]['status'], 'ready')
+        self.assertEqual(report['tasks'][0]['scopes'], ['file.txt'])
+        self.assertEqual(report['tasks'][0]['job_id'], job_id)
+
+        after_coord = {
+            str(p.relative_to(self.coord)): (p.stat().st_size, p.stat().st_mtime_ns)
+            for p in self.coord.rglob('*') if p.is_file()
+        }
+        self.assertEqual(before_coord, after_coord, "Coordination directory must remain unchanged!")
+        self.assertFalse((self.coord / 'tasks' / f"{task_id}.md").exists())
+        self.assertFalse(self.sentinel_marker.exists())
+
+        # 2. Altered companion: alter scope.json
+        scope_file = self.coord / 'ui-execution' / 'bindings' / f"{job_id}.scope.json"
+        orig_scope = scope_file.read_bytes()
+        scope_file.write_text('["other.txt"]')
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('altered_companion', report['tasks'][0]['reasons'])
+        scope_file.write_bytes(orig_scope)
+
+        # Alter request.json
+        req_file = self.coord / 'ui-execution' / 'bindings' / f"{job_id}.request.json"
+        orig_req = req_file.read_bytes()
+        req_file.write_text('"Tampered request"')
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('altered_companion', report['tasks'][0]['reasons'])
+        req_file.write_bytes(orig_req)
+
+        # Alter compiled task markdown .md
+        md_file = self.coord / 'ui-execution' / 'bindings' / f"{job_id}.md"
+        orig_md = md_file.read_bytes()
+        md_file.write_text('# Tampered task markdown\n')
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('altered_companion', report['tasks'][0]['reasons'])
+        md_file.write_bytes(orig_md)
+
+        # 3. Wrong identity: wrong worker, wrong task ID, or wrong job ID
+        inv_wrong_worker = self.make_inventory(
+            tasks=[{'id': task_id, 'task_sha256': task_sha256, 'worker': 'claude', 'depends_on': [], 'job_id': job_id}],
+            base_revision=self.commit1
+        )
+        res = self.invoke_plan(inv_wrong_worker, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('job_worker_mismatch', report['tasks'][0]['reasons'])
+
+        inv_wrong_tid = self.make_inventory(
+            tasks=[{'id': 'TASK-DIFF', 'task_sha256': task_sha256, 'worker': 'grok', 'depends_on': [], 'job_id': job_id}],
+            base_revision=self.commit1
+        )
+        res = self.invoke_plan(inv_wrong_tid, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('missing_task_file', report['tasks'][0]['reasons'])
+
+        inv_wrong_job = self.make_inventory(
+            tasks=[{'id': 'ui-' + 'f' * 32, 'task_sha256': task_sha256, 'worker': 'grok', 'depends_on': [], 'job_id': 'f' * 32}],
+            base_revision=self.commit1
+        )
+        res = self.invoke_plan(inv_wrong_job, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('missing_prepared_material', report['tasks'][0]['reasons'])
+
+        # 4. Wrong base: binding prepared at an old base must be unresolved
+        bind_file = self.coord / 'ui-execution' / 'bindings' / f"{job_id}.json"
+        orig_bind = bind_file.read_bytes()
+        bind_obj = json.loads(orig_bind)
+        bind_obj['base_revision'] = self.commit0
+        bind_obj['worker_revision'] = self.commit0
+        bind_file.write_text(json.dumps(bind_obj))
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('prepared_base_mismatch', report['tasks'][0]['reasons'])
+        bind_file.write_bytes(orig_bind)
+
+        # 5. Wrong hash
+        inv_wrong_hash = self.make_inventory(
+            tasks=[{'id': task_id, 'task_sha256': '0' * 64, 'worker': 'grok', 'depends_on': [], 'job_id': job_id}],
+            base_revision=self.commit1
+        )
+        res = self.invoke_plan(inv_wrong_hash, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('task_hash_mismatch', report['tasks'][0]['reasons'])
+
+        # 6. Native tamper must refuse and never fall back to prepared binding
+        native_task = self.coord / 'tasks' / f"{task_id}.md"
+        native_task.write_text('# Tampered native markdown\n\n## Allowed scope\n- file.txt\n\n## Validate\n$ echo 1\n')
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('task_hash_mismatch', report['tasks'][0]['reasons'])
+
+        # Native task as symlink
+        native_task.unlink()
+        native_task.symlink_to(self.repo / 'file.txt')
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('task_path_unsafe', report['tasks'][0]['reasons'])
+        native_task.unlink()
+
+        # 7. Unapproved job: state awaiting_owner_approval blocks
+        db_path = self.coord / 'ui-jobs.sqlite3'
+        conn = sqlite3.connect(db_path)
+        conn.execute('UPDATE jobs SET state = "awaiting_owner_approval", approval_key = NULL, approved_at = NULL WHERE id = ?', (job_id,))
+        conn.commit()
+        conn.close()
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertIn('awaiting_owner_approval', report['tasks'][0]['reasons'])
+
+        # 8. Provider sentinels must remain untouched
+        self.assertFalse(self.sentinel_marker.exists())
 
 
 class InstalledPlanCli(unittest.TestCase):

@@ -117,3 +117,34 @@ SQLite reads use read-only immutable mode bound to an open file descriptor.
 Active journal, WAL or shared-memory sidecars make the observation unresolved.
 Inventory, task and draft reads reject special files and symlink components
 and enforce byte limits. Queue credentials and raw task text are not displayed.
+
+## Prepared material support
+
+Status: planned source work, not part of installed v0.5.9.
+
+When an inventory task includes `job_id`, the read-only planner supports reading
+the existing compiled binding in `coord/ui-execution/bindings/<job-id>.md` and its
+split companion files (`<job-id>.json`, `<job-id>.request.json`, `<job-id>.scope.json`,
+`<job-id>.validate.json`) when the corresponding native task `coord/tasks/ui-<job-id>.md`
+is genuinely absent.
+
+- **Precedence**: An existing native task path (`coord/tasks/<id>.md`) always takes
+  precedence. If a native file exists—including symlinks, special files, unreadable
+  files, or tampered contents—the planner never falls back to prepared bindings.
+- **Strict identity**: Only a task entry with ID `ui-<job-id>` may bind the prepared
+  material for that `job_id`. Non-matching task IDs cannot use the compiled binding.
+- **Companion and digest validation**: Physical metadata in `<job-id>.json` and bounded
+  companions are strictly checked: job ID, draft ID, draft hash, worker, base revision,
+  task SHA-256, and canonical preview digest (`preview_hash`). Reconstructed task
+  markdown prefix, suffix, scope, validate commands, and instructions are validated.
+- **Stale base refusal**: A prepared binding bound to a base revision different from
+  the inventory's `base_revision` is marked `unresolved` (`prepared_base_mismatch`).
+- **Tamper refusal**: Any altered companion or hash discrepancy marks the row `unresolved`
+  (`altered_companion` or `task_hash_mismatch`).
+- **Existing queue and draft evidence**: The existing read-only SQLite queue observer
+  (`coord/ui-jobs.sqlite3`) and draft store (`coord/ui-plans/`) must report an `approved`
+  job record consistent with the binding's inputs (`draft_id`, `draft_sha256`, `request_key`).
+  Jobs in `awaiting_owner_approval` or `cancelled` states remain blocked.
+- **Read-only integrity**: The planner never constructs `ExecutionService`, `JobStore`,
+  or `PlanStore`, never issues approvals or launches, and makes zero file modifications
+  or provider calls.

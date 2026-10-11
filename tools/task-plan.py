@@ -139,14 +139,16 @@ def _finite(value):
     return True
 
 
-def parse_strict_json(data):
+def parse_strict_json(data, require_dict=True):
     try:
         obj = json.loads(
             data.decode('utf-8'),
             object_pairs_hook=_unique_object,
             parse_constant=_reject_constant
         )
-        if not isinstance(obj, dict) or not _finite(obj):
+        if require_dict and not isinstance(obj, dict):
+            return None
+        if not _finite(obj):
             return None
     except (ValueError, UnicodeError, RecursionError):
         return None
@@ -476,10 +478,10 @@ def parse_prepared_binding(coord_dir, job_id, task, base_revision):
     except (OSError, ValueError):
         return None, 'unresolved', 'invalid_prepared_material', 'prepared companion file unreadable or exceeds limit', None, None
 
-    req_obj = parse_strict_json(raw_req)
-    scope_obj = parse_strict_json(raw_scope)
-    val_obj = parse_strict_json(raw_val)
-    if req_obj is None or not isinstance(scope_obj, list) or not isinstance(val_obj, list):
+    req_obj = parse_strict_json(raw_req, require_dict=False)
+    scope_obj = parse_strict_json(raw_scope, require_dict=False)
+    val_obj = parse_strict_json(raw_val, require_dict=False)
+    if not isinstance(req_obj, str) or not isinstance(scope_obj, list) or not isinstance(val_obj, list):
         return None, 'unresolved', 'invalid_prepared_material', 'malformed companion JSON', None, None
 
     actual_task_sha256 = hashlib.sha256(raw_task).hexdigest()
