@@ -4153,6 +4153,7 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
   let suppressMapClick = false;
   const MIN_MAP_SCALE = 0.05, MAX_MAP_SCALE = 3;
   const MAP_PAGE_SIZE = 24;
+  const MAP_GRID = 14; // map units between the background dots
   let lastData = null;
   // Selection is an exact node key plus its tuple; never a display label.
   let selected = null;
@@ -4815,6 +4816,12 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     }
     const w = width / mapCamera.scale, h = height / mapCamera.scale;
     svg.setAttribute("viewBox", [mapCamera.x - w / 2, mapCamera.y - h / 2, w, h].join(" "));
+    // The dot grid lives in map space, so it pans and zooms with the nodes;
+    // far out, every other dot drops away so it never turns dense.
+    let tile = MAP_GRID * mapCamera.scale;
+    while (tile < 9) tile *= 2;
+    svg.parentElement.style.backgroundSize = tile + "px " + tile + "px";
+    svg.parentElement.style.backgroundPosition = (width / 2 - mapCamera.x * mapCamera.scale) + "px " + (height / 2 - mapCamera.y * mapCamera.scale) + "px";
     svg.dataset.view = mapFitView ? "fit" : "actual";
     svg.dataset.cameraX = String(mapCamera.x);
     svg.dataset.cameraY = String(mapCamera.y);
