@@ -775,9 +775,10 @@ const faqs = [
     --focus: #e2e2e2;
     /* decorative system text: present, but almost part of the background */
     --ghost: #363636;
-    --passed: #3fb950;
-    --failed: #f85149;
-    --attention: #d29922;
+    /* status colors are the Cradle tones: sea, rust, mustard */
+    --passed: #74b4a5;
+    --failed: #cb7f72;
+    --attention: #caaa72;
     --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
     /* the hero and section titles: Doto, a dot-matrix face like the U mark */
     --section-title: "Doto Variable", ui-monospace, monospace;
@@ -1288,7 +1289,8 @@ const faqs = [
     .actions > .btn:last-child { border-radius: var(--r-xs) var(--r-xs) var(--r-out) var(--r-out); }
     .fig-label { display: none; }
     .row { grid-template-columns: 2rem minmax(0, 1fr); }
-    .row-who { grid-column: 2; justify-self: start; }
+    /* who and how far: under the text, against the card's right edge like on wide screens */
+    .row-who { grid-column: 2; justify-self: end; }
     .panel-bar { flex-wrap: wrap; }
     .console code { font-size: 0.78rem; }
     .intel li { flex-direction: column; gap: 8px; }
