@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
-"""Draw the Unio logos and dot bands into docs/brand/.
+"""Draw the Unio logos and dot lines into docs/brand/.
 
 The logo is the word UNIO set in Doto (SIL OFL 1.1, The Doto Project
 Authors). Each of Doto's dots is its own outline, so the script reads every
@@ -10,9 +10,10 @@ dot's place on the letter's grid and draws it as an even rounded square at
 
   logo/single/   strokes one dot wide, as in the font (the website's logo)
   logo/double/   strokes two dots wide: every dot grows to a 2 x 2 block
-  patterns/      dot bands: a checkerboard 3 to 5 rows thick, its edges
-                 rising and falling along the band; five shapes, each also
-                 mirrored
+  patterns/      dot lines drawn like a Doto stroke: one row of dots with a
+                 dot or a short dash above or below here and there; five
+                 shapes, each also mirrored, and one clear line. Animated
+                 like the logo
 
 Every logo comes in one ink, the agent tones (a still moment of the wave) and
 animated (a ring build-in from the top-left, then the tones flow through the
@@ -160,37 +161,51 @@ def write_logos(folder, dots, width, height):
         (folder / f'unio-logo_animated-{mode}.svg').write_text(svg(width, height, body, style=style))
 
 
-def smooth(rng, columns, period):
-    """A gently wandering value in 0..1 along the band (value noise)."""
-    knots = [rng.random() for _ in range(columns // period + 3)]
-    out = []
-    for c in range(columns):
-        i, f = divmod(c / period, 1)
-        f = f * f * (3 - 2 * f)
-        out.append(knots[int(i)] * (1 - f) + knots[int(i) + 1] * f)
-    return out
-
-
-def write_band(name, seed, columns=80, mirror=False):
-    """A checkerboard band 3 to 5 rows thick: its top edge (row 0 or 1) and
-    bottom edge (row 3 or 4) each wander along the band, so the thickness
-    rises and falls. Tones flow from one end to the other."""
+def write_line(name, seed, columns=80, extras=True, mirror=False):
+    """A line drawn like a Doto stroke: one row of dots, with a dot or a short
+    dash above or below here and there (none with extras=False). Animated
+    like the logo: the dots grow in from the left, then the tones flow along
+    the line in clusters, without end; with reduced motion it rests on a
+    still moment of that wave."""
     rng = random.Random(seed)
-    top = smooth(rng, columns, rng.choice((7, 9, 11)))
-    bottom = smooth(rng, columns, rng.choice((6, 8, 10)))
-    parity = seed % 2
+    cells = {(c, 1) for c in range(columns)}
+    if extras:
+        c = rng.randrange(2, 6)
+        while c < columns - 1:
+            row = rng.choice((0, 2))
+            run = rng.choice((1, 1, 1, 2, 2, 3))
+            for k in range(min(run, columns - c)):
+                cells.add((c + k, row))
+            if rng.random() < 0.18:
+                cells.add((c, 2 - row))
+            c += run + rng.randrange(4, 11)
+    if mirror:
+        cells = {(columns - 1 - c, r) for c, r in cells}
+    width, height = columns * PITCH, 3 * PITCH
+    # clusters of two columns; a wave along the line plus a little chance
+    groups = {}
+    for c, r in cells:
+        groups.setdefault(c // 2, []).append((c, r))
+    keyframes = ' '.join(f'{i * 100 / 6:.1f}% {{ fill: {t}; }}' for i, t in enumerate(TONES_DARK)) + f' 100% {{ fill: {TONES_DARK[0]}; }}'
+    style = ('<style>'
+             'rect { transform-box: fill-box; transform-origin: center; opacity: 0;'
+             ' animation: grow .22s ease-out forwards; }'
+             f' g {{ animation: tones {CYCLE / 1000}s steps(6, end) infinite; }}'
+             ' @keyframes grow { from { opacity: 1; transform: scale(.36); } to { opacity: 1; transform: none; } }'
+             f' @keyframes tones {{ {keyframes} }}'
+             ' @media (prefers-reduced-motion: reduce) { rect { animation: none; opacity: 1; } g { animation: none; } }'
+             '</style>')
     body = ''
-    for col in range(columns):
-        first = 0 if top[col] > 0.5 else 1
-        last = 4 if bottom[col] > 0.5 else 3
-        for row in range(first, last + 1):
-            if (row + col + parity) % 2:
-                continue
-            place = columns - 1 - col if mirror else col
-            reach = place / (columns - 1)
-            tone = TONES_DARK[min(5, max(0, int(reach * 6 + rng.choice((-1, 0, 0, 0, 1)) * 0.5)))]
-            body += square(place * PITCH + PITCH / 2, row * PITCH + PITCH / 2, fill=tone)
-    (OUT / 'patterns' / f'{name}.svg').write_text(svg(columns * PITCH, 5 * PITCH, body, label=''))
+    for key in sorted(groups):
+        members = groups[key]
+        cx = (key * 2 + 1) * PITCH
+        phase = round(((cx / width) * 1800 + rng.random() * 600) / 100) * 100
+        rects = ''.join(square(c * PITCH + PITCH / 2, r * PITCH + PITCH / 2,
+                               extra=f' style="animation-delay:{max(0, round((c * PITCH) / width * 900 + (rng.random() - .5) * 60))}ms"')
+                        for c, r in sorted(members))
+        # the fill attribute is the still moment; the animation runs over it
+        body += f'<g fill="{tone_at(phase, TONES_DARK)}" style="animation-delay:{phase - CYCLE}ms">{rects}</g>'
+    (OUT / 'patterns' / f'{name}.svg').write_text(svg(width, height, body, label='', style=style))
 
 
 def main():
@@ -198,9 +213,12 @@ def main():
     write_logos(OUT / 'logo' / 'single', *layout(grids, gap=1))
     write_logos(OUT / 'logo' / 'double', *layout([thicken(g) for g in grids], gap=2))
     (OUT / 'patterns').mkdir(parents=True, exist_ok=True)
+    for old in (OUT / 'patterns').glob('*.svg'):
+        old.unlink()
+    write_line('line-clear', 1, extras=False)
     for i, seed in enumerate((5, 12, 23, 38, 41), start=1):
-        write_band(f'band-{i}', seed)
-        write_band(f'band-{i}-mirrored', seed, mirror=True)
+        write_line(f'line-{i}', seed)
+        write_line(f'line-{i}-mirrored', seed, mirror=True)
     for sub in ('logo/single', 'logo/double', 'patterns'):
         print(sub + ':', ', '.join(sorted(p.name for p in (OUT / sub).glob('*.svg'))))
 

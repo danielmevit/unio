@@ -3,7 +3,7 @@
 ![UNIO](logo/single/unio-logo_animated-light.svg#gh-light-mode-only)
 ![UNIO](logo/single/unio-logo_animated-dark.svg#gh-dark-mode-only)
 
-The logos, dot bands and story behind Unio's look. The full guide (name,
+The logos, dot lines and story behind Unio's look. The full guide (name,
 voice, typography, colors and UI rules) is
 [docs/BRAND.md](../BRAND.md#visual-identity).
 
@@ -33,7 +33,7 @@ how Unio works.
 | --- | --- |
 | `logo/single/` | The logo with strokes one dot wide, as in the font. The website and the README use it. |
 | `logo/double/` | The same word with strokes two dots wide: every dot grown to a 2 × 2 block. Bolder, for larger or busier places. |
-| `patterns/` | Dot bands for breaking up long pages: five shapes, each also mirrored. |
+| `patterns/` | Dot lines for breaking up long pages: one clear line and five with stray dots, each also mirrored. |
 | `legacy/` | The earlier dot-matrix U, still the website's favicon and the dashboard's loading screen. |
 
 ## Logo
@@ -52,18 +52,20 @@ Single and double, in the agent tones, on light:
 ![UNIO, single dots](logo/single/unio-logo_tones-light.svg)
 ![UNIO, double dots](logo/double/unio-logo_tones-light.svg)
 
-## Dot bands
+## Dot lines
 
-A checkerboard of dots in the agent tones, three to five rows thick: its top
-and bottom edges rise and fall along the band, and the tones flow from one
-end to the other. `band-1.svg` to `band-5.svg` are five different shapes;
-each `-mirrored` version is the same band flipped left to right, so there
-are ten in all. Put one between sections of a long page and don't repeat a
-band on the same page.
+A line drawn like a stroke of Doto: one row of dots in the agent tones, and,
+here and there, a dot or a short dash above or below it. Like the logo, it is
+animated: the dots grow in from the left, then the tones flow along the line
+without end (still for people who turn animation off). `line-clear.svg` is
+the plain line; `line-1.svg` to `line-5.svg` carry the stray dots, and each
+`-mirrored` version is the same line flipped left to right, so there are
+eleven in all. Put one between sections of a long page and don't repeat a
+line on the same page.
 
-![](patterns/band-1.svg)
+![](patterns/line-1.svg)
 
-![](patterns/band-3-mirrored.svg)
+![](patterns/line-clear.svg)
 
 ## Making them
 
