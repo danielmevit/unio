@@ -5,77 +5,73 @@ starting work. They take precedence over dated examples in the repository.
 Check the owner's latest instructions, `unio version`, and `unio policy`;
 do not infer current availability from an earlier successful worker run.
 
-## Current release — 2026-10-10
+## Current delivery state — 2026-10-12
 
-Continuation 2026-10-11: official and installed stable remain 0.5.9.
-The owner completed the dashboard/site work and pushed it through `9f6a4f2`.
-That work is integrated with the checked CLI candidates; the earlier parallel
-UI writer hold has ended. Preserve its plain X controls, small status squares,
-frameless floating map controls and monochrome board. The website embeds the
-real dashboard map through a GET-only demo shim. Keep its `activity.css` injection
-anchor, rebuild the demo after dashboard changes and regenerate the installer
-with `tools/embed-browser.py` after every bridge edit.
+Official and installed stable remain **v0.5.9**, published from `0c2def4`.
+A source push does not publish or install a new release. Check GitHub's latest
+stable and `unio version` before changing the operator's runner; active frozen
+calls keep their original engine and configuration.
 
-The owner subsequently resumed small dashboard/site changes in a separate
-Opus session. Those scopes are reserved again for that session. Advance the
-functional CLI here and preserve any newer owner commits when integrating.
+Development source contains the 0.5.10 archival, cached Claude authentication,
+remembered filters and daily-use candidate. The 0.5.11 candidate adds measured
+save optimization, fleet overview, prepared-task planning, explicit single-attempt
+dispatch, and immutable independent review receipts with `unio reviews`.
+These slices passed focused/native checks and personal lead review. Combined
+release validation, publication and official-byte installation remain pending.
+Continue 0.5.x; do not shift this batch to 0.6.0.
 
-Source includes the 0.5.10 archival/authentication/daily-use candidate and the
-0.5.11 performance probe, fleet overview and read-only task planner. These are
-not new published releases. The planner passed 12 focused tests plus native
-scope/validation and lead corrections; dispatch remains a separate future slice.
-The combined-source validation retains one failed full-gate restore assertion:
-the isolated case and subsequent full saving sequence passed, including all
-186 recovery checks. Failure diagnostics and concurrent limits-test logging
-were hardened without removing assertions. Read the newest local receipts for
-remaining combined checks and exact publication state; do not infer a new release
-from a source push. Current work mode is YOLO/low; continue 0.5.x, never 0.6.0
-for this batch. Google/Bing account setup remains explicitly deferred.
+Current functional milestone is [concurrent review collection](../REVIEW-COLLECTION-CONTRACT.md).
+Its contract is frozen at `b0e5889`, after correcting the installer's stale
+scoreboard template. Read actual implementation commits, results and the newest
+local coordination log before continuing; a prepared contract or guide is not a
+completed implementation. Finish the bounded slice, then freeze the delivery
+scope for release checks instead of adding more features during that gate.
 
-Next functional priority is the reproduced 30-second automatic-save timeout.
-GLM 5.3/high through Vibe 2.26.1 profiled the path, then stopped at its configured
-4M cumulative-token cap (Source3). The lead committed its unvalidated partial
-work separately; it is not merged. A representative baseline profile points to
-repeated Git/ignore calls. A traversal-only comparison preserved the same file
-map with fewer calls, but full capture, equivalent history and refusal behavior
-still need validation. Preserve the partial work and evidence; never describe
-it as an accepted optimization or a subscription outage.
+Preserve the owner's newer dashboard/site/branding commits and any active writer
+in those scopes. The dashboard uses plain X controls, small status squares,
+frameless map controls and a monochrome board. The website embeds the real map
+through a GET-only demo shim. Keep its `activity.css` injection anchor; after
+any bridge edit regenerate the installer with `tools/embed-browser.py`. Public
+model task-fit updates also require `tools/embed-adapters.py` before committing.
 
-The existing lead then implemented narrower sibling-only ignore batching,
-keeping depth-first traversal and existing retention/deadline semantics.
-Six focused real-Git tests passed. Two matched-history full saves completed
-in 26.35/26.18 seconds; baseline attempts hit the existing 30-second bound.
-Ignore queries fell from 66 to 6 on that fixture. Read
-[the measured limits](SAVE-PERFORMANCE.md#sibling-ignore-batching--2026-10-11-source-candidate)
-and the newest local receipts for full functional/native acceptance; no
-general real-workspace timeout fix or release is implied.
-The completed slice passed all 186 manual and 61 automatic saving checks,
-plus native scope and six validation commands. The lead personally reviewed
-the patch; no additional AI reviewer was launched. Final handoff changes are
-documentation only, with runtime identity checked against the verified source.
+Use YOLO/low: focused meaningful checks, one workflow per shared subscription
+including the lead, early commits and truthful handoffs. Delegate capable core
+work to available subscription agents. Routine/free agents support documentation
+and predefined chores; they cannot lead or own main implementation. A worker
+and one suitable replacement may attempt a concrete task; if no eligible route
+can finish, this existing lead completes it without a second Codex session.
+Current owner reservations, spending restrictions and actual receipts take
+precedence over old availability examples.
 
-The owner added [native macOS and Windows support](CROSS-PLATFORM.md), with
-an initial file/function inventory and staged acceptance. Windows currently
-uses WSL; native Windows and macOS remain planned. A Pane-like
-[interactive session workspace](SESSION-WORKSPACE.md) is a separate proposed
-milestone reusing the current dashboard and one engine. Desktop packaging
-does not itself provide native worker support; architecture discussion with
-the owner's Opus session is ongoing.
+Get the managed dashboard URL from `unio dashboard ensure --open-browser`.
+Native [macOS/Windows support](CROSS-PLATFORM.md), the proposed
+[interactive session workspace](SESSION-WORKSPACE.md), remote pairing and
+additional map work remain later milestones. Windows currently uses WSL.
+Google/Bing account setup remains explicitly deferred.
 
-[Unio v0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9) is
-published and installed from `0c2def4dfee307622b3d5959641a22d220d1576a`.
-It preserves all nine Opus dashboard commits at `0aa9a8b` and packages the
-completed Copilot/fleet integration. The complete gate passed in 740.945s;
-all six browser suites, exact artifacts, upgrade/restore, official download
-hashes and installed runtime/payload checks passed. Operator settings and
-custom templates were preserved; earlier failed evidence and tags remain intact.
+## Earlier checked backend evidence
 
-The next functional task is measured recovery-save optimization, followed by
-explicit single-attempt dispatch. Retention, cached authentication and the
-isolated performance probe are source candidates pending release. Check the local coordination log for actual worker state;
-prepared tasks are not completed implementations. The latest managed dashboard
-URL comes from `unio dashboard ensure --open-browser`. A separate design preview
-may show demo data. Further map grouping and remote pairing remain follow-up work.
+These are historical implementation facts, not new release claims:
+
+- Sibling-only save ignore batching preserved capture/refusal behavior and
+  passed 186 manual plus 61 automatic saving checks and six native validations.
+  Two matched-history saves took 26.35/26.18 seconds against baseline attempts
+  reaching the existing 30-second bound; ignore queries fell from 66 to 6.
+  See the [measured limits](SAVE-PERFORMANCE.md#sibling-ignore-batching--2026-10-11-source-candidate).
+  A general real-workspace timeout fix is not established.
+- Corrected prepared-task planner `58dfe85`: 13 focused tests and native4/4.
+  Explicit dispatch `9930263`: native7/7, eight CLI and five installed workflow
+  tests; actual grants, scope reservations and dependency evidence stay required.
+- Review receipt delivery `81ecc76`: native4/4/scope10, nine receipt methods,
+  existing review compatibility and seven separate installed acceptance checks.
+  It reads evidence without a provider call or human acceptance. Concurrent
+  collection is the next separate slice, not implied by a summary.
+- Scoreboard bundling and collection contract `b0e5889`: native4/4/scope3,
+  including the previously failing branding test and canonical adapter check.
+
+Original failed checks, partial worker work and source outcomes remain preserved
+in the local workspace. Read the current receipts; do not replay old broad suites
+for prose-only changes or treat self-review as another AI lab's verdict.
 
 ## Earlier source integration — 2026-10-10
 
