@@ -10804,6 +10804,7 @@ import json
 import math
 import os
 import re
+import select
 import signal
 import sqlite3
 import stat
@@ -10821,6 +10822,48 @@ MAX_DB_ROWS = 512
 MAX_TASKS = 128
 MAX_ACCEPTED = 128
 MAX_DEPENDENCIES = 128
+OBSERVATION_DEADLINE = None
+
+
+def remaining(cap):
+    if OBSERVATION_DEADLINE is None:
+        return cap
+    return max(0.0, min(cap, OBSERVATION_DEADLINE - time.monotonic()))
+
+
+def open_regular(path, limit):
+    """Open every component without following links; refuse FIFOs before reads."""
+    parts = Path(os.path.abspath(path)).parts
+    directory = os.open(parts[0], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in parts[1:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                            dir_fd=directory)
+            os.close(directory)
+            directory = child
+        descriptor = os.open(parts[-1], os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW,
+                             dir_fd=directory)
+        try:
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+                raise ValueError('unsupported input file')
+            return descriptor, info
+        except BaseException:
+            os.close(descriptor)
+            raise
+    finally:
+        os.close(directory)
+
+
+def read_regular(path, limit):
+    descriptor, before = open_regular(path, limit)
+    with os.fdopen(descriptor, 'rb') as source:
+        raw = source.read(limit + 1)
+        after = os.fstat(source.fileno())
+    if (len(raw) > limit or (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+            != (after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
+        raise ValueError('input changed or exceeded bound')
+    return raw, before
 
 HEX32 = re.compile(r'^[0-9a-f]{32}$')
 HEX40 = re.compile(r'^[0-9a-f]{40}$')
@@ -10928,7 +10971,10 @@ def resolve_repo(project_root):
 
 
 def git_query(repo_dir, argv, timeout=5.0):
-    env = dict(os.environ, GIT_OPTIONAL_LOCKS='0')
+    timeout = remaining(timeout)
+    if timeout <= 0:
+        return -1, b''
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS='0', GIT_NO_REPLACE_OBJECTS='1')
     try:
         proc = subprocess.Popen(
             ['git', '-C', str(repo_dir)] + list(argv),
@@ -10938,14 +10984,55 @@ def git_query(repo_dir, argv, timeout=5.0):
             env=env,
             start_new_session=True
         )
-        stdout, _ = proc.communicate(timeout=timeout)
-        return proc.returncode, stdout
-    except (subprocess.TimeoutExpired, OSError):
+    except OSError:
+        return -1, b''
+    deadline = time.monotonic() + timeout
+    streams = {proc.stdout.fileno(), proc.stderr.fileno()}
+    for descriptor in streams:
+        os.set_blocking(descriptor, False)
+    output, seen, stopped, failed = bytearray(), 0, False, False
+    try:
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                failed = True
+                break
+            if not stopped and os.waitid(os.P_PID, proc.pid,
+                    os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                stopped = True
+            if not streams:
+                if stopped:
+                    break
+                time.sleep(min(.05, left))
+                continue
+            for descriptor in select.select(list(streams), [], [], min(.05, left))[0]:
+                chunk = os.read(descriptor, min(65536, 65536 - seen + 1))
+                if not chunk:
+                    streams.remove(descriptor)
+                    continue
+                seen += len(chunk)
+                if seen > 65536:
+                    failed = True
+                    break
+                if descriptor == proc.stdout.fileno():
+                    output.extend(chunk)
+            if failed:
+                break
+    except OSError:
+        failed = True
+    finally:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
-        except OSError:
+        except ProcessLookupError:
             pass
-        return -1, b''
+        proc.stdout.close()
+        proc.stderr.close()
+        proc.wait(timeout=1)
+    return (-1, b'') if failed else (proc.returncode, bytes(output))
 
 
 def get_repo_head(repo_dir, timeout=5.0):
@@ -11042,16 +11129,11 @@ def parse_task_file(coord_dir, task_id, expected_sha256):
     ok, err = check_path_no_symlinks(coord_dir, Path('tasks') / (task_id + '.md'))
     if not ok:
         return None, None, 'unresolved', 'task_path_unsafe'
-    if not task_file.exists():
-        return None, None, 'unresolved', 'missing_task_file'
     try:
-        st = task_file.lstat()
-        if not stat.S_ISREG(st.st_mode):
-            return None, None, 'unresolved', 'task_file_not_regular'
-        if st.st_size > MAX_TASK_FILE_BYTES:
-            return None, None, 'unresolved', 'task_file_size_exceeded'
-        raw = task_file.read_bytes()
-    except OSError:
+        raw, _ = read_regular(task_file, MAX_TASK_FILE_BYTES)
+    except FileNotFoundError:
+        return None, None, 'unresolved', 'missing_task_file'
+    except (OSError, ValueError):
         return None, None, 'unresolved', 'cannot_read_task_file'
 
     actual_sha256 = hashlib.sha256(raw).hexdigest()
@@ -11087,94 +11169,79 @@ def parse_task_file(coord_dir, task_id, expected_sha256):
             return None, None, 'unresolved', 'unsupported_scope_pattern'
         validated_scopes.append(pat)
 
+    if len(validated_scopes) > 128 or any(len(pat) > 1024 for pat in validated_scopes):
+        return None, None, 'unresolved', 'scope_size_exceeded'
+
     return validated_scopes, actual_sha256, 'ok', None
 
 
 def observe_browser_job(coord_dir, job_id, worker):
     db_path = coord_dir / 'ui-jobs.sqlite3'
-    for sidecar in ('-wal', '-shm', '-journal'):
-        sidecar_path = Path(str(db_path) + sidecar)
-        if sidecar_path.exists():
+    descriptor, conn = None, None
+    deadline = time.monotonic() + remaining(5)
+    try:
+        if any(os.path.lexists(str(db_path) + suffix)
+               for suffix in ('-wal', '-shm', '-journal')):
             return 'unresolved', 'unsupported_queue_sidecar'
-
-    if not db_path.exists():
-        return 'unresolved', 'missing_job_database'
-    if db_path.is_symlink():
-        return 'unresolved', 'job_database_symlink'
-    try:
-        st = db_path.lstat()
-        if not stat.S_ISREG(st.st_mode):
-            return 'unresolved', 'job_database_not_regular_file'
-        if st.st_size > MAX_DB_BYTES:
-            return 'unresolved', 'database_size_exceeded'
-        conn = sqlite3.connect(f'file:{db_path.resolve()}?mode=ro&immutable=1', uri=True)
-    except (sqlite3.Error, OSError):
-        return 'unresolved', 'cannot_open_job_database'
-
-    try:
+        descriptor, before = open_regular(db_path, MAX_DB_BYTES)
+        # Keep a no-follow descriptor open throughout SQLite observation. The
+        # controlled proc path binds this read-only connection to that inode.
+        conn = sqlite3.connect('file:/proc/self/fd/' + str(descriptor)
+                               + '?mode=ro&immutable=1', uri=True, timeout=0)
         conn.execute('PRAGMA query_only = ON')
-        ver = conn.execute('PRAGMA user_version').fetchone()
-        if not ver or ver[0] != 2:
-            return 'unresolved', 'unsupported_queue_schema_version'
-
-        cols = [row[1] for row in conn.execute('PRAGMA table_info(jobs)').fetchall()]
-        if cols != list(KNOWN_JOB_COLUMNS):
-            return 'unresolved', 'unsupported_queue_columns'
-
+        conn.execute('PRAGMA temp_store = MEMORY')
+        conn.set_progress_handler(lambda: int(time.monotonic() >= deadline), 1000)
+        installed = Path(__file__).parent / 'browser/job_store.py'
+        source = Path(__file__).parent.parent / 'bridge/job_store.py'
+        spec = importlib.util.spec_from_file_location('task_plan_job_types',
+                                                      installed if installed.is_file() else source)
+        types = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(types)
+        # These pure validators never construct a store or migrate a database.
+        types.JobStore._verify(conn)
         count = conn.execute('SELECT COUNT(*) FROM jobs').fetchone()[0]
         if count > MAX_DB_ROWS:
             return 'unresolved', 'job_database_row_count_exceeded'
-
-        row = conn.execute(
-            'SELECT id, request_key, draft_id, draft_sha256, worker, created_at, state, '
-            'approval_key, approved_at, reservation_key, reserved_at, unknown_at, cancelled_at '
-            'FROM jobs WHERE id = ?', (job_id,)
-        ).fetchone()
+        row = conn.execute(types.SELECT_JOB, (job_id,)).fetchone()
         if not row:
             return 'unresolved', 'job_not_found'
-
-        (j_id, req_key, draft_id, draft_sha256, j_worker, created_at, state,
-         appr_key, appr_at, res_key, res_at, unk_at, canc_at) = row
-
-        if j_worker != worker:
+        job = types.JobStore._record(row)
+        if job['id'] != job_id or job['worker'] != worker:
             return 'unresolved', 'job_worker_mismatch'
-
-        plans_dir = coord_dir / 'ui-plans'
-        if plans_dir.is_symlink() or not plans_dir.is_dir():
-            return 'unresolved', 'missing_ui_plans_directory'
-
-        draft_file = plans_dir / f"{draft_id}.json"
-        if not draft_file.exists() or draft_file.is_symlink():
-            return 'unresolved', 'missing_draft_file'
-        dst = draft_file.lstat()
-        if not stat.S_ISREG(dst.st_mode) or dst.st_size > MAX_DRAFT_FILE_BYTES:
-            return 'unresolved', 'invalid_draft_file'
-
-        draft_bytes = draft_file.read_bytes()
-        actual_draft_sha256 = hashlib.sha256(draft_bytes).hexdigest()
-        if actual_draft_sha256 != draft_sha256:
+        draft_bytes, _ = read_regular(coord_dir / 'ui-plans' / (job['draft_id'] + '.json'),
+                                      MAX_DRAFT_FILE_BYTES)
+        if hashlib.sha256(draft_bytes).hexdigest() != job['draft_sha256']:
             return 'unresolved', 'draft_hash_mismatch'
-
-        try:
-            draft_obj = json.loads(draft_bytes.decode('utf-8'))
-            if (not isinstance(draft_obj, dict)
-                    or draft_obj.get('schema_version') != 1
-                    or draft_obj.get('id') != draft_id
-                    or draft_obj.get('state') != 'draft'):
-                return 'unresolved', 'malformed_draft_record'
-        except Exception:
-            return 'unresolved', 'malformed_draft_json'
-
-        if state == 'approved':
+        draft = parse_strict_json(draft_bytes)
+        if (draft is None or set(draft) != {'schema_version', 'id', 'created_at', 'state', 'request'}
+                or type(draft['schema_version']) is not int or draft['schema_version'] != 1
+                or draft['id'] != job['draft_id'] or draft['state'] != 'draft'
+                or not isinstance(draft['created_at'], str)
+                or datetime.datetime.fromisoformat(draft['created_at']).tzinfo is None):
+            return 'unresolved', 'malformed_draft_record'
+        types.PlanStore._request(draft['request'])
+        after = os.fstat(descriptor)
+        if ((before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                != (after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
+            return 'unresolved', 'queue_changed_during_observation'
+        if any(os.path.lexists(str(db_path) + suffix)
+               for suffix in ('-wal', '-shm', '-journal')):
+            return 'unresolved', 'unsupported_queue_sidecar'
+        if time.monotonic() >= deadline:
+            return 'unresolved', 'queue_observation_timeout'
+        if job['state'] == 'approved':
             return 'eligible', None
-        elif state == 'awaiting_owner_approval':
-            return 'blocked', 'awaiting_owner_approval'
-        elif state in ('cancelled', 'reserved', 'completion_unknown'):
-            return 'blocked', f'job_{state}'
-        else:
-            return 'blocked', f'unknown_job_state_{state}'
+        return 'blocked', ('awaiting_owner_approval' if job['state'] == 'awaiting_owner_approval'
+                           else 'job_' + job['state'])
+    except FileNotFoundError:
+        return 'unresolved', 'missing_queue_evidence'
+    except (sqlite3.Error, OSError, ValueError, TypeError, UnicodeError, OverflowError, RecursionError):
+        return 'unresolved', 'invalid_queue_evidence'
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 def detect_cycles(unsatisfied_edges):
@@ -11244,7 +11311,7 @@ def validate_inventory(raw_bytes):
         if not isinstance(entry, dict) or set(entry.keys()) != {'id', 'task_sha256', 'revision'}:
             fail('accepted entry must contain exactly id, task_sha256, and revision')
         if not is_valid_task_id(entry['id']):
-            fail('accepted entry id is invalid: ' + str(entry.get('id')))
+            fail('accepted entry id is invalid')
         if not isinstance(entry['task_sha256'], str) or not HEX64.fullmatch(entry['task_sha256']):
             fail('accepted entry task_sha256 must be 64-hex string')
         if not isinstance(entry['revision'], str) or not HEX40.fullmatch(entry['revision']):
@@ -11260,9 +11327,9 @@ def validate_inventory(raw_bytes):
         keys = set(task.keys())
         if keys not in ({'id', 'task_sha256', 'worker', 'depends_on'},
                         {'id', 'task_sha256', 'worker', 'depends_on', 'job_id'}):
-            fail('task item has invalid or unknown fields: ' + str(task.get('id')))
+            fail('task item has invalid or unknown fields')
         if not is_valid_task_id(task['id']):
-            fail('task id is invalid: ' + str(task.get('id')))
+            fail('task id is invalid')
         if task['id'] in seen_tasks:
             fail('duplicate task ID in inventory: ' + task['id'])
         seen_tasks.add(task['id'])
@@ -11270,7 +11337,7 @@ def validate_inventory(raw_bytes):
         if not isinstance(task['task_sha256'], str) or not HEX64.fullmatch(task['task_sha256']):
             fail('task task_sha256 must be 64-hex string: ' + task['id'])
         if not is_valid_worker_id(task['worker']):
-            fail('task worker ID is invalid: ' + str(task.get('worker')))
+            fail('task worker ID is invalid')
         if not isinstance(task['depends_on'], list) or len(task['depends_on']) > MAX_DEPENDENCIES:
             fail('task depends_on must be a list of at most 128 items: ' + task['id'])
 
@@ -11278,13 +11345,13 @@ def validate_inventory(raw_bytes):
             if not isinstance(dep, dict) or set(dep.keys()) != {'id', 'task_sha256', 'revision'}:
                 fail('dependency item must contain exactly id, task_sha256, and revision')
             if not is_valid_task_id(dep['id']):
-                fail('dependency id is invalid: ' + str(dep.get('id')))
+                fail('dependency id is invalid')
             if not isinstance(dep['task_sha256'], str) or not HEX64.fullmatch(dep['task_sha256']):
                 fail('dependency task_sha256 must be 64-hex string')
             if not isinstance(dep['revision'], str) or not HEX40.fullmatch(dep['revision']):
                 fail('dependency revision must be 40-hex string')
 
-        if 'job_id' in task and task['job_id'] is not None:
+        if 'job_id' in task:
             if not isinstance(task['job_id'], str) or not HEX32.fullmatch(task['job_id']):
                 fail('task job_id must be 32-hex string: ' + task['id'])
 
@@ -11300,9 +11367,8 @@ def build_plan(root, inventory, raw_bytes, inv_age_seconds, timeout, runner=sys.
     repo_dir = resolve_repo(root)
     head_revision = get_repo_head(repo_dir, timeout=min(5.0, timeout))
 
-    observed, statuses = fleet_mod.collect(runner, str(root), timeout)
+    observed, statuses = fleet_mod.collect(runner, str(root), remaining(timeout))
     fleet_report = fleet_mod.build_report(str(root), timeout, stop, observed, statuses)
-    fleet_age = 0.0
 
     inv_hash = hashlib.sha256(raw_bytes).hexdigest()
     base_revision = inventory['base_revision']
@@ -11312,9 +11378,13 @@ def build_plan(root, inventory, raw_bytes, inv_age_seconds, timeout, runner=sys.
     unverified_accepted = set()
     accepted_map = {entry['id']: entry for entry in inventory['accepted']}
 
+    ancestry = {}
     if not base_mismatch and repo_dir is not None:
         for acc_id, entry in accepted_map.items():
-            if is_ancestor_commit(repo_dir, entry['revision'], base_revision):
+            revision = entry['revision']
+            if revision not in ancestry:
+                ancestry[revision] = is_ancestor_commit(repo_dir, revision, base_revision)
+            if ancestry[revision]:
                 verified_accepted[acc_id] = entry
             else:
                 unverified_accepted.add(acc_id)
@@ -11637,6 +11707,11 @@ def build_plan(root, inventory, raw_bytes, inv_age_seconds, timeout, runner=sys.
         tid = task['id']
         res = pre_results[tid]
         res.pop('_scope_valid', None)
+        if stop:
+            res['status'] = 'blocked'
+            if 'project_STOP' not in res['reasons']:
+                res['reasons'].append('project_STOP')
+            res['explanation'] = 'project STOP is set; ' + (res['explanation'] or 'launch is blocked')
         if res['status'] == 'ready':
             ready_count += 1
         elif res['status'] == 'blocked':
@@ -11655,7 +11730,9 @@ def build_plan(root, inventory, raw_bytes, inv_age_seconds, timeout, runner=sys.
         'head_revision': head_revision,
         'inventory_hash': inv_hash,
         'inventory_file_age_seconds': round(inv_age_seconds, 2),
-        'fleet_age_seconds': round(fleet_age, 2),
+        'fleet_age_seconds': round(max(0.0, (datetime.datetime.now(datetime.timezone.utc)
+            - datetime.datetime.fromisoformat(fleet_report['checked_at'])).total_seconds()), 3),
+        'fleet_sources': statuses,
         'stop': stop,
         'summary': {
             'total': len(final_tasks),
@@ -11671,7 +11748,7 @@ def build_plan(root, inventory, raw_bytes, inv_age_seconds, timeout, runner=sys.
 
 def render_text(report):
     lines = []
-    lines.append('Project: ' + report['project'])
+    lines.append('Project: ' + report['project'].encode('unicode_escape').decode('ascii'))
     lines.append(f"Base revision: {report['base_revision'][:12]} | Repo HEAD: {report['head_revision'][:12] if report['head_revision'] else 'unknown'}")
     lines.append(f"Inventory age: {report['inventory_file_age_seconds']}s | Hash: {report['inventory_hash'][:12]}")
     if report['stop']:
@@ -11712,6 +11789,7 @@ def render_text(report):
 
 
 def main(argv=None):
+    global OBSERVATION_DEADLINE
     parser = argparse.ArgumentParser(
         prog='unio plan', allow_abbrev=False,
         description='Local read-only concurrent recommendations before dispatch: '
@@ -11729,7 +11807,9 @@ def main(argv=None):
     if not native:
         fail('arguments missing; pass --help for usage')
     # If the dispatcher passes runner as first argument
-    runner = native.pop(0) if not native[0].startswith('-') else sys.executable
+    if native[0].startswith('-'):
+        fail('installed runner path missing')
+    runner = native.pop(0)
     args = parser.parse_args(native)
 
     if not 1 <= args.timeout <= 60:
@@ -11739,26 +11819,20 @@ def main(argv=None):
     if not args.project:
         fail('no project selected; pass --project PATH')
 
+    OBSERVATION_DEADLINE = time.monotonic() + args.timeout
     inv_path = Path(args.inventory)
-    if not inv_path.exists():
-        fail('inventory file does not exist: ' + args.inventory)
-    if inv_path.is_symlink():
-        fail('inventory file must not be a symlink')
     try:
-        st = inv_path.lstat()
-        if not stat.S_ISREG(st.st_mode):
-            fail('inventory file must be a regular file')
-        raw_bytes = inv_path.read_bytes()
-    except OSError:
-        fail('cannot read inventory file: ' + args.inventory)
+        raw_bytes, st = read_regular(inv_path, MAX_INVENTORY_BYTES)
+    except (OSError, ValueError):
+        fail('inventory must be an accessible bounded regular file without symlink components')
 
     inv_age = max(0.0, time.time() - st.st_mtime)
     inventory, _ = validate_inventory(raw_bytes)
 
     root = Path(os.path.realpath(os.path.abspath(args.project)))
     for req in ('coord', 'wt'):
-        if not (root / req).is_dir():
-            fail(f"no Unio workspace (coord/ and wt/) under: {args.project}")
+        if (root / req).is_symlink() or not (root / req).is_dir():
+            fail('project requires physical coord/ and wt/ directories')
 
     plan_report = build_plan(root, inventory, raw_bytes, inv_age, args.timeout, runner=runner)
 
