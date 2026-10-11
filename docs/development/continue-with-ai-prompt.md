@@ -16,6 +16,10 @@ real dashboard map through a GET-only demo shim. Keep its `activity.css` injecti
 anchor, rebuild the demo after dashboard changes and regenerate the installer
 with `tools/embed-browser.py` after every bridge edit.
 
+The owner subsequently resumed small dashboard/site changes in a separate
+Opus session. Those scopes are reserved again for that session. Advance the
+functional CLI here and preserve any newer owner commits when integrating.
+
 Source includes the 0.5.10 archival/authentication/daily-use candidate and the
 0.5.11 performance probe, fleet overview and read-only task planner. These are
 not new published releases. The planner passed 12 focused tests plus native
@@ -36,6 +40,23 @@ repeated Git/ignore calls. A traversal-only comparison preserved the same file
 map with fewer calls, but full capture, equivalent history and refusal behavior
 still need validation. Preserve the partial work and evidence; never describe
 it as an accepted optimization or a subscription outage.
+
+The existing lead then implemented narrower sibling-only ignore batching,
+keeping depth-first traversal and existing retention/deadline semantics.
+Six focused real-Git tests passed. Two matched-history full saves completed
+in 26.35/26.18 seconds; baseline attempts hit the existing 30-second bound.
+Ignore queries fell from 66 to 6 on that fixture. Read
+[the measured limits](SAVE-PERFORMANCE.md#sibling-ignore-batching--2026-10-11-source-candidate)
+and the newest local receipts for full functional/native acceptance; no
+general real-workspace timeout fix or release is implied.
+
+The owner added [native macOS and Windows support](CROSS-PLATFORM.md), with
+an initial file/function inventory and staged acceptance. Windows currently
+uses WSL; native Windows and macOS remain planned. A Pane-like
+[interactive session workspace](SESSION-WORKSPACE.md) is a separate proposed
+milestone reusing the current dashboard and one engine. Desktop packaging
+does not itself provide native worker support; architecture discussion with
+the owner's Opus session is ongoing.
 
 [Unio v0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9) is
 published and installed from `0c2def4dfee307622b3d5959641a22d220d1576a`.

@@ -125,3 +125,43 @@ entries before deciding what to archive. The observed timeout does not isolate
 which phase exhausted the deadline. Compare equivalent history sizes and file
 contents before attributing cost or claiming an optimization. Keep failed-save
 reporting separate from worker completion and preserve complete save validation.
+
+## Sibling ignore batching — 2026-10-11 source candidate
+
+The existing lead implemented a narrower change after rejecting the earlier
+GLM partial: batch ignore queries for sibling directories while retaining
+depth-first traversal. Preflight closes each directory immediately; reopening
+checks device/inode identity and the prepared listing. Query batches have
+bounded metadata. Retention, both observations, full save validation and
+production deadlines remain unchanged.
+
+Six focused real-Git tests passed, including a 96-sibling tree under a 64-file
+descriptor limit, retained ignored HEAD paths, exclusion before body reads,
+query bounds, directory replacement/listing races and existing refusals.
+
+A private generated fixture on the Windows-mounted `v9fs` filesystem had
+324 tracked files, 325 captured paths, one carried commit and two existing
+validated saves. Each measured call restored exactly that same starting
+history and used the same worker bytes:
+
+| Full save attempt | Elapsed seconds | Ignore queries | Result |
+| --- | ---: | ---: | --- |
+| Initial baseline | Not retained by the first harness | Not retained | Refused at the existing 30-second bound. |
+| Sibling-batched candidate 1 | 26.35 | 6 | Complete save, deep validation passed. |
+| Sibling-batched candidate 2 | 26.18 | 6 | Complete save, deep validation passed. |
+| Final baseline | 31.66 | 66 | Refused at the existing 30-second bound. |
+
+The candidate fingerprints matched the earlier successful baseline saves
+used to seed the fixture. The two successful candidate manifests matched
+except for identity/timestamps, and prior-history bytes stayed unchanged.
+Full save calls include both observations, history/retention handling,
+publication and deep validation; these are not traversal-only timings.
+
+The first comparison harness stopped on the baseline refusal before storing
+its timing. That failure is preserved; a corrected continuation recorded only
+the remaining three planned calls. No production timeout was increased.
+Another save suite was generating disk I/O during the comparison. This small
+sample demonstrates reduced query overhead and successful captures on this
+fixture, not a general speed percentage or proof that every real-workspace
+automatic save now finishes within its deadline. Profile history-sized real
+workloads before choosing the next optimization.

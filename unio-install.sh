@@ -23687,6 +23687,22 @@ supporting workers only. Exact controls and routes are in
 [model roles](https://github.com/danielmevit/unio/blob/main/docs/ai/MODEL-ROLES.md)
 and the [free inventory](https://github.com/danielmevit/unio/blob/main/docs/FREE-MODELS.md).
 
+## Copilot Free / Auto Balance platform-plan draft — 2026-10-11
+
+`PLATFORM-PLAN-COPILOT-1` delivered a bounded cross-platform documentation
+proposal through native Unio: Source0, adapter/native0, 21.511 seconds for the
+adapter. Auto Balance usage labelled one `gpt-6-luna` request; effective server
+identity and effort remain Unknown. No effort flag, local/BYOK route or retry.
+The lead checked the current source assumptions and used the draft for the
+[platform plan](CROSS-PLATFORM.md), adding a concrete static inventory.
+
+The response contained terminal-rendered headings/table and OSC links rather
+than clean Markdown. The lead rewrote it into repository Markdown; the raw
+proposal remains private. Useful routine planning output is not implementation,
+independent review or proof of native macOS/Windows support. Baseline and final
+automatic saves again exceeded the existing helper deadline; those recovery
+failures are separate from the successful proposal delivery.
+
 ## Copilot Free / Auto Balance — 2026-10-10
 
 A real Unio correction task returned one useful documentation draft in 10.958s:

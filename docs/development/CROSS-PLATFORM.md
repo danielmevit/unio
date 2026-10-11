@@ -42,6 +42,26 @@ Finish this stage with a file/function inventory, supported-host checks and
 shared offline contracts. Missing capabilities must explain what cannot run;
 they must not silently disable locking, ownership checks or recovery validation.
 
+### First source inventory — 2026-10-11
+
+This is a static audit of the current source, not execution on macOS or Windows.
+These are concrete entry points for the first portability slice:
+
+| Source and entry points | Host-dependent behavior | Porting requirement |
+| --- | --- | --- |
+| `unio-install.sh`: installer preflights, `cmd_verify`, embedded save `worker_lock_fd`/`walk_worktree` | GNU utility flags, shell locks/timeouts and descriptor-relative snapshot access | Separate installation/shell compatibility from lock and snapshot guarantees. |
+| `tools/runtime/dashboard.py`: `boot_id`, `start_ticks`, `environ_has`, `exited_unreaped`, `StateDir.lock` | Linux process identity, POSIX wait and file locks | Provide host-specific identity/ownership checks before start/reuse/stop. |
+| `tools/runtime/lead_cooldown.py`: `launch_snapshot`, `process_identity`, `open_lock` | Explicit Linux-only check, `/proc` identity and durable locks | Keep cooldown unsupported on a new host until its own acceptance passes. |
+| `tools/task-plan.py`: `open_regular`, `git_query`, `observe_browser_job` | No-follow descriptor access, POSIX child ownership, SQLite opened through `/proc/self/fd` | Preserve read-only planning and exact queue-file binding with a portable equivalent. |
+| `bridge/worker_files.py`: `_open`, `_open_relative`, `_git_paths`, `_reap_group` | Descriptor-relative file access, Git directory via `/proc/self/fd`, process-group cleanup | Preserve worktree confinement and ownership; replacing the UI does not solve this backend dependency. |
+| `bridge/progress.py`: `_open`, `_liveness` | No-follow access and Linux command-line/current-directory observations | Supply supported host observations; unobservable activity stays Unknown. |
+| `tools/copilot-worker.py`: `read_regular`, `exited`, `stop_group`; `tools/vibe-worker.py`: `read_regular`, `owned_call` | No-follow reads, POSIX waits/sessions and owned process groups | Audit each adapter separately; native CLI availability alone does not port its supervisor. |
+
+Start by specifying process identity/cleanup, locking and safe path-access
+contracts. Those operations recur across modules and need consistent semantics.
+The inventory is intentionally an initial map; provider-specific adapters,
+filesystem capabilities and remaining installer assumptions still need coverage.
+
 ## 2. Make Windows through WSL easy to set up
 
 Document a clean WSL2 installation, Linux prerequisites, where commands run
