@@ -1,0 +1,1 @@
+- Add offline install support tests for the packaged explicit `unio dispatch` helper: byte-identical marked installer packaging, installed help and bash completion outside any project, argument and strict-grant refusals without coordination state or provider calls, and safe destination preflight for symlinked or hardlinked `task-dispatch.py` targets.
