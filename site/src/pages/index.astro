@@ -381,7 +381,7 @@ const faqs = [
       <section class="section wrap" id="features" aria-labelledby="features-title">
         <div class="section-head">
           <span class="index">02</span>
-          <h2 id="features-title">One team, from different AI labs</h2>
+          <h2 id="features-title"><span class="phone-line">One team,</span> <span class="phone-line">from different</span> <span class="phone-line">AI labs</span></h2>
           <ol class="bus-line bus-mini" aria-hidden="true">{agents.map((_, i) => <li style={`--tone: var(--t-${toneOf(i)})`} />)}<li class="bus-open" /></ol>
         </div>
         <div class="grid">
@@ -401,7 +401,7 @@ const faqs = [
       <section class="section wrap" id="how" aria-labelledby="how-title">
         <div class="section-head">
           <span class="index">03</span>
-          <h2 id="how-title">A task, step by step</h2>
+          <h2 id="how-title"><span class="phone-line">A task,</span> <span class="phone-line">step by step</span></h2>
           <ol class="bus-line bus-mini" aria-hidden="true">{agents.map((_, i) => <li style={`--tone: var(--t-${toneOf(i)})`} />)}<li class="bus-open" /></ol>
         </div>
         <ol class="rows">
@@ -1044,7 +1044,14 @@ const faqs = [
     text-transform: uppercase;
   }
   /* Section heads carry a small sync bus instead of a plain rule */
-  .section-head .bus-mini { flex: 1; min-width: 60px; height: 14px; padding: 0 2px; align-self: center; }
+  .section-head .bus-mini { flex: 1; min-width: 60px; height: 14px; padding: 0 2px; align-self: center; container: bus / inline-size; }
+  /* It shows as many agent dots as its own width holds with room between
+     them (at least about 10px), whatever the title beside it leaves free;
+     the open port at the end always stays. */
+  @container bus (max-width: 279px) { .bus-mini li:nth-child(n+10):not(.bus-open) { display: none; } }
+  @container bus (max-width: 199px) { .bus-mini li:nth-child(n+8):not(.bus-open) { display: none; } }
+  @container bus (max-width: 139px) { .bus-mini li:nth-child(n+6):not(.bus-open) { display: none; } }
+  @container bus (max-width: 89px) { .bus-mini li:nth-child(n+4):not(.bus-open) { display: none; } }
   .bus-mini li { width: 6px; height: 6px; border-radius: 1.5px; }
   .bus-mini::after { height: 2px; top: calc(50% - 0.5px); }
 
@@ -1247,7 +1254,6 @@ const faqs = [
     .actions { grid-template-columns: minmax(0, 1fr); }
     .actions > .btn:first-child { border-radius: var(--r-out) var(--r-out) var(--r-xs) var(--r-xs); }
     .actions > .btn:last-child { border-radius: var(--r-xs) var(--r-xs) var(--r-out) var(--r-out); }
-    .bus-mini li:nth-child(n+7):not(.bus-open) { display: none; }
     .fig-label { display: none; }
     .row { grid-template-columns: 2rem minmax(0, 1fr); }
     .row-who { grid-column: 2; justify-self: start; }
