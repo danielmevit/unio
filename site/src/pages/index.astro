@@ -87,14 +87,6 @@ const toneNames = Object.keys(tones);
 const toneVars = toneNames.map((n) => `--t-${n}: ${tones[n]}`).join("; ");
 const toneOf = (i: number) => toneNames[i % toneNames.length];
 
-// The Unio mark: a U built from slightly rounded square dots — many dots
-// (AIs) making one thing. 6 × 7 cells.
-const MARK = ["11..11", "11..11", "11..11", "11..11", "11..11", "111111", ".1111."];
-const markDots = MARK.flatMap((row, y) => [...row].flatMap((c, x) => (c === "1" ? [{ x, y }] : [])));
-// When each dot of the mark switches on (ms), in markDots order: a ring
-// growing from the top-left dot, with a little jitter. Same timing as the
-// dashboard's loading screen.
-const markDelays = [0, 100, 401, 476, 97, 140, 380, 487, 198, 227, 409, 505, 269, 316, 486, 536, 403, 414, 546, 615, 462, 465, 515, 537, 597, 662, 559, 601, 637, 702];
 
 // Readouts closing each section: real facts from that section, in the
 // hero readout's style. They type themselves in when reached and alternate
@@ -295,12 +287,7 @@ const faqs = [
 
     <header class="hud">
       <div class="wrap hud-inner">
-        <a class="badge" href={`${base}/`} aria-label="Unio home">
-          <span class="badge-name">
-            <svg class="mark" viewBox="0 0 23 27" aria-hidden="true">{markDots.map((d, i) => <rect x={d.x * 4} y={d.y * 4} width="3" height="3" rx="0.7" style={`--d: ${markDelays[i]}ms`} />)}</svg>
-            <span class="wordmark">Unio</span>
-          </span>
-        </a>
+        <a class="logo" href={`${base}/`} aria-label="Unio home"><span class="wordmark">Unio</span></a>
         <nav class="tabs" aria-label="Main">
           <a class="tab tab-wide" href="#how">How it works</a>
           <a class="tab tab-wide" href="#faq">FAQ</a>
@@ -760,7 +747,7 @@ const faqs = [
     --wide: "Archivo Variable", "Arial Black", system-ui, sans-serif;
     --gutter: clamp(16px, 2.6vw, 64px);
     /* Corners: nothing is perfectly square. Groups of buttons round their
-       outer corners more than the inner ones; only the badge is a pill. */
+       outer corners more than the inner ones. */
     --r-xs: 2px;
     --r-sm: 4px;
     --r-md: 6px;
@@ -833,7 +820,7 @@ const faqs = [
   .micro { color: var(--muted); margin-bottom: 10px; }
 
   /* Wide display — menus, buttons, titles of things */
-  .tab, .btn, .card h3, .row-title, .slot span, .menu a, .badge {
+  .tab, .btn, .card h3, .row-title, .slot span, .menu a {
     font-family: var(--wide);
     font-stretch: 125%;
     font-weight: 800;
@@ -849,35 +836,9 @@ const faqs = [
     border-bottom: 1px solid var(--line);
   }
   .hud-inner { display: flex; align-items: center; gap: 18px; min-height: 56px; }
-  .badge {
-    display: inline-flex; align-items: stretch;
-    height: 28px; border-radius: 14px; overflow: hidden;
-    text-decoration: none; font-size: 0.78rem;
-  }
-  .badge-name { display: flex; align-items: center; gap: 7px; padding: 0 12px 0 11px; background: var(--on); color: var(--on-text); }
-  .mark { width: auto; height: 17px; fill: currentColor; }
-  /* The dot U builds itself: each dot switches on small and grows to full
-     size as a ring spreads from the top-left dot, then its color keeps
-     drifting through the agent tones, rippling across the mark. The tones
-     are the deep variants, which read on the light badge. Drawn as
-     vectors, so the edges stay crisp while they grow. */
-  @media (prefers-reduced-motion: no-preference) {
-    .mark rect {
-      --m-rust: #8b3b2d; --m-mustard: #8a682e; --m-sea: #2e6b5d;
-      --m-steel: #455a73; --m-periwinkle: #344483; --m-lavender: #433285;
-      transform-box: fill-box; transform-origin: center;
-      fill: var(--m-rust); opacity: 0;
-      animation: mark-dot 0.2s ease-out var(--d) forwards, mark-tone 3.6s linear var(--d) infinite;
-    }
-  }
-  @keyframes mark-dot { from { opacity: 1; transform: scale(0.36); } to { opacity: 1; transform: none; } }
-  @keyframes mark-tone {
-    0%, 100% { fill: var(--m-rust); } 16.6% { fill: var(--m-mustard); } 33.3% { fill: var(--m-sea); }
-    50% { fill: var(--m-steel); } 66.6% { fill: var(--m-periwinkle); } 83.3% { fill: var(--m-lavender); }
-  }
-  /* The wordmark in the squashed all-caps display face */
-  /* the wordmark in the title face: Doto, dot-matrix like the mark beside it */
-  .wordmark { font-family: var(--section-title); font-weight: 900; font-size: 1.3rem; line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; }
+  /* The logo is the word itself: "UNIO" in Doto, the title face */
+  .logo { display: inline-flex; align-items: center; min-height: 44px; color: var(--title); text-decoration: none; }
+  .wordmark { font-family: var(--section-title); font-weight: 900; font-size: 2.4rem; line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; }
 
   /* "Scripts": tiny low-contrast system text, the way game HUDs annotate panels */
   .script, .fig-label, .slot-code, .slot-foot, .console-foot, .stamp {

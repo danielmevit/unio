@@ -88,17 +88,15 @@ when that code changes.
 
 ### Logo
 
+The logo is the word **UNIO** set in Doto, weight 900, uppercase. The
+dot-matrix lettering is the mark: many dots (AIs) forming one word. On the
+website header it stands alone, with no pill or separate symbol, in the soft
+off-white `--title` beside the navigation.
+
 | File | Use |
 | --- | --- |
-| `brand/unio-logo_light.svg` / `brand/unio-logo_dark.svg` | Mark + wordmark. README (light/dark GitHub themes). |
-| `brand/unio-mark_light.svg` / `brand/unio-mark_dark.svg` | The mark alone, for small spaces. The website favicon is `site/public/favicon.svg`. |
-
-The mark is a **dot-matrix U**: slightly rounded square dots on a 6 × 7 grid,
-many dots (AIs) making one thing. The wordmark "UNIO" is Doto, weight 900,
-uppercase (the website header shows only the mark and the wordmark, beside
-the navigation). The README logo files keep their original lettering. On the website the badge's U builds itself as a ring
-from the top-left dot, then its dots drift through the agent tones; the
-dashboard's loading screen uses the same animation.
+| `brand/unio-logo_light.svg` / `brand/unio-logo_dark.svg` | The older lockup (dot-U mark + wordmark), still at the top of the README until it is redrawn in Doto. |
+| `brand/unio-mark_light.svg` / `brand/unio-mark_dark.svg` | The older dot-U mark alone. The website favicon (`site/public/favicon.svg`) is still that U, and the dashboard's loading screen still builds it dot by dot. |
 
 ### Typography
 
