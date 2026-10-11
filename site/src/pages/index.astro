@@ -266,7 +266,11 @@ const faqs = [
     <meta property="og:description" content={description} />
     <meta property="og:url" content={site} />
     <meta property="og:image" content={`${site}assets/og.png`} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="UNIO, written in dots in six muted colors" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={`${site}assets/og.png`} />
     <script type="application/ld+json" set:html={JSON.stringify({
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
@@ -641,6 +645,30 @@ const faqs = [
           }, { threshold: 0.6 });
           for (const h2 of document.querySelectorAll<HTMLElement>(".section-head h2")) reached.observe(h2);
         });
+      }
+
+      // The tab icon: Doto's U in the agent tones. Browsers draw an SVG icon
+      // once, so the page hands them each step of the color wave as a new
+      // picture: every 0.6 s the tones move one dot further along the U's
+      // diagonal (each dot's data-i), from the top-left down through the U.
+      // Still with reduced motion, or where the script cannot run.
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+        const root = getComputedStyle(document.documentElement);
+        const tones = ["rust", "mustard", "sea", "steel", "periwinkle", "lavender"].map((n) => root.getPropertyValue(`--t-${n}`).trim());
+        if (icon && tones.every(Boolean)) {
+          fetch(icon.href).then((r) => r.text()).then((text) => {
+            const svg = new DOMParser().parseFromString(text, "image/svg+xml");
+            const dots = [...svg.querySelectorAll("rect[data-i]")];
+            if (!dots.length) return;
+            const frames = tones.map((_, step) => {
+              for (const d of dots) d.setAttribute("fill", tones[(((Number(d.getAttribute("data-i")) - step) % 6) + 6) % 6]);
+              return "data:image/svg+xml," + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+            });
+            let step = 0;
+            setInterval(() => { step = (step + 1) % 6; icon.href = frames[step]; }, 600);
+          }).catch(() => {});
+        }
       }
 
       // Outer corners of each card group: a card's corner counts as outer

@@ -138,8 +138,14 @@ def write_logos(folder, dots, width, height):
     for mode, ink, tones in (('light', INK_LIGHT, TONES_LIGHT), ('dark', INK_DARK, TONES_DARK)):
         body = f'<g fill="{ink}">' + ''.join(square(d['x'], d['y']) for d in dots) + '</g>'
         (folder / f'unio-logo_{mode}.svg').write_text(svg(width, height, body))
-        body = ''.join(f'<g fill="{tone_at(phase, tones)}">' + ''.join(square(d['x'], d['y']) for d in members) + '</g>'
-                       for members, phase in groups)
+        # the still: all six tones spread across the word, left to right,
+        # each cluster a little ahead or behind
+        rng_still = random.Random(3)
+        body = ''
+        for members, _ in groups:
+            cx = sum(d['x'] for d in members) / len(members)
+            tone = tones[min(5, max(0, int(cx / width * 6 + (rng_still.random() - 0.5) * 0.8)))]
+            body += f'<g fill="{tone}">' + ''.join(square(d['x'], d['y']) for d in members) + '</g>'
         (folder / f'unio-logo_tones-{mode}.svg').write_text(svg(width, height, body))
         rng = random.Random(7)
         keyframes = ' '.join(f'{i * 100 / 6:.1f}% {{ fill: {tone}; }}' for i, tone in enumerate(tones)) + f' 100% {{ fill: {tones[0]}; }}'
@@ -206,6 +212,29 @@ def write_line(name, seed, columns=80, extras=True, mirror=False):
     (OUT / 'patterns' / f'{name}.svg').write_text(svg(width, height, body, label='', style=style))
 
 
+def write_favicon():
+    """The browser-tab icon: Doto's U in the agent tones on a dark tile. Each
+    dot carries data-i, its place in a diagonal wave through the U; the
+    website's script turns the tones along it, so the U shifts colors in the
+    tab (still where the script cannot run, or with reduced motion)."""
+    grid = letter_grids('U')[0]
+    cols = max(c for c, _ in grid) + 1
+    rows = max(r for _, r in grid) + 1
+    size, pitch = 32, 3.7
+    square, rnd = pitch * 0.8, pitch * 0.8 * 0.15
+    x0 = (size - cols * pitch) / 2
+    y0 = (size - rows * pitch) / 2
+    dots = ''
+    for c, r in sorted(grid):
+        i = c + r
+        dots += (f'<rect data-i="{i}" x="{x0 + c * pitch + (pitch - square) / 2:.2f}" y="{y0 + r * pitch + (pitch - square) / 2:.2f}" '
+                 f'width="{square:.2f}" height="{square:.2f}" rx="{rnd:.2f}" fill="{TONES_DARK[i % 6]}"/>')
+    out = ROOT / 'site' / 'public' / 'favicon.svg'
+    out.write_text(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}">'
+                   f'<rect width="{size}" height="{size}" rx="7" fill="#1c1c1c"/>{dots}</svg>\n')
+    return out
+
+
 def main():
     grids = letter_grids()
     write_logos(OUT / 'logo' / 'single', *layout(grids, gap=1))
@@ -214,6 +243,7 @@ def main():
     for old in (OUT / 'patterns').glob('*.svg'):
         old.unlink()
     write_line('line', 1, extras=False)
+    print('favicon:', write_favicon().relative_to(ROOT))
     for sub in ('logo/single', 'logo/double', 'patterns'):
         print(sub + ':', ', '.join(sorted(p.name for p in (OUT / sub).glob('*.svg'))))
 

@@ -34,7 +34,7 @@ how Unio works.
 | `logo/single/` | The logo with strokes one dot wide, as in the font. The website and the README use it. |
 | `logo/double/` | The same word with strokes two dots wide: every dot grown to a 2 × 2 block. Bolder, for larger or busier places. |
 | `patterns/` | The dot line, for breaking up long pages. |
-| `legacy/` | The earlier dot-matrix U, still the website's favicon and the dashboard's loading screen. |
+| `legacy/` | The earlier dot-matrix U, still the dashboard's loading screen. |
 
 ## Logo
 
@@ -63,11 +63,13 @@ along the line without end (still for people who turn animation off). Use
 
 ## Making them
 
-Every SVG here except the U in `legacy/` is drawn by
-[tools/make-brand-assets.py](../../tools/make-brand-assets.py) from the Doto
-font. It reads each dot's place on the letter's grid and draws an even
-rounded square at 80 % of the dot spacing, the same way the website draws its
-titles.
+[tools/make-brand-assets.py](../../tools/make-brand-assets.py) draws every
+SVG here except the U in `legacy/`, plus the website's tab icon
+(`site/public/favicon.svg`: Doto's U in the agent tones, which the website
+turns through the tones in the tab). It reads each dot's place on Doto's
+letter grid and draws an even rounded square at 80 % of the dot spacing, the
+same way the website draws its titles. The website's link-preview image
+(`site/public/assets/og.png`) is the toned logo on charcoal.
 
 ```sh
 cd site && npm install && cd ..

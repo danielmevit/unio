@@ -100,8 +100,9 @@ The logo files, the dot line and the story of what the dots mean are in the
 in one ink, the agent tones and animated, for light and dark backgrounds,
 plus the animated dot line for breaking up long pages, all drawn from Doto
 by `tools/make-brand-assets.py`. The
-earlier dot-matrix U (`brand/legacy/`) is still the website favicon and the
-dashboard's loading screen.
+earlier dot-matrix U (`brand/legacy/`) is still the dashboard's loading
+screen. The website's tab icon is Doto's U in the agent tones, shifting
+colors in the tab, and its link preview is the toned logo.
 
 ### Typography
 
