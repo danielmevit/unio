@@ -67,12 +67,14 @@ const { chromium } = require(process.env.M2_PLAYWRIGHT_MODULE || "playwright");
   write("exit", "0");
   const engine = path.join(fixture, "fake-unio");
   fs.writeFileSync(engine, `#!/usr/bin/env python3
-import json, sys
+import fcntl, json, sys
 from pathlib import Path
 data = Path(__file__).parent / 'fake'
 args = sys.argv[1:]
 with open(data / 'argv.log', 'a') as log:
+    fcntl.flock(log, fcntl.LOCK_EX)
     log.write(json.dumps(args) + '\\n')
+    log.flush()
 if args == ['watch', '--once', '--json']:
     sys.stdout.buffer.write((data / 'snapshot.json').read_bytes()); sys.exit(0)
 sys.stderr.write('secret.person@example.com sk-live-TOPSECRET\\n')
@@ -195,7 +197,13 @@ sys.stdout.buffer.write((data / name).read_bytes())
     await page.locator(".limits-section").screenshot({ path: path.join(fixture, "limits-mobile.png") });
     ok("390px layout has no horizontal overflow");
 
-    const argv = fs.readFileSync(path.join(data, "argv.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    // Metadata requests can log concurrently. Take the writers' lock so a
+    // read never observes a partial JSON line; keep checking every full argv.
+    const argvRead = spawnSync("python3", ["-I", "-S", "-B", "-c",
+      "import fcntl,sys; f=open(sys.argv[1]); fcntl.flock(f,fcntl.LOCK_SH); sys.stdout.write(f.read())",
+      path.join(data, "argv.log")], { encoding: "utf8", timeout: 10000 });
+    assert.equal(argvRead.status, 0, argvRead.stderr);
+    const argv = argvRead.stdout.trim().split("\n").map((l) => JSON.parse(l));
     const allowed = new Set([JSON.stringify(["watch", "--once", "--json"]), JSON.stringify(["policy", "--json"]),
       JSON.stringify(["capacity", "--project", fixture, "show", "--json"]),
       JSON.stringify(["capacity", "--project", fixture, "show", "--provider", "codex", "--json"])]);
