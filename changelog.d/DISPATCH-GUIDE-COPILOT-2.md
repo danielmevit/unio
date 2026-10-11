@@ -1,0 +1,1 @@
+Document explicit task preparation, approval and dispatch, including owner grants, exact inventory bindings, replay behavior and the distinction between launcher acceptance and completed work. The Copilot proposal was corrected and checked by the lead against the actual command and schema.
