@@ -1,9 +1,9 @@
 ---
 import fs from "node:fs";
 import { execSync } from "node:child_process";
-import "@fontsource/instrument-serif/400.css";
 import "@fontsource-variable/archivo/wdth.css";
 import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource-variable/doto";
 import "@fontsource/ibm-plex-mono/500.css";
 import "@fontsource/ibm-plex-mono/600.css";
 import { marks, evenOdd } from "../marks";
@@ -616,7 +616,8 @@ const faqs = [
     --failed: #f85149;
     --attention: #d29922;
     --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
-    --serif: "Instrument Serif", "Times New Roman", serif;
+    /* the hero and section titles: Doto, a dot-matrix face like the U mark */
+    --section-title: "Doto Variable", ui-monospace, monospace;
     --wide: "Archivo Variable", "Arial Black", system-ui, sans-serif;
     --gutter: clamp(16px, 2.6vw, 64px);
     /* Corners: nothing is perfectly square. Groups of buttons round their
@@ -815,11 +816,14 @@ const faqs = [
        section gap as everywhere else */
     padding-top: clamp(40px, 5vh, 80px);
   }
+  /* "YOUR AIs," fills the hero column at every width: Doto is monospaced
+     at 0.6 em per character, so those 9 characters are 5.4 em and 18.4%
+     of the column's width (container units) is the size that fits;
+     "IN SYNC." follows below. */
   .hero h1 {
-    font-family: var(--serif);
-    font-size: clamp(3.4rem, 7.4vw, 10rem);
-    line-height: 0.9;
-    letter-spacing: -0.01em;
+    font-family: var(--section-title); font-weight: 800;
+    font-size: clamp(2.6rem, 18.4cqi, 13rem);
+    line-height: 1;
   }
   /* The hero's left half is one aligned block: subtitle, buttons and readouts
      share its full width. The subtitle's size follows the column's width
@@ -899,8 +903,8 @@ const faqs = [
   .section-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
   .index { color: var(--muted); }
   .section-head h2 {
-    font-family: var(--serif);
-    font-size: clamp(2rem, 3.6vw, 5rem);
+    font-family: var(--section-title); font-weight: 800;
+    font-size: clamp(1.7rem, 3.2vw, 4.4rem);
     line-height: 1;
     text-transform: uppercase;
   }
