@@ -180,18 +180,24 @@ old paths; resolve them through local `coord/WORKSPACE-PATHS.json`. See the
 
 A one-page Astro site lives in `site/` and publishes to
 <https://danielmevit.github.io/unio/> through `.github/workflows/deploy.yml`
-on every push to `main` that touches `site/`, the workflow or `CHANGELOG.md`.
-The workflow pins its actions to commit SHAs, and only the deploy job may
-write to Pages. The page reads its version from the newest `CHANGELOG.md`
-heading. Colors are the dashboard's dark theme in `bridge/activity.css`; the
-layout follows the owner's game-UI reference (HUD bars, readouts, inverted
-selections, bracketed panels) without its accent colors. Fonts are
-self-hosted through Fontsource. Lab logos in `site/src/marks.ts` are copied
-from the dashboard's MIT-licensed Lobe Icons paths. The hero screenshot shows
-stand-in agents named after real tools, so the dashboard draws their logos;
-no provider is called. The capture script is local at
-`tmp/site-demo/showcase2.sh`. Preview with
-`cd site && npm install && npx astro build && npx astro preview`.
+on every push to `main` that touches `site/`, `bridge/`, the workflow or
+`CHANGELOG.md`. The workflow pins its actions to commit SHAs, and only the
+deploy job may write to Pages. The page shows the version of the first
+`## X.Y.Z` heading in `CHANGELOG.md` whose line does not say "unreleased":
+keep "unreleased" in a work-in-progress heading and remove it at release.
+Colors are the dashboard's dark theme in `bridge/activity.css`; the layout
+follows the owner's game-UI reference (HUD bars, readouts, inverted
+selections) without its accent colors. Titles use Doto (weight 800), body
+IBM Plex Mono and buttons Archivo, all self-hosted through Fontsource; the
+full brand rules are in [docs/BRAND.md](../BRAND.md#visual-identity). Lab logos in
+`site/src/marks.ts` are copied from the dashboard's MIT-licensed Lobe Icons
+paths. The work map panel is the real dashboard on a demo project:
+`site/scripts/demo.mjs` copies `bridge/` into `public/demo` at every build and
+`site/demo/shim.js` answers its API from `site/demo/fixtures.json` (re-capture
+with `site/scripts/capture-demo.cjs` against a dashboard running the local demo
+project from `tmp/site-demo/showcase2.sh`); no provider is called. Preview with
+`cd site && npm install && npm run build && npx astro preview` (`npm run build`
+runs the demo copy; a bare `astro build` does not).
 
 ## Next functional work
 

@@ -79,6 +79,102 @@ Useful product copy:
 Only claim work is saved after a durable checkpoint exists. When usage
 information is unavailable, say Unknown instead of inventing a percentage.
 
+## Visual identity
+
+The rules behind the website (<https://danielmevit.github.io/unio/>) and the
+dashboard's look; the logo files are in [docs/brand](brand/). The source of
+truth for every value is the code named in each part; update this section
+when that code changes.
+
+### Logo
+
+| File | Use |
+| --- | --- |
+| `brand/unio-logo_light.svg` / `brand/unio-logo_dark.svg` | Mark + wordmark. README (light/dark GitHub themes). |
+| `brand/unio-mark_light.svg` / `brand/unio-mark_dark.svg` | The mark alone, for small spaces. The website favicon is `site/public/favicon.svg`. |
+
+The mark is a **dot-matrix U**: slightly rounded square dots on a 6 × 7 grid,
+many dots (AIs) making one thing. The wordmark "UNIO" is Archivo at 68 % width,
+weight 800, uppercase. On the website the badge's U builds itself as a ring
+from the top-left dot, then its dots drift through the agent tones; the
+dashboard's loading screen uses the same animation.
+
+### Typography
+
+All fonts are open source and self-hosted (Fontsource packages in
+`site/package.json`); no font is loaded from a third party.
+
+| Role | Font | Where (website: `site/src/pages/index.astro`) |
+| --- | --- | --- |
+| **Titles** | **Doto** (variable, weight **800**), uppercase | Hero title and every section title; token `--section-title` |
+| Body, labels, readouts | IBM Plex Mono 400 / 500 / 600 | Token `--mono` |
+| Buttons, tabs, card titles, wordmark | Archivo (variable width; 125 % for UI, 68 % for the wordmark) | Token `--wide` |
+
+- **Doto** is the title face because it is a dot-matrix font, the same idea as
+  the U mark. Keep it at weight 800 so the dots read as dots at every size;
+  lighter weights look faint, 900 merges the dots.
+- Doto is monospaced at 0.6 em per character. The hero title "YOUR AIs, /
+  IN SYNC." is sized from its column (`font-size: 18.4cqi`) so its first line
+  fills the column exactly; change that value if the title text changes.
+- Licenses: Doto and IBM Plex Mono are SIL OFL 1.1, Archivo is SIL OFL 1.1.
+- The dashboard (`bridge/`) uses system fonts (see [UX direction](UX-DIRECTION.md)).
+
+### Color
+
+Dark charcoal grays, no accent color. Website tokens (`:root` in
+`index.astro`); the dashboard's dark theme in `bridge/activity.css` matches.
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--bg` | `#1c1c1c` | Page |
+| `--deep` | `#171717` | Bars, footer band |
+| `--paper` | `#252525` | Cards and panels |
+| `--line` | `#3d3d3d` | Borders and dividers |
+| `--text` | `#e8e8e8` | Main text |
+| `--muted` | `#a6a6a6` | Secondary text |
+| `--label` | `#c4c4c4` | Labels |
+| `--ghost` | `#363636` | Readouts: present, but almost part of the background |
+| `--on` / `--on-text` | `#d2d2d2` / `#1c1c1c` | Selected / primary (inverted) |
+
+Status colors are semantic only and always paired with text: passed
+`#3fb950`, failed `#f85149`, needs attention `#d29922`.
+
+**Agent tones** (muted, from the owner's game-UI reference "The Cradle"), one
+per agent: its tile, its dots in the animated U, the sync-bus nodes.
+
+| Tone | On dark | On light (dashboard light theme) |
+| --- | --- | --- |
+| rust | `#cb7f72` | `#8b3b2d` |
+| mustard | `#caaa72` | `#8a682e` |
+| sea | `#74b4a5` | `#2e6b5d` |
+| steel | `#91a2b6` | `#455a73` |
+| periwinkle | `#8795c9` | `#344483` |
+| lavender | `#a094d1` | `#433285` |
+
+### Shape and layout
+
+- Nothing is perfectly square: `--r-xs` 2px, `--r-sm` 4px, `--r-md` 6px,
+  `--r-out` 9px. Groups (segmented buttons, card grids) round only their
+  **outer** corners with `--r-out`; inner corners stay tight. On the website a
+  page script marks the outer corners from the live layout, so it holds at
+  every column count.
+- Full width and responsive at every size; never a fixed-width page, never
+  horizontal scrolling. Gaps between cards: `--gap` 6px (8px at 1920px+,
+  10px at 2560px+). Every section is separated by the same gap.
+- The work map is a recessed board: a step darker than the page in both
+  themes, with a barely visible dot grid that pans and zooms with the map.
+
+### UI rules
+
+- UX first: no decorative text without real meaning. Readouts (the small
+  terminal lines closing each website section) must be true facts.
+- No colored left-edge bars on cards, rows or pills. Status is a small
+  colored square.
+- No frames or plates around floating controls. Close is a plain X.
+- Follow the game-UI reference's logic (HUD bars, readouts, inverted
+  selections) but never its accent colors, fonts, imagery or assets.
+- Support reduced motion everywhere: animations stop, content stays.
+
 ## Product direction
 
 See [UX direction](UX-DIRECTION.md) for the proposed interface and delivery
