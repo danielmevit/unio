@@ -11,6 +11,12 @@ least every 10 minutes during active work or waits, and revise estimates when
 the plan changes. Include elapsed and remaining time, active workers, blockers
 and the next step. Do not wait for the owner to request a status report.
 
+Follow [mandatory continuity](LEAD-ROUTING.md#mandatory-continuity-until-the-authorized-work-is-complete):
+keep progressing through the authorized deliverable after checkpoints and status
+questions. Finish, honor an explicit owner pause, or explain a genuine blocker;
+before an unavoidable stop, save work and leave a dated actionable handoff.
+Report background activity only when an actual process is still running.
+
 ## Current delivery state — 2026-10-12
 
 Official and installed stable remain **v0.5.9**, published from `0c2def4`.

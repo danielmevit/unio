@@ -14888,6 +14888,28 @@ scope and release checked work before continually expanding it. These are
 mandatory instructions for an active lead; they do not create a background
 notification service while the lead session is stopped.
 
+## Mandatory continuity until the authorized work is complete
+
+The lead must keep progressing through the agreed task and its necessary
+checks, integration, publication or installation when those steps are already
+authorized. A progress report, completed subtask, documentation update or status
+question is a checkpoint within that work. Keep working after the update;
+do not end the session merely to ask the owner to say "continue" again.
+
+End the turn when the agreed deliverable is complete, the owner explicitly
+pauses or cancels it, or a genuine blocker requires input, authority or an
+external change. While a worker or check runs, advance useful independent work
+within the approved scope and account limits, or monitor it and report progress.
+Never invent additional tasks just to keep the session running.
+
+Before an unavoidable stop or usage limit, preserve coherent commits and any
+unfinished recoverable work, then write a dated handoff with the current
+revision, actual checks, active processes, blockers and the exact next action.
+Tell the owner what is saved and whether any process is still running. Claim
+background work only when an actual launched process is still active; an ended
+lead turn does not continue coordinating work by itself. Preserve the original
+objective across interruptions and resume it from the saved checkpoint.
+
 ## Show the dashboard link at session start
 
 Owner rule: at the beginning of every Unio lead session, after identifying
