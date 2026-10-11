@@ -8,7 +8,7 @@ do not infer current availability from an earlier successful worker run.
 ## Current release — 2026-10-10
 
 Continuation 2026-10-11: official and installed stable remain 0.5.9.
-The owner completed the dashboard/site work and pushed it through `d6e5f36`.
+The owner completed the dashboard/site work and pushed it through `9f6a4f2`.
 That work is integrated with the checked CLI candidates; the earlier parallel
 UI writer hold has ended. Preserve its plain X controls, small status squares,
 frameless floating map controls and monochrome board. The website embeds the

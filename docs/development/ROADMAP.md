@@ -24,7 +24,7 @@ native scope/validation passed after personal corrections; automatic dispatch
 remains planned. New real-workspace runs
 also reproduced the automatic-save timeout, giving the next performance task
 a concrete failure to investigate.
-Owner dashboard/site updates through `d6e5f36` are now reconciled with the CLI
+Owner dashboard/site updates through `9f6a4f2` are now reconciled with the CLI
 candidates. The delivered interface is preserved; further visual redesign is
 not the current priority. The first save-latency worker produced a profile and
 unvalidated partial changes before reaching its configured token cap. No full
