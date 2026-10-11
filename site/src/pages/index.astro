@@ -93,6 +93,39 @@ const markDots = MARK.flatMap((row, y) => [...row].flatMap((c, x) => (c === "1" 
 // dashboard's loading screen.
 const markDelays = [0, 100, 401, 476, 97, 140, 380, 487, 198, 227, 409, 505, 269, 316, 486, 536, 403, 414, 546, 615, 462, 465, 515, 537, 597, 662, 559, 601, 637, 702];
 
+// Readouts closing each section: real facts from that section, in the
+// hero readout's style. They type themselves in when reached and alternate
+// sides, starting on the right (the hero's sits on the left).
+const sectionReadouts: Record<string, string[]> = {
+  works: [
+    "agents://11 on the grid · + any cli that takes a task without a chat",
+    "sign-in · each tool its own plan · no api keys",
+  ],
+  features: [
+    "team://1 lead · n workers · reviewers from another lab",
+    "1 copy + 1 branch per worker · changes never mixed",
+    "done = checks pass + review approves",
+    "limit hit → written handoff → next agent continues",
+  ],
+  how: [
+    "flow://describe → plan → build → check → decide",
+    "evidence kept per task · run · checks · review",
+    "merge · always your call",
+  ],
+  install: [
+    "install://bash unio-install.sh → unio selftest",
+    "selftest · no ai calls · nothing spent",
+    "linux · windows via wsl · dashboard read-only by default",
+  ],
+  notes: [
+    "limits://per tool · never pooled",
+    "sandbox · none · use a spare machine or vm",
+    "secrets · keep them out of tasks",
+    "handoff · written notes, not memory",
+  ],
+};
+const readoutSide = (id: string) => (["works", "how", "notes"].includes(id) ? "sec-readout-right" : "sec-readout-left");
+
 const agents = [
   { name: "Claude Code", mark: "claude" },
   { name: "Codex", mark: "openai" },
@@ -352,6 +385,7 @@ const faqs = [
           If an AI can take a task from the terminal without a chat window, one
           line of configuration adds it to your team.
         </p>
+        <p class={`script sec-readout ${readoutSide("works")}`} aria-hidden="true">{sectionReadouts.works.map((line) => <span>{line}</span>)}</p>
       </section>
 
       <section class="section wrap" id="features" aria-labelledby="features-title">
@@ -371,6 +405,7 @@ const faqs = [
             </article>
           ))}
         </div>
+        <p class={`script sec-readout ${readoutSide("features")}`} aria-hidden="true">{sectionReadouts.features.map((line) => <span>{line}</span>)}</p>
       </section>
 
       <section class="section wrap" id="how" aria-labelledby="how-title">
@@ -389,6 +424,7 @@ const faqs = [
             </li>
           ))}
         </ol>
+        <p class={`script sec-readout ${readoutSide("how")}`} aria-hidden="true">{sectionReadouts.how.map((line) => <span>{line}</span>)}</p>
       </section>
 
       <section class="section wrap" id="install" aria-labelledby="install-title">
@@ -420,6 +456,7 @@ const faqs = [
             <div class="console-foot" aria-hidden="true"><span>tty · bash · stand-in agents</span><span>0 provider calls</span></div>
           </div>
         </div>
+        <p class={`script sec-readout ${readoutSide("install")}`} aria-hidden="true">{sectionReadouts.install.map((line) => <span>{line}</span>)}</p>
       </section>
 
       <section class="section wrap" id="notes" aria-labelledby="notes-title">
@@ -431,6 +468,7 @@ const faqs = [
         <ul class="intel">
           {notes.map((n) => <li><span class="tag">{n.tag}</span><p>{n.body}</p></li>)}
         </ul>
+        <p class={`script sec-readout ${readoutSide("notes")}`} aria-hidden="true">{sectionReadouts.notes.map((line) => <span>{line}</span>)}</p>
       </section>
 
       <section class="section wrap" id="faq" aria-labelledby="faq-title">
@@ -467,6 +505,51 @@ const faqs = [
     </footer>
 
     <script>
+      // Section readouts type themselves in the first time they come into
+      // view (never on page load unless already in view), one line after
+      // another; the cursor blinks briefly at the end, then goes. With
+      // reduced motion, or without IntersectionObserver, they simply show.
+      const readoutEls = document.querySelectorAll<HTMLElement>(".sec-readout");
+      const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (readoutEls.length && !calm && "IntersectionObserver" in window) {
+        const prepare = (el: HTMLElement) => {
+          for (const line of el.querySelectorAll<HTMLElement>(":scope > span")) {
+            const full = line.textContent ?? "";
+            const typed = document.createElement("span");
+            typed.className = "typed";
+            const rest = document.createElement("span");
+            rest.className = "rest";
+            rest.textContent = full;
+            line.replaceChildren(typed, rest);
+          }
+        };
+        const type = async (el: HTMLElement) => {
+          const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+          const lines = [...el.querySelectorAll<HTMLElement>(":scope > span")];
+          for (const line of lines) {
+            const typed = line.querySelector<HTMLElement>(".typed")!, rest = line.querySelector<HTMLElement>(".rest")!;
+            typed.classList.add("is-active");
+            const chars = [...(rest.textContent ?? "")];
+            for (let i = 0; i < chars.length; i++) {
+              typed.textContent += chars[i];
+              rest.textContent = chars.slice(i + 1).join("");
+              await wait(chars[i] === " " ? 6 : 16);
+            }
+            if (line !== lines[lines.length - 1]) { typed.classList.remove("is-active"); await wait(140); }
+          }
+          await wait(1800);
+          lines[lines.length - 1].querySelector(".typed")?.classList.remove("is-active");
+        };
+        const seen = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            seen.unobserve(entry.target);
+            type(entry.target as HTMLElement);
+          }
+        }, { threshold: 0.6 });
+        for (const el of readoutEls) { prepare(el); seen.observe(el); }
+      }
+
       for (const button of document.querySelectorAll<HTMLButtonElement>("button.copy")) {
         button.addEventListener("click", async () => {
           try {
@@ -648,6 +731,16 @@ const faqs = [
   /* the footer's version / build / date is real information: readable */
   .stamp { color: #8a8a8a; }
   .script { display: grid; gap: 2px; margin-top: 22px; line-height: 1.5; }
+  /* a readout closes each section, on alternating sides */
+  .sec-readout { margin-top: clamp(28px, 4vw, 56px); }
+  .sec-readout-right { justify-items: end; text-align: right; }
+  /* typing: the untyped rest keeps its space, so nothing shifts or jumps */
+  .sec-readout .rest { color: transparent; }
+  .sec-readout .typed.is-active::after {
+    content: ""; display: inline-block; width: 0.62em; height: 1.05em; margin-right: -0.62em;
+    vertical-align: -0.2em; background: var(--label); animation: caret 0.9s steps(1) infinite;
+  }
+  @keyframes caret { 50% { opacity: 0; } }
   .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
   .tab {
     display: inline-flex; align-items: center; gap: 6px;
