@@ -129,6 +129,12 @@ class ReviewCollection(unittest.TestCase):
         self.assertEqual(self.summary(code=1,expect='revone,revtwo')['counts']['changes_requested'],1)
 
     def test_arguments_stop_and_material_preflight_make_no_calls(self):
+        # Existing native task IDs may contain dots; only reviewer aliases use
+        # the stricter configured-alias shape. Reuse the real verify boundary.
+        (self.coord/'tasks/evidence.v2.md').write_bytes(self.task.read_bytes())
+        self.unio('verify','mock','evidence.v2')
+        self.unio('review-set','mock','evidence.v2','revone','revtwo')
+        previous_calls=self.calls()
         self.unio('review-set','--help',cwd=self.root)
         for args in ((),('mock','evidence','revone'),('mock','evidence','revone','revone'),
                      ('mock','evidence','bad,alias','revtwo'),('mock','evidence','--json','revtwo'),
@@ -147,7 +153,7 @@ class ReviewCollection(unittest.TestCase):
             (wt/'hello.txt').write_bytes(data)
             self.call(['git','add','hello.txt'],cwd=wt);self.call(['git','commit','-qm','material'],cwd=wt)
             self.unio('verify','mock','evidence');self.collect(code=2)
-        self.assertEqual(self.calls(),b'')
+        self.assertEqual(self.calls(),previous_calls)
         self.assertFalse(list((self.coord/'reports').glob('evidence.review*')))
 
     def test_shared_budget_partial_admission_and_lead_reservation(self):

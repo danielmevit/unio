@@ -22125,7 +22125,8 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   for r in "$@"; do
     case "$r" in --*) echo 'unio review-set: options are not accepted' >&2; return 2;; esac
   done
-  for r in "$worker" "$task" "$@"; do
+  quality reviews-arguments "$worker" "$task" "" || return 2
+  for r in "$@"; do
     review_set_alias_ok "$r" || { echo "unio review-set: malformed alias '$r'" >&2; return 2; }
   done
   if printf '%s\n' "$@" | sort | uniq -d | grep -q .; then
