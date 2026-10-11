@@ -346,13 +346,13 @@ footer a { display: inline-flex; align-items: center; min-height: 44px; color: v
 .map-details-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
 }
 .map-details-header h3 { min-width: 0; }
 /* close: a plain X, no frame until hovered */
 #map-clear-sel {
-  flex: none; display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; margin: -10px -10px 0 0; padding: 0;
+  flex: none; display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; margin: 0 -6px 0 0; padding: 0;
   background: none; border-color: transparent; color: var(--muted);
 }
 #map-clear-sel:hover { color: var(--text-main); border-color: var(--line); }
