@@ -1,11 +1,15 @@
 // Website demo: the real Unio dashboard, its API calls answered from a
-// recorded demo project (demo/fixtures.json). Reading, filtering and
-// switching views all work; nothing can be changed or run.
+// recorded demo project (demo/fixtures.json). Only the work map shows
+// (demo.css): drag, zoom and open a node's details; nothing can be
+// changed or run.
 (function () {
   var replies = /*FIXTURES*/null;
+  // always the map with every task, finished ones included, dark like the
+  // site (the controls that would change these are hidden in the demo)
   try {
-    if (!localStorage.getItem("unio-task-view")) localStorage.setItem("unio-task-view", "map");
-    if (!localStorage.getItem("unio-theme-preference")) localStorage.setItem("unio-theme-preference", "dark");
+    localStorage.setItem("unio-task-view", "map");
+    localStorage.setItem("unio-theme-preference", "dark");
+    localStorage.setItem("unio-task-filters:v1", JSON.stringify({ version: 1, search: "", worker: "", state: "all", category: "" }));
   } catch (_) {}
   window.fetch = function (input, init) {
     var url = new URL(typeof input === "string" ? input : input.url, location.href);

@@ -14,11 +14,13 @@ fs.mkdirSync(out, { recursive: true });
 let html = fs.readFileSync(path.join(bridge, "index.html"), "utf8");
 const anchor = '<link rel="stylesheet" href="activity.css" />';
 if (!html.includes(anchor)) throw new Error("bridge/index.html: stylesheet link not found; update scripts/demo.mjs");
-// the shim goes first, so it answers the very first request
-html = html.replace(anchor, '<script src="demo.js"></script>\n    ' + anchor);
+// the shim goes first, so it answers the very first request; demo.css
+// after the dashboard's own styles, so only the work map shows
+html = html.replace(anchor, '<script src="demo.js"></script>\n    ' + anchor + '\n    <link rel="stylesheet" href="demo.css" />');
 fs.writeFileSync(path.join(out, "index.html"), html);
 for (const [, file] of html.matchAll(/(?:src|href)="([a-z_]+\.(?:js|css))"/g))
-  if (file !== "demo.js") fs.copyFileSync(path.join(bridge, file), path.join(out, file));
+  if (file !== "demo.js" && file !== "demo.css") fs.copyFileSync(path.join(bridge, file), path.join(out, file));
+fs.copyFileSync(path.join(site, "demo", "demo.css"), path.join(out, "demo.css"));
 
 const fixtures = fs.readFileSync(path.join(site, "demo", "fixtures.json"), "utf8").trim();
 const shim = fs.readFileSync(path.join(site, "demo", "shim.js"), "utf8");
