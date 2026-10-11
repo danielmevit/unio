@@ -381,7 +381,7 @@ const faqs = [
       <section class="section wrap" id="features" aria-labelledby="features-title">
         <div class="section-head">
           <span class="index">02</span>
-          <h2 id="features-title"><span class="phone-line">One team,</span> <span class="phone-line">from different</span> <span class="phone-line">AI labs</span></h2>
+          <h2 id="features-title"><span class="phone-line">One team<span class="wide-only">,</span><span class="phone-only"> formed</span></span> <span class="phone-line">from different</span> <span class="phone-line">AI labs</span></h2>
           <ol class="bus-line bus-mini" aria-hidden="true">{agents.map((_, i) => <li style={`--tone: var(--t-${toneOf(i)})`} />)}<li class="bus-open" /></ol>
         </div>
         <div class="grid">
@@ -401,7 +401,7 @@ const faqs = [
       <section class="section wrap" id="how" aria-labelledby="how-title">
         <div class="section-head">
           <span class="index">03</span>
-          <h2 id="how-title"><span class="phone-line">A task,</span> <span class="phone-line">step by step</span></h2>
+          <h2 id="how-title"><span class="phone-line">A task,</span> <span class="phone-line">step by</span> <span class="phone-line">step</span></h2>
           <ol class="bus-line bus-mini" aria-hidden="true">{agents.map((_, i) => <li style={`--tone: var(--t-${toneOf(i)})`} />)}<li class="bus-open" /></ol>
         </div>
         <ol class="rows">
@@ -847,6 +847,7 @@ const faqs = [
     border-bottom: 1px solid var(--line);
   }
   .hud-inner { display: flex; align-items: center; gap: 18px; min-height: 56px; }
+  .phone-only { display: none; }
   /* text for screen readers only */
   .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   /* The logo is the word itself: "UNIO" in Doto, the title face */
@@ -1241,6 +1242,9 @@ const faqs = [
   }
   @media (max-width: 760px) {
     .phone-line { display: block; }
+    /* words that only phones show, or only wider screens */
+    .phone-only { display: inline; }
+    .wide-only { display: none; }
     .tab-wide { display: none; }
     .hud .tabs > .tab:nth-child(3) { border-top-left-radius: var(--r-out); border-bottom-left-radius: var(--r-out); }
     .stamp { display: none; }
