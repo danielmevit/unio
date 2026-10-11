@@ -7,6 +7,8 @@ Unio brings AI agents from different AI labs together to build and improve
 your project. A lead delegates the work, other agents review the changes,
 and you stay in control.
 
+![The Unio dashboard's work map: each AI worker and its tasks, with the details of a failed run and the command to read its report](docs/screenshots/dashboard-work-map.png)
+
 ## What Unio Does
 
 - **Bring your AI agents into one team.** Connect agents from different AI
@@ -97,9 +99,36 @@ This is a startup rule for cooperating lead AIs, not detection of other AI
 tools; it does not attach Unio to a chat that is already running. The
 dashboard stays up until `unio dashboard stop`, which never stops workers.
 
-[Everyday use](docs/DAILY-USE.md) · [Step by step](#a-task-step-by-step) · [Try it free](#try-it-free-no-ai-calls) ·
+[Everyday use](docs/DAILY-USE.md) · [A look around](#a-look-around) · [Step by step](#a-task-step-by-step) · [Try it free](#try-it-free-no-ai-calls) ·
 [FAQ](#faq) · [Under the hood](#for-the-curious-and-the-nerdy) ·
 [What's next](#whats-next)
+
+![](docs/brand/patterns/line-4.svg)
+
+## A look around
+
+The [website](https://danielmevit.github.io/unio/) runs the real dashboard on
+a demo project that you can drag, zoom and click.
+
+![The Unio website: the headline in dot letters and the live work map demo](docs/screenshots/website.webp)
+
+**What needs you.** Every task with its run, checks and review, its state and
+the next command to copy.
+
+![The dashboard's task list: four tasks that need you, each with its run, checks and review and the next command](docs/screenshots/dashboard-tasks.png)
+
+**Who works on what.** Every configured AI agent, its budget and what it is
+running. What the page cannot confirm stays Unknown.
+
+![The dashboard's agent cards: each AI agent with its budget, running work, tool, sign-in and allowance](docs/screenshots/dashboard-agents.png)
+
+**What happened.** Failed attempts, and one row per task run: started, ran,
+checked, reviewed and merged.
+
+![The dashboard's tools and activity log: failed attempts, and one row per task run](docs/screenshots/dashboard-activity.png)
+
+These screenshots show the demo project. On your computer, `unio dashboard`
+opens the same view of your own work.
 
 ![](docs/brand/patterns/line-1.svg)
 
