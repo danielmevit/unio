@@ -82,21 +82,24 @@ information is unavailable, say Unknown instead of inventing a percentage.
 ## Visual identity
 
 The rules behind the website (<https://danielmevit.github.io/unio/>) and the
-dashboard's look; the logo files are in [docs/brand](brand/). The source of
+dashboard's look; the logo and pattern files are in the
+[brand kit](brand/README.md). The source of
 truth for every value is the code named in each part; update this section
 when that code changes.
 
 ### Logo
 
-The logo is the word **UNIO** set in Doto, weight 900, uppercase. The
-dot-matrix lettering is the mark: many dots (AIs) forming one word. On the
-website header it stands alone, with no pill or separate symbol, in the soft
-off-white `--title` beside the navigation.
+The logo is the word **UNIO** set in Doto, drawn in dots. The dot-matrix
+lettering is the mark: many dots (tasks done by AIs from different labs)
+forming one word. Every dot is an even rounded square at 80 % of the dot
+spacing. On the website header it stands alone, with no pill or separate
+symbol, and animates like the titles.
 
-| File | Use |
-| --- | --- |
-| `brand/unio-logo_light.svg` / `brand/unio-logo_dark.svg` | The older lockup (dot-U mark + wordmark), still at the top of the README until it is redrawn in Doto. |
-| `brand/unio-mark_light.svg` / `brand/unio-mark_dark.svg` | The older dot-U mark alone. The website favicon (`site/public/favicon.svg`) is still that U, and the dashboard's loading screen still builds it dot by dot. |
+The logo files, the README dot patterns and the story of what the dots mean
+are in the [brand kit](brand/README.md): one-ink, agent-tone and animated
+versions for light and dark backgrounds, all drawn from Doto by
+`tools/make-brand-assets.py`. The earlier dot-matrix U (`unio-mark_*.svg`)
+is still the website favicon and the dashboard's loading screen.
 
 ### Typography
 
