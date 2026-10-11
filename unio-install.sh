@@ -16604,10 +16604,6 @@ def collection_read(path):
 
 def collection_atomic(path,d):
     directory=os.path.dirname(path)
-    for name in os.listdir(directory):
-        stale=os.path.join(directory,name)
-        if name.startswith('.collection-') and not os.path.islink(stale):
-            os.unlink(stale)
     fd,temp=tempfile.mkstemp(prefix='.collection-',dir=directory)
     try:
         with os.fdopen(fd,'w') as out:
@@ -16692,9 +16688,6 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
             or any(not isinstance(s,dict) or set(s)!={'pf','exit'} or not isinstance(s['pf'],str)
                    or type(s['exit']) is not int or not 0<=s['exit']<=255 for s in specs)):
         fail('invalid attempt evidence')
-    for s in specs:
-        if os.path.realpath(s['pf'])!=os.path.abspath(s['pf']) or not os.path.isfile(s['pf']):
-            fail('unsafe attempt material copy')
     before_json=json.dumps(d['before'],sort_keys=True,separators=(',',':'))
     if state_arg=='interrupted':
         # Best-effort record: children were stopped before receipt publication,
@@ -16722,40 +16715,46 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
         if result['reviewer']!=attempt['reviewer'] or result['policy_task']!=attempt['policy_task']:
             reasons.append('child_failed'); continue
         if not result['admitted']:
-            state,code,complete,rreasons,after_arg='unknown',None,'no',['budget_refused'],before_json
+            state,code,complete,rreasons='unknown',None,'no',['budget_refused']
         elif not result['invoked']:
-            state,code,complete,rreasons,after_arg='unknown',None,'no',['stop_active'],before_json
+            state,code,complete,rreasons='unknown',None,'no',['stop_active']
         else:
             code=result['process_exit_code']
-            try: state=verdict(safe(root,'coord','reports',attempt['raw_directory'],'stdout.log'))
+            try:
+                stdout=safe(root,'coord','reports',attempt['raw_directory'],'stdout.log')
+                review_digest(stdout)
+                state=verdict(stdout)
             except (ValueError,OSError): state='unknown'
             if code!=0: state='failed'
-            rreasons=[]
-            if drift:
-                rreasons.append('candidate_changed_during_review')
-                if code==0: state='unknown'
-            state,complete,after_arg=state,'yes',after_json
+            rreasons=['reviewer_process_failed'] if code!=0 else ['unknown_verdict'] if state=='unknown' else []
+            complete='yes'
+        if drift: rreasons.append('candidate_changed_during_review')
+        if after is None: rreasons.append('post_snapshot_failed')
         try:
             review_receipt(root,worker,task,attempt['reviewer'],state,
                            str(code) if code is not None else '',complete,','.join(rreasons),
-                           before_json,after_arg,specs[i]['pf'],raw,result['policy_group'] or '',d['material_sha256'])
+                           before_json,after_json,specs[i]['pf'],raw,result['policy_group'] or '',d['material_sha256'])
         except (ValueError,OSError,KeyError,TypeError):
             if not os.path.exists(os.path.join(raw,'receipt.json')):
                 reasons.append('receipt_failed'); continue
             reasons.append('material_changed')
-        receipt=review_read(os.path.join(raw,'receipt.json'))
+        try: receipt=review_read(os.path.join(raw,'receipt.json'))
+        except (ValueError,OSError,KeyError,TypeError):
+            reasons.append('receipt_failed'); continue
         if (receipt['worker']!=worker or receipt['task']!=task or receipt['reviewer']!=attempt['reviewer']
+                or receipt['before']!=d['before'] or receipt['policy_group']!=result['policy_group']
                 or receipt['material_sha256']!=d['material_sha256']):
             fail('published receipt does not match its attempt')
         attempt['receipt_id']=receipt['id']
         bound+=1
         collection_valid(d)
         collection_atomic(os.path.join(directory,'collection.json'),d)
-    final='unknown' if after is None else 'completed'
+    final='unknown' if after is None or bound!=len(d['attempts']) else 'completed'
     d.update(state=final,finished_at=stamp(),after=after,reasons=sorted(set(reasons))[:16])
     collection_valid(d)
     collection_atomic(os.path.join(directory,'collection.json'),d)
-    print('%s %s %d %s'%(d['id'],final,bound,','.join(sorted(set(reasons))[:16])))
+    ready=final=='completed' and after==d['before'] and not reasons
+    print('%s %s %d %d'%(d['id'],final,bound,int(ready)))
 
 def agent_data(conf,offdir):
     output=[]
@@ -22015,7 +22014,7 @@ rs_child() { # $1=root $2=reviewer $3=label $4=material $5=workdir $6=rawdir $7=
   trap 'exit 130' INT
   trap 'exit 143' TERM
   if ! policy_admit_hold "$root" "$reviewer" "$reviewer" "$label" review "$pf"; then
-    rs_child_result "$raw/attempt.json" "$reviewer" "$label" 0 "" 0 "" budget_refused
+    rs_child_result "$raw/attempt.json" "$reviewer" "$label" 0 "${POLICY_GROUP:-}" 0 "" budget_refused
     exit 0
   fi
   group="$POLICY_GROUP"
@@ -22049,8 +22048,7 @@ rs_wait_children() { # reap every owned child, surviving trap-interrupted waits
   local i rc
   for i in "${!RS_PIDS[@]}"; do
     while :; do
-      if wait "${RS_PIDS[$i]}"; then rc=0; break; fi
-      rc=$?
+      if wait "${RS_PIDS[$i]}"; then rc=0; else rc=$?; fi
       # A trapped signal interrupts wait while the child still runs; wait again.
       if [ "$RS_SIGNALED" = 1 ] && [ "$rc" -gt 128 ] && kill -0 "${RS_PIDS[$i]}" 2>/dev/null; then
         continue
@@ -22058,21 +22056,32 @@ rs_wait_children() { # reap every owned child, surviving trap-interrupted waits
       break
     done
     RS_EXIT[$i]=$rc
+    RS_DONE[$i]=1
   done
   return 0
 }
 
 rs_exit_cleanup() { # parent EXIT: stop and reap owned children, drop scratch
-  local pid alive n=0
-  for pid in "${RS_PIDS[@]}"; do kill -TERM -- "$pid" 2>/dev/null || true; done
+  local pid alive i n=0
+  for i in "${!RS_PIDS[@]}"; do
+    [ "${RS_DONE[$i]:-0}" = 1 ] && continue
+    kill -TERM -- "${RS_PIDS[$i]}" 2>/dev/null || true
+  done
   while [ "$n" -lt 200 ]; do
     alive=0
-    for pid in "${RS_PIDS[@]}"; do kill -0 -- "$pid" 2>/dev/null && alive=1; done
+    for i in "${!RS_PIDS[@]}"; do
+      [ "${RS_DONE[$i]:-0}" = 1 ] && continue
+      kill -0 -- "${RS_PIDS[$i]}" 2>/dev/null && alive=1
+    done
     [ "$alive" = 0 ] && break
     n=$((n + 1)); sleep 0.05
   done
-  for pid in "${RS_PIDS[@]}"; do kill -KILL -- "$pid" 2>/dev/null || true; done
-  for pid in "${RS_PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
+  for i in "${!RS_PIDS[@]}"; do
+    [ "${RS_DONE[$i]:-0}" = 1 ] && continue
+    pid="${RS_PIDS[$i]}"
+    if kill -0 -- "$pid" 2>/dev/null; then policy_signal_descendants "$pid" KILL; fi
+    wait "$pid" 2>/dev/null || true
+  done
   rm -rf -- "${RS_SCRATCH[@]}" 2>/dev/null || true
   return 0
 }
@@ -22084,10 +22093,7 @@ review_set_usage() {
 }
 
 review_set_alias_ok() { # $1=alias — same shape as check_id, but a refusal is exit 2
-  case "$1" in
-    ''|.|..|-*|*/*|*\\*|*..*|*[[:cntrl:][:space:]]*) return 1;;
-  esac
-  return 0
+  [[ "$1" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,127}$ ]]
 }
 
 cmd_review_set() { # one explicitly requested reviewer set over the same material
@@ -22104,7 +22110,7 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   # Argument validation precedes any project state read.
   [ "$#" -ge 4 ] || { review_set_usage; return 2; }
   [ "$#" -le 10 ] || { echo 'unio review-set: at most 8 reviewers' >&2; return 2; }
-  local worker="$1" task="$2" r
+  local worker="$1" task="${2%.md}" r
   shift 2
   for r in "$@"; do
     case "$r" in --*) echo 'unio review-set: options are not accepted' >&2; return 2;; esac
@@ -22117,7 +22123,6 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   fi
   local root
   root=$(find_root) || { echo 'unio review-set: not inside a Unio project' >&2; return 2; }
-  task="${task%.md}"
   local tf="$root/coord/tasks/$task.md"
   [ -f "$tf" ] || { echo "unio review-set: no task file: $tf" >&2; return 2; }
   [ -d "$root/wt/$worker" ] || { echo "unio review-set: no worktree: $root/wt/$worker" >&2; return 2; }
@@ -22147,6 +22152,8 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
     rm -rf -- "$nd"; return 2
   fi
   material_hash=$(quality review-material-hash "$pf") || { rm -rf -- "$nd"; return 2; }
+  host_warning || { rm -rf -- "$nd"; return 2; }
+  [ ! -e "$root/coord/STOP" ] || { rm -rf -- "$nd"; return 2; }
   # Raw evidence folders exist, with empty streams, before any call.
   local -a raws=()
   local raw
@@ -22171,26 +22178,26 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
     cp -- "$pf" "$cnd/material.md" || { rm -rf -- "$nd" "$cnd" "${raws[@]}"; return 2; }
     nds+=("$cnd"); pfs+=("$cnd/material.md")
   done
-  RS_PIDS=(); RS_EXIT=(); RS_SCRATCH=("$nd" "${nds[@]}")
+  RS_PIDS=(); RS_EXIT=(); RS_DONE=(); RS_SCRATCH=("$nd" "${nds[@]}")
   RS_SIGNALED=0; RS_SIGNAL_RC=0
   trap 'rs_signal 130' INT
   trap 'rs_signal 143' TERM
   trap 'rs_exit_cleanup' EXIT
   for i in "${!reviewers[@]}"; do
+    [ "$RS_SIGNALED" = 0 ] || break
     rs_child "$root" "${reviewers[$i]}" "rset-$cid-$((i + 1))" "${pfs[$i]}" "${nds[$i]}" "${raws[$i]}" "${rcmds[$i]}" &
     RS_PIDS[$i]=$!
   done
   rs_wait_children
   local state_arg=completed
   [ "$RS_SIGNALED" = 0 ] || state_arg=interrupted
-  local specs="" spec fin_state=unknown
-  for i in "${!RS_PIDS[@]}"; do
-    spec=$(printf '{"pf":"%s","exit":%s}' "${pfs[$i]}" "${RS_EXIT[$i]:-1}")
-    specs="${specs:+$specs,}$spec"
-  done
-  if out=$(quality review-set-finalize "$root" "$worker" "$task" "$cdir" "$state_arg" "[$specs]"); then
+  local specs fin_state=unknown ready=0 bound=0
+  local -a spec_args=()
+  for i in "${!pfs[@]}"; do spec_args+=("${pfs[$i]}" "${RS_EXIT[$i]:-1}"); done
+  specs=$(python3 -c 'import json,sys; a=sys.argv[1:]; print(json.dumps([dict(pf=a[i],exit=int(a[i+1])) for i in range(0,len(a),2)]))' "${spec_args[@]}")
+  if out=$(quality review-set-finalize "$root" "$worker" "$task" "$cdir" "$state_arg" "$specs"); then
     local rid rstate
-    read -r rid rstate _ <<< "$out"
+    read -r rid rstate bound ready <<< "$out"
     [ "$rid" = "$cid" ] && fin_state="$rstate"
   fi
   # Release the worker lock before asking the read-only summary.
@@ -22204,7 +22211,9 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   echo "review-set collection $cid: reviewers=$csv state=$fin_state"
   local sum_rc=0
   quality reviews "$root" "$worker" "$task" "$csv" text || sum_rc=$?
+  [ "$sum_rc" != 1 ] || return 1
   [ "$fin_state" = completed ] || return 2
+  [ "$ready" = 1 ] && [ "$bound" = "${#reviewers[@]}" ] || return 2
   return "$sum_rc"
 }
 
@@ -25986,7 +25995,7 @@ cat > "$COMP_DIR/unio" <<'COMPLETION_EOF'
 _unio() {
   local cur cmd root d cmds
   cur="${COMP_WORDS[COMP_CWORD]}"
-  cmds="new init run verify result handoff save diff sync review reviews race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan dispatch capacity readiness off on smoke selftest stop resume allow-retry version license help"
+  cmds="new init run verify result handoff save diff sync review reviews review-set race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan dispatch capacity readiness off on smoke selftest stop resume allow-retry version license help"
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$cmds" -- "$cur") ); return
   fi
