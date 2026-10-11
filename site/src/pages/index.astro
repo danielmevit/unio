@@ -394,7 +394,7 @@ const faqs = [
       <section class="section wrap" id="install" aria-labelledby="install-title">
         <div class="section-head">
           <span class="index">04</span>
-          <h2 id="install-title">Try it free, with no AI calls</h2>
+          <h2 id="install-title"><span class="phone-line">Try it free,</span> <span class="phone-line">with no AI calls</span></h2>
           <ol class="bus-line bus-mini" aria-hidden="true">{agents.map((_, i) => <li style={`--tone: var(--t-${toneOf(i)})`} />)}<li class="bus-open" /></ol>
         </div>
         <div class="install">
@@ -425,7 +425,7 @@ const faqs = [
       <section class="section wrap" id="notes" aria-labelledby="notes-title">
         <div class="section-head">
           <span class="index">05</span>
-          <h2 id="notes-title">What Unio doesn't do</h2>
+          <h2 id="notes-title"><span class="phone-line">What Unio</span> <span class="phone-line">doesn't do</span></h2>
           <ol class="bus-line bus-mini" aria-hidden="true">{agents.map((_, i) => <li style={`--tone: var(--t-${toneOf(i)})`} />)}<li class="bus-open" /></ol>
         </div>
         <ul class="intel">
@@ -461,7 +461,7 @@ const faqs = [
           <a class="tab" href={repo}>GitHub</a>
           <a class="tab" href={`${repo}/releases`}>Releases</a>
           <a class="tab" href={doc("CHANGELOG.md")}>Changelog</a>
-          <a class="tab" href={doc("LICENSE")}>AGPL-3.0</a>
+          <a class="tab" href={doc("LICENSE")} title="GNU Affero General Public License v3.0" aria-label="License: GNU Affero General Public License v3.0">AGPL</a>
         </nav>
       </div>
     </footer>
@@ -517,14 +517,12 @@ const faqs = [
     --r-sm: 4px;
     --r-md: 6px;
     --r-out: 9px;
-    --gap: 2px;
+    --gap: 6px;
     color-scheme: dark;
     font-synthesis: none;
     -webkit-text-size-adjust: 100%;
   }
 
-  @media (min-width: 600px) { :root { --gap: 4px; } }
-  @media (min-width: 1024px) { :root { --gap: 6px; } }
   @media (min-width: 1920px) { :root { --gap: 8px; } }
   @media (min-width: 2560px) { :root { --gap: 10px; } }
 
@@ -745,6 +743,7 @@ const faqs = [
   /* the real dashboard on a demo project; it scrolls inside the panel */
   .map-live { background: var(--bg); }
   .map-live iframe { display: block; width: 100%; height: clamp(420px, 68vh, 640px); border: 0; }
+  @media (max-width: 760px) { .map-live iframe { height: clamp(340px, 56vh, 520px); } }
   .panel-foot {
     display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px;
     padding: 9px 12px; border-top: 1px solid var(--line); background: var(--deep);
@@ -973,6 +972,7 @@ const faqs = [
     .row-body { grid-column: 2 / -1; grid-row: 2; }
   }
   @media (max-width: 760px) {
+    .phone-line { display: block; }
     .tab-wide { display: none; }
     .hud .tabs > .tab:nth-child(3) { border-top-left-radius: var(--r-out); border-bottom-left-radius: var(--r-out); }
     .stamp { display: none; }
