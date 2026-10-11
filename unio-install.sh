@@ -23734,6 +23734,25 @@ An earlier connection failure does not prove
 current unavailability, exhausted allowance or poor reasoning. Recheck through
 one useful authorized task, preserve its outcome, and avoid blind retry loops.
 
+## Save-latency investigation — 2026-10-11
+
+GLM 5.3/high through Mistral Vibe 2.26.1 completed one useful profiling run,
+then stopped at its configured four-million cumulative-token cap: Source and
+adapter exit3, 4,104,595 cumulative tokens, 1,350.648 seconds and an estimated
+$5.953709 inside the subscription. This was a local task bound, not confirmed
+monthly allowance exhaustion or a connection failure. Effective server identity,
+effort and remaining allowance stay Unknown.
+
+It left an uncommitted traversal/retention patch despite the early-commit
+instruction. The lead preserved that patch in a separate incomplete commit.
+A baseline profile and a same-worktree traversal comparison identify repeated
+Git/ignore queries as a useful target, but matched full-save validation and
+refusal checks were not completed. Personal source review also found project-cap
+arithmetic omitting metadata-corrupt entries and a breadth-first traversal with
+unbounded live directory descriptors. Those changes must be corrected before
+reuse. The partial optimization is unaccepted and unmerged. Use bounded context, early checkpoints and the preserved measurements
+for the next correction; do not reset the run history or blindly retry it.
+
 ## Adapter batch — 2026-10-09
 
 - Corrected-wrapper live GLM 5.3/high through Vibe saved packaging commit

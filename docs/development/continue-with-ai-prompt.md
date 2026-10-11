@@ -7,23 +7,35 @@ do not infer current availability from an earlier successful worker run.
 
 ## Current release — 2026-10-10
 
-Continuation 2026-10-11: official and installed remain 0.5.9. Owner dashboard
-and website work are reserved for another session: do not edit, merge, build,
-test or restart that work, or replace its payload through global installation.
-The 0.5.10 save-retention/auth candidate is awaiting combined release validation.
-The 0.5.11 save-performance probe passed focused checks. The fleet CLI candidate
-was completed by this existing lead after Gemini's rejected draft and GLM's
-partial correction: 15 focused tests passed, native verification passed all four
-commands and seven paths, and personal lead review accepted the candidate.
-Pre-existing installer bytes and protected source trees were unchanged.
-The owner-authorized fresh GLM 5.3/high Vibe attempt connected and made
-partial edits before its local two-million-token cap; this was not a connection
-failure or confirmed subscription limit. Copilot Auto Balance delivered the
-reviewed planner documentation proposal, Source/native/adapter 0. Worker attempts
-and useful saved work remain preserved. Read the newest local log/receipts for
-actual outcomes before editing active worker files. The ready-task planner is
-documented future work, not an implemented scheduler. Continue 0.5.x, never 0.6.0
-for this batch.
+Continuation 2026-10-11: official and installed stable remain 0.5.9.
+The owner completed the dashboard/site work and pushed it through `d6e5f36`.
+That work is integrated with the checked CLI candidates; the earlier parallel
+UI writer hold has ended. Preserve its plain X controls, small status squares,
+frameless floating map controls and monochrome board. The website embeds the
+real dashboard map through a GET-only demo shim. Keep its `activity.css` injection
+anchor, rebuild the demo after dashboard changes and regenerate the installer
+with `tools/embed-browser.py` after every bridge edit.
+
+Source includes the 0.5.10 archival/authentication/daily-use candidate and the
+0.5.11 performance probe, fleet overview and read-only task planner. These are
+not new published releases. The planner passed 12 focused tests plus native
+scope/validation and lead corrections; dispatch remains a separate future slice.
+The combined-source validation retains one failed full-gate restore assertion:
+the isolated case and subsequent full saving sequence passed, including all
+186 recovery checks. Failure diagnostics and concurrent limits-test logging
+were hardened without removing assertions. Read the newest local receipts for
+remaining combined checks and exact publication state; do not infer a new release
+from a source push. Current work mode is YOLO/low; continue 0.5.x, never 0.6.0
+for this batch. Google/Bing account setup remains explicitly deferred.
+
+Next functional priority is the reproduced 30-second automatic-save timeout.
+GLM 5.3/high through Vibe 2.26.1 profiled the path, then stopped at its configured
+4M cumulative-token cap (Source3). The lead committed its unvalidated partial
+work separately; it is not merged. A representative baseline profile points to
+repeated Git/ignore calls. A traversal-only comparison preserved the same file
+map with fewer calls, but full capture, equivalent history and refusal behavior
+still need validation. Preserve the partial work and evidence; never describe
+it as an accepted optimization or a subscription outage.
 
 [Unio v0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9) is
 published and installed from `0c2def4dfee307622b3d5959641a22d220d1576a`.
@@ -33,9 +45,9 @@ all six browser suites, exact artifacts, upgrade/restore, official download
 hashes and installed runtime/payload checks passed. Operator settings and
 custom templates were preserved; earlier failed evidence and tags remain intact.
 
-The next functional tasks are project-wide save retention preserving history,
-sanitized supported authentication observations, and a bounded isolated save
-performance probe. Check the local coordination log for actual worker state;
+The next functional task is measured recovery-save optimization, followed by
+explicit single-attempt dispatch. Retention, cached authentication and the
+isolated performance probe are source candidates pending release. Check the local coordination log for actual worker state;
 prepared tasks are not completed implementations. The latest managed dashboard
 URL comes from `unio dashboard ensure --open-browser`. A separate design preview
 may show demo data. Further map grouping and remote pairing remain follow-up work.

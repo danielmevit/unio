@@ -4,7 +4,7 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.10 — safer recovery and daily-use improvements — 2026-10-10
+## 0.5.10 — safer recovery and daily-use improvements — unreleased candidate
 
 See [release scope and usage](docs/RELEASE-0.5.10.md).
 

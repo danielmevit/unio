@@ -34,12 +34,12 @@ passed = [0]
 
 def check(label, condition=True, detail=None):
     if not condition:
-        print('FAIL ' + label)
+        print('FAIL ' + label, flush=True)
         if detail:
             print(detail, flush=True)
         sys.exit(1)
     passed[0] += 1
-    print('  ok %s' % label)
+    print('  ok %s' % label, flush=True)
 
 
 with tempfile.TemporaryDirectory(prefix='work-saving-') as directory:
