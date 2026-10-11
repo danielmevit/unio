@@ -5,6 +5,12 @@ starting work. They take precedence over dated examples in the repository.
 Check the owner's latest instructions, `unio version`, and `unio policy`;
 do not infer current availability from an earlier successful worker run.
 
+The lead **must** follow [task estimates and progress summaries](LEAD-ROUTING.md#mandatory-task-estimates-and-progress-summaries):
+give a rough time range before every task, proactively summarize progress at
+least every 10 minutes during active work or waits, and revise estimates when
+the plan changes. Include elapsed and remaining time, active workers, blockers
+and the next step. Do not wait for the owner to request a status report.
+
 ## Current delivery state — 2026-10-12
 
 Official and installed stable remain **v0.5.9**, published from `0c2def4`.

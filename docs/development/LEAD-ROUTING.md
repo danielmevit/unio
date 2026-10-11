@@ -7,15 +7,39 @@ current instructions and the selected project's rules. These defaults apply
 whenever Unio is active; they are not permission to spend beyond an owner's
 approved plans, task scope or invocation budget.
 
-## Give a rough estimate before new features
+## Mandatory task estimates and progress summaries
 
-When introducing a new feature or milestone, tell the owner what the next
-useful slice delivers and give a rough elapsed-time range. Distinguish coding
-from required checks, publication and installation. Name material uncertainty,
-such as an unavailable worker or an unresolved dependency, and update the range
-when findings change it. Estimates guide priorities; they are not guarantees
-or automatic time limits on a healthy worker. Prefer finishing the current
-bounded slice and releasing checked work over continually expanding its scope.
+The lead must give the owner a rough elapsed-time estimate before starting
+each task or milestone, including delegated work, fixes, documentation and
+release work. State the useful outcome and a realistic time range. Separate
+implementation from checks, publication and installation where applicable,
+and name material uncertainty such as an unavailable worker or a dependency.
+Group routine commands into their task's estimate.
+
+While work is underway, the lead must proactively send a concise overall
+summary at least every **10 minutes**, including time spent waiting for workers
+or checks. Do not wait for the owner to ask. Include:
+
+- What finished since the previous summary and what is still in progress.
+- Which workers are active, their tasks and the latest observed progress.
+- Any blocker or decision affecting delivery.
+- Elapsed time against the estimate and an updated remaining-time range.
+- The next concrete step.
+
+Send an earlier update when a material failure, delay, scope change or worker
+completion changes the plan. Revise the estimate promptly when findings change
+it; if the original range is exceeded, explain why and give a new range. At task
+completion or a handoff, report the outcome and actual elapsed time when known,
+then estimate the next task before starting it. Record estimates, start times
+and checkpoints in the coordination log or task notes so a resumed lead can
+continue reporting from evidence. Keep normal shorter progress updates between
+these summaries when useful or required by the active session's instructions.
+
+Estimates guide priorities; they are not guarantees, token or quota readings,
+or automatic time limits on a healthy worker. Preserve the current bounded
+scope and release checked work before continually expanding it. These are
+mandatory instructions for an active lead; they do not create a background
+notification service while the lead session is stopped.
 
 ## Show the dashboard link at session start
 
