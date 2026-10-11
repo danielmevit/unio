@@ -447,7 +447,7 @@ const faqs = [
               {next.map((n) => <li><a href={n.href}>{n.label} <span aria-hidden="true">↗</span></a></li>)}
             </ul>
           </div>
-          <div class="console brackets">
+          <div class="console">
             <div class="panel-bar">
               <span class="panel-title">Terminal</span>
               <button class="tab copy" type="button" data-copy={commands.join("\n")}>Copy</button>
@@ -505,6 +505,30 @@ const faqs = [
     </footer>
 
     <script>
+      // Outer corners of each card group: a card's corner counts as outer
+      // when no card sits next to it on that side, neither across nor up or
+      // down. Worked out from where the cards actually are, so it follows
+      // the column count at every width and FAQ answers opening.
+      const markEdges = (group: Element) => {
+        const cards = [...group.children].filter((c) => c.getClientRects().length) as HTMLElement[];
+        const at = (values: number[]) => { const keys: number[] = []; for (const v of values.sort((a, b) => a - b)) if (!keys.some((k) => Math.abs(k - v) < 3)) keys.push(v); return (v: number) => keys.findIndex((k) => Math.abs(k - v) < 3); };
+        const boxes = cards.map((c) => c.getBoundingClientRect());
+        const rowOf = at(boxes.map((b) => b.top)), colOf = at(boxes.map((b) => b.left));
+        const spots = new Set(boxes.map((b) => rowOf(b.top) + ":" + colOf(b.left)));
+        const has = (r: number, c: number) => spots.has(r + ":" + c);
+        cards.forEach((card, i) => {
+          const r = rowOf(boxes[i].top), c = colOf(boxes[i].left), edge = [];
+          if (!has(r, c - 1) && !has(r - 1, c)) edge.push("tl");
+          if (!has(r, c + 1) && !has(r - 1, c)) edge.push("tr");
+          if (!has(r, c + 1) && !has(r + 1, c)) edge.push("br");
+          if (!has(r, c - 1) && !has(r + 1, c)) edge.push("bl");
+          card.dataset.edge = edge.join(" ");
+        });
+      };
+      const groups = document.querySelectorAll(".slots, .grid, .rows, .intel, .faq");
+      const edges = new ResizeObserver((entries) => { for (const entry of entries) markEdges(entry.target); });
+      for (const group of groups) { markEdges(group); edges.observe(group); }
+
       // The readouts (the hero's and each section's) type themselves in the
       // first time they come into view (the hero's right away), one line after
       // another, and the cursor keeps blinking at the end. With
@@ -777,22 +801,6 @@ const faqs = [
   .btn-on { background: var(--on); border-color: var(--on); color: var(--on-text); }
   .btn-on:hover { background: var(--on-hover); color: var(--on-text); }
 
-  /* Corner brackets around a panel */
-  .brackets { position: relative; }
-  .brackets::before {
-    content: ""; position: absolute; inset: -7px; pointer-events: none;
-    --c: var(--line-alt);
-    background:
-      linear-gradient(var(--c), var(--c)) top left / 14px 1px,
-      linear-gradient(var(--c), var(--c)) top left / 1px 14px,
-      linear-gradient(var(--c), var(--c)) top right / 14px 1px,
-      linear-gradient(var(--c), var(--c)) top right / 1px 14px,
-      linear-gradient(var(--c), var(--c)) bottom left / 14px 1px,
-      linear-gradient(var(--c), var(--c)) bottom left / 1px 14px,
-      linear-gradient(var(--c), var(--c)) bottom right / 14px 1px,
-      linear-gradient(var(--c), var(--c)) bottom right / 1px 14px;
-    background-repeat: no-repeat;
-  }
 
   /* Hero */
   .hero {
@@ -906,7 +914,7 @@ const faqs = [
     position: relative;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem;
     aspect-ratio: 1 / 1.12; padding: 1.2rem 6px calc(1.3rem + 10px);
-    background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+    background: var(--paper); border: 1px solid var(--line); border-radius: var(--tl, var(--r-sm)) var(--tr, var(--r-sm)) var(--br, var(--r-sm)) var(--bl, var(--r-sm));
     color: var(--label);
   }
   .slot-code { position: absolute; top: 6px; left: 8px; }
@@ -935,11 +943,11 @@ const faqs = [
 
   /* Feature cards */
   .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); }
-  .card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm); }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--tl, var(--r-sm)) var(--tr, var(--r-sm)) var(--br, var(--r-sm)) var(--bl, var(--r-sm)); }
   .card-bar {
     display: flex; justify-content: space-between;
     padding: 8px 14px; background: var(--deep); border-bottom: 1px solid var(--line);
-    color: var(--muted); border-radius: calc(var(--r-sm) - 1px) calc(var(--r-sm) - 1px) 0 0;
+    color: var(--muted); border-radius: calc(var(--tl, var(--r-sm)) - 1px) calc(var(--tr, var(--r-sm)) - 1px) 0 0;
   }
   .card-body { padding: 16px 14px 18px; }
   .card h3 { font-size: 0.86rem; line-height: 1.3; }
@@ -952,7 +960,7 @@ const faqs = [
     grid-template-columns: 3rem minmax(170px, 0.9fr) minmax(0, 2.4fr) 11rem;
     gap: 16px; align-items: center;
     padding: 14px 16px;
-    background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+    background: var(--paper); border: 1px solid var(--line); border-radius: var(--tl, var(--r-sm)) var(--tr, var(--r-sm)) var(--br, var(--r-sm)) var(--bl, var(--r-sm));
   }
   .row-num { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
   .row-title { font-size: 0.82rem; }
@@ -992,7 +1000,7 @@ const faqs = [
 
   /* Intel rows */
   .intel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); margin: 0; padding: 0; list-style: none; }
-  .intel li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm); }
+  .intel li { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--tl, var(--r-sm)) var(--tr, var(--r-sm)) var(--br, var(--r-sm)) var(--bl, var(--r-sm)); }
   .tag { flex: none; padding: 2px 7px; background: var(--chip); color: var(--label); border-radius: var(--r-xs); }
   .intel p { color: var(--muted); font-size: 0.88rem; }
 
@@ -1000,7 +1008,7 @@ const faqs = [
   .faq { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
   /* A closed question keeps its own height; open questions in the same row
      match the taller one. */
-  .faq details { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm); align-self: start; }
+  .faq details { background: var(--paper); border: 1px solid var(--line); border-radius: var(--tl, var(--r-sm)) var(--tr, var(--r-sm)) var(--br, var(--r-sm)) var(--bl, var(--r-sm)); align-self: start; }
   .faq details[open] { align-self: stretch; }
   .faq summary {
     display: flex; justify-content: space-between; align-items: center; gap: 16px;
@@ -1008,7 +1016,7 @@ const faqs = [
   }
   .faq summary::-webkit-details-marker { display: none; }
   .faq summary::after { content: "▾"; color: var(--muted); transition: transform 0.15s; }
-  .faq details[open] summary { background: var(--on); color: var(--on-text); border-radius: calc(var(--r-sm) - 1px) calc(var(--r-sm) - 1px) 0 0; }
+  .faq details[open] summary { background: var(--on); color: var(--on-text); border-radius: calc(var(--tl, var(--r-sm)) - 1px) calc(var(--tr, var(--r-sm)) - 1px) 0 0; }
   .faq details[open] summary::after { color: var(--on-text); transform: rotate(180deg); }
   .faq details p { padding: 14px 16px 16px; color: var(--muted); font-size: 0.9rem; }
   @media (prefers-reduced-motion: reduce) { .faq summary::after { transition: none; } }
@@ -1023,6 +1031,15 @@ const faqs = [
   .foot-hud .tabs { margin-left: 0; }
   .stamp { display: flex; align-items: center; gap: 10px; margin-inline: auto; }
   .barcode { width: 92px; height: 14px; fill: var(--ghost); }
+
+  /* A group of cards reads as one shape: corners on the group's outer edge
+     are rounder, inner corners stay tight (like the segmented buttons).
+     The page script marks the outer corners from the live layout, so it
+     holds for any number of columns; each card's own radius reads them. */
+  :is(.slots, .grid, .rows, .intel, .faq) > [data-edge~="tl"] { --tl: var(--r-out); }
+  :is(.slots, .grid, .rows, .intel, .faq) > [data-edge~="tr"] { --tr: var(--r-out); }
+  :is(.slots, .grid, .rows, .intel, .faq) > [data-edge~="br"] { --br: var(--r-out); }
+  :is(.slots, .grid, .rows, .intel, .faq) > [data-edge~="bl"] { --bl: var(--r-out); }
 
   /* Hover: panels answer the pointer with a thicker edge and a lift in
      shade; tiles also take their agent's tone. */
