@@ -10,13 +10,16 @@ import { marks, evenOdd } from "../marks";
 
 // The version has one home: the newest release heading in CHANGELOG.md. Read it
 // at build time rather than restate it here, or the site will eventually
-// advertise a version that isn't the one on the releases page.
+// advertise a version that isn't the one on the releases page. A heading that
+// says "unreleased" (e.g. "## 0.5.10 — … — unreleased candidate") keeps its
+// real number in the changelog but is skipped here until that word is
+// removed at release.
 const changelog = fs.readFileSync(
   new URL("../../../CHANGELOG.md", import.meta.url),
   "utf8",
 );
-const match = changelog.match(/^## (\d+\.\d+\.\d+)\b/m);
-if (!match) throw new Error("Could not read the latest version from CHANGELOG.md");
+const match = changelog.match(/^## (\d+\.\d+\.\d+)\b(?![^\n]*unreleased)/im);
+if (!match) throw new Error("Could not read the latest released version from CHANGELOG.md");
 const version = match[1];
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
