@@ -25106,6 +25106,16 @@ terminal rendering and added executable quoted examples. Effective model/effort
 remain Unknown. Native0.5.9 automatic save helpers timed out for both runs;
 preserved Git commits are evidence of saved work, not successful recovery saves.
 
+After the owner made Gemini available again, Antigravity1.3.3 /
+Gemini3.1ProHigh/high returned a separate release-notes proposal:
+Source0/native0/adapter0, one invocation and no tracked edits. The lead corrected
+an archive path, an unsupported dispatch shortcut, nonexistent gate commands,
+private local links, stale test status and invented publication/signing approval
+requirements. This supports checked documentation assistance, not independent
+release acceptance. Effective model/effort remain Unknown. Its save attempts
+refused because this newly prepared worker lacked its native marker; the setup
+was repaired after the run, without rewriting those failures or retrying the task.
+
 ## Review receipt implementation — 2026-10-11
 
 Vibe 2.26.1 / GLM5.3 / high ended `REVIEW-RECEIPTS-VIBE-1` with Source2:
