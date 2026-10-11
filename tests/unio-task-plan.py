@@ -6,6 +6,7 @@
 import copy
 from datetime import datetime, timezone
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -905,6 +906,32 @@ sys.exit(1)
         bind_file = self.coord / 'ui-execution' / 'bindings' / f"{job_id}.json"
         orig_bind = bind_file.read_bytes()
         bind_obj = json.loads(orig_bind)
+        spec = importlib.util.spec_from_file_location('prepared_plan_types', PLAN_HELPER)
+        planner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(planner)
+        fields = [(key,) for key in (
+            'job_id', 'request_key', 'draft_id', 'draft_sha256',
+            'base_revision', 'worker_revision')]
+        fields += [('preview', key) for key in (
+            'reviewer', 'task_sha256', 'preview_hash')]
+        fields += [('fingerprints', key) for key in ('engine', 'config', 'template')]
+        for field in fields:
+            for value in (None, 17, True, [], {}):
+                with self.subTest(field=field, invalid_value=value):
+                    malformed = copy.deepcopy(bind_obj)
+                    target = malformed if len(field) == 1 else malformed[field[0]]
+                    target[field[-1]] = value
+                    bind_file.write_text(json.dumps(malformed))
+                    parsed = planner.parse_prepared_binding(
+                        self.coord, job_id, inv_tasks[0], self.commit1)
+                    self.assertEqual(parsed[1:3], ('unresolved', 'invalid_prepared_material'))
+        # Exercise the public planner too: malformed metadata is a JSON result,
+        # not an uncaught exception or an opportunity to publish a native task.
+        res = self.invoke_plan(inv, '--json')
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn('invalid_prepared_material', json.loads(res.stdout)['tasks'][0]['reasons'])
+        self.assertFalse((self.coord / 'tasks' / f'{task_id}.md').exists())
+        bind_file.write_bytes(orig_bind)
         bind_obj['base_revision'] = self.commit0
         bind_obj['worker_revision'] = self.commit0
         bind_file.write_text(json.dumps(bind_obj))

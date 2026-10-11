@@ -11560,12 +11560,11 @@ def parse_prepared_binding(coord_dir, job_id, task, base_revision):
     }
     if (not isinstance(binding, dict) or set(binding.keys()) != fields
             or not is_int(binding['schema_version']) or binding['schema_version'] != 1
-            or not HEX32.fullmatch(binding['job_id'])
-            or not HEX32.fullmatch(binding['request_key'])
-            or not HEX32.fullmatch(binding['draft_id'])
-            or not HEX64.fullmatch(binding['draft_sha256'])
-            or not GIT_ID.fullmatch(binding['base_revision'])
-            or not GIT_ID.fullmatch(binding['worker_revision'])
+            or any(not isinstance(binding[key], str) or not pattern.fullmatch(binding[key])
+                   for key, pattern in (
+                       ('job_id', HEX32), ('request_key', HEX32), ('draft_id', HEX32),
+                       ('draft_sha256', HEX64), ('base_revision', GIT_ID),
+                       ('worker_revision', GIT_ID)))
             or binding['worker_revision'] != binding['base_revision']
             or not isinstance(binding['base'], str)
             or not 1 <= len(binding['base']) <= 4096):
@@ -11581,9 +11580,9 @@ def parse_prepared_binding(coord_dir, job_id, task, base_revision):
             or not is_valid_task_id(preview['task_id'])
             or preview['task_id'] != 'ui-' + job_id
             or not is_valid_worker_id(preview['worker'])
-            or not LABEL.fullmatch(preview['reviewer'])
-            or not HEX64.fullmatch(preview['task_sha256'])
-            or not HEX64.fullmatch(preview['preview_hash'])):
+            or any(not isinstance(preview[key], str) or not pattern.fullmatch(preview[key])
+                   for key, pattern in (
+                       ('reviewer', LABEL), ('task_sha256', HEX64), ('preview_hash', HEX64)))):
         return None, 'unresolved', 'invalid_prepared_material', 'corrupt stored preview', None, None
 
     if preview['task_id'] != task['id']:
@@ -11671,7 +11670,8 @@ def parse_prepared_binding(coord_dir, job_id, task, base_revision):
 
     fingerprints = binding['fingerprints']
     if (not isinstance(fingerprints, dict) or set(fingerprints.keys()) != {'engine', 'config', 'template'}
-            or any(not HEX64.fullmatch(v) for v in fingerprints.values())):
+            or any(not isinstance(v, str) or not HEX64.fullmatch(v)
+                   for v in fingerprints.values())):
         return None, 'unresolved', 'invalid_prepared_material', 'corrupt fingerprints', None, None
 
     startup = binding['startup']
