@@ -1,0 +1,1 @@
+- Explain explicit concurrent review sets, shared-account admission, per-attempt receipts and local combined summaries in the review collection guide.
