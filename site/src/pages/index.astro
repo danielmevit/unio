@@ -330,7 +330,7 @@ const faqs = [
               </div>
             ))}
           </dl>
-          <p class="script" aria-hidden="true">
+          <p class="script sec-readout" aria-hidden="true">
             <span>unio://workspace · lead ⇄ workers ⇄ reviewers</span>
             <span>isolation 1 branch / worker · checks before merge</span>
             <span>build {version} · {builtOn} · agpl-3.0-only</span>
@@ -505,9 +505,9 @@ const faqs = [
     </footer>
 
     <script>
-      // Section readouts type themselves in the first time they come into
-      // view (never on page load unless already in view), one line after
-      // another; the cursor blinks briefly at the end, then goes. With
+      // The readouts (the hero's and each section's) type themselves in the
+      // first time they come into view (the hero's right away), one line after
+      // another, and the cursor keeps blinking at the end. With
       // reduced motion, or without IntersectionObserver, they simply show.
       const readoutEls = document.querySelectorAll<HTMLElement>(".sec-readout");
       const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -537,8 +537,6 @@ const faqs = [
             }
             if (line !== lines[lines.length - 1]) { typed.classList.remove("is-active"); await wait(140); }
           }
-          await wait(1800);
-          lines[lines.length - 1].querySelector(".typed")?.classList.remove("is-active");
         };
         const seen = new IntersectionObserver((entries) => {
           for (const entry of entries) {
@@ -731,16 +729,23 @@ const faqs = [
   /* the footer's version / build / date is real information: readable */
   .stamp { color: #8a8a8a; }
   .script { display: grid; gap: 2px; margin-top: 22px; line-height: 1.5; }
-  /* a readout closes each section, on alternating sides */
-  .sec-readout { margin-top: clamp(28px, 4vw, 56px); }
+  /* a readout closes each section (spaced like the hero's), on alternating sides */
   .sec-readout-right { justify-items: end; text-align: right; }
   /* typing: the untyped rest keeps its space, so nothing shifts or jumps */
   .sec-readout .rest { color: transparent; }
+  /* a thin blinking cursor; it stays at the end once the typing is done */
   .sec-readout .typed.is-active::after {
-    content: ""; display: inline-block; width: 0.62em; height: 1.05em; margin-right: -0.62em;
-    vertical-align: -0.2em; background: var(--label); animation: caret 0.9s steps(1) infinite;
+    content: ""; display: inline-block; width: 1.5px; height: 1.2em; margin: 0 -4px 0 2.5px;
+    vertical-align: -0.25em; background: var(--label); animation: caret 1s steps(1) infinite;
   }
   @keyframes caret { 50% { opacity: 0; } }
+  /* without the typing, the cursor still marks the end, without blinking */
+  @media (prefers-reduced-motion: reduce) {
+    .sec-readout > span:last-child::after {
+      content: ""; display: inline-block; width: 1.5px; height: 1.2em; margin: 0 -4px 0 2.5px;
+      vertical-align: -0.25em; background: var(--label);
+    }
+  }
   .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
   .tab {
     display: inline-flex; align-items: center; gap: 6px;
