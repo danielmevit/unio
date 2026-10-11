@@ -6096,7 +6096,7 @@ input { min-height: 44px; font-size: 13px; }
 .reopen-details { border-top: 1px solid var(--line-alt); margin-top: 22px; padding-top: 10px; }
 #draft-status, #job-status { font-size: 13px; margin: 14px 0 0; }
 #draft-status:empty, #job-status:empty { display: none; }
-.error { color: var(--text-error); background: var(--bg-error); border-left: 3px solid var(--border-error); padding: 12px; border-radius: 3px; overflow-wrap: anywhere; }
+.error { color: var(--text-error); background: var(--bg-error); border: 1px solid var(--border-error); padding: 12px; border-radius: 3px; overflow-wrap: anywhere; }
 #draft-reference { overflow-wrap: anywhere; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; background: var(--bg-pre); border: 1px solid var(--border-pre); border-radius: 5px; padding: 14px 16px; font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; max-width: 100%; margin: 0 0 16px; tab-size: 2; }
 summary { cursor: pointer; color: var(--text-summary); font-size: 13px; font-weight: 550; min-height: 44px; padding: 12px 0; overflow-wrap: anywhere; }
@@ -6243,7 +6243,8 @@ footer a { display: inline-flex; align-items: center; min-height: 44px; color: v
 .map-scroll-area {
   overflow: hidden;
   border: 1px solid var(--line);
-  background: var(--bg-main);
+  /* a barely visible dot grid, like a technical board */
+  background: var(--bg-main) radial-gradient(circle, color-mix(in srgb, var(--text-main) 7%, transparent) 1px, transparent 1.5px) 0 0 / 14px 14px;
   border-radius: 5px;
   height: clamp(320px, 55vh, 560px);
 }
@@ -6439,7 +6440,6 @@ button, input, textarea, .map-controls select, #theme-selector { border-radius: 
   margin: 0 -14px 10px; padding: 8px 14px; font-size: 11.5px; font-weight: 700;
   background: var(--bg-composer); border-bottom: 1px solid var(--line);
   border-radius: calc(var(--r-sm) - 1px) calc(var(--r-sm) - 1px) 0 0;
-  box-shadow: inset 3px 0 0 var(--tone, var(--line-alt));
 }
 .limits-card:hover { border-color: var(--text-label); box-shadow: 0 0 0 1px var(--text-label); }
 .limits-meter { border-radius: var(--r-xs); }
@@ -6555,10 +6555,9 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
   display: grid; gap: 10px 22px; align-items: center; padding: 14px 16px 10px;
   grid-template-columns: minmax(0, 1.5fr) auto minmax(150px, .7fr) minmax(0, 1.2fr);
   background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
-  box-shadow: inset 3px 0 0 var(--signal-color, var(--line-alt));
   transition: border-color .16s, box-shadow .16s;
 }
-.task-row:hover { border-color: var(--text-label); box-shadow: inset 3px 0 0 var(--signal-color, var(--line-alt)), 0 0 0 1px var(--text-label); }
+.task-row:hover { border-color: var(--text-label); box-shadow: 0 0 0 1px var(--text-label); }
 [data-signal="passed"] { --signal-color: var(--map-passed); }
 [data-signal="failed"] { --signal-color: var(--map-failed); }
 [data-signal="attention"] { --signal-color: var(--map-attention); }
@@ -6590,10 +6589,14 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 
 .task-status { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .state-pill {
-  display: inline-block; padding: 3px 8px; border-radius: var(--r-xs);
+  display: inline-flex; align-items: center; gap: 7px; padding: 3px 8px; border-radius: var(--r-xs);
   font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--text-main); background: var(--bg-label); box-shadow: inset 3px 0 0 var(--signal-color, var(--line-alt));
-  padding-left: 11px;
+  color: var(--text-main); background: var(--bg-label);
+}
+/* status is a small square, like the Run / Checks / Review steps and the
+   map legend; no colored edges on rows or cards */
+.state-pill::before, .tool-pill::before, .timeline-time::before {
+  content: ""; flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--signal-color, var(--line-alt));
 }
 .task-when { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 
@@ -6614,7 +6617,7 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .task-tech p { margin: 0 0 4px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
 
 /* details panel: the same plain summary first */
-.task-brief { display: grid; gap: 10px; margin: 14px 0 16px; padding: 14px; background: var(--bg-composer); border-radius: var(--r-sm); box-shadow: inset 3px 0 0 var(--signal-color, var(--line-alt)); }
+.task-brief { display: grid; gap: 10px; margin: 14px 0 16px; padding: 14px; background: var(--bg-composer); border-radius: var(--r-sm); }
 .task-brief .track { flex-wrap: wrap; }
 .map-details .task-tech { border-top: 1px solid var(--line); }
 
@@ -6657,18 +6660,17 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .timeline-day { margin: 12px 0 4px; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .timeline-day:first-child { margin-top: 0; }
 .timeline-row {
-  display: grid; grid-template-columns: 44px 104px minmax(0, 1fr); align-items: center; gap: 12px;
+  display: grid; grid-template-columns: 62px 104px minmax(0, 1fr); align-items: center; gap: 12px;
   padding: 6px 12px; border-radius: var(--r-sm); background: var(--paper);
-  box-shadow: inset 3px 0 0 var(--signal-color, var(--line));
 }
 .timeline-row[data-tone="passed"] { --signal-color: var(--map-passed); }
 .timeline-row[data-tone="failed"] { --signal-color: var(--map-failed); }
 .timeline-row[data-tone="attention"] { --signal-color: var(--map-attention); }
-.timeline-time { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.timeline-time { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 .timeline-row .agent-badge { grid-row: auto; flex-direction: row; gap: 6px; min-width: 0; }
 .timeline-row .agent-logo { width: 16px; height: 16px; }
 .timeline-text { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
-.timeline-warning { grid-template-columns: 70px minmax(0, 1fr); --signal-color: var(--map-attention); }
+.timeline-warning { grid-template-columns: 88px minmax(0, 1fr); --signal-color: var(--map-attention); }
 .timeline-warning .timeline-time { color: var(--map-attention); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .timeline-task { margin-right: 8px; font-weight: 650; }
 .log-more { justify-self: start; min-height: 44px; margin-top: 6px; padding: 6px 14px; }
@@ -6685,7 +6687,6 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .tool-row {
   display: grid; grid-template-columns: 104px minmax(120px, 220px) minmax(0, 1fr) auto; align-items: center; gap: 12px;
   padding: 8px 12px; border-radius: var(--r-sm); background: var(--paper);
-  box-shadow: inset 3px 0 0 var(--signal-color, var(--line));
 }
 .tool-row[data-tone="failed"] { --signal-color: var(--map-failed); }
 .tool-row[data-tone="attention"] { --signal-color: var(--map-attention); }
@@ -6694,9 +6695,9 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
 .tool-name { font-size: 13px; overflow-wrap: anywhere; }
 .tool-detail { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .tool-pill {
-  padding: 3px 8px 3px 11px; border-radius: var(--r-xs); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 7px; padding: 3px 8px; border-radius: var(--r-xs); white-space: nowrap;
   font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--text-main); background: var(--bg-label); box-shadow: inset 3px 0 0 var(--signal-color, var(--line-alt));
+  color: var(--text-main); background: var(--bg-label);
 }
 @media (max-width: 720px) {
   .tool-row { grid-template-columns: minmax(0, 1fr) auto; }
@@ -6715,7 +6716,7 @@ input:hover, textarea:hover, .map-controls select:hover, #theme-selector:hover {
   .task-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .task-filters select, .task-filters input[type="search"] { min-width: 0; }
   .task-filters #map-reset-filters, .task-filters .map-counts { grid-column: 1 / -1; }
-  .timeline-row { grid-template-columns: 46px minmax(0, 1fr); }
+  .timeline-row { grid-template-columns: 62px minmax(0, 1fr); }
   .timeline-row .agent-badge { display: none; }
 }
 
