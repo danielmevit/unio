@@ -25089,9 +25089,9 @@ fallback. Start at high or the supported middle and keep GLM at high.
 
 ## Concurrent review collection — 2026-10-12
 
-Vibe2.26.1 / GLM5.3 / high ended `REVIEW-COLLECTION-VIBE-1` with Source3
-at its 4M cumulative-token bound: 4,055,011 total tokens in361.726seconds,
-estimated usage cost$5.8832774 within the existing subscription. This was a
+Vibe 2.26.1 / GLM 5.3 / high ended `REVIEW-COLLECTION-VIBE-1` with Source 3
+at its 4M cumulative-token bound: 4,055,011 total tokens in 361.726 seconds,
+estimated usage cost $5.8832774 within the existing subscription. This was a
 configured token-cap stop, not evidence of a connection failure or a new charge.
 It left partial installer/gate/changelog edits without tests or an early commit.
 The lead committed that partial on the worker branch before continuing.
@@ -25100,14 +25100,14 @@ replacement routes reserved or unavailable at takeover, the existing lead
 completed the bounded implementation and acceptance coverage. Worker Source
 failure remains separate from the final lead checks; no worker approval is inferred.
 
-Copilot1.0.95 / Auto Balance returned the separate guide proposal with
-Source0/native0/adapter0 in24.263seconds. The lead restored Markdown lost in
+Copilot 1.0.95 / Auto Balance returned the separate guide proposal with
+Source0/native0/adapter0 in 24.263 seconds. The lead restored Markdown lost in
 terminal rendering and added executable quoted examples. Effective model/effort
-remain Unknown. Native0.5.9 automatic save helpers timed out for both runs;
+remain Unknown. Native 0.5.9 automatic save helpers timed out for both runs;
 preserved Git commits are evidence of saved work, not successful recovery saves.
 
-After the owner made Gemini available again, Antigravity1.3.3 /
-Gemini3.1ProHigh/high returned a separate release-notes proposal:
+After the owner made Gemini available again, Antigravity 1.3.3 /
+Gemini 3.1 Pro High / high returned a separate release-notes proposal:
 Source0/native0/adapter0, one invocation and no tracked edits. The lead corrected
 an archive path, an unsupported dispatch shortcut, nonexistent gate commands,
 private local links, stale test status and invented publication/signing approval
@@ -25118,7 +25118,7 @@ was repaired after the run, without rewriting those failures or retrying the tas
 
 ## Review receipt implementation — 2026-10-11
 
-Vibe 2.26.1 / GLM5.3 / high ended `REVIEW-RECEIPTS-VIBE-1` with Source2:
+Vibe 2.26.1 / GLM 5.3 / high ended `REVIEW-RECEIPTS-VIBE-1` with Source2:
 backend connection failure after276.956seconds and764820 cumulative tokens,
 with no committed or working-tree changes. The valid exported session and
 failed receipt remain preserved. This is an infrastructure outcome, not a
@@ -25126,7 +25126,7 @@ code-quality verdict. No retry was made. With capable replacements occupied
 or unavailable, the existing lead implemented the bounded contract directly;
 its checks and personal acceptance are separate evidence from that Source.
 
-Copilot1.0.95 / Auto Balance returned the separate usage proposal with
+Copilot 1.0.95 / Auto Balance returned the separate usage proposal with
 Source0/native0/adapter0 in15.867seconds. The lead repaired terminal-rendered
 Markdown and checked examples against the contract. Effective model and effort
 remain Unknown. Perplexity's earlier GLMThinking proposal informed the contract,
