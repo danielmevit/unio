@@ -1,0 +1,1 @@
+- Synchronize the installer's model task-fit scoreboard with its canonical guide so standalone installations include the latest recorded worker outcomes.
