@@ -5467,7 +5467,16 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     const btn = document.createElement("button");
     btn.type = "button";
     btn.id = "map-clear-sel";
-    btn.textContent = "Clear selection";
+    // a plain X; its name stays "Clear selection" for screen readers
+    btn.setAttribute("aria-label", "Clear selection");
+    btn.title = "Close";
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 14 14");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "M3 3l8 8M11 3l-8 8");
+    svg.appendChild(path);
+    btn.appendChild(svg);
     btn.addEventListener("click", clearSelection);
     return btn;
   }
@@ -6306,9 +6315,16 @@ footer a { display: inline-flex; align-items: center; min-height: 44px; color: v
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  flex-wrap: wrap;
   gap: 12px;
 }
+.map-details-header h3 { min-width: 0; }
+/* close: a plain X, no frame until hovered */
+#map-clear-sel {
+  flex: none; display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; margin: -10px -10px 0 0; padding: 0;
+  background: none; border-color: transparent; color: var(--muted);
+}
+#map-clear-sel:hover { color: var(--text-main); border-color: var(--line); }
+#map-clear-sel svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .map-details-header h3 { overflow-wrap: anywhere; }
 .node-status { stroke: var(--muted); stroke-width: 3; stroke-linecap: round; pointer-events: none; }
 [data-signal="passed"] > .node-status { stroke: var(--map-passed); }

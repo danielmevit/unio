@@ -1409,7 +1409,16 @@
     const btn = document.createElement("button");
     btn.type = "button";
     btn.id = "map-clear-sel";
-    btn.textContent = "Clear selection";
+    // a plain X; its name stays "Clear selection" for screen readers
+    btn.setAttribute("aria-label", "Clear selection");
+    btn.title = "Close";
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 14 14");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "M3 3l8 8M11 3l-8 8");
+    svg.appendChild(path);
+    btn.appendChild(svg);
     btn.addEventListener("click", clearSelection);
     return btn;
   }
