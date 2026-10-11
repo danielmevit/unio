@@ -1,0 +1,1 @@
+Add `unio plan` to explain concurrent task recommendations before dispatch based on explicit schema-1 inventory, native task markdown scopes, accepted git revision ancestors, and fleet observation. Preserves read-only boundaries with no state mutations or provider calls.

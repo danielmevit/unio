@@ -1,0 +1,739 @@
+#!/usr/bin/env python3
+# Unio — Copyright (C) 2026 Daniel Mitev
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
+"""Offline tests for bounded read-only task plan observation and recommendations."""
+
+import copy
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+
+SOURCE_ROOT = Path(__file__).resolve().parents[1]
+PLAN_HELPER = SOURCE_ROOT / 'tools/task-plan.py'
+FLEET_HELPER = SOURCE_ROOT / 'tools/fleet-status.py'
+INSTALLER = SOURCE_ROOT / 'unio-install.sh'
+
+GIT_ENV = dict(
+    os.environ,
+    GIT_AUTHOR_NAME='Test Author',
+    GIT_AUTHOR_EMAIL='test@example.com',
+    GIT_COMMITTER_NAME='Test Committer',
+    GIT_COMMITTER_EMAIL='test@example.com',
+    GIT_OPTIONAL_LOCKS='0'
+)
+
+
+def git_run(repo, *args):
+    cmd = ['git', '-C', str(repo), *args]
+    res = subprocess.run(cmd, env=GIT_ENV, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"Git command failed: {' '.join(cmd)}\n{res.stderr}")
+    return res.stdout.strip()
+
+
+def sha256_text(text):
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+class TaskPlanFixtures(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='task_plan_test_')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+        # Setup project workspace
+        self.project = self.root / 'test project with spaces'
+        self.coord = self.project / 'coord'
+        self.wt = self.project / 'wt'
+        self.repo = self.project / 'repo'
+
+        self.coord.mkdir(parents=True)
+        (self.coord / 'tasks').mkdir(parents=True)
+        self.wt.mkdir(parents=True)
+        self.repo.mkdir(parents=True)
+
+        # Setup tiny Git history in repo
+        git_run(self.repo, 'init', '-q', '-b', 'main')
+        (self.repo / 'README.md').write_text('# Test Repo\n')
+        git_run(self.repo, 'add', 'README.md')
+        git_run(self.repo, 'commit', '-qm', 'initial commit')
+        self.commit0 = git_run(self.repo, 'rev-parse', 'HEAD')
+
+        (self.repo / 'file.txt').write_text('content\n')
+        git_run(self.repo, 'add', 'file.txt')
+        git_run(self.repo, 'commit', '-qm', 'second commit')
+        self.commit1 = git_run(self.repo, 'rev-parse', 'HEAD')
+
+        # Mock runner script for fleet collection
+        self.runner = self.root / 'mock-runner'
+        self.runner_calls = self.root / 'runner-calls.jsonl'
+        self.runner_data_file = self.root / 'mock-runner-data.json'
+        self.runner_data = self._default_fleet_data()
+        self._write_runner_script()
+
+        # Sentinel file to verify configured agents never run
+        self.sentinel_marker = self.root / 'agent-executed'
+        self.fake_agent = self.root / 'fake-agent'
+        self.fake_agent.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(self.sentinel_marker))}\nexit 99\n")
+        self.fake_agent.chmod(0o755)
+
+    def _default_fleet_data(self):
+        stamp = datetime.now(timezone.utc).isoformat()
+        return {
+            'policy --json': {
+                'schema_version': 1,
+                'mode': 'yolo',
+                'tier': 'low',
+                'lead_agent': 'codex',
+                'lead_group': 'codex',
+                'workflow_enforcement': 'native_workflows',
+                'workflow_limit_per_group': 1,
+                'accounts': {'alias': 'codex'},
+                'active_with_lead': {'codex': 1}
+            },
+            'agents --json': {
+                'schema_version': 1,
+                'agents': [
+                    {'name': 'codex', 'binary': {'present': True}, 'bench': {'off': False}, 'command': 'agent'},
+                    {'name': 'alias', 'binary': {'present': True}, 'bench': {'off': False}, 'command': 'agent'},
+                    {'name': 'grok', 'binary': {'present': True}, 'bench': {'off': False}, 'command': 'agent'},
+                    {'name': 'claude', 'binary': {'present': True}, 'bench': {'off': False}, 'command': 'agent'},
+                    {'name': 'off_agent', 'binary': {'present': True}, 'bench': {'off': True}, 'command': 'agent'},
+                    {'name': 'missing_bin', 'binary': {'present': False}, 'bench': {'off': False}, 'command': 'agent'}
+                ]
+            },
+            'capacity show --json': {
+                'schema_version': 1,
+                'state': 'ok',
+                'groups': {}
+            },
+            'capacity show --provider codex --json': {
+                'schema_version': 1,
+                'provider': 'codex',
+                'state': 'ok',
+                'groups': {}
+            },
+            'readiness show --json': {
+                'schema_version': 1,
+                'state': 'ok',
+                'agents': {}
+            }
+        }
+
+    def _write_runner_script(self):
+        fake_py = f'''#!/usr/bin/env python3
+import json, os, sys
+root = Path = sys.modules['os'].path.dirname(__file__)
+key = ' '.join(sys.argv[1:])
+with open(os.path.join(root, 'runner-calls.jsonl'), 'a') as f:
+    f.write(json.dumps({{'argv': sys.argv[1:], 'cwd': os.getcwd()}}) + '\\n')
+with open(os.path.join(root, 'mock-runner-data.json')) as f:
+    data = json.load(f)
+if key in data:
+    sys.stdout.write(json.dumps(data[key]))
+    sys.exit(0)
+sys.exit(1)
+'''
+        self.runner.write_text(fake_py)
+        self.runner.chmod(0o755)
+
+    def invoke_plan(self, inv_path, *extra_args, check_code=0):
+        self.runner_data_file.write_text(json.dumps(self.runner_data))
+        cmd = [
+            sys.executable, '-B', str(PLAN_HELPER), str(self.runner),
+            '--inventory', str(inv_path),
+            '--project', str(self.project),
+            *extra_args
+        ]
+        res = subprocess.run(cmd, env=GIT_ENV, capture_output=True, text=True, timeout=15)
+        self.assertEqual(res.returncode, check_code, f"stderr: {res.stderr}\nstdout: {res.stdout}")
+        self.assertFalse(self.sentinel_marker.exists(), "Provider sentinel binary was executed!")
+        return res
+
+    def make_task_file(self, task_id, scope_lines):
+        scopes = '\n'.join(f"- {s}" for s in scope_lines)
+        content = f"# Task {task_id}\n\nDescription of {task_id}.\n\n## Allowed scope\n{scopes}\n\n## Validate\n$ echo validate\n"
+        path = self.coord / 'tasks' / f"{task_id}.md"
+        path.write_text(content)
+        return sha256_text(content)
+
+    def make_inventory(self, tasks=None, accepted=None, base_revision=None):
+        data = {
+            'schema_version': 1,
+            'base_revision': base_revision or self.commit1,
+            'tasks': tasks or [],
+            'accepted': accepted or []
+        }
+        inv_file = self.root / f"inv-{time.time_ns()}.json"
+        inv_file.write_text(json.dumps(data, indent=2))
+        return inv_file
+
+    def test_strict_inventory_validation(self):
+        # 1. Non-existent inventory
+        res = self.invoke_plan(self.root / 'non-existent.json', check_code=2)
+        self.assertIn('does not exist', res.stderr)
+
+        # 2. Exceeds 256KiB
+        big_file = self.root / 'big.json'
+        big_file.write_bytes(b'{"x": "' + b'a' * (256 * 1024 + 10) + b'"}')
+        res = self.invoke_plan(big_file, check_code=2)
+        self.assertIn('exceeds 256 KiB', res.stderr)
+
+        # 3. Duplicate JSON keys
+        dup_file = self.root / 'dup.json'
+        dup_file.write_text('{"schema_version": 1, "schema_version": 1, "base_revision": "abc", "tasks": [], "accepted": []}')
+        res = self.invoke_plan(dup_file, check_code=2)
+        self.assertIn('not valid strict UTF-8 JSON', res.stderr)
+
+        # 4. Non-finite numbers (NaN)
+        nan_file = self.root / 'nan.json'
+        nan_file.write_text('{"schema_version": NaN, "base_revision": "abc", "tasks": [], "accepted": []}')
+        res = self.invoke_plan(nan_file, check_code=2)
+        self.assertIn('not valid strict UTF-8 JSON', res.stderr)
+
+        # 5. Boolean as integer schema_version
+        bool_file = self.root / 'bool.json'
+        bool_file.write_text(json.dumps({
+            'schema_version': True,
+            'base_revision': self.commit1,
+            'tasks': [],
+            'accepted': []
+        }))
+        res = self.invoke_plan(bool_file, check_code=2)
+        self.assertIn('schema_version must be integer 1', res.stderr)
+
+        # 6. Unknown field in root
+        unk_file = self.root / 'unk.json'
+        unk_file.write_text(json.dumps({
+            'schema_version': 1,
+            'base_revision': self.commit1,
+            'tasks': [],
+            'accepted': [],
+            'extra': 'bad'
+        }))
+        res = self.invoke_plan(unk_file, check_code=2)
+        self.assertIn('must contain exactly', res.stderr)
+
+        # 7. Duplicate task IDs in inventory
+        t_hash = self.make_task_file('TASK-A', ['file.txt'])
+        dup_task_file = self.make_inventory(tasks=[
+            {'id': 'TASK-A', 'task_sha256': t_hash, 'worker': 'grok', 'depends_on': []},
+            {'id': 'TASK-A', 'task_sha256': t_hash, 'worker': 'grok', 'depends_on': []}
+        ])
+        res = self.invoke_plan(dup_task_file, check_code=2)
+        self.assertIn('duplicate task ID', res.stderr)
+
+        # 8. Ambiguous accepted IDs
+        dup_acc_file = self.make_inventory(accepted=[
+            {'id': 'TASK-A', 'task_sha256': t_hash, 'revision': self.commit0},
+            {'id': 'TASK-A', 'task_sha256': t_hash, 'revision': self.commit1}
+        ])
+        res = self.invoke_plan(dup_acc_file, check_code=2)
+        self.assertIn('duplicate or ambiguous accepted task ID', res.stderr)
+
+        # 9. Symlink inventory rejected
+        target_file = self.make_inventory()
+        symlink_file = self.root / 'symlink-inv.json'
+        symlink_file.symlink_to(target_file)
+        res = self.invoke_plan(symlink_file, check_code=2)
+        self.assertIn('must not be a symlink', res.stderr)
+
+        # 10. Timeout bounds
+        valid_inv = self.make_inventory()
+        self.invoke_plan(valid_inv, '--timeout', '0', check_code=2)
+        self.invoke_plan(valid_inv, '--timeout', '61', check_code=2)
+
+    def test_native_task_hashes_and_scope_parsing(self):
+        # 1. Valid task with matching hash and scope
+        h1 = self.make_task_file('TASK-1', ['tools/task-plan.py'])
+        inv = self.make_inventory(tasks=[
+            {'id': 'TASK-1', 'task_sha256': h1, 'worker': 'grok', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['summary']['ready'], 1)
+        self.assertEqual(report['tasks'][0]['status'], 'ready')
+        self.assertEqual(report['tasks'][0]['scopes'], ['tools/task-plan.py'])
+
+        # 2. Task hash mismatch
+        inv_bad_hash = self.make_inventory(tasks=[
+            {'id': 'TASK-1', 'task_sha256': '0' * 64, 'worker': 'grok', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv_bad_hash, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['summary']['unresolved'], 1)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('task_hash_mismatch', report['tasks'][0]['reasons'])
+
+        # 3. Missing task markdown file
+        inv_missing_file = self.make_inventory(tasks=[
+            {'id': 'TASK-MISSING', 'task_sha256': '0' * 64, 'worker': 'grok', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv_missing_file, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('missing_task_file', report['tasks'][0]['reasons'])
+
+        # 4. Unsupported glob pattern in scope (e.g. *.py, ?, traversal ..)
+        for bad_scope in ('tools/*.py', 'tools/?', '../traversal', '/absolute', 'path\\back', 'a//b'):
+            h_bad = self.make_task_file('TASK-BAD-SCOPE', [bad_scope])
+            inv_bad = self.make_inventory(tasks=[
+                {'id': 'TASK-BAD-SCOPE', 'task_sha256': h_bad, 'worker': 'grok', 'depends_on': []}
+            ])
+            res = self.invoke_plan(inv_bad, '--json')
+            report = json.loads(res.stdout)
+            self.assertEqual(report['tasks'][0]['status'], 'unresolved', f"Failed for scope: {bad_scope}")
+            self.assertIn('unsupported_scope_pattern', report['tasks'][0]['reasons'])
+
+    def test_scope_conflicts_and_conservative_disjointness(self):
+        # 1. Exact file conflict
+        h_a = self.make_task_file('TASK-A', ['tools/task-plan.py'])
+        h_b = self.make_task_file('TASK-B', ['tools/task-plan.py'])
+        inv = self.make_inventory(tasks=[
+            {'id': 'TASK-A', 'task_sha256': h_a, 'worker': 'grok', 'depends_on': []},
+            {'id': 'TASK-B', 'task_sha256': h_b, 'worker': 'claude', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['summary']['ready'], 1)
+        self.assertEqual(report['summary']['blocked'], 1)
+        self.assertEqual(report['tasks'][0]['status'], 'ready')
+        self.assertEqual(report['tasks'][1]['status'], 'blocked')
+        self.assertIn('scope_conflict', report['tasks'][1]['reasons'])
+
+        # 2. Parent / child conflict (directory prefix vs file)
+        h_c = self.make_task_file('TASK-C', ['tools/'])
+        h_d = self.make_task_file('TASK-D', ['tools/task-plan.py'])
+        inv = self.make_inventory(tasks=[
+            {'id': 'TASK-C', 'task_sha256': h_c, 'worker': 'grok', 'depends_on': []},
+            {'id': 'TASK-D', 'task_sha256': h_d, 'worker': 'claude', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'ready')
+        self.assertEqual(report['tasks'][1]['status'], 'blocked')
+        self.assertIn('scope_conflict', report['tasks'][1]['reasons'])
+
+        # 3. Terminal /** conflict
+        h_e = self.make_task_file('TASK-E', ['wt/**'])
+        h_f = self.make_task_file('TASK-F', ['wt/sub/file.txt'])
+        inv = self.make_inventory(tasks=[
+            {'id': 'TASK-E', 'task_sha256': h_e, 'worker': 'grok', 'depends_on': []},
+            {'id': 'TASK-F', 'task_sha256': h_f, 'worker': 'claude', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'ready')
+        self.assertEqual(report['tasks'][1]['status'], 'blocked')
+
+        # 4. Whole-root ** conflicts with everything
+        h_g = self.make_task_file('TASK-G', ['**'])
+        h_h = self.make_task_file('TASK-H', ['other/dir/file.txt'])
+        inv = self.make_inventory(tasks=[
+            {'id': 'TASK-G', 'task_sha256': h_g, 'worker': 'grok', 'depends_on': []},
+            {'id': 'TASK-H', 'task_sha256': h_h, 'worker': 'claude', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'ready')
+        self.assertEqual(report['tasks'][1]['status'], 'blocked')
+
+        # 5. Conservative disjointness: when one unfinished task has invalid scope, other pending tasks become unresolved
+        h_good = self.make_task_file('TASK-GOOD', ['tools/task-plan.py'])
+        h_bad = self.make_task_file('TASK-BAD', ['tools/*.py'])
+        inv_disjoint = self.make_inventory(tasks=[
+            {'id': 'TASK-BAD', 'task_sha256': h_bad, 'worker': 'claude', 'depends_on': []},
+            {'id': 'TASK-GOOD', 'task_sha256': h_good, 'worker': 'grok', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv_disjoint, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['summary']['ready'], 0)
+        self.assertEqual(report['summary']['unresolved'], 2)
+        self.assertIn('disjointness_unknown', report['tasks'][1]['reasons'])
+
+    def test_dependencies_git_history_and_cycles(self):
+        # 1. Dependency satisfied: revision commit0 is ancestor of commit1 (base HEAD)
+        h0 = self.make_task_file('TASK-0', ['docs/TASK-0.md'])
+        h1 = self.make_task_file('TASK-1', ['tools/task-plan.py'])
+        inv = self.make_inventory(
+            tasks=[
+                {'id': 'TASK-1', 'task_sha256': h1, 'worker': 'grok', 'depends_on': [
+                    {'id': 'TASK-0', 'task_sha256': h0, 'revision': self.commit0}
+                ]}
+            ],
+            accepted=[
+                {'id': 'TASK-0', 'task_sha256': h0, 'revision': self.commit0}
+            ]
+        )
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'ready')
+        self.assertEqual(len(report['tasks'][0]['dependencies']), 1)
+        self.assertEqual(report['tasks'][0]['dependencies'][0]['revision'], self.commit0)
+
+        # 2. Dependency hash mismatch -> blocked with exact mismatch reason
+        inv_mismatch_hash = self.make_inventory(
+            tasks=[
+                {'id': 'TASK-1', 'task_sha256': h1, 'worker': 'grok', 'depends_on': [
+                    {'id': 'TASK-0', 'task_sha256': '1' * 64, 'revision': self.commit0}
+                ]}
+            ],
+            accepted=[
+                {'id': 'TASK-0', 'task_sha256': h0, 'revision': self.commit0}
+            ]
+        )
+        res = self.invoke_plan(inv_mismatch_hash, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertTrue(any('hash_mismatch' in r for r in report['tasks'][0]['reasons']))
+
+        # 3. Dependency revision mismatch -> blocked with exact mismatch reason
+        inv_mismatch_rev = self.make_inventory(
+            tasks=[
+                {'id': 'TASK-1', 'task_sha256': h1, 'worker': 'grok', 'depends_on': [
+                    {'id': 'TASK-0', 'task_sha256': h0, 'revision': '1' * 40}
+                ]}
+            ],
+            accepted=[
+                {'id': 'TASK-0', 'task_sha256': h0, 'revision': self.commit0}
+            ]
+        )
+        res = self.invoke_plan(inv_mismatch_rev, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertTrue(any('revision_mismatch' in r for r in report['tasks'][0]['reasons']))
+
+        # 4. Missing acceptance evidence (prerequisite not in accepted) -> unresolved
+        inv_missing_acc = self.make_inventory(
+            tasks=[
+                {'id': 'TASK-1', 'task_sha256': h1, 'worker': 'grok', 'depends_on': [
+                    {'id': 'TASK-0', 'task_sha256': h0, 'revision': self.commit0}
+                ]}
+            ],
+            accepted=[]
+        )
+        res = self.invoke_plan(inv_missing_acc, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertTrue(any('missing_acceptance_evidence' in r for r in report['tasks'][0]['reasons']))
+
+        # 5. Task already integrated at base -> blocked as already_integrated
+        inv_already = self.make_inventory(
+            tasks=[
+                {'id': 'TASK-0', 'task_sha256': h0, 'worker': 'grok', 'depends_on': []}
+            ],
+            accepted=[
+                {'id': 'TASK-0', 'task_sha256': h0, 'revision': self.commit0}
+            ]
+        )
+        res = self.invoke_plan(inv_already, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertIn('already_integrated', report['tasks'][0]['reasons'])
+
+        # 6. Dependency cycle among unsatisfied inventory tasks (A -> B -> A)
+        ha = self.make_task_file('TASK-CYC-A', ['dir/a.txt'])
+        hb = self.make_task_file('TASK-CYC-B', ['dir/b.txt'])
+        inv_cycle = self.make_inventory(
+            tasks=[
+                {'id': 'TASK-CYC-A', 'task_sha256': ha, 'worker': 'grok', 'depends_on': [
+                    {'id': 'TASK-CYC-B', 'task_sha256': hb, 'revision': self.commit0}
+                ]},
+                {'id': 'TASK-CYC-B', 'task_sha256': hb, 'worker': 'claude', 'depends_on': [
+                    {'id': 'TASK-CYC-A', 'task_sha256': ha, 'revision': self.commit0}
+                ]}
+            ]
+        )
+        res = self.invoke_plan(inv_cycle, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['summary']['unresolved'], 2)
+        self.assertIn('dependency_cycle', report['tasks'][0]['reasons'])
+        self.assertIn('dependency_cycle', report['tasks'][1]['reasons'])
+
+    def test_fleet_slots_group_aliases_and_busy_groups(self):
+        # 1. Codex group has limit 1, occupied 1 by lead. Task for codex worker is blocked.
+        h_codex = self.make_task_file('TASK-CODEX', ['file1.txt'])
+        h_grok = self.make_task_file('TASK-GROK', ['file2.txt'])
+        inv = self.make_inventory(tasks=[
+            {'id': 'TASK-CODEX', 'task_sha256': h_codex, 'worker': 'codex', 'depends_on': []},
+            {'id': 'TASK-GROK', 'task_sha256': h_grok, 'worker': 'grok', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertIn('group_full', report['tasks'][0]['reasons'])
+        # Grok is on an independent group with limit 1, occupied 0 -> ready!
+        self.assertEqual(report['tasks'][1]['status'], 'ready')
+
+        # 2. Group alias: 'alias' maps to 'codex'. Task for alias worker is also blocked by group_full.
+        h_alias = self.make_task_file('TASK-ALIAS', ['file3.txt'])
+        inv_alias = self.make_inventory(tasks=[
+            {'id': 'TASK-ALIAS', 'task_sha256': h_alias, 'worker': 'alias', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv_alias, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertIn('group_full', report['tasks'][0]['reasons'])
+
+        # 3. Busy group in fleet: suppose grok group has occupied=1.
+        # Inventory contains TASK-GROK with scope ['shared/scope.txt'].
+        # Another task TASK-OTHER on claude has scope ['shared/scope.txt'].
+        # TASK-GROK's scope is inferred occupied, blocking TASK-OTHER!
+        self.runner_data['policy --json']['active_with_lead']['grok'] = 1
+        h_g1 = self.make_task_file('TASK-G1', ['shared/scope.txt'])
+        h_cl = self.make_task_file('TASK-CL', ['shared/scope.txt'])
+        inv_busy = self.make_inventory(tasks=[
+            {'id': 'TASK-CL', 'task_sha256': h_cl, 'worker': 'claude', 'depends_on': []},
+            {'id': 'TASK-G1', 'task_sha256': h_g1, 'worker': 'grok', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv_busy, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertIn('scope_conflict', report['tasks'][0]['reasons'])
+
+        # 4. Busy group with no task in inventory generates a warning
+        self.runner_data['policy --json']['active_with_lead']['unknown_busy_grp'] = 1
+        res = self.invoke_plan(inv_busy, '--json')
+        report = json.loads(res.stdout)
+        self.assertTrue(any('unknown_busy_grp' in w for w in report['warnings']))
+
+        # 5. STOP active blocks all rows
+        (self.coord / 'STOP').touch()
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertTrue(report['stop'])
+        self.assertEqual(report['summary']['ready'], 0)
+        self.assertEqual(report['summary']['blocked'], 2)
+        (self.coord / 'STOP').unlink()
+
+        # 6. Changed repo HEAD vs inventory base_revision makes all rows unresolved
+        inv_changed_head = self.make_inventory(
+            tasks=[{'id': 'TASK-GROK', 'task_sha256': h_grok, 'worker': 'grok', 'depends_on': []}],
+            base_revision='0' * 40
+        )
+        res = self.invoke_plan(inv_changed_head, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['summary']['unresolved'], 1)
+        self.assertIn('base_revision_mismatch', report['tasks'][0]['reasons'])
+
+    def test_auth_and_allowance_handling(self):
+        # 1. Fresh signed_out auth blocks task with auth_signed_out
+        h = self.make_task_file('TASK-CLAUDE', ['tools/claude.py'])
+        self.runner_data['readiness show --json']['agents']['claude'] = {
+            'status': 'fresh',
+            'authentication': 'signed_out',
+            'source': 'native',
+            'observed_at': datetime.now(timezone.utc).isoformat(),
+            'age_seconds': 5
+        }
+        inv = self.make_inventory(tasks=[
+            {'id': 'TASK-CLAUDE', 'task_sha256': h, 'worker': 'claude', 'depends_on': []}
+        ])
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertIn('auth_signed_out', report['tasks'][0]['reasons'])
+
+        # 2. Fresh zero allowance blocks task with zero_allowance
+        self.runner_data['readiness show --json']['agents']['claude']['authentication'] = 'signed_in'
+        self.runner_data['capacity show --json']['groups']['claude'] = {
+            'status': 'recorded',
+            'windows': {
+                '5h': {
+                    'source': 'manual',
+                    'status': 'fresh',
+                    'window_minutes': 300,
+                    'usable_remaining_percent': 0.0,
+                    'last_reading_remaining_percent': 0.0,
+                    'observed_at': datetime.now(timezone.utc).isoformat(),
+                    'age_seconds': 10,
+                    'reset_at': None
+                }
+            }
+        }
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertIn('zero_allowance', report['tasks'][0]['reasons'])
+
+        # 3. Stale allowance does not block
+        self.runner_data['capacity show --json']['groups']['claude']['windows']['5h']['status'] = 'stale'
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'ready')
+
+    def test_browser_queue_observation(self):
+        # 1. Absent queue creates nothing; task with job_id stays unresolved
+        h = self.make_task_file('TASK-Q', ['file.py'])
+        job_id = 'a' * 32
+        inv = self.make_inventory(tasks=[
+            {'id': 'TASK-Q', 'task_sha256': h, 'worker': 'grok', 'depends_on': [], 'job_id': job_id}
+        ])
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertFalse((self.coord / 'ui-jobs.sqlite3').exists(), "Absent queue must not be created!")
+
+        # 2. Existing sqlite queue with approved job and valid draft
+        db_path = self.coord / 'ui-jobs.sqlite3'
+        conn = sqlite3.connect(db_path)
+        conn.execute('''CREATE TABLE jobs (
+            id TEXT PRIMARY KEY,
+            request_key TEXT NOT NULL UNIQUE,
+            draft_id TEXT NOT NULL,
+            draft_sha256 TEXT NOT NULL,
+            worker TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            state TEXT NOT NULL,
+            approval_key TEXT UNIQUE,
+            approved_at TEXT,
+            reservation_key TEXT UNIQUE,
+            reserved_at TEXT,
+            unknown_at TEXT,
+            cancelled_at TEXT)''')
+        conn.execute('PRAGMA user_version = 2')
+
+        plans_dir = self.coord / 'ui-plans'
+        plans_dir.mkdir(parents=True)
+        draft_id = 'b' * 32
+        stamp = datetime.now(timezone.utc).isoformat()
+        draft_data = {
+            'schema_version': 1,
+            'id': draft_id,
+            'created_at': stamp,
+            'state': 'draft',
+            'request': 'plan draft request'
+        }
+        draft_bytes = (json.dumps(draft_data, sort_keys=True, separators=(',', ':')) + '\n').encode('utf-8')
+        (plans_dir / f"{draft_id}.json").write_bytes(draft_bytes)
+        draft_sha256 = hashlib.sha256(draft_bytes).hexdigest()
+
+        conn.execute(
+            'INSERT INTO jobs (id, request_key, draft_id, draft_sha256, worker, created_at, state, approval_key, approved_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (job_id, 'c' * 32, draft_id, draft_sha256, 'grok', stamp, 'approved', 'd' * 32, stamp)
+        )
+        conn.commit()
+        conn.close()
+
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'ready')
+        self.assertEqual(report['tasks'][0]['job_id'], job_id)
+
+        # 3. Job state 'awaiting_owner_approval' -> blocked
+        conn = sqlite3.connect(db_path)
+        conn.execute('UPDATE jobs SET state = "awaiting_owner_approval", approval_key = NULL, approved_at = NULL WHERE id = ?', (job_id,))
+        conn.commit()
+        conn.close()
+
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertIn('awaiting_owner_approval', report['tasks'][0]['reasons'])
+
+        # 4. Job state 'cancelled' -> blocked
+        conn = sqlite3.connect(db_path)
+        conn.execute('UPDATE jobs SET state = "cancelled", cancelled_at = ? WHERE id = ?', (stamp, job_id))
+        conn.commit()
+        conn.close()
+
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'blocked')
+        self.assertIn('job_cancelled', report['tasks'][0]['reasons'])
+
+        # 5. Sidecar present (-wal) -> unresolved
+        (self.coord / 'ui-jobs.sqlite3-wal').touch()
+        res = self.invoke_plan(inv, '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['tasks'][0]['status'], 'unresolved')
+        self.assertIn('unsupported_queue_sidecar', report['tasks'][0]['reasons'])
+        (self.coord / 'ui-jobs.sqlite3-wal').unlink()
+
+    def test_coordination_tree_immutability(self):
+        h = self.make_task_file('TASK-IMMUTABLE', ['tools/file.py'])
+        inv = self.make_inventory(tasks=[
+            {'id': 'TASK-IMMUTABLE', 'task_sha256': h, 'worker': 'grok', 'depends_on': []}
+        ])
+
+        before_files = {}
+        for p in self.coord.rglob('*'):
+            before_files[str(p.relative_to(self.coord))] = (p.stat().st_mtime_ns, p.stat().st_size)
+
+        self.invoke_plan(inv, '--json')
+        self.invoke_plan(inv)
+
+        after_files = {}
+        for p in self.coord.rglob('*'):
+            after_files[str(p.relative_to(self.coord))] = (p.stat().st_mtime_ns, p.stat().st_size)
+
+        self.assertEqual(before_files, after_files, "Coordination directory was modified!")
+
+
+class InstalledPlanCli(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix='installed_plan_')
+        cls.base = Path(cls.temp.name)
+        cls.conf = cls.base / 'conf with spaces'
+        cls.bin = cls.base / 'bin with spaces'
+        cls.completion = cls.base / 'completion'
+
+        cls.env = dict(
+            os.environ,
+            UNIO_BIN_DIR=str(cls.bin),
+            UNIO_CONF_DIR=str(cls.conf),
+            UNIO_COMPLETION_DIR=str(cls.completion),
+            PYTHONDONTWRITEBYTECODE='1',
+            GIT_AUTHOR_NAME='Test',
+            GIT_AUTHOR_EMAIL='test@example.com',
+            GIT_COMMITTER_NAME='Test',
+            GIT_COMMITTER_EMAIL='test@example.com'
+        )
+
+        res = subprocess.run(
+            ['bash', str(INSTALLER)],
+            env=cls.env, cwd=cls.base,
+            capture_output=True, text=True, timeout=60
+        )
+        if res.returncode != 0:
+            raise RuntimeError(f"Installer failed: {res.stderr}")
+
+        cls.engine = cls.bin / 'unio'
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def test_embedded_payload_and_cli_help(self):
+        # 1. Byte-identical embedded task-plan.py
+        installed_helper = self.conf / 'lib/task-plan.py'
+        self.assertTrue(installed_helper.is_file())
+        self.assertEqual(installed_helper.read_bytes(), PLAN_HELPER.read_bytes())
+
+        # 2. --help outside project works and exits 0
+        res = subprocess.run([str(self.engine), 'plan', '--help'], env=self.env, cwd=self.base, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn('unio plan', res.stdout)
+        self.assertIn('--inventory', res.stdout)
+
+        # 3. bash completion file has plan command and options
+        comp_file = self.completion / 'unio'
+        self.assertTrue(comp_file.is_file())
+        comp_text = comp_file.read_text()
+        self.assertIn('plan)', comp_text)
+        self.assertIn('--inventory', comp_text)
+
+
+if __name__ == '__main__':
+    unittest.main()
