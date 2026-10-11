@@ -974,7 +974,8 @@ const faqs = [
   /* Install */
   /* The terminal keeps its right edge and gives up width on the left, so the
      text column has room to breathe. */
-  .install { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: clamp(56px, 8vw, 200px); align-items: start; }
+  /* side by side, the terminal ends on the same line as the last link */
+  .install { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: clamp(56px, 8vw, 200px); align-items: stretch; }
   .install-copy p + p { margin-top: 12px; }
   .install-copy { color: var(--label); }
   .install-copy .micro { margin-top: 28px; }
@@ -985,7 +986,7 @@ const faqs = [
     font-size: 0.82rem; text-decoration: none;
   }
   .menu a:hover { background: var(--paper); padding-inline: 10px; border-radius: var(--r-xs); }
-  .console { background: var(--deep); border: 1px solid var(--line); border-radius: var(--r-md); }
+  .console { display: flex; flex-direction: column; background: var(--deep); border: 1px solid var(--line); border-radius: var(--r-md); }
   .console .copy { border-radius: var(--r-sm); }
   .console-foot {
     display: flex; justify-content: space-between; gap: 12px; padding: 7px 14px;
@@ -993,7 +994,7 @@ const faqs = [
     border-radius: 0 0 calc(var(--r-md) - 1px) calc(var(--r-md) - 1px);
   }
   .console .panel-bar { background: var(--paper); }
-  .console pre { margin: 0; padding: 16px; overflow-x: auto; }
+  .console pre { flex: 1; margin: 0; padding: 16px; overflow-x: auto; }
   .console code { display: grid; background: none; padding: 0; color: var(--text); font-size: 0.86rem; line-height: 1.85; }
   .line { white-space: pre; }
   .prompt { color: var(--muted); user-select: none; }
