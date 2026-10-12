@@ -10,8 +10,11 @@
 Mock-only. Installs under a temporary directory, drives a mock project
 whose path contains spaces, and exercises defaults, every enum switch,
 persistence, lead/account grouping, invalid arguments, malformed/unsafe/
-oversized state, preserved custom roles and the packaged guide. Provider
-commands are mock scripts; no funded provider is called.
+oversized state, preserved custom roles and the packaged guide. Mode
+commands use the public protocol names yolo/balanced/thorough while the
+stored schema-1 enum stays yolo/medium/safe; medium/safe remain accepted
+compatibility aliases and `unio policy --json` adds a `protocol` field.
+Provider commands are mock scripts; no funded provider is called.
 """
 import fcntl
 import json
@@ -70,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
     init = unio('init', 'mock')
     check('init exits 0', init.returncode == 0)
     check('init displays default policy',
-          'mode: medium' in init.stdout and 'tier: low' in init.stdout)
+          'mode: balanced' in init.stdout and 'tier: low' in init.stdout)
     master = (repo / 'MASTER.md').read_text()
     check('custom MASTER.md preserved', '# Custom owner instructions' in master)
     check('policy reference added once', master.count('UNIO-WORK-POLICY') == 1)
@@ -84,34 +87,49 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
 
     state_file = root / 'coord' / 'work-policy.json'
     check('missing state means defaults',
-          'mode: medium' in unio('mode').stdout
+          'mode: balanced' in unio('mode').stdout
           and 'tier: low' in unio('tier').stdout
           and 'lead: (none)' in unio('lead').stdout
           and 'accounts: (none)' in unio('account').stdout)
 
     human = unio('policy')
     check('human policy shows limits and native state',
-          human.returncode == 0 and 'mode: medium' in human.stdout
+          human.returncode == 0 and 'mode: balanced' in human.stdout
           and 'tier: low' in human.stdout and 'capacity: unknown' in human.stdout
           and 'workflow_enforcement: native_workflows' in human.stdout)
     doc = json.loads(unio('policy', '--json').stdout)
     check('policy JSON matches the frozen schema',
           doc['schema_version'] == 1 and doc['mode'] == 'medium'
+          and doc['protocol'] == 'balanced'
           and doc['tier'] == 'low' and doc['lead_agent'] is None
           and doc['accounts'] == {} and doc['workflow_limit_per_group'] == 1
           and doc['capacity'] == 'unknown'
           and doc['workflow_enforcement'] == 'native_workflows')
 
-    for mode in ('yolo', 'medium', 'safe'):
-        out = unio('mode', mode)
-        check('mode switch ' + mode,
-              out.returncode == 0 and out.stdout.strip() == 'mode: ' + mode
-              and unio('mode').stdout.strip() == 'mode: ' + mode)
+    # Every public name plus the medium/safe compatibility aliases: the
+    # command displays the public name while the stored enum stays schema 1.
+    for name, shown, stored in (('yolo', 'yolo', 'yolo'),
+                                ('balanced', 'balanced', 'medium'),
+                                ('thorough', 'thorough', 'safe'),
+                                ('medium', 'balanced', 'medium'),
+                                ('safe', 'thorough', 'safe')):
+        out = unio('mode', name)
+        doc = json.loads(unio('policy', '--json').stdout)
+        check('mode switch %s shows %s, stores %s' % (name, shown, stored),
+              out.returncode == 0 and out.stdout.strip() == 'mode: ' + shown
+              and unio('mode').stdout.strip() == 'mode: ' + shown
+              and json.loads(state_file.read_text())['mode'] == stored
+              and doc['mode'] == stored and doc['protocol'] == shown)
+    check('mode switches leave the tier alone',
+          json.loads(unio('policy', '--json').stdout)['tier'] == 'low')
+    before_tiers = json.loads(unio('policy', '--json').stdout)['mode']
     for tier, limit in (('low', 1), ('medium', 2), ('high', 4)):
         out = unio('tier', tier)
         check('tier switch %s persists with limit %d' % (tier, limit),
               out.returncode == 0 and out.stdout.strip() == 'tier: ' + tier
               and json.loads(unio('policy', '--json').stdout)['workflow_limit_per_group'] == limit)
+    check('tier switches leave the mode alone',
+          json.loads(unio('policy', '--json').stdout)['mode'] == before_tiers)
     unio('mode', 'medium')
     saved = json.loads(state_file.read_text())
     check('state file is exact typed schema',
@@ -133,8 +151,28 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
     check('account grouping recorded in JSON',
           json.loads(unio('policy', '--json').stdout)['accounts']
           == {'glm': 'go-primary', 'opencode': 'go-primary'})
+    out = unio('mode', 'thorough')
+    doc = json.loads(unio('policy', '--json').stdout)
+    check('mode switch keeps tier, lead and accounts independent',
+          out.returncode == 0 and doc['mode'] == 'safe'
+          and doc['protocol'] == 'thorough' and doc['tier'] == 'low'
+          and doc['lead_agent'] is None
+          and doc['accounts'] == {'glm': 'go-primary', 'opencode': 'go-primary'})
     unio('mode', 'medium')
     unio('tier', 'low')
+
+    # A policy file written by an older released runner stays readable
+    # as-is and is displayed with its public protocol name.
+    old_policy = (b'{"accounts": {},"lead_agent": null,"mode": "safe",'
+                  b'"schema_version": 1,"tier": "low"}\n')
+    state_file.write_bytes(old_policy)
+    out = unio('policy')
+    doc = json.loads(unio('policy', '--json').stdout)
+    check('frozen old policy accepted and shown with its public name',
+          out.returncode == 0 and 'mode: thorough' in out.stdout
+          and doc['mode'] == 'safe' and doc['protocol'] == 'thorough'
+          and state_file.read_bytes() == old_policy)
+    unio('mode', 'medium')
 
     good = state_file.read_bytes()
 
@@ -143,7 +181,7 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
         check(label, out.returncode != 0 and state_file.read_bytes() == good)
 
     fails_unchanged('invalid mode rejected', ('mode', 'turbo'))
-    fails_unchanged('surplus mode args rejected', ('mode', 'yolo', 'extra'))
+    fails_unchanged('surplus mode args rejected', ('mode', 'balanced', 'extra'))
     fails_unchanged('invalid tier rejected', ('tier', 'ultra'))
     fails_unchanged('surplus tier args rejected', ('tier', 'low', 'extra'))
     fails_unchanged('invalid lead label rejected', ('lead', 'bad name'))
@@ -219,14 +257,15 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
 
     status = unio('status')
     check('status displays policy',
-          status.returncode == 0 and 'mode: medium' in status.stdout)
+          status.returncode == 0 and 'mode: balanced' in status.stdout)
     check('help documents the switches',
-          'unio mode [yolo|medium|safe]' in unio('help').stdout
+          'unio mode [yolo|balanced|thorough]' in unio('help').stdout
+          and 'medium/safe stay accepted' in unio('help').stdout
           and 'unio policy [--json]' in unio('help').stdout)
     completion = (base / 'completion' / 'unio').read_text()
     check('completion offers switches and values',
           'mode tier lead account policy' in completion
-          and 'yolo medium safe' in completion
+          and 'yolo balanced thorough medium safe' in completion
           and 'low medium high' in completion)
     check('fresh guide still installed', guide.is_file())
 
@@ -262,6 +301,9 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
 
     out_s = unio('run', 'mock_success', 'task_s')
     check('success run releases slot', out_s.returncode == 0)
+    header = root / 'coord' / 'reports' / 'task_s.prompt.md'
+    check('worker header shows the public protocol name',
+          header.is_file() and 'mode: balanced' in header.read_text())
 
     out_f = unio('run', 'mock_fail', 'task_f')
     check('fail run releases slot', out_f.returncode == 1)

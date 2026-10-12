@@ -18359,6 +18359,13 @@ ENFORCEMENT = 'native_workflows'
 MAX_STATE = 65536
 ALLOWED_KEYS = {'schema_version', 'mode', 'tier', 'lead_agent', 'accounts', 'updated_at'}
 MODES = ('yolo', 'medium', 'safe')
+# Stored schema-1 modes stay ('yolo', 'medium', 'safe') so older released
+# runners can read an existing project's policy. The public protocol names are
+# yolo/balanced/thorough; this single mapping drives both directions.
+PUBLIC_MODES = {'yolo': 'yolo', 'medium': 'balanced', 'safe': 'thorough'}
+# Accepted inputs: public names plus the medium/safe compatibility aliases.
+MODE_INPUTS = {'yolo': 'yolo', 'balanced': 'medium', 'medium': 'medium',
+               'thorough': 'safe', 'safe': 'safe'}
 TIERS = ('low', 'medium', 'high')
 LIMITS = {'low': 1, 'medium': 2, 'high': 4}
 MODE_BLURB = {
@@ -18781,6 +18788,7 @@ def describe(root, doc):
     if lead_group is not None:
         with_lead[lead_group] = with_lead.get(lead_group, 0) + 1
     out = {'schema_version': 1, 'mode': doc['mode'], 'tier': doc['tier'],
+           'protocol': PUBLIC_MODES[doc['mode']],
            'lead_agent': doc['lead_agent'], 'lead_group': lead_group,
            'accounts': doc['accounts'],
            'workflow_limit_per_group': limit,
@@ -18821,7 +18829,7 @@ def render_human(root, doc):
         '  workflow_enforcement: native_workflows — foreground/background Source and independent review slots are locked per budget group before any provider call; unmanaged or cross-workspace sessions stay uncounted\n'
         '%(activity)s\n'
         '  guide: coord/docs/WORK-MODES.md (`unio policy --json` for machines)\n'
-    ) % {'mode': doc['mode'], 'mode_blurb': MODE_BLURB[doc['mode']],
+    ) % {'mode': PUBLIC_MODES[doc['mode']], 'mode_blurb': MODE_BLURB[doc['mode']],
          'tier': doc['tier'], 'tier_blurb': TIER_BLURB[doc['tier']],
          'lead': lead, 'accounts': accounts, 'activity': activity}
 
@@ -18841,8 +18849,8 @@ def main(argv):
         sys.stdout.write(json.dumps(describe(root, doc), sort_keys=True, indent=2) + '\n')
     elif cmd == 'get-mode':
         if args:
-            fail('usage: unio mode [yolo|medium|safe]')
-        sys.stdout.write('mode: ' + read_state(root)['mode'] + '\n')
+            fail('usage: unio mode [yolo|balanced|thorough]')
+        sys.stdout.write('mode: ' + PUBLIC_MODES[read_state(root)['mode']] + '\n')
     elif cmd == 'get-tier':
         if args:
             fail('usage: unio tier [low|medium|high]')
@@ -18862,13 +18870,14 @@ def main(argv):
             for agent in sorted(accounts):
                 sys.stdout.write('accounts: %s=%s\n' % (agent, accounts[agent]))
     elif cmd == 'set-mode':
-        if len(args) != 1 or args[0] not in MODES:
-            fail('usage: unio mode [yolo|medium|safe]')
-        def _set_mode(doc, value=args[0]):
+        if len(args) != 1 or args[0] not in MODE_INPUTS:
+            fail('usage: unio mode [yolo|balanced|thorough]')
+        stored = MODE_INPUTS[args[0]]
+        def _set_mode(doc, value=stored):
             doc['mode'] = value
             doc['updated_at'] = stamp()
         transact(root, _set_mode)
-        sys.stdout.write('mode: ' + args[0] + '\n')
+        sys.stdout.write('mode: ' + PUBLIC_MODES[stored] + '\n')
     elif cmd == 'set-tier':
         if len(args) != 1 or args[0] not in TIERS:
             fail('usage: unio tier [low|medium|high]')
@@ -19056,7 +19065,7 @@ def main(argv):
             'Mid-run setting changes affect future admissions only. Frozen Validate commands still apply; no mode waives them.\n'
             'Wrappers needing original task authority use UNIO_ORIGINAL_TASKFILE. The original file below is unchanged.\n'
             '--- original %(kind)s material follows ---\n'
-        ) % {'mode': doc['mode'], 'mode_blurb': MODE_BLURB[doc['mode']],
+        ) % {'mode': PUBLIC_MODES[doc['mode']], 'mode_blurb': MODE_BLURB[doc['mode']],
              'tier': doc['tier'], 'tier_blurb': TIER_BLURB[doc['tier']],
              'lead': doc['lead_agent'] if doc['lead_agent'] is not None else '(none)',
              'lead_group': snap['lead_group'] if snap['lead_group'] is not None else '(none)',
@@ -19165,7 +19174,7 @@ def main(argv):
                     'Mid-run setting changes affect future admissions only. Frozen Validate commands still apply; no mode waives them.\n'
                     'Wrappers needing original task authority use UNIO_ORIGINAL_TASKFILE. The original file below is unchanged.\n'
                     '--- original %(kind)s material follows ---\n'
-                ) % {'mode': doc['mode'], 'mode_blurb': MODE_BLURB[doc['mode']],
+                ) % {'mode': PUBLIC_MODES[doc['mode']], 'mode_blurb': MODE_BLURB[doc['mode']],
                      'tier': doc['tier'], 'tier_blurb': TIER_BLURB[doc['tier']],
                      'lead': doc['lead_agent'] if doc['lead_agent'] is not None else '(none)',
                      'lead_group': snap['lead_group'] if snap['lead_group'] is not None else '(none)',
@@ -24569,7 +24578,7 @@ cmd_license() {
 # touching coord/work-policy.json.
 cmd_mode() {
   local root; root=$(find_root) || die "not inside a Unio project"
-  [ $# -gt 1 ] && die "usage: unio mode [yolo|medium|safe]"
+  [ $# -gt 1 ] && die "usage: unio mode [yolo|balanced|thorough]"
   if [ $# -eq 0 ]; then policy "$root" get-mode
   else policy "$root" set-mode "$1"
   fi
@@ -24815,7 +24824,10 @@ switches
   unio license                  original credit and full AGPLv3 terms
 
 work policy (native per-group slots; workflow_enforcement=native_workflows)
-  unio mode [yolo|medium|safe]  show or set the work pace (default medium)
+  unio mode [yolo|balanced|thorough]
+                                      show or set the work pace (default
+                                      balanced; medium/safe stay accepted
+                                      aliases)
   unio tier [low|medium|high]   show or set the coordination budget
                                       (default low: 1 workflow per shared
                                       budget; medium 2, high 4, lead included)
@@ -27504,7 +27516,7 @@ _unio() {
       else COMPREPLY=( $(compgen -W "$workers" -- "$cur") ); fi;;
     tail|kill|report) COMPREPLY=( $(compgen -W "$tasks" -- "$cur") );;
     off|on) COMPREPLY=( $(compgen -W "$agents" -- "$cur") );;
-    mode) COMPREPLY=( $(compgen -W "yolo medium safe" -- "$cur") );;
+    mode) COMPREPLY=( $(compgen -W "yolo balanced thorough medium safe" -- "$cur") );;
     tier) COMPREPLY=( $(compgen -W "low medium high" -- "$cur") );;
     lead) COMPREPLY=( $(compgen -W "none $agents" -- "$cur") );;
     lead-cooldown) COMPREPLY=( $(compgen -W "start status pause resume stop complete" -- "$cur") );;
