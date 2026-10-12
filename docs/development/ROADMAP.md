@@ -67,9 +67,11 @@ low-tier lead.
 ### Next useful slices
 
 The optional [CodeGraph Bash evaluation](CODEGRAPH-BASH-EVALUATION-2026-10-12.md)
-found useful simple-script navigation but incorrect graph structure on the real
-Unio CLI. Keep its patch experimental; it does not replace the functional
-priorities below or authorize a global CodeGraph upgrade/index.
+now has a locally corrected grammar with 32 selected checks, 100 upstream corpus
+cases, 8 exact real-CLI boundaries and 7 chosen call links passing. Wider Bash
+coverage and embedded-source indexing remain open. Keep its patch experimental;
+it does not replace the functional priorities below or authorize a global
+CodeGraph upgrade/index.
 
 The completed scope through 0.5.12 is released and installed. Its evidence is in
 the [version plan](../VERSION-PLAN.md). Next:

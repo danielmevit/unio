@@ -5,6 +5,25 @@ the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
 
+## Bash grammar correction — 2026-10-12
+
+Mistral subscription / Vibe 2.26.1 / GLM 5.3 (`zai-glm-5-3`) / high completed
+`CG-BASH-REDIRECT-VIBE-1`: Source/native/adapter 0, one invocation, commit
+`ca019ec`. Required commands passed 3/3. Native scope failed on inherited paths
+against the older project baseline; the exact frozen task-base diff stayed
+within its 6 allowed paths. Preserve both facts.
+
+The lead found an acceptance defect despite the passing worker checks:
+a coprocess silently shortened an outer function. The existing lead corrected
+it, added exact end-line and call-ownership coverage, and preserved an
+intermediate simple-coprocess failure. Final local candidate `64e64f4` passes
+32 selected checks, 100 upstream grammar cases, 8 independent full-runtime function
+boundaries/parents and 7 selected call links. This supports checked, bounded
+parser assistance; it does not establish universal Bash support or default
+Unio adoption. No extra AI review/replacement or retry ran. Effective identity,
+effort and remaining allowance are Unknown. See the
+[full findings](https://github.com/danielmevit/unio/blob/main/docs/development/CODEGRAPH-BASH-EVALUATION-2026-10-12.md).
+
 ## CodeGraph experiment and fresh route checks — 2026-10-12
 
 Mistral subscription / Vibe 2.26.1 / GLM 5.3 (`zai-glm-5-3`) / high saved
@@ -22,7 +41,7 @@ source paths are relative to the script file. Its proposal is not independent
 approval and does not establish suitability for semantic acceptance.
 
 Fresh owner-requested availability checks at 21:05 +0200 confirmed responses
-from Mistral/Vibe GLM 5.3/high and Copilot Auto Balance, each with Source/native/
+from Mistral/Vibe GLM 5.3 / high and Copilot Auto Balance, each with Source/native/
 adapter exit 0. OpenCode Go / OpenCode 1.18.35 / `opencode-go/glm-5.3` / high
 returned model text and native exit 0, but the local `steps=1` diagnostic cap
 forced a maximum-steps response: connectivity established, clean task completion
@@ -84,7 +103,7 @@ was repaired after the run, without rewriting those failures or retrying the tas
 ## Review receipt implementation — 2026-10-11
 
 Vibe 2.26.1 / GLM 5.3 / high ended `REVIEW-RECEIPTS-VIBE-1` with Source2:
-backend connection failure after276.956seconds and764820 cumulative tokens,
+backend connection failure after276.956seconds and 764820 cumulative tokens,
 with no committed or working-tree changes. The valid exported session and
 failed receipt remain preserved. This is an infrastructure outcome, not a
 code-quality verdict. No retry was made. With capable replacements occupied
@@ -206,7 +225,7 @@ task-fit guidance, not an overall model ranking. No proposal was merged.
 
 ## Recovery and connection checks — 2026-10-10
 
-Vibe GLM 5.3/high and its Medium 3.5/high replacement both stopped with
+Vibe GLM 5.3 / high and its Medium 3.5/high replacement both stopped with
 `backend_error: All connection attempts failed` after about five minutes of
 provider work. Both were below their task budgets; neither failure is evidence
 of exhausted subscription allowance or a model reasoning score. GLM left no
@@ -235,7 +254,7 @@ The worker's later full-gate PASS statement is contradicted by the process
 receipt and must not be used as validation evidence.
 
 The owner authorized a fresh Mistral attempt after earlier connection failures
-and requested Copilot as well. GLM 5.3/high through Vibe was assigned this concrete
+and requested Copilot as well. GLM 5.3 / high through Vibe was assigned this concrete
 correction; it connected, made useful partial edits and ended at its local
 two-million-token cap: Source/native/adapter 3, token_limit, 2,012,431 cumulative
 tokens in 315.121 seconds, estimated $3.0068354 within the existing subscription.
@@ -259,7 +278,7 @@ one useful authorized task, preserve its outcome, and avoid blind retry loops.
 
 ## Save-latency investigation — 2026-10-11
 
-GLM 5.3/high through Mistral Vibe 2.26.1 completed one useful profiling run,
+GLM 5.3 / high through Mistral Vibe 2.26.1 completed one useful profiling run,
 then stopped at its configured four-million cumulative-token cap: Source and
 adapter exit3, 4,104,595 cumulative tokens, 1,350.648 seconds and an estimated
 $5.953709 inside the subscription. This was a local task bound, not confirmed
@@ -278,7 +297,7 @@ for the next correction; do not reset the run history or blindly retry it.
 
 ## Adapter batch — 2026-10-09
 
-- Corrected-wrapper live GLM 5.3/high through Vibe saved packaging commit
+- Corrected-wrapper live GLM 5.3 / high through Vibe saved packaging commit
   `9d24ffe`, then ended with a connection failure/native exit 2 after
   1,791,060 cumulative tokens, estimated $2.571018. This was below its local
   bounds and is an operational failure, not a reasoning score. Opus 5.5/high
@@ -372,7 +391,7 @@ Original failures and operational limits remain preserved in private receipts.
 
 ## Worker-experience implementation attempt — 2026-10-12
 
-GLM 5.3/high through Mistral Vibe 2.26.1 stopped at its local 4M cumulative
+GLM 5.3 / high through Mistral Vibe 2.26.1 stopped at its local 4M cumulative
 token cap while implementing `MODEL-EXPERIENCE-VIBE-1`: Source/native/adapter
 exit 3, 4,073,681 reported total tokens and estimated $5.8831234. The export
 reported zero cached-input tokens. It left three uncommitted draft files and

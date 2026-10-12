@@ -1,6 +1,75 @@
 # CodeGraph Bash evaluation — 2026-10-12
 
-**Decision: retain the experimental patch; defer default use on Unio.**
+**Current result: the local grammar correction passes the bounded Unio CLI checks.**
+The read/write redirect, negated `case` and coprocess defects described below
+are repaired in local candidate `64e64f4`. This is an experimental development
+tool patch, with no global CodeGraph install, working-project index or upstream
+publication. Installed Unio remains **0.5.13**.
+
+## Grammar correction and double-check — 2026-10-12T21:54:21+02:00
+
+The [official 0.25.1 grammar](https://github.com/tree-sitter/tree-sitter-bash/blob/v0.25.1/grammar.js)
+omitted the `<>` redirect operator and did not
+handle Unio's negated `case` condition. The correction adds those forms and an
+explicit coprocess body. It preserves the original MIT notice and the Bash
+parse-error guard; malformed Bash must still produce an error rather than an
+invented graph. Source provenance and a locally rebuilt WASM are preserved.
+
+Mistral subscription / Vibe 2.26.1 / GLM 5.3 (`zai-glm-5-3`) / high completed
+`CG-BASH-REDIRECT-VIBE-1` in one invocation: Source/native/adapter 0, saved
+`ca019ec`, and all 3 required validation commands passed. Native scope failed
+because its project baseline included inherited integration paths; the exact
+diff from frozen source base `67883ae` touched only the 6 allowed paths. That
+native failure remains recorded, without being converted into a PASS.
+
+The lead's separate check caught a real omission in the proposed patch:
+`policy_admit_hold` ended at 4755 instead of 4839, although the parser reported
+no errors and all 7 selected call links were present. A stronger regression
+reproduced the shortened function. The existing lead added explicit coprocess
+syntax, including named/unnamed brace and subshell bodies and simple commands.
+An intermediate simple-command failure was retained and corrected. No extra
+AI reviewer, model replacement or invocation retry was used.
+
+Final checks on the frozen candidate:
+
+- **32/32 selected checks pass:** 27 focused regressions plus 5 existing Bash/Bats
+  extraction, import-resolution and extensionless-script sync checks.
+- **100/100 upstream Bash grammar corpus cases pass.** The official 0.25.1 tag's
+  grammar, scanner and license match the inputs pinned from npm.
+- The unchanged 367,490-byte Unio CLI indexes without file errors. All 8 selected
+  function start/end pairs and their top-level parents match independently
+  inspected source. All 7 selected call links resolve.
+- Small-fixture Bash calls and the Python control still pass. Ordinary text,
+  inert heredoc contents and dynamic source paths are not invented as code.
+  Execution markers stay absent; inspected scripts were never run or sourced.
+- The reduced shell fixture passes `bash -n`; source and WASM hashes and the
+  unchanged MIT notice match the saved build record.
+
+The candidate WASM is built with tree-sitter 0.25.10 (ABI 15) and local
+Emscripten 4.0.10. Docker was not needed. SHA256:
+`b23e6f7672672bc52d76ca2a7ff8a6019e495fca19272fb84b5232605b437cf5`.
+
+This is bounded acceptance of the measured CLI cases, not proof of universal
+Bash coverage. `examples/demo.sh` remains a reported parse error in the wider
+source copy, the oversized installer is still skipped at the default 1 MiB
+limit, and its quoted runtime payload needs an explicit indexing strategy.
+Embedded Python remains opaque to the Bash extractor; runtime-derived commands
+still cannot always have a proven target. No agent-productivity A/B comparison
+or cross-repository language acceptance was performed.
+
+Reported worker usage was 3,337,680 cumulative tokens with estimated $4.765512
+within the existing Mistral subscription. This is not an additional-charge or
+remaining-allowance reading. Effective model/effort and allowance remain
+Unknown. Native automatic saves refused an oversized unchanged Dart parser;
+the implementation is preserved in Git, not claimed as a successful save.
+
+The earlier failures and measurements follow as retained history. Reproducible
+patches, build inputs, dated receipts and final checks are in the private
+`tmp/codegraph-bash-evaluation/` workspace. They contain no published credentials.
+
+## Initial evaluation — retained history
+
+**Initial decision: retain the experimental patch; defer default use on Unio.**
 The local candidate can navigate simple Bash functions and calls, but the real
 Unio CLI exposed incorrect function boundaries and missing call edges. Passing
 small fixtures or returning a successful index is insufficient evidence of
@@ -10,7 +79,7 @@ repository, or upstream publication was performed.
 This is an optional development-tool experiment, not a new Unio runtime feature
 or a released CodeGraph capability. Installed Unio remains **0.5.13**.
 
-## Source and contribution
+### Source and contribution
 
 - CodeGraph upstream baseline: `7ba8eee4a78920e9f637624d351e042f0fc98772`.
 - Existing [Bash PR #1217](https://github.com/colbymchenry/codegraph/pull/1217):
@@ -35,7 +104,7 @@ Two additional corrections prevent misleading results:
   depend on `PATH`. Bash does not invent `.sh` or `.bats` extensions. This
   candidate therefore does not resolve Bash file-import targets automatically.
 
-## What the measurements establish
+### What the measurements establish
 
 The repaired candidate passed all **16 focused checks** before the real-file
 evaluation. Fixtures cover local calls, case dispatch, shebangs, inert heredoc
@@ -63,7 +132,7 @@ The installer itself is 1,382,888 bytes, above the default limit. Raising that
 limit alone would not expose the embedded CLI as executable Bash: a correct
 outer Bash parser treats a quoted heredoc as data. No default limit was raised.
 
-## Why adoption is deferred
+### Why adoption is deferred
 
 The real CLI produced parser recovery errors around read/write redirects such
 as `exec {FD}<>"$fifo"`. The reduced `exec 3<>"$fifo"` form also reproduces a
@@ -111,7 +180,7 @@ adoption. It must separately decide how generated/embedded source is indexed.
 The full upstream language evaluation across repositories and a measured agent
 A/B comparison were outside this bounded experiment and remain undone.
 
-## Worker evidence and fresh availability
+### Worker evidence and fresh availability
 
 | Route, CLI, requested model and effort | Task and observed result |
 | --- | --- |
@@ -121,7 +190,7 @@ A/B comparison were outside this bounded experiment and remain undone.
 | Existing Codex lead / owner-selected Astra / xhigh | Completed the bounded local corrections and inspected the measured graphs. Exact serving identity is not independently verified; no additional Codex worker was started. |
 
 At the owner's request, separate small checks on the evening of October 12
-confirmed that **Mistral/Vibe GLM 5.3/high and Copilot Auto Balance responded**.
+confirmed that **Mistral/Vibe GLM 5.3 / high and Copilot Auto Balance responded**.
 OpenCode Go / OpenCode 1.18.35 / `opencode-go/glm-5.3` / high also returned model
 text, but an overly tight local one-step cap produced a maximum-steps response.
 That proves connectivity, not clean diagnostic-task completion; do not reuse
@@ -129,7 +198,7 @@ that cap for real implementation. Perplexity was not needed or freshly tested.
 None of these checks establishes remaining allowance or guarantees a long run.
 Original failures remain in the record; no paid fallback or automatic retry ran.
 
-## Evidence location and next work
+### Evidence location and next work
 
 Private reproducible inputs, date-derived run receipts, test logs, query outputs
 and local Git history live under `tmp/codegraph-bash-evaluation/` in the Unio

@@ -41,14 +41,18 @@ Read the latest log, receipts and docs/development/ROADMAP.md before starting.
 Estimate 1–3 hours for diagnosis, then estimate a bounded fix from findings.
 Do not rerun frozen AI tasks or erase their original failures.
 
-The subsequent optional CodeGraph Bash evaluation is documented in
-docs/development/CODEGRAPH-BASH-EVALUATION-2026-10-12.md. Its local prototype
-passes small fixtures but exposes grammar recovery errors on Unio's full CLI;
-default adoption is deferred. Do not install that prototype globally or index
-the working Unio repository based on the small-fixture result. Preserve the
-local patch and dated provider outcomes. Fresh Mistral/Vibe and Copilot checks
-returned answers; OpenCode Go responded but its local diagnostic step cap
-prevented clean task completion. None establishes remaining quota.
+The optional CodeGraph Bash evaluation and its grammar follow-up are in
+docs/development/CODEGRAPH-BASH-EVALUATION-2026-10-12.md. Local candidate
+64e64f4 repairs <> redirects, negated case and coprocess boundaries. It passes
+32 selected checks, 100 upstream corpus cases, 8 independent real-CLI boundaries
+and 7 call links. Earlier worker checks missed the coprocess defect; preserve
+that failure and the lead correction. Default adoption remains deferred:
+examples/demo.sh still fails parsing, embedded/generated source needs an
+indexing strategy, and no general language or productivity A/B acceptance ran.
+Do not install globally or index the working Unio repository on this evidence.
+The worker route was Mistral subscription / Vibe 2.26.1 / GLM 5.3 / high, Source 0;
+its native scope failure on inherited paths remains separate. Fresh Mistral,
+Copilot and OpenCode connectivity observations do not establish remaining quota.
 
 Keep YOLO/low and shared-account limits, including sessions in other projects.
 Delegate suitable implementation; free models remain routine workers only.
