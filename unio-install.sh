@@ -14967,6 +14967,35 @@ Do not invent chores merely to keep models busy. Follow
 dependent changes in order. The lead assesses each complete change under the
 current owner review policy.
 
+## Consult local task experience before choosing a worker
+
+When the installed release provides `unio experience`, inspect the relevant
+task type before assigning work:
+
+```bash
+unio experience show --task-type "implementation"
+unio experience suggest --task-type "implementation"
+```
+
+Choose a useful exact category for the actual task; documentation evidence does
+not establish security or UI ability. Read the displayed examples, dates,
+sample size, correction burden and local account blocks alongside the curated
+scoreboard and current owner instructions. Fewer than three distinct reported
+accepted tasks in 90 days provides examples only, not a recommendation. Even
+enough evidence gives conditional advice: a clear local slot does not prove
+sign-in, allowance or provider readiness. Never use old reset estimates as
+restored capacity or promote a free/proposal route into feature ownership.
+
+After reviewing a completed native task, explicitly record its final assessment
+with requested model, route, effort and task type. Keep accepted reports,
+quality issues, operational failures and unaccepted output separate. Source
+exit zero is not acceptance; a local budget stop is not measured subscription
+exhaustion. Unknown effective identity, corrections and allowance stay unknown.
+Record before changing the worker revision or base: stale evidence is refused.
+Identical replay adds no sample; conflicting assessments are refused unchanged.
+This command is a local record, not a new review, human acceptance or dispatch.
+See the [frozen first-slice boundaries](https://github.com/danielmevit/unio/blob/main/docs/development/MODEL-EXPERIENCE-CONTRACT.md).
+
 ## No extra token charges by default
 
 Use the owner's existing funded subscriptions. OpenCode subscription models
@@ -15332,6 +15361,7 @@ FUTURE_SKEW_SECONDS = 300
 LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
 MODEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,127}')
 RECORD_NAME = re.compile(r'[0-9a-f]{32}\.json')
+SCRATCH_NAME = re.compile(r'\.record-[A-Za-z0-9_-]{8}')
 HEX32 = re.compile(r'[0-9a-f]{32}')
 GIT_ID = re.compile(r'(?:[0-9a-f]{40}|[0-9a-f]{64})')
 TIME = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)')
@@ -15484,6 +15514,8 @@ def open_regular(path, limit):
                 raise ValueError('input_file_exceeds_bound')
             if not stat.S_ISREG(info.st_mode):
                 raise ValueError('unsupported input file')
+            if info.st_nlink != 1:
+                raise ValueError('hardlinked input file')
             return descriptor, info
         except BaseException:
             os.close(descriptor)
@@ -15641,6 +15673,14 @@ def load_records(root):
     if not os.path.lexists(base):
         return []
     check_store_dir(base, 'coord/experience')
+    lock = os.path.join(base, 'lock')
+    if os.path.lexists(lock):
+        try:
+            info = os.lstat(lock)
+        except OSError:
+            fail('cannot inspect experience store lock')
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size != 0:
+            fail('unsafe experience store lock')
     if not os.path.lexists(records_dir):
         return []
     check_store_dir(records_dir, 'coord/experience/records')
@@ -15649,12 +15689,11 @@ def load_records(root):
     try:
         with os.scandir(records_dir) as entries:
             for entry in entries:
-                if entry.name.startswith('.'):
-                    continue  # transient writer scratch; never a published record
                 count += 1
-                if count > MAX_STORE_RECORDS:
+                if count > MAX_STORE_RECORDS + 1:
                     fail('experience store exceeds its record bound')
-                if RECORD_NAME.fullmatch(entry.name) is None:
+                scratch = SCRATCH_NAME.fullmatch(entry.name) is not None
+                if not scratch and RECORD_NAME.fullmatch(entry.name) is None:
                     fail('unknown entry in experience store: '
                          + entry.name.encode('unicode_escape').decode('ascii'))
                 info = entry.stat(follow_symlinks=False)
@@ -15664,6 +15703,8 @@ def load_records(root):
                     fail('hardlinked experience record refused: ' + entry.name)
                 if info.st_size > MAX_RECORD_BYTES:
                     fail('oversized experience record: ' + entry.name)
+                if scratch:
+                    continue  # Bounded regular writer scratch; never an observation.
                 names.append(entry.name)
     except OSError:
         fail('cannot read experience store')
@@ -15697,7 +15738,36 @@ def same_assessment(old, new):
     return True
 
 
+def acquire_writer_lock(descriptor):
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    while True:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except (BlockingIOError, OSError):
+            if time.monotonic() >= deadline:
+                fail('cannot lock experience store: busy')
+            time.sleep(0.025)
+
+
 def write_record(root, record):
+    # Serialize preflight using an existing directory, without creating a lock
+    # in a corrupt store. This also avoids observing a competing publication's
+    # temporary two-link state before the normal store lock can be acquired.
+    try:
+        descriptor = os.open(os.path.join(root, 'coord'), os.O_RDONLY
+                             | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        fail('cannot open experience parent directory')
+    try:
+        acquire_writer_lock(descriptor)
+        load_records(root)
+        return write_record_locked(root, record)
+    finally:
+        os.close(descriptor)
+
+
+def write_record_locked(root, record):
     """Transactional, lock-serialized store write. An identical replay is
     idempotent; a conflicting assessment for the same revision is refused
     with the existing record unchanged."""
@@ -15716,15 +15786,7 @@ def write_record(root, record):
         info = os.fstat(lock_fd)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             fail('unsafe experience store lock')
-        deadline = time.monotonic() + LOCK_WAIT_SECONDS
-        while True:
-            try:
-                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except (BlockingIOError, OSError):
-                if time.monotonic() >= deadline:
-                    fail('cannot lock experience store: busy')
-                time.sleep(0.025)
+        acquire_writer_lock(lock_fd)
     except OSError:
         os.close(lock_fd)
         fail('cannot lock experience store')
@@ -16070,7 +16132,8 @@ def cmd_suggest(runner, root, args):
         -profile['recent_accepted_tasks'],
         profile['quality_issues'],
         (0, profile['corrections']['known_total'])
-        if profile['corrections']['known_total'] is not None else (1, 0),
+        if (profile['corrections']['known_total'] is not None
+            and profile['corrections']['unknown_records'] == 0) else (1, 0),
         (profile['account_alias'], profile['model'], profile['route'],
          profile['effort'])))
     suggestions = []
@@ -17215,7 +17278,7 @@ cat > "$BIN_DIR/unio" <<'UNIO_BIN_EOF'
 #   PROJECT/coord/    board.md, base, docs/, tasks/, reports/, blockers.md, STOP
 set -euo pipefail
 
-UNIO_VERSION="0.5.11"
+UNIO_VERSION="0.5.12"
 CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
 CONF_FILE="$CONF_DIR/agents.conf"
 TPL_DIR="$CONF_DIR/templates"
@@ -26692,6 +26755,38 @@ receipts; do not publish raw prompts or logs to fill this table.
 
 These are candidate observations, not an invented benchmark or Source acceptance.
 Original failures and operational limits remain preserved in private receipts.
+
+## Worker-experience implementation attempt — 2026-10-12
+
+GLM 5.3/high through Mistral Vibe 2.26.1 stopped at its local 4M cumulative
+token cap while implementing `MODEL-EXPERIENCE-VIBE-1`: Source/native/adapter
+exit 3, 4,073,681 reported total tokens and estimated $5.8831234. The export
+reported zero cached-input tokens. It left three uncommitted draft files and
+no completed tests; the existing lead preserved their exact bytes in `288cda6`.
+This was a local task-budget stop, not observed subscription exhaustion or
+completed implementation. Requested identity/effort are not server proof.
+
+The lead reproduced an implicit-project parsing failure in a copied standalone
+installation and found that the draft's record-ID validator rejected its own
+32-character IDs. Storage, age and packaging gaps went to one separately
+bounded Gemini completion task. Antigravity 1.3.3 / Gemini 3.1 Pro High / high
+returned Source/native/adapter exit 0 in 1608 seconds and committed `de4cf23`
+and `12cc706`. Native verification passed all four commands, including its
+seven-journey offline suite; an independent copied-install journey passed
+31 checks with six distinct task outcomes and no experience-triggered agent call.
+
+Personal lead review then reproduced two omissions: a refused corrupt-store
+write created a lock, and incomplete correction counts could outrank known
+zero. The existing lead corrected those cases, bounded hidden entries and
+added concurrent replay and admission regressions. The original passing worker
+checks do not cover those later corrections or imply independent approval.
+Its automatic baseline, periodic and final saves failed with helper exit -9;
+Git commits preserved the implementation. Requested effective identity/effort,
+remaining allowance and subscription exhaustion remain unknown.
+
+These observations support smaller contexts and early commits, without a
+universal model ranking or a claim that a successful process is accepted code.
+Preserve the original failed Source even if the saved work later ships.
 
 ## Update it after actual work
 

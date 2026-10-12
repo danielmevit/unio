@@ -40,11 +40,16 @@ approved dispatch and independent review receipts/concurrent collection. Read
 Source worker failures remain failures; later lead checks do not convert them
 into successful model deliveries. Preserve original receipts and partial work.
 
-The next useful functional slice is evidence-based worker selection: transparent
-recommendations from recorded task results, task fit, availability and shared
-budgets. Initial estimate: **3–6 hours** for a bounded CLI slice; automatic routing
-is separate. See [current priorities](ROADMAP.md#next-useful-slices), then freeze
-one concrete task. Continue 0.5.x; do not shift this work to 0.6.0.
+The **0.5.12 development candidate** implements the bounded
+[worker-experience CLI](../MODEL-EXPERIENCE.md): explicit revision assessments,
+task-specific profiles and conditional advice using local fleet facts.
+Gemini completed the saved GLM draft; its native checks and independent installed
+journey passed. Personal lead review reproduced and corrected corrupt-store and
+correction-ordering omissions. Original Source outcomes remain preserved.
+Complete the frozen candidate gate, install/test and publish before starting
+another feature. Initial estimate: **3–6 hours**; automatic capture/routing are
+separate. See [current priorities](ROADMAP.md#next-useful-slices).
+Continue 0.5.x; do not shift this work to 0.6.0.
 
 Use YOLO/low: focused meaningful checks, one workflow per shared subscription
 including the lead, early commits and truthful handoffs. Capable subscription
@@ -53,7 +58,7 @@ lead. After one worker and one suitable replacement fail, this existing lead
 finishes the correction without a second Codex session. Current owner holds,
 spending restrictions and actual availability override old examples.
 
-Owner dashboard/site/branding work through `faaa725` is preserved. The dashboard
+Owner dashboard/site/branding work through `0d46dff` is preserved. The dashboard
 uses plain X controls, small status squares and frameless map controls. Keep the
 website demo's `activity.css` injection anchor; bridge changes require
 `tools/embed-browser.py`, and canonical routing/effort/scoreboard changes require
@@ -217,19 +222,16 @@ runs the demo copy; a bare `astro build` does not).
 Read the [roadmap](ROADMAP.md), [consolidated backlog](IMPROVEMENT-BACKLOG.md)
 and [version plan](../VERSION-PLAN.md). Finish one bounded feature at a time.
 
-1. Correct project-wide save retention and measure mounted-filesystem saving
-   and observation overhead. New workers encountered the 32-save project cap:
-   current retention only evicts older saves belonging to the same worker.
-   Preserve all history while designing explicit archive/retention behavior.
-   A failed helper is not proof of lost commits or an existing last-good save.
-2. Add supported, read-only allowance and readiness adapters with truthful
-   Unknown, observation age and reset handling. Auth status and allowance
-   are separate: the [help-only inventory](AUTH-READINESS-INVENTORY.md)
-   recommends Claude's documented JSON auth command as the smallest auth
-   adapter; it has not established safe output fields or exit semantics.
-3. Connect checked capacity/readiness evidence to scheduling and explain
-   why a worker is idle or a task waits. Existing per-budget admission stays
-   authoritative; a manual reading grants no launch or retry permission.
+1. Finish delivery of the bounded 0.5.12 candidate described above. Do not
+   restart its completed implementation or repeat unchanged 0.5.10/0.5.11 work.
+2. Diagnose remaining real-history save failures with a matched workload.
+   Archival and measured sibling-ignore batching already shipped. Both recent
+   implementation runs reported automatic-save helper exit -9; its cause is
+   unknown. Preserve commits, failed receipts and any actual last-good save.
+3. Then choose one scoped slice from review-finding aggregation, additional
+   supported readiness adapters or the macOS/Windows platform audit. Fleet,
+   planning and explicitly approved dispatch already shipped; automatic routing,
+   live-lead attachment/transfer and phone pairing remain future work.
 
 Both initial Perplexity trials and the owner-requested
 [matched four-scenario comparison](PERPLEXITY-FIELD-TRIALS-2026-10-10.md) are

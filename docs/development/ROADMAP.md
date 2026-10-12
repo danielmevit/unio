@@ -21,8 +21,9 @@ through `faaa725` is preserved; further visual redesign remains lower priority
 than functional work. Genuine lead-limit restart remains unobserved and
 experimental/opt-in.
 
-The next functional priority is transparent worker-selection guidance from useful
-project outcomes, availability and shared budgets. Automatic scheduling, finding
+The 0.5.12 candidate implements transparent worker-selection guidance from useful
+project outcomes, availability and shared budgets; its release gate and delivery
+are pending. See the [operator guide](../MODEL-EXPERIENCE.md). Automatic scheduling, finding
 aggregation, live-lead attachment, scoped phone pairing and native host support
 remain separate planned slices. Leads must follow the persistent
 [estimates, progress and continuity rules](LEAD-ROUTING.md).
@@ -59,7 +60,7 @@ low-tier lead.
 | 3 — CLI slice shipped | Shared-account allowance and worker readiness | Native slots, manual readings and Codex refresh shipped. Cached Claude authentication shipped in 0.5.10; the shipped 0.5.11 fleet CLI combines local slots, bench/binary facts and cached observations. Other automatic provider readings remain planned. |
 | 4 — CLI slice shipped | Ready-task dispatch and dependency handling | Read-only planner and explicit owner-granted single-attempt dispatch shipped in 0.5.11 after focused/native and release checks. Automatic scheduling remains planned. |
 | 5 — collection slice shipped | Native independent review pipeline | Released 0.5.11 preserves separate receipts, summarizes exact-revision evidence and collects explicit reviewer sets concurrently. Finding aggregation remains planned. |
-| 6 | Evidence-based routing and context efficiency | Ledger/score and curated guides exist; exact model/task profiles and automatic suggestions remain planned. |
+| 6 — CLI candidate | Evidence-based routing and context efficiency | 0.5.12 implements explicit revision assessments, task-specific profiles and conditional local advice. Release validation/delivery is pending; automatic capture and routing remain planned. |
 | 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
 ### Next useful slices
@@ -67,13 +68,15 @@ low-tier lead.
 The completed 0.5.10/0.5.11 scope is released and installed. Its evidence is in
 the [version plan](../VERSION-PLAN.md). Next:
 
-1. **Evidence-based routing:** record model, route, effort, task category and
-   correction burden from useful work, then offer transparent worker-selection
-   suggestions using availability and shared budgets. Initial estimate: 3–6 hours
-   for a bounded CLI slice; automatic routing is separate. Update the estimate
-   when implementation findings or worker availability change.
+1. **Deliver the checked experience CLI:** the 0.5.12 candidate records model,
+   route, effort, task category and correction burden, with conditional options
+   using availability and shared budgets. Complete one frozen release gate,
+   installation and publication before expanding it. Initial estimate: 3–6 hours;
+   automatic capture/routing are separate.
 2. **Measured save optimization:** sibling-ignore batching is shipped and measured.
-   Investigate remaining real-history/helper timeouts with matched workloads;
+   Investigate remaining real-history/helper timeouts with matched workloads.
+   Both current implementation runs reported automatic-save helper exit -9;
+   the cause is not established, and their Git commits remain preserved.
    no general speedup or universal timeout fix is established.
 3. **Review findings:** extract and organize findings from the shipped
    [concurrent collection](../REVIEW-COLLECTION.md) without hiding disagreement

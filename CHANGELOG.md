@@ -4,6 +4,23 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.12 — choose workers from experience — unreleased
+
+See [release scope and usage](docs/RELEASE-0.5.12.md).
+
+- Record a final operator assessment of an exact native task revision with
+  `unio experience record`; preserve Source/check facts separately from
+  reported acceptance, code issues, operational failures and unaccepted work.
+- Inspect local task-specific profiles with `unio experience show`, retaining
+  sample counts, age, correction burden and unknown metadata.
+- Get conditional worker options with `unio experience suggest`, respecting
+  STOP, shared slots including the lead, bench/binary facts and fresh cached
+  sign-in/allowance. Sparse samples receive no recommendation; free/proposal
+  routes remain eligible for routine advice only.
+- Package the dependency-free helper, strict immutable storage, command help
+  and completion, operator/lead guidance and focused offline regression cases.
+- Preserve the shipped dashboard, website, brand assets and prior releases.
+
 ## 0.5.11 — plan, dispatch and review together — 2026-10-12
 
 See [release scope and usage](docs/RELEASE-0.5.11.md).

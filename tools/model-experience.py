@@ -44,6 +44,7 @@ FUTURE_SKEW_SECONDS = 300
 LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
 MODEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,127}')
 RECORD_NAME = re.compile(r'[0-9a-f]{32}\.json')
+SCRATCH_NAME = re.compile(r'\.record-[A-Za-z0-9_-]{8}')
 HEX32 = re.compile(r'[0-9a-f]{32}')
 GIT_ID = re.compile(r'(?:[0-9a-f]{40}|[0-9a-f]{64})')
 TIME = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)')
@@ -196,6 +197,8 @@ def open_regular(path, limit):
                 raise ValueError('input_file_exceeds_bound')
             if not stat.S_ISREG(info.st_mode):
                 raise ValueError('unsupported input file')
+            if info.st_nlink != 1:
+                raise ValueError('hardlinked input file')
             return descriptor, info
         except BaseException:
             os.close(descriptor)
@@ -353,6 +356,14 @@ def load_records(root):
     if not os.path.lexists(base):
         return []
     check_store_dir(base, 'coord/experience')
+    lock = os.path.join(base, 'lock')
+    if os.path.lexists(lock):
+        try:
+            info = os.lstat(lock)
+        except OSError:
+            fail('cannot inspect experience store lock')
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size != 0:
+            fail('unsafe experience store lock')
     if not os.path.lexists(records_dir):
         return []
     check_store_dir(records_dir, 'coord/experience/records')
@@ -361,12 +372,11 @@ def load_records(root):
     try:
         with os.scandir(records_dir) as entries:
             for entry in entries:
-                if entry.name.startswith('.'):
-                    continue  # transient writer scratch; never a published record
                 count += 1
-                if count > MAX_STORE_RECORDS:
+                if count > MAX_STORE_RECORDS + 1:
                     fail('experience store exceeds its record bound')
-                if RECORD_NAME.fullmatch(entry.name) is None:
+                scratch = SCRATCH_NAME.fullmatch(entry.name) is not None
+                if not scratch and RECORD_NAME.fullmatch(entry.name) is None:
                     fail('unknown entry in experience store: '
                          + entry.name.encode('unicode_escape').decode('ascii'))
                 info = entry.stat(follow_symlinks=False)
@@ -376,6 +386,8 @@ def load_records(root):
                     fail('hardlinked experience record refused: ' + entry.name)
                 if info.st_size > MAX_RECORD_BYTES:
                     fail('oversized experience record: ' + entry.name)
+                if scratch:
+                    continue  # Bounded regular writer scratch; never an observation.
                 names.append(entry.name)
     except OSError:
         fail('cannot read experience store')
@@ -409,7 +421,36 @@ def same_assessment(old, new):
     return True
 
 
+def acquire_writer_lock(descriptor):
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    while True:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except (BlockingIOError, OSError):
+            if time.monotonic() >= deadline:
+                fail('cannot lock experience store: busy')
+            time.sleep(0.025)
+
+
 def write_record(root, record):
+    # Serialize preflight using an existing directory, without creating a lock
+    # in a corrupt store. This also avoids observing a competing publication's
+    # temporary two-link state before the normal store lock can be acquired.
+    try:
+        descriptor = os.open(os.path.join(root, 'coord'), os.O_RDONLY
+                             | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        fail('cannot open experience parent directory')
+    try:
+        acquire_writer_lock(descriptor)
+        load_records(root)
+        return write_record_locked(root, record)
+    finally:
+        os.close(descriptor)
+
+
+def write_record_locked(root, record):
     """Transactional, lock-serialized store write. An identical replay is
     idempotent; a conflicting assessment for the same revision is refused
     with the existing record unchanged."""
@@ -428,15 +469,7 @@ def write_record(root, record):
         info = os.fstat(lock_fd)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             fail('unsafe experience store lock')
-        deadline = time.monotonic() + LOCK_WAIT_SECONDS
-        while True:
-            try:
-                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except (BlockingIOError, OSError):
-                if time.monotonic() >= deadline:
-                    fail('cannot lock experience store: busy')
-                time.sleep(0.025)
+        acquire_writer_lock(lock_fd)
     except OSError:
         os.close(lock_fd)
         fail('cannot lock experience store')
@@ -782,7 +815,8 @@ def cmd_suggest(runner, root, args):
         -profile['recent_accepted_tasks'],
         profile['quality_issues'],
         (0, profile['corrections']['known_total'])
-        if profile['corrections']['known_total'] is not None else (1, 0),
+        if (profile['corrections']['known_total'] is not None
+            and profile['corrections']['unknown_records'] == 0) else (1, 0),
         (profile['account_alias'], profile['model'], profile['route'],
          profile['effort'])))
     suggestions = []

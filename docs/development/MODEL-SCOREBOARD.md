@@ -336,8 +336,23 @@ completed implementation. Requested identity/effort are not server proof.
 The lead reproduced an implicit-project parsing failure in a copied standalone
 installation and found that the draft's record-ID validator rejected its own
 32-character IDs. Storage, age and packaging gaps went to one separately
-bounded Gemini completion task. Its outcome is pending. These observations
-support smaller contexts and early commits, without a universal model ranking.
+bounded Gemini completion task. Antigravity 1.3.3 / Gemini 3.1 Pro High / high
+returned Source/native/adapter exit 0 in 1608 seconds and committed `de4cf23`
+and `12cc706`. Native verification passed all four commands, including its
+seven-journey offline suite; an independent copied-install journey passed
+31 checks with six distinct task outcomes and no experience-triggered agent call.
+
+Personal lead review then reproduced two omissions: a refused corrupt-store
+write created a lock, and incomplete correction counts could outrank known
+zero. The existing lead corrected those cases, bounded hidden entries and
+added concurrent replay and admission regressions. The original passing worker
+checks do not cover those later corrections or imply independent approval.
+Its automatic baseline, periodic and final saves failed with helper exit -9;
+Git commits preserved the implementation. Requested effective identity/effort,
+remaining allowance and subscription exhaustion remain unknown.
+
+These observations support smaller contexts and early commits, without a
+universal model ranking or a claim that a successful process is accepted code.
 Preserve the original failed Source even if the saved work later ships.
 
 ## Update it after actual work

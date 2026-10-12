@@ -53,6 +53,12 @@ archive. Use it to prepare and run tasks, follow worker output and inspect files
 
 *Install [Unio 0.5.11](https://github.com/danielmevit/unio/releases/tag/v0.5.11), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
 
+**In the 0.5.12 candidate:** keep task-specific outcomes with
+[`unio experience`](docs/MODEL-EXPERIENCE.md) and inspect conditional worker
+advice. Accepted work, code issues, operational failures and unaccepted attempts
+stay separate. Advice explains sample size, age and local availability; it
+does not launch agents or turn sparse evidence into a model ranking.
+
 **Added in 0.5.11:** inspect shared-account slots and cached readings with
 [the fleet overview](docs/FLEET-STATUS.md), explain dependencies and file
 conflicts with [the task planner](docs/TASK-PLAN.md), and start one

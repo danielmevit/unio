@@ -1,10 +1,11 @@
 # Model experience from real project work
 
 Owner-approved feature direction, 2026-10-07. The first bounded CLI slice is
-in development for **0.5.12**, under the
+implemented in the **0.5.12 development candidate**, under the
 [frozen contract](MODEL-EXPERIENCE-CONTRACT.md): explicit final assessments tied
 to native task revisions, local task-specific evidence and conditional advice
 using the existing fleet observation. It is not published or installed yet.
+See the [operator guide](../MODEL-EXPERIENCE.md) for the implemented commands.
 Automatic metadata capture, routing and richer review-quality profiles remain
 planned. The existing
 `unio score` command already summarizes per-worker ledger results. It does

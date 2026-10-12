@@ -66,7 +66,8 @@ Combines stored evidence with a bounded fleet observation (1..60s deadline, defa
 - **Ordering**: Qualifying profiles are ranked by:
   1. Recent distinct reported accepted tasks (descending)
   2. Observed quality-issue count (ascending)
-  3. Known correction burden (known zero wins against unknown; lower wins)
+  3. Complete known correction burden (lower wins; a profile with unknown
+     correction counts cannot outrank a fully known zero)
   4. Stable profile identifiers (account alias, model, route, effort)
 - **Honest Admission**: Blocked, occupied, off, signed-out, or exhausted agents
   are reported honestly and are never marked recommendable. Unavailable or stale
@@ -78,6 +79,8 @@ Combines stored evidence with a bounded fleet observation (1..60s deadline, defa
 - **Lock File**: `coord/experience/lock` (serialized via nonblocking bounded wait)
 - **Max Record Bytes**: 65,536 bytes (64 KiB) per record file
 - **Max Store Records**: 512 records per workspace
+- **Enumeration Bound**: At most 513 entries, allowing one bounded regular
+  writer scratch file. Unrecognized hidden files and special files are refused.
 - **Max Accepted Examples**: 8 examples displayed per profile
 - **Recent Window**: 90 days
 - **Record ID**: First 32 hexadecimal characters of SHA-256 over

@@ -502,6 +502,118 @@ class ExperienceSuite(unittest.TestCase):
         self.assertEqual(sug3['admission_state'], 'blocked')
         stop_file.unlink()
 
+    def test_08_corrupt_write_hidden_entries_and_bounds(self):
+        """Refused writes leave corrupt data and absent locks unchanged."""
+        self.results['codex/PREFLIGHT'] = make_result(task='PREFLIGHT')
+        self.save_results()
+        records = self.project / 'coord/experience/records'
+        records.mkdir(parents=True)
+        corrupt = records / ('0' * 32 + '.json')
+        corrupt.write_text('{broken')
+        before = {str(p.relative_to(records.parent)): p.lstat().st_mtime_ns
+                  for p in records.parent.rglob('*')}
+        refused = self.run_cli('record', 'codex', 'PREFLIGHT', '--model', 'fixture',
+                               '--route', 'codex', '--effort', 'high',
+                               '--task-type', 'feature', '--outcome', 'accepted',
+                               project=self.project)
+        self.assertEqual(refused.returncode, 2)
+        self.assertEqual(before, {str(p.relative_to(records.parent)): p.lstat().st_mtime_ns
+                                  for p in records.parent.rglob('*')})
+        corrupt.unlink()
+        hidden = records / '.unexpected'
+        os.mkfifo(hidden)
+        self.assertEqual(self.run_cli('show', '--json', project=self.project).returncode, 2)
+        hidden.unlink()
+        for i in range(514):
+            (records / ('.record-' + str(i).zfill(8))).touch()
+        self.assertEqual(self.run_cli('show', '--json', project=self.project).returncode, 2)
+
+    def test_09_correction_order_and_concurrent_replay(self):
+        """Unknown burden cannot beat known zero; racing replay adds one sample."""
+        for worker in ('claude', 'codex'):
+            for i in range(3):
+                task = worker.upper() + '-' + str(i)
+                self.results[worker + '/' + task] = make_result(worker=worker, task=task)
+        self.save_results()
+        for worker in ('claude', 'codex'):
+            for i in range(3):
+                words = ['record', worker, worker.upper() + '-' + str(i), '--model', 'fixture',
+                         '--route', worker, '--effort', 'high', '--task-type', 'feature',
+                         '--outcome', 'accepted']
+                if worker == 'codex' or i != 0:
+                    words.extend(['--corrections', '0'])
+                self.assertEqual(self.run_cli(*words, project=self.project).returncode, 0)
+        advice = json.loads(self.run_cli('suggest', '--task-type', 'feature', '--json',
+                                         project=self.project).stdout)
+        self.assertEqual([row['account_alias'] for row in advice['advice']['suggestions']],
+                         ['codex', 'claude'])
+        self.results['codex/CONCURRENT'] = make_result(task='CONCURRENT')
+        self.save_results()
+        argv = [sys.executable, '-B', str(CLI), str(self.runner), '--project', str(self.project),
+                'record', 'codex', 'CONCURRENT', '--model', 'fixture', '--route', 'codex',
+                '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted']
+        children = [subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    for _ in range(2)]
+        for child in children:
+            output = child.communicate(timeout=15)
+            self.assertEqual(child.returncode, 0, output)
+        self.assertEqual(json.loads(self.run_cli('show', '--json', project=self.project).stdout)['records'], 7)
+
+    def test_10_admission_boundaries_and_strict_stored_data(self):
+        """Local slots and cached capacity gate advice without running agents."""
+        for i in range(3):
+            task = 'ADMISSION-' + str(i)
+            self.results['claude/' + task] = make_result(worker='claude', task=task)
+        self.save_results()
+        for i in range(3):
+            self.assertEqual(self.run_cli('record', 'claude', 'ADMISSION-' + str(i),
+                '--model', 'fixture', '--route', 'claude', '--effort', 'high',
+                '--task-type', 'feature', '--outcome', 'accepted', project=self.project).returncode, 0)
+        policy = dict(schema_version=1, mode='yolo', tier='low', lead_agent='codex',
+                      lead_group='shared', workflow_enforcement='native_workflows',
+                      workflow_limit_per_group=1, accounts={'codex': 'shared', 'claude': 'shared'},
+                      active_with_lead={'shared': 1})
+        agent = dict(name='claude', binary={'present': True}, bench={'off': False})
+        for name, change in [('lead_occupies_slot', {}), ('off', {'off': True}),
+                             ('missing', {'present': False}), ('unknown', {'present': None})]:
+            with self.subTest(name=name):
+                p = copy.deepcopy(policy)
+                a = copy.deepcopy(agent)
+                if change:
+                    p['active_with_lead'] = {}
+                    a['binary']['present'] = change.get('present', True)
+                    a['bench']['off'] = change.get('off', False)
+                (self.root / 'policy.json').write_text(json.dumps(p))
+                (self.root / 'agents.json').write_text(json.dumps(dict(schema_version=1, agents=[a])))
+                view = json.loads(self.run_cli('suggest', '--task-type', 'feature', '--json',
+                                              project=self.project).stdout)
+                self.assertFalse(view['advice']['suggestions'][0]['recommendable'])
+        policy['active_with_lead'] = {}
+        (self.root / 'policy.json').write_text(json.dumps(policy))
+        (self.root / 'agents.json').write_text(json.dumps(dict(schema_version=1, agents=[agent])))
+        window = dict(source='manual', status='fresh', window_minutes=300, observed_at=STAMP, age_seconds=1,
+                      reset_at=(NOW + datetime.timedelta(hours=1)).isoformat(),
+                      last_reading_remaining_percent=0, usable_remaining_percent=0)
+        for status in ('fresh', 'stale'):
+            window['status'] = status
+            (self.root / 'capacity.json').write_text(json.dumps(dict(schema_version=1, state='ok',
+                groups={'shared': dict(status='recorded', windows={'five-hour': window})})))
+            view = json.loads(self.run_cli('suggest', '--task-type', 'feature', '--json',
+                                          project=self.project).stdout)
+            option = view['advice']['suggestions'][0]
+            self.assertEqual(option['recommendable'], status == 'stale')
+            self.assertEqual(option['allowance'], 'exhausted' if status == 'fresh' else 'unknown')
+        calls = [json.loads(line) for line in (self.root / 'calls.jsonl').read_text().splitlines()]
+        self.assertTrue(all(row[0] in ('result', 'policy', 'agents', 'capacity', 'readiness') for row in calls))
+        record = next((self.project / 'coord/experience/records').glob('*.json'))
+        original = record.read_bytes()
+        variants = [b'{"schema_version":1,"schema_version":1}', b'{"x":NaN}', b'{"x":1e999}',
+                    original.replace(b'"human_acceptance": false', b'"human_acceptance": 0')]
+        for raw in variants:
+            record.write_bytes(raw)
+            self.assertEqual(self.run_cli('show', '--json', project=self.project).returncode, 2)
+            self.assertEqual(record.read_bytes(), raw)
+
     def test_07_store_corruption_symlink_and_no_write_reads(self):
         """Journey 7: Corrupt/bounded/symlink/no-write reads; identity recomputation."""
         # 1. Reads on clean project do not create store or locks
