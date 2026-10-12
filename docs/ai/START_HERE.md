@@ -10,8 +10,11 @@ AI calls outside that task.
 Starting from an empty folder with a new idea? Follow
 [Build a new project using Unio](NEW-PROJECT-PROMPT.md) for the launch
 commands and a paste-ready lead prompt. No existing repository is required.
-Choose its YOLO, Medium or Safe-first block. The selected work mode changes
+Choose its YOLO, Balanced or Thorough block. The selected work mode changes
 validation and review planning; all three default to low subscription tier.
+They separately default to [Economy reasoning](REASONING-PROFILES.md), with
+owner-selected Adaptive and Maximum options for future tasks. Balanced uses
+the existing native `medium` mode; reasoning profiles are lead instructions.
 
 Open another terminal and start the chosen AI coding CLI in the other
 project's checkout. This is a fresh conversation with its own task; it does

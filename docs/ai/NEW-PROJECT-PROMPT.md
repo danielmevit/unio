@@ -23,20 +23,22 @@ already contains work, the lead must preserve it.
 ## Choose one protocol
 
 Each block below is complete: copy **one** and fill in the brief and occupied
-accounts. All three start at **low tier**; work pace and subscription budget
-are separate choices.
+accounts. All three start at **low coordination tier** and **Economy reasoning**.
+Review protocol, concurrency and reasoning effort are separate choices; see
+[reasoning profiles](REASONING-PROFILES.md) to change the last one.
 
 | Protocol | Native work mode | Validation and review |
 | --- | --- | --- |
 | [YOLO](#yolo-prompt) | `unio mode yolo` | Focused behavior checks, relevant smoke check and lead review; extra review for concrete risk or project requirements. |
-| [Medium](#medium-prompt) | `unio mode medium` | Focused plus relevant integration checks; one independent review for substantive batches, a second for sensitive changes or unresolved disagreement. |
-| [Safe-first](#safe-first-prompt) | `unio mode safe` | Upfront risk/design work, broader checks, two independent reviews from different known AI labs, then the lead's assessment and owner acceptance under existing authority. |
+| [Balanced](#balanced-prompt) | `unio mode medium` | Focused plus relevant integration checks; one independent review for substantive batches, a second for sensitive changes or unresolved disagreement. |
+| [Thorough](#thorough-prompt) | `unio mode safe` | Upfront risk/design work, broader checks, two independent reviews from different known AI labs, then the lead's assessment and owner acceptance under existing authority. |
 
-Safe-first uses the existing `safe` mode; it is not a new CLI value. These
-prompts tell the lead how to operate. Changing `unio mode` does not itself
-launch reviewers or select tests. The runner enforces the task's declared
+Balanced uses the existing `medium` mode; Thorough uses `safe`. These
+are protocol names, not new CLI values. The prompts tell the lead how to
+operate. Changing `unio mode` does not itself launch reviewers or select
+tests. The runner enforces the task's declared
 checks and native budget slots; the lead must arrange the protocol's reviews.
-Safe-first uses more time and existing subscription allowance, without
+Thorough uses more time and existing subscription allowance, without
 raising the tier or authorizing extra charges.
 
 ## YOLO prompt
@@ -48,6 +50,7 @@ we are not continuing development of Unio itself.
 
 Project brief: [what to build, for whom, and constraints]
 Accounts occupied by other sessions: [list them, or none]
+Reasoning profile: Economy (change to Adaptive or Maximum if I choose)
 
 Read applicable local instructions and Unio's installed LEAD-ROUTING.md
 and its referenced guides under ~/.config/unio/templates/. Use the config
@@ -67,10 +70,18 @@ prove sign-in or remaining allowance. Do not bypass a refusal with aliases.
 Open unio dashboard ensure --open-browser and show this project's actual URL.
 Delegate implementation through native Unio task files and runs to suitable
 capable subscription workers. Free models handle routine support and cannot
-lead or provide final acceptance. Start reasoning at high or the supported
-middle, with xhigh as the ceiling. No max/ultra, extra paid-token fallback,
-billing or authentication changes. Resume before authorized runs and stop
-new runs after the cycle. Preserve one-invocation and no-blind-retry rules.
+lead or provide final acceptance. Apply my selected reasoning profile:
+Economy starts at supported middle/high, escalating only when needed up to
+xhigh, with max off. Adaptive starts high and uses supported xhigh/max for
+hard reasoning. Maximum requests each route's highest permitted, verified
+supported effort for every new task. My explicit Adaptive/Maximum choice
+opts this project's future work into supported max; do not select it yourself
+or override this project's explicit model-specific holds. Never invent levels
+or use ultra. Keep unverified effective effort Unknown and preserve active
+run settings.
+No extra paid-token fallback, billing or authentication changes. Resume before
+authorized runs and stop new runs after the cycle. Preserve one-invocation
+and no-blind-retry rules.
 
 Deliver useful features in coherent batches and keep coordination brief.
 Run focused checks for changed behavior and a real smoke check where relevant;
@@ -90,7 +101,7 @@ destructive-operation or spending authority. Preserve frozen task checks,
 failed evidence and the owner's required gates in every mode.
 ```
 
-## Medium prompt
+## Balanced prompt
 
 ```text
 You are the lead for a brand-new project. Use the installed Unio CLI to
@@ -99,6 +110,7 @@ we are not continuing development of Unio itself.
 
 Project brief: [what to build, for whom, and constraints]
 Accounts occupied by other sessions: [list them, or none]
+Reasoning profile: Economy (change to Adaptive or Maximum if I choose)
 
 Read applicable local instructions and Unio's installed LEAD-ROUTING.md
 and its referenced guides under ~/.config/unio/templates/. Use the config
@@ -118,10 +130,18 @@ prove sign-in or remaining allowance. Do not bypass a refusal with aliases.
 Open unio dashboard ensure --open-browser and show this project's actual URL.
 Delegate implementation through native Unio task files and runs to suitable
 capable subscription workers. Free models handle routine support and cannot
-lead or provide final acceptance. Start reasoning at high or the supported
-middle, with xhigh as the ceiling. No max/ultra, extra paid-token fallback,
-billing or authentication changes. Resume before authorized runs and stop
-new runs after the cycle. Preserve one-invocation and no-blind-retry rules.
+lead or provide final acceptance. Apply my selected reasoning profile:
+Economy starts at supported middle/high, escalating only when needed up to
+xhigh, with max off. Adaptive starts high and uses supported xhigh/max for
+hard reasoning. Maximum requests each route's highest permitted, verified
+supported effort for every new task. My explicit Adaptive/Maximum choice
+opts this project's future work into supported max; do not select it yourself
+or override this project's explicit model-specific holds. Never invent levels
+or use ultra. Keep unverified effective effort Unknown and preserve active
+run settings.
+No extra paid-token fallback, billing or authentication changes. Resume before
+authorized runs and stop new runs after the cycle. Preserve one-invocation
+and no-blind-retry rules.
 
 Deliver manageable feature batches. Define scope, acceptance criteria and
 focused checks before delegating. Run unio verify, relevant integration
@@ -144,7 +164,7 @@ destructive-operation or spending authority. Preserve frozen task checks,
 failed evidence and the owner's required gates in every mode.
 ```
 
-## Safe-first prompt
+## Thorough prompt
 
 ```text
 You are the lead for a brand-new project. Use the installed Unio CLI to
@@ -153,6 +173,7 @@ we are not continuing development of Unio itself.
 
 Project brief: [what to build, for whom, and constraints]
 Accounts occupied by other sessions: [list them, or none]
+Reasoning profile: Economy (change to Adaptive or Maximum if I choose)
 
 Read applicable local instructions and Unio's installed LEAD-ROUTING.md
 and its referenced guides under ~/.config/unio/templates/. Use the config
@@ -172,10 +193,18 @@ prove sign-in or remaining allowance. Do not bypass a refusal with aliases.
 Open unio dashboard ensure --open-browser and show this project's actual URL.
 Delegate implementation through native Unio task files and runs to suitable
 capable subscription workers. Free models handle routine support and cannot
-lead or provide final acceptance. Start reasoning at high or the supported
-middle, with xhigh as the ceiling. No max/ultra, extra paid-token fallback,
-billing or authentication changes. Resume before authorized runs and stop
-new runs after the cycle. Preserve one-invocation and no-blind-retry rules.
+lead or provide final acceptance. Apply my selected reasoning profile:
+Economy starts at supported middle/high, escalating only when needed up to
+xhigh, with max off. Adaptive starts high and uses supported xhigh/max for
+hard reasoning. Maximum requests each route's highest permitted, verified
+supported effort for every new task. My explicit Adaptive/Maximum choice
+opts this project's future work into supported max; do not select it yourself
+or override this project's explicit model-specific holds. Never invent levels
+or use ultra. Keep unverified effective effort Unknown and preserve active
+run settings.
+No extra paid-token fallback, billing or authentication changes. Resume before
+authorized runs and stop new runs after the cycle. Preserve one-invocation
+and no-blind-retry rules.
 
 Work in small, reviewable batches. Before implementation, write the design,
 scope, acceptance criteria, material risks, relevant threat/failure cases and
@@ -223,13 +252,14 @@ When a Codex lead is already developing Unio in another session, list that
 Codex account as occupied. A different project creates no extra subscription
 allowance. Native Unio locks do not count other workspaces. Reviewers also
 consume their shared account's workflow slot; low tier still applies in
-Safe-first. Wait for an eligible slot or report missing required evidence.
+Thorough. Wait for an eligible slot or report missing required evidence.
 
 Use the new project's dashboard URL, not a development dashboard for Unio.
 Existing sessions can stay open with their own lead reservations and files.
-Changing protocols affects new task planning; do not discard already frozen
-checks or erase failed evidence. Preserve the selected protocol in this
-project's own handoff so the next lead continues it.
+Changing protocols or reasoning profiles affects new task planning; do not
+discard frozen checks or erase failed evidence. Preserve the selected
+protocol and reasoning profile in this project's own handoff so the next
+lead continues them.
 
 For an existing checkout or remote repository, see
 [separate project sessions](START_HERE.md#start-a-separate-project-session).

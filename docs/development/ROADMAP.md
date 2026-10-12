@@ -152,6 +152,26 @@ workflow admission shipped in v0.5.3. Use YOLO + low tier for this project:
 focused checks and personal lead review, with the full gate at release.
 Browser selectors and automatic scheduling remain later improvements.
 
+### Reasoning profile selector
+
+Owner update, 2026-10-12: the review protocols are **YOLO / Balanced / Thorough**.
+The existing native values remain `yolo` / `medium` / `safe`. New-project startup offers
+[YOLO, Balanced and Thorough](../ai/NEW-PROJECT-PROMPT.md), separately from
+coordination tier and [Economy, Adaptive and Maximum reasoning](../ai/REASONING-PROFILES.md).
+The prompts default to low concurrency and Economy. Owners can explicitly
+opt another project into occasional supported max or the highest permitted
+effort throughout; this does not change Unio development's xhigh ceiling.
+
+Reasoning profiles are currently lead instructions. A future bounded native
+slice should persist the owner's selection, expose it in policy/help, record
+requested route/effort in run receipts and map only verified supported controls.
+Preserve explicit route holds, actual shared budgets, frozen runs and Unknown
+effective settings. Automatic effort adaptation and changing a live lead's
+settings need separate capability work. There is no native effort-profile
+command yet. Initial estimate: **3–6 hours** for a scoped selector/receipt
+slice after its contract, with per-route enforcement estimated from the audit.
+This planning entry does not displace the current save-failure diagnosis.
+
 ## Learn from actual project work
 
 Owner-approved on 2026-10-07: [model experience and task-fit recommendations](MODEL-EXPERIENCE.md)

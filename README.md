@@ -241,11 +241,15 @@ describe your idea, and let your lead set up Unio and coordinate the workers.
 You do not need an existing repository or a clone of Unio's source.
 Choose a complete startup protocol:
 [YOLO](docs/ai/NEW-PROJECT-PROMPT.md#yolo-prompt),
-[Medium](docs/ai/NEW-PROJECT-PROMPT.md#medium-prompt), or
-[Safe-first](docs/ai/NEW-PROJECT-PROMPT.md#safe-first-prompt).
+[Balanced](docs/ai/NEW-PROJECT-PROMPT.md#balanced-prompt), or
+[Thorough](docs/ai/NEW-PROJECT-PROMPT.md#thorough-prompt).
 They range from focused checks and lead review to two independent reviews
 from different AI labs, followed by the lead's assessment. All keep the
 coordination budget separate from the work mode.
+Reasoning is a third choice: [Economy, Adaptive or Maximum](docs/ai/REASONING-PROFILES.md).
+The prompts start with Economy and low concurrency; users can explicitly
+select occasional supported max or the highest permitted effort throughout.
+These effort profiles guide the lead; they are not a native CLI switch yet.
 
 Open your AI coding CLI in your project's `repo/` folder. Choose a capable
 lead, such as Claude Code, Codex, Antigravity/Gemini or Mistral Vibe, and
