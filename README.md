@@ -260,8 +260,11 @@ then docs/ai/START_HERE.md or ../coord/docs/LEAD-ROUTING.md.
 Read this project's handoff and coordination log if they exist.
 If Unio is not initialized here, inspect the layout and help me set up
 this project's own workspace without overwriting existing work.
-Check the local setup, preserve my work mode and budget, and register
-your configured lead alias for this project. Do not replace an active lead.
+Check the local setup and preserve my chosen review protocol, reasoning
+effort and coordination tier. For a new project, default to Low reasoning
+and low coordination tier. I can change any one independently for future
+assignments; record my choice in the project instructions and handoff.
+Register your configured lead alias for this project. Do not replace an active lead.
 Open the managed dashboard and show me its link.
 For the task I give you, estimate the time, delegate through Unio,
 verify the changes and keep me updated. Preserve work and leave a clear
@@ -334,8 +337,8 @@ must remember your choice, preserve the other settings and explain any route
 that cannot change effort. Higher effort or concurrency never adds quota or
 authorizes extra token charges.
 
-Available in Unio 0.5.3, these controls let you choose the pace and protect
-shared subscription budgets. Unio counts its native worker and review workflows
+The native mode/tier controls first shipped in Unio 0.5.3, letting you choose
+the pace and protect shared subscription budgets. Unio counts its native worker and review workflows
 and the registered lead. Sessions launched outside Unio remain uncounted.
 
 New projects include instructions for the lead to read the active policy before
