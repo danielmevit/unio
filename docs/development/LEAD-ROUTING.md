@@ -147,7 +147,7 @@ exhaustion. Unknown effective identity, corrections and allowance stay unknown.
 Record before changing the worker revision or base: stale evidence is refused.
 Identical replay adds no sample; conflicting assessments are refused unchanged.
 This command is a local record, not a new review, human acceptance or dispatch.
-See the [frozen first-slice boundaries](MODEL-EXPERIENCE-CONTRACT.md).
+See the [frozen first-slice boundaries](https://github.com/danielmevit/unio/blob/main/docs/development/MODEL-EXPERIENCE-CONTRACT.md).
 
 ## No extra token charges by default
 
