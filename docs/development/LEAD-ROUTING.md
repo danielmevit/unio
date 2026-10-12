@@ -120,6 +120,35 @@ Do not invent chores merely to keep models busy. Follow
 dependent changes in order. The lead assesses each complete change under the
 current owner review policy.
 
+## Consult local task experience before choosing a worker
+
+When the installed release provides `unio experience`, inspect the relevant
+task type before assigning work:
+
+```bash
+unio experience show --task-type "implementation"
+unio experience suggest --task-type "implementation"
+```
+
+Choose a useful exact category for the actual task; documentation evidence does
+not establish security or UI ability. Read the displayed examples, dates,
+sample size, correction burden and local account blocks alongside the curated
+scoreboard and current owner instructions. Fewer than three distinct reported
+accepted tasks in 90 days provides examples only, not a recommendation. Even
+enough evidence gives conditional advice: a clear local slot does not prove
+sign-in, allowance or provider readiness. Never use old reset estimates as
+restored capacity or promote a free/proposal route into feature ownership.
+
+After reviewing a completed native task, explicitly record its final assessment
+with requested model, route, effort and task type. Keep accepted reports,
+quality issues, operational failures and unaccepted output separate. Source
+exit zero is not acceptance; a local budget stop is not measured subscription
+exhaustion. Unknown effective identity, corrections and allowance stay unknown.
+Record before changing the worker revision or base: stale evidence is refused.
+Identical replay adds no sample; conflicting assessments are refused unchanged.
+This command is a local record, not a new review, human acceptance or dispatch.
+See the [frozen first-slice boundaries](MODEL-EXPERIENCE-CONTRACT.md).
+
 ## No extra token charges by default
 
 Use the owner's existing funded subscriptions. OpenCode subscription models

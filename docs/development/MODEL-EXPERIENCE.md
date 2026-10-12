@@ -1,12 +1,19 @@
 # Model experience from real project work
 
-Owner-approved feature direction, 2026-10-07. Status: planned; the existing
+Owner-approved feature direction, 2026-10-07. The first bounded CLI slice is
+in development for **0.5.12**, under the
+[frozen contract](MODEL-EXPERIENCE-CONTRACT.md): explicit final assessments tied
+to native task revisions, local task-specific evidence and conditional advice
+using the existing fleet observation. It is not published or installed yet.
+Automatic metadata capture, routing and richer review-quality profiles remain
+planned. The existing
 `unio score` command already summarizes per-worker ledger results. It does
 not yet provide model-specific task profiles, automatic routing, review
 accuracy or causal comparisons. Extend that evidence rather than adding a
 separate synthetic benchmark program. The
 [curated model scoreboard and task-fit guide](MODEL-SCOREBOARD.md) is available
-now as lead guidance; model-specific automatic aggregation remains planned.
+now as lead guidance; see the current version plan before assuming that a
+development-source command is installed.
 [Bounded escalation](../ai/LEAD-ESCALATION.md) records when the lead takes over
 a struggling correction instead of spending another worker session.
 

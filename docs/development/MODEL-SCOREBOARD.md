@@ -323,6 +323,23 @@ receipts; do not publish raw prompts or logs to fill this table.
 These are candidate observations, not an invented benchmark or Source acceptance.
 Original failures and operational limits remain preserved in private receipts.
 
+## Worker-experience implementation attempt — 2026-10-12
+
+GLM 5.3/high through Mistral Vibe 2.26.1 stopped at its local 4M cumulative
+token cap while implementing `MODEL-EXPERIENCE-VIBE-1`: Source/native/adapter
+exit 3, 4,073,681 reported total tokens and estimated $5.8831234. The export
+reported zero cached-input tokens. It left three uncommitted draft files and
+no completed tests; the existing lead preserved their exact bytes in `288cda6`.
+This was a local task-budget stop, not observed subscription exhaustion or
+completed implementation. Requested identity/effort are not server proof.
+
+The lead reproduced an implicit-project parsing failure in a copied standalone
+installation and found that the draft's record-ID validator rejected its own
+32-character IDs. Storage, age and packaging gaps went to one separately
+bounded Gemini completion task. Its outcome is pending. These observations
+support smaller contexts and early commits, without a universal model ranking.
+Preserve the original failed Source even if the saved work later ships.
+
 ## Update it after actual work
 
 Record exact model/version, CLI/gateway, requested/effective effort, task type
