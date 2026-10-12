@@ -22,23 +22,20 @@ actual lead alias only after the outgoing Unio lead has handed over.
 Check installed capabilities and policy, then reuse the managed dashboard
 and show its actual URL.
 
-Official and installed Unio 0.5.12 is already delivered. Do not repeat its
-release checks or publication for unchanged code. Recent work added README
-startup instructions, independent project sessions and separate prompts;
-those earlier changes were documentation only. The current bounded 0.5.13
-slice aligns protocol commands and prominently documents changeable
-Low/Medium/Max reasoning. Read the latest log for its actual delivery state;
-do not assume a candidate has already shipped.
+Official and installed Unio 0.5.13 is delivered. Do not repeat its release
+checks or publication for unchanged code. Matching protocol commands are
+yolo/balanced/thorough; medium/safe remain aliases. Low/Medium/Max reasoning
+is prominent and independently changeable in the README and all three startup
+prompts. These profiles are lead instructions, not a native effort controller.
 The new-project guide now has separate YOLO, Balanced and Thorough prompts.
 Those options do not change this Unio development workspace's YOLO policy.
 New-project reasoning profiles Low/Medium/Max are documented as
 separate owner choices. They are not native switches and do not raise this
 Unio development workspace's xhigh ceiling or authorize max here.
 
-Finish the current protocol-name slice before starting another milestone;
-its frozen contract is docs/development/PROTOCOL-NAMES-CONTRACT.md and native
-worker task PROTOCOL-NAMES-VIBE-1. Preserve its one invocation and receipts.
-After that, the next planned functional task is matched diagnosis of real automatic-save
+The protocol-name slice is complete in 0.5.13. Preserve its frozen contract
+and original GLM/Gemini receipts, including the failed and interrupted events.
+The next planned functional task is matched diagnosis of real automatic-save
 helper exit -9. Its cause is unknown, and preserved Git commits remain intact.
 Read the latest log, receipts and docs/development/ROADMAP.md before starting.
 Estimate 1–3 hours for diagnosis, then estimate a bounded fix from findings.
@@ -72,7 +69,28 @@ Report background activity only when an actual process is still running.
 
 ## Current delivery state — 2026-10-12
 
-Official and installed stable are **[v0.5.12](https://github.com/danielmevit/unio/releases/tag/v0.5.12)**,
+Official and installed stable are **[v0.5.13](https://github.com/danielmevit/unio/releases/tag/v0.5.13)**,
+published from `f9997dc`. The complete gate passed on `cffea1c` in 994.414 seconds; only final README/changelog release labels differ.
+Copied-installer packaging, exact artifacts, 0.5.12 upgrade/restore, actual
+installed alias/independence checks before publication and all six official
+download hashes passed. The managed dashboard serves exact release assets.
+
+The release matches YOLO/Balanced/Thorough commands to their names and keeps
+legacy aliases and schema-1 stored modes. Every startup prompt exposes Low /
+Medium / Max reasoning independently from review protocol and account tier;
+the canonical reasoning guide is packaged. Effort remains a cooperating lead
+instruction, with verified model controls and active-run restrictions intact.
+
+Original GLM Source2 connection failure remains preserved. Its one Gemini
+replacement saved a clean commit and native Source0, but its final provider
+event reported an interrupted-stream ERROR. Exact native verification passed
+scope and 3/3 checks; the lead accepted the patch on those checks and personal
+inspection. No retry, third worker or AI reviewer was called for this slice.
+Automatic-save helper exit -9 remains unresolved and is the next diagnosis.
+
+[0.5.13 usage and limitations](../RELEASE-0.5.13.md). Earlier delivery evidence follows.
+
+The previous **[v0.5.12](https://github.com/danielmevit/unio/releases/tag/v0.5.12)** was
 published from `81e21e7`. The complete gate passed on `3ff333c` in 954.14 seconds;
 only checked README/changelog release labels differ, with every other tracked
 byte identical. Exact installer/artifact checks, 0.5.11 upgrade/backup restoration,
