@@ -4,6 +4,22 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.13 — matching protocols and clearer effort — unreleased
+
+See [release scope and usage](docs/RELEASE-0.5.13.md).
+
+- Use matching `unio mode yolo`, `balanced` and `thorough` commands. Keep
+  `medium`/`safe` aliases and stored schema-1 compatibility values.
+- Show public protocol names in human output and new worker instructions;
+  add `protocol` to policy JSON while preserving machine-readable `mode`.
+- Give each new-project prompt separate Low / Medium / Max reasoning and
+  coordination-tier fields. Explain independent changes during a project,
+  verified model controls, fixed routes and frozen running tasks.
+- Put a dedicated effort section in the README and package the canonical
+  reasoning guide. Effort profiles remain lead instructions, not an
+  automatic native effort controller or a new `unio effort` command.
+- Preserve account limits, configuration, owner templates and frontend work.
+
 ## 0.5.12 — choose workers from experience — 2026-10-12
 
 See [release scope and usage](docs/RELEASE-0.5.12.md).
