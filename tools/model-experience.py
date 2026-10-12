@@ -261,8 +261,6 @@ def valid_record(d):
         return None
     if not valid_revision(d['revision']):
         return None
-    if record_identity(d['worker'], d['task'], d['revision']) != d['id']:
-        return None
     process = d['process']
     if not isinstance(process, dict) or set(process) != PROCESS_KEYS:
         return None
