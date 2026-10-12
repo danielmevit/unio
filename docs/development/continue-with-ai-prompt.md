@@ -25,14 +25,20 @@ and show its actual URL.
 Official and installed Unio 0.5.12 is already delivered. Do not repeat its
 release checks or publication for unchanged code. Recent work added README
 startup instructions, independent project sessions and separate prompts;
-those are documentation changes, not a new runtime release.
+those earlier changes were documentation only. The current bounded 0.5.13
+slice aligns protocol commands and prominently documents changeable
+Low/Medium/Max reasoning. Read the latest log for its actual delivery state;
+do not assume a candidate has already shipped.
 The new-project guide now has separate YOLO, Balanced and Thorough prompts.
 Those options do not change this Unio development workspace's YOLO policy.
-New-project reasoning profiles Economy/Adaptive/Maximum are documented as
+New-project reasoning profiles Low/Medium/Max are documented as
 separate owner choices. They are not native switches and do not raise this
 Unio development workspace's xhigh ceiling or authorize max here.
 
-The next planned functional task is matched diagnosis of real automatic-save
+Finish the current protocol-name slice before starting another milestone;
+its frozen contract is docs/development/PROTOCOL-NAMES-CONTRACT.md and native
+worker task PROTOCOL-NAMES-VIBE-1. Preserve its one invocation and receipts.
+After that, the next planned functional task is matched diagnosis of real automatic-save
 helper exit -9. Its cause is unknown, and preserved Git commits remain intact.
 Read the latest log, receipts and docs/development/ROADMAP.md before starting.
 Estimate 1–3 hours for diagnosis, then estimate a bounded fix from findings.

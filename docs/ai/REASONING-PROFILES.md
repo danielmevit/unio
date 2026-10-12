@@ -1,4 +1,4 @@
-# Choose reasoning effort separately
+# Reasoning effort: Low / Medium / Max
 
 Unio has separate choices for how carefully work is checked, how many
 independent workflows share an account, and how much reasoning each model
@@ -6,29 +6,34 @@ uses. Increasing one does not silently change the others.
 
 | Choice | Options | What it changes |
 | --- | --- | --- |
-| Review protocol | YOLO, Balanced, Thorough | Task size, validation, independent reviews and acceptance planning. Native modes are `yolo`, `medium`, `safe`. |
+| Review protocol | YOLO, Balanced, Thorough | Task size, validation, independent reviews and acceptance planning. Commands are `yolo`, `balanced`, `thorough` in 0.5.13; older runners use `medium`/`safe` for the last two. |
 | Coordination tier | low, medium, high | Native per-workspace concurrency caps: 1, 2 or 4 independent workflows per shared account, including the lead. |
-| Reasoning profile | Economy, Adaptive, Maximum | Instructions for choosing the supported effort of the lead, workers and reviewers on future assignments. |
+| Reasoning profile | Low, Medium, Max | Instructions for choosing the supported effort of the lead, workers and reviewers on future assignments. |
+
+These are Unio effort profiles, not identical native flags: **Low does not
+mean pass `--effort low` to every model**. It means conserve allowance while
+starting at the supported middle/high level. The lead maps the selected
+profile to each route's verified controls and explains any fixed limit.
 
 The [new-project prompts](NEW-PROJECT-PROMPT.md) start at **low coordination
-tier + Economy reasoning**. Balanced is the middle review protocol; its
-existing CLI value remains `medium`. Any review protocol can use any
-reasoning profile: Thorough can use Economy, and YOLO can use Maximum.
+tier + Low reasoning**. Balanced is the middle review protocol; its
+matching CLI value is `balanced` in 0.5.13 (`medium` remains an alias). Any review protocol can use any
+reasoning profile: Thorough can use Low, and YOLO can use Max.
 
-## Three reasoning profiles
+## Three interchangeable reasoning profiles
 
 | Profile | Normal behavior | Escalation |
 | --- | --- | --- |
-| Economy — starting profile | Use the model's supported middle level, or high where that is the suitable permitted setting. Keep a capable model on implementation; this is not a switch to weaker free models. | Raise to supported high/xhigh only when the evidence warrants it. Max stays off. |
-| Adaptive — variable effort | Start at high for substantive work. Use supported middle for straightforward coordination or routine work. | Use supported xhigh, and max when a difficult reasoning problem warrants it and the owner selected this profile. Return to the normal level for subsequent simpler tasks. |
-| Maximum — highest permitted effort | Request the highest verified supported and permitted setting for every new controllable lead, worker and reviewer task. | No routine effort reduction. A route whose highest eligible setting is high stays at high; unsupported levels are never invented. |
+| Low — default | Use the model's supported middle level, or high where that is the suitable permitted setting. Keep a capable model on implementation; this is not a switch to weaker free models. | Raise to supported high/xhigh only when the evidence warrants it. Max stays off. |
+| Medium — variable effort | Start at high for substantive work. Use supported middle for straightforward coordination or routine work. | Use supported xhigh, and max when a difficult reasoning problem warrants it and the owner selected this profile. Return to the normal level for subsequent simpler tasks. |
+| Max — highest permitted effort | Request the highest verified supported and permitted setting for every new controllable lead, worker and reviewer task. | No routine effort reduction. A route whose highest eligible setting is high stays at high; unsupported levels are never invented. |
 
-Economy is a spending/effort preference, not a claim that models share one
+Low is a spending/effort preference, not a claim that models share one
 scale. A model name containing "max" does not establish its reasoning level.
 Use the route-specific [model effort guide](../development/MODEL-EFFORT.md)
 and current installed help or trustworthy model metadata.
 
-An owner's explicit selection of Adaptive or Maximum opts that project's
+An owner's explicit selection of Medium or Max opts that project's
 future assignments into supported max. It supersedes the new-project
 prompt's default xhigh ceiling, without changing another project's policy.
 The lead must not raise the profile on its own. Separate explicit route
@@ -45,13 +50,28 @@ Higher effort can spend the existing allowance faster. It does not create
 extra quota, raise concurrency caps or authorize paid-token overage. Neither
 a quota error nor a network failure is a reason to increase effort.
 
+## Mix and change the settings independently
+
+Any review protocol works with any reasoning profile and coordination tier.
+For example, YOLO + Max + low tier means fast focused checks, the highest
+permitted reasoning setting and one independent workflow per shared account.
+Thorough + Low + low tier means broader independent reviews with economical
+reasoning and the same concurrency limit. Reviewers also consume their account's
+workflow slot; low tier does not prohibit using distinct available accounts.
+
+Change one setting at a time. The lead must preserve the other two, record
+the new choice in this project's instructions/handoff, and use it for future
+assignments without asking for the same authorization on every task. A
+review-protocol change cannot cancel frozen checks; an effort change cannot
+restart or rewrite an active run; a tier change cannot invent extra quota.
+
 ## How the owner changes it
 
-Edit the `Reasoning profile` field before pasting a startup prompt, or tell
+Edit the `Reasoning effort` field before pasting a startup prompt, or tell
 an existing lead, for example:
 
 ```text
-Keep Balanced review and low coordination tier. Switch reasoning to Adaptive
+Keep Balanced review and low coordination tier. Switch reasoning effort to Medium
 for future assignments. I authorize supported max when difficult reasoning
 warrants it; keep explicit model holds and spending restrictions.
 ```
@@ -59,10 +79,17 @@ warrants it; keep explicit model holds and spending restrictions.
 Or:
 
 ```text
-Keep the current review protocol and coordination tier. Switch reasoning to
-Maximum for all future assignments. I authorize supported max; request each
+Keep the current review protocol and coordination tier. Switch reasoning effort to
+Max for all future assignments. I authorize supported max; request each
 route's highest permitted supported effort and explain any cap or unavailable
 control. Preserve account limits, explicit route holds and spending rules.
+```
+
+To lower effort again:
+
+```text
+Switch reasoning effort back to Low for future assignments. Keep my current
+review protocol and coordination tier; max is off again.
 ```
 
 The lead records the owner's selection in this project's own instructions

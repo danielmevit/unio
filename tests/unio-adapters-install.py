@@ -85,11 +85,16 @@ class AdapterInstallTests(unittest.TestCase):
         custom = 'vibeglm=python3 ' + shlex.quote(str(adapters / 'vibe-worker.py')) + ' --model glm-5-3\n'
         (conf / 'agents.conf').write_text(custom)
         (conf / 'templates' / 'MY-NOTES.md').write_text('owner template\n')
-        for name in ('AGENT-FLEET', 'LEAD-ROUTING', 'MODEL-EFFORT'):
+        for relative in ('docs/development/AGENT-FLEET.md',
+                         'docs/development/LEAD-ROUTING.md',
+                         'docs/development/MODEL-EFFORT.md',
+                         'docs/ai/REASONING-PROFILES.md'):
+            name = Path(relative).stem
             self.assertEqual((conf / 'templates' / (name + '.md')).read_bytes(),
-                             (SOURCE / 'docs/development' / (name + '.md')).read_bytes())
+                             (SOURCE / relative).read_bytes())
             (conf / 'templates' / (name + '.md')).write_text('owner ' + name + ' notes\n')
-        for relative in ('docs/ai/MODEL-ROLES.md', 'docs/development/MODEL-SCOREBOARD.md'):
+        for relative in ('docs/ai/MODEL-ROLES.md', 'docs/development/MODEL-SCOREBOARD.md',
+                         'docs/WORK-MODES.md'):
             self.assertEqual((conf / 'templates' / Path(relative).name).read_bytes(), (SOURCE / relative).read_bytes())
         (adapters / 'owner notes.txt').write_text('unrelated\n')
         credential = self.home / '.config' / 'perplexity-web-mcp' / 'token'
@@ -99,7 +104,7 @@ class AdapterInstallTests(unittest.TestCase):
         self.install(conf)
         self.assertEqual((conf / 'agents.conf').read_text(), custom)
         self.assertEqual((conf / 'templates' / 'MY-NOTES.md').read_text(), 'owner template\n')
-        for name in ('AGENT-FLEET', 'LEAD-ROUTING', 'MODEL-EFFORT'):
+        for name in ('AGENT-FLEET', 'LEAD-ROUTING', 'MODEL-EFFORT', 'REASONING-PROFILES'):
             self.assertEqual((conf / 'templates' / (name + '.md')).read_text(), 'owner ' + name + ' notes\n')
         self.assertEqual((adapters / 'owner notes.txt').read_text(), 'unrelated\n')
         self.assertEqual(credential.read_text(), 'fake-not-a-token\n')

@@ -9,6 +9,28 @@ precedence. This guide does not authorize another invocation.
 Read [lead routing and spending](LEAD-ROUTING.md) and [task budgets](TASK-TIME-BUDGETS.md) alongside this guide.
 A listed model is an inventory entry, not authorization to use a paid route.
 
+
+## Select review, effort and concurrency separately
+
+Read the [Low / Medium / Max reasoning profiles](https://github.com/danielmevit/unio/blob/main/docs/ai/REASONING-PROFILES.md)
+(or installed `templates/REASONING-PROFILES.md`) at startup. New-project prompts
+provide explicit effort and coordination-tier fields. Any effort profile
+can accompany YOLO, Balanced or Thorough. The owner can switch any axis for
+future assignments; preserve the other two, record the choice in the project's
+instructions/handoff, and map only verified supported model controls.
+
+Low is the economical default, starting at supported middle/high with max
+off. Owner-selected Medium adapts effort and can use supported max for hard
+reasoning; Max requests each route's highest permitted setting for new tasks.
+These profile names are lead instructions, not universal native effort flags
+or an implemented `unio effort` command. Explicit project route holds and
+spending restrictions remain. Frozen active tasks keep their original settings.
+
+The xhigh/no-max defaults below remain the current Unio development workspace's
+policy. An explicit owner's effort selection sets their new project's policy;
+do not treat this workspace's default ceiling as a universal model limitation.
+No profile changes account concurrency, role restrictions or actual allowance.
+
 ## Default and escalation
 
 Start with **high**, or the supported **middle level** for a model whose

@@ -1,7 +1,8 @@
 # Work modes and subscription tiers
 
-Unio has two independent settings: the pace of work and the budget available
-for coordinating it. Choose them deliberately; a larger subscription does
+Unio has three independent choices: the review protocol, coordination budget
+and [Low / Medium / Max reasoning effort](ai/REASONING-PROFILES.md). Native mode
+and tier switches persist; reasoning effort currently guides the lead. Choose them deliberately; a larger subscription does
 not require a slower workflow, and a smaller one should not exhaust the lead.
 
 Available in [Unio 0.5.3](https://github.com/danielmevit/unio/releases/tag/v0.5.3): mode, tier, policy, lead and
@@ -9,18 +10,18 @@ account commands, persistence in `coord/work-policy.json`, visibility, worker
 instructions and native workflow admission. Policy reports
 `workflow_enforcement` as `native_workflows`.
 Foreground/background Source runs and independent reviews hold one locked
-slot per shared budget group, admitted before any provider call. Commands
-below describe the released functionality.
+slot per shared budget group, admitted before any provider call. The base switches shipped in 0.5.3; matching `balanced`/`thorough` command
+names and public labels are the 0.5.13 update.
 
 ## Choose the pace
 
 | Mode | How the lead organizes work | Checks and review |
 | --- | --- | --- |
 | `yolo` | Finish a useful feature in a coherent batch. Delegate implementation and keep coordination brief. | Focused checks for changed behavior, a real smoke check where relevant, and a brief lead review. Avoid routine extra reviewer calls. Run the full required gate at a release boundary. |
-| `medium` | Deliver manageable feature batches with more integration attention. | Focused checks plus relevant integration checks. Ask for an independent review when the change or an unresolved finding warrants it. |
-| `safe` | Use smaller checkpoints and inspect interfaces and failure paths carefully. | Broader integration checks and the project's full gate at integration boundaries. Arrange independent reviews from different AI labs according to the project's review policy, followed by the lead's assessment. |
+| `balanced` | Deliver manageable feature batches with more integration attention. | Focused checks plus relevant integration checks. Ask for an independent review when the change or an unresolved finding warrants it. |
+| `thorough` | Use smaller checkpoints and inspect interfaces and failure paths carefully. | Broader integration checks and the project's full gate at integration boundaries. Arrange independent reviews from different AI labs according to the project's review policy, followed by the lead's assessment. |
 
-`medium` is the default. A mode shapes the next task's scope, validation and
+`balanced` is the default (`medium` is its compatibility alias). A mode shapes the next task's scope, validation and
 review plan; it never silently removes an already frozen task's Validate
 commands. Required checks must actually pass. Repeat or broaden checks only
 when changed code, a failure or an unresolved concern justifies it. Record
@@ -40,7 +41,7 @@ plans, prices, model quality levels, reasoning levels or measured quota.
 | Tier | Independent workflows per shared provider/account budget | Instructions for the lead |
 | --- | --- | --- |
 | `low` | 1, including the lead | Delegate implementation to other available providers. Normally keep the lead on planning, concise review, integration and handoffs. Direct takeover after worker escalation uses the existing lead session. Do not start another independent feature, test job or worker on the lead's provider. |
-| `medium` | 2, including the lead | Allow a second independent workflow on a provider when its capacity justifies it. Prefer useful work on other funded providers before consuming the lead's reserve. |
+| `balanced` | 2, including the lead | Allow a second independent workflow on a provider when its capacity justifies it. Prefer useful work on other funded providers before consuming the lead's reserve. |
 | `high` | 4, including the lead | Allow more independent workflows when useful and capacity permits. Do not create busywork or run every assignment at maximum effort. |
 
 See [bounded escalation](ai/LEAD-ESCALATION.md) for direct lead takeover after
@@ -88,13 +89,24 @@ identification remain future work. Supported capacity readings and dated
 manual readings remain separate from this chosen profile. Missing capacity
 stays Unknown. Higher tiers never create extra allowance.
 
-Start model effort at high or the supported middle, with a supported middle
-for routine coordination. Escalate only for demonstrated reasoning difficulty
-and reserve max for an occasional bounded problem. Keep route-specific
-exceptions, including GLM 5.3 at high. Read the
-[model effort guide](development/MODEL-EFFORT.md) rather than guessing model
-controls. Never automatically downgrade a model, change a wrapper, purchase
-credits or add a paid fallback because a tier changed.
+## Choose reasoning effort independently
+
+Select **Low**, **Medium** or **Max** in the startup prompt, independently of
+review protocol and coordination tier. **Low** is the default: conserve
+allowance with a capable model at supported middle/high, escalating only
+when needed up to xhigh, with max off. **Medium** adapts effort to difficulty,
+including supported max for hard reasoning when explicitly selected. **Max**
+requests each route's highest permitted verified effort for new assignments.
+A fixed high-only route remains high; these labels are not universal CLI flags.
+
+The owner can change one choice during the project while preserving the other
+two. The lead records it in project instructions/handoff and applies verified
+controls to future assignments, leaving frozen active runs unchanged. There
+is no native `unio effort` command or automatic live-CLI effort change yet.
+Read the [reasoning profiles guide](ai/REASONING-PROFILES.md) and route-specific
+[model effort guide](development/MODEL-EFFORT.md). Preserve explicit route
+holds, actual allowance, spending restrictions and requested/effective Unknowns.
+Do not downgrade models or change billing/fallback because a tier changed.
 
 ## Commands and visibility
 
@@ -108,8 +120,11 @@ unio policy
 unio policy --json
 
 # Change just one setting; the other persists.
-unio mode medium
+unio mode balanced
 unio tier high
+
+# Change review protocol without changing tier or reasoning effort.
+unio mode thorough
 
 # Show the current value without changing it.
 unio mode
@@ -122,15 +137,19 @@ unio account opencode go-primary
 unio account glm go-primary
 ```
 
-Allowed mode values are exactly `yolo`, `medium`, `safe`; allowed tier values
-are exactly `low`, `medium`, `high`. Reject extra arguments and invalid values.
+Public mode values are `yolo`, `balanced`, `thorough`; old `medium` and `safe`
+values remain aliases for Balanced and Thorough. Allowed tier values are
+`low`, `medium`, `high`. Reject extra arguments and invalid values.
 Both settings are workspace-wide and persist across sessions in
 `coord/work-policy.json`. A missing file means the documented defaults;
 malformed, unknown-schema or unsafe policy files fail locally instead of
 silently resetting settings. Setter operations validate before writing and
 replace the file atomically under a shared lock.
 
-The policy JSON has schema 1 with `mode`, `tier`, an optional update timestamp,
+The policy JSON keeps schema 1 and its compatibility `mode` values
+(`yolo`/`medium`/`safe`), adding `protocol` (`yolo`/`balanced`/`thorough`). The
+stored mode values remain readable by older runners. JSON also includes
+`tier`, an optional update timestamp,
 the effective per-group workflow limit, lead reservation, account mappings,
 lead delegation guidance and an explicit
 capacity value of `unknown`; it does not manufacture subscription readings.

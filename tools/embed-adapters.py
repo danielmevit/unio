@@ -46,8 +46,13 @@ def embedded_block():
             raise SystemExit(name + ' must be UTF-8 LF text with a final newline')
         head = 'cat > "$CONF_DIR/lib/adapters/' + name + "\" <<'" + delimiter + "'\n"
         parts.append(head + text + delimiter + '\n')
-    for name in ('AGENT-FLEET', 'LEAD-ROUTING', 'MODEL-EFFORT'):
-        guide = (ROOT / 'docs' / 'development' / (name + '.md')).read_text()
+    for relative, name in (
+        ('docs/development/AGENT-FLEET.md', 'AGENT-FLEET'),
+        ('docs/development/LEAD-ROUTING.md', 'LEAD-ROUTING'),
+        ('docs/development/MODEL-EFFORT.md', 'MODEL-EFFORT'),
+        ('docs/ai/REASONING-PROFILES.md', 'REASONING-PROFILES'),
+    ):
+        guide = (ROOT / relative).read_text()
         delimiter = 'UNIO_' + name.replace('-', '_') + '_MD'
         if not guide.endswith('\n') or '\r' in guide or delimiter in guide.splitlines():
             raise SystemExit(name + ' guide must be LF text ending in a newline without its delimiter')
@@ -77,6 +82,7 @@ def main():
     for relative, name, delimiter in (
         ('docs/ai/MODEL-ROLES.md', 'MODEL-ROLES.md', 'MODEL_ROLES_TPL_EOF'),
         ('docs/development/MODEL-SCOREBOARD.md', 'MODEL-SCOREBOARD.md', 'MODEL_SCOREBOARD_TPL_EOF'),
+        ('docs/WORK-MODES.md', 'WORK-MODES.md', 'WORKMODES_TPL_EOF'),
     ):
         guide = (ROOT / relative).read_text()
         if not guide.endswith('\n') or '\r' in guide or delimiter in guide.splitlines():

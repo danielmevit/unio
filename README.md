@@ -246,10 +246,9 @@ Choose a complete startup protocol:
 They range from focused checks and lead review to two independent reviews
 from different AI labs, followed by the lead's assessment. All keep the
 coordination budget separate from the work mode.
-Reasoning is a third choice: [Economy, Adaptive or Maximum](docs/ai/REASONING-PROFILES.md).
-The prompts start with Economy and low concurrency; users can explicitly
-select occasional supported max or the highest permitted effort throughout.
-These effort profiles guide the lead; they are not a native CLI switch yet.
+Choose **Low / Medium / Max reasoning effort** separately from the protocol
+and account tier. Every [startup prompt](docs/ai/NEW-PROJECT-PROMPT.md#choose-reasoning-effort-independently)
+has editable fields; you can change any one later while keeping the others.
 
 Open your AI coding CLI in your project's `repo/` folder. Choose a capable
 lead, such as Claude Code, Codex, Antigravity/Gemini or Mistral Vibe, and
@@ -286,22 +285,54 @@ task files, results and handoffs stay in the workspace.
 
 ![](docs/brand/patterns/line.svg)
 
-## Work modes and coordination budget
+## Choose how Unio works
 
-Two independent settings shape how the lead organizes work: the pace
-(`yolo`, `medium`, `safe`) and the coordination budget (`low`, `medium`,
-`high`: 1, 2 or 4 independent workflows per shared provider/account
-budget, lead included). A larger subscription never requires a slower
-workflow, and a smaller one should not exhaust the lead. See the
-[work modes guide](docs/WORK-MODES.md):
+Three independent choices control the workflow. Start with **Low reasoning
+effort** and **low coordination tier**, then change either when needed.
+
+| Choice | Options | What changes |
+| --- | --- | --- |
+| **Review protocol** | YOLO / Balanced / Thorough | The depth of checks and independent reviews. |
+| **Reasoning effort** | Low / Medium / Max | How the lead chooses supported reasoning settings for itself, workers and reviewers. |
+| **Coordination tier** | low / medium / high | 1 / 2 / 4 independent workflows per shared account, including the lead. |
+
+The matching protocol commands are part of 0.5.13. Older runners accept
+`medium` for Balanced and `safe` for Thorough; both aliases remain supported.
+See the [work modes guide](docs/WORK-MODES.md).
 
 ```bash
-unio mode yolo                    # coherent feature batches, focused checks, lead review
-unio tier low                     # delegate to other providers; keep the lead on planning
+unio mode yolo
+unio mode balanced
+unio mode thorough
+unio tier low                     # account concurrency; separate from reasoning effort
 unio lead codex                   # register the lead reservation in its budget group
 unio account opencode go-primary  # aliases sharing one budget
 unio policy                       # current state (--json for machines)
 ```
+
+### Low / Medium / Max reasoning effort
+
+- **Low — default:** conserve allowance with supported middle/high settings;
+  increase effort only when needed, with max off.
+- **Medium:** let the lead adjust effort to difficulty, including supported
+  xhigh/max for hard reasoning and lower settings for routine work.
+- **Max:** request each model route's highest permitted, verified supported
+  effort for every new controllable assignment.
+
+These are lead instructions, with model-specific controls explained in the
+[reasoning guide](docs/ai/REASONING-PROFILES.md); there is no `unio effort`
+command yet. Change the prompt's **Reasoning effort** field or tell the lead:
+
+```text
+Keep Balanced review and low coordination tier. Switch reasoning effort to
+Medium for future tasks, using supported max only when difficulty warrants it.
+```
+
+Any combination works: YOLO + Max and Thorough + Low are valid. Changes apply
+to new assignments; existing runs keep their settings and evidence. The lead
+must remember your choice, preserve the other settings and explain any route
+that cannot change effort. Higher effort or concurrency never adds quota or
+authorizes extra token charges.
 
 Available in Unio 0.5.3, these controls let you choose the pace and protect
 shared subscription budgets. Unio counts its native worker and review workflows

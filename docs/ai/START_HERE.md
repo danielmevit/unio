@@ -12,9 +12,14 @@ Starting from an empty folder with a new idea? Follow
 commands and a paste-ready lead prompt. No existing repository is required.
 Choose its YOLO, Balanced or Thorough block. The selected work mode changes
 validation and review planning; all three default to low subscription tier.
-They separately default to [Economy reasoning](REASONING-PROFILES.md), with
-owner-selected Adaptive and Maximum options for future tasks. Balanced uses
-the existing native `medium` mode; reasoning profiles are lead instructions.
+They separately default to [Low reasoning](REASONING-PROFILES.md), with
+owner-selected Medium and Max options for future tasks. These three axes
+are interchangeable: changing one must preserve the other two. Every startup
+prompt has explicit effort/tier fields. In 0.5.13, Balanced and Thorough use
+`unio mode balanced` and `unio mode thorough`; older runners use the
+`medium`/`safe` aliases. Reasoning profiles are lead instructions; the
+[reasoning guide](REASONING-PROFILES.md#mix-and-change-the-settings-independently)
+explains changes during a project.
 
 Open another terminal and start the chosen AI coding CLI in the other
 project's checkout. This is a fresh conversation with its own task; it does

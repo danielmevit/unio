@@ -155,10 +155,11 @@ Browser selectors and automatic scheduling remain later improvements.
 ### Reasoning profile selector
 
 Owner update, 2026-10-12: the review protocols are **YOLO / Balanced / Thorough**.
-The existing native values remain `yolo` / `medium` / `safe`. New-project startup offers
+The 0.5.13 update accepts matching `yolo` / `balanced` / `thorough` commands,
+with `medium`/`safe` kept as aliases and stored compatibility values. Startup offers
 [YOLO, Balanced and Thorough](../ai/NEW-PROJECT-PROMPT.md), separately from
-coordination tier and [Economy, Adaptive and Maximum reasoning](../ai/REASONING-PROFILES.md).
-The prompts default to low concurrency and Economy. Owners can explicitly
+coordination tier and [Low, Medium and Max reasoning](../ai/REASONING-PROFILES.md).
+The prompts default to low concurrency and Low. Owners can explicitly
 opt another project into occasional supported max or the highest permitted
 effort throughout; this does not change Unio development's xhigh ceiling.
 
