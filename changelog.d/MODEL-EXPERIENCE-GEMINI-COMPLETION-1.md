@@ -1,0 +1,2 @@
+- Add local worker experience records and selection advice via `unio experience record`, `show`, and `suggest`.
+- Store operator-reported revision assessments under `coord/experience/` with strict schema validation, bounded locking, and honest conditional admission.

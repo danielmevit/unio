@@ -25,6 +25,7 @@ python3 -B tools/embed-task-plan.py --check
 python3 -B tools/embed-task-dispatch.py --check
 python3 -B tools/embed-dashboard.py --check
 python3 -B tools/embed-adapters.py --check
+python3 -B tools/embed-model-experience.py --check
 UNIO_BIN_DIR="$QUALITY_CHECK_DIR/bin" UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" \
   UNIO_COMPLETION_DIR="$QUALITY_CHECK_DIR/completion" bash unio-install.sh > "$QUALITY_CHECK_DIR/install.log"
 shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
@@ -54,6 +55,7 @@ python3 -B bridge/tests/capacity_test.py
 python3 -B tests/unio-capacity.py
 python3 -B tests/unio-readiness.py
 python3 -B tests/unio-fleet.py
+python3 -B tests/unio-model-experience.py
 python3 -B tests/unio-task-plan.py
 python3 -B tests/unio-task-dispatch.py
 python3 -B tests/unio-task-dispatch-install.py
