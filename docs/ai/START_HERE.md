@@ -5,6 +5,72 @@ project's own instructions; a worker reads WORKER.md and its one assigned
 task. Do not turn a worker session into a competing lead or start additional
 AI calls outside that task.
 
+## Start as the lead
+
+Start your AI coding CLI in the initialized project's `repo/` folder, beside
+the workspace's `coord/` and `wt/` folders. For example, to use Claude Code:
+
+```bash
+cd "/path/to/my-project/repo"
+claude
+```
+
+Use your actual project path and preferred CLI. Then paste the
+[README startup prompt](../../README.md#start-with-your-ai) and describe your
+task. The lead should:
+
+1. Read applicable `AGENTS.md`, `MASTER.md`, the guides below, the newest
+   coordination log and current handoff. In this repository the handoff is
+   `docs/development/continue-with-ai-prompt.md`; in other projects use their
+   own handoff. Private workspace files may be absent in a fresh clone.
+2. Check `unio version`, `unio doctor`, `unio agents --json` and
+   `unio policy --json`. These make no AI calls. Read reported warnings;
+   installed binaries alone do not prove authentication or spare allowance.
+   `unio smoke` makes live calls and is not part of this startup check.
+3. After the previous lead has finished, register the configured alias for
+   the new lead using `unio lead`. For Claude Code configured as `claude`:
+
+   ```bash
+   unio lead claude
+   unio policy --json
+   ```
+
+   Use the alias in `unio agents --json`, not a guessed model name. The CLI
+   command and alias can differ: `agy` commonly uses `antigravity`. Consult
+   `unio account` and retain mappings for aliases sharing one subscription.
+4. Run `unio dashboard ensure --open-browser` and show the returned local
+   URL. Give a time estimate, confirm the intended task and delegate bounded
+   work through Unio under the owner's existing authorization. Resume new
+   runs only when authorized; stop new runs after the assignment cycle.
+
+For an existing checkout not yet initialized, follow the
+[setup guide](../SETUP.md) before these project commands. Do not run
+`unio new` or `unio init` again on an already initialized workspace.
+Other projects receive their lead guides under `../coord/docs/` during
+initialization; use those when this repository's `docs/ai/` is absent.
+
+## Switch to a different lead
+
+Ask the outgoing lead to finish or checkpoint the agreed task, record actual
+checks, active workers and the exact next action, and leave a dated handoff
+and coordination-log entry. End that lead's coordinating session before
+starting the replacement. Keep any running workers and their original
+receipts intact; the new lead must inspect them before assigning more work.
+
+Start the replacement CLI in the same `repo/` folder and use the startup
+steps above. `unio lead claude`, for example, replaces the previous lead
+reservation once it can be admitted. In low tier, that reservation uses the
+one workflow slot for its shared account: do not dispatch another independent
+worker on that account. Other eligible accounts can still work concurrently.
+If registration refuses, resolve the reported capacity or cooldown condition;
+do not bypass it with another alias or tier change.
+
+Registration accounts for a lead; it does not start, stop or attach a CLI,
+transfer chat history, or automatically elect a replacement. The new lead
+gets context from files and receipts. The dashboard shows recorded Unio
+activity and stays available independently of the lead's conversation.
+Automatic acting-lead handover remains planned.
+
 ## Leads: read these before planning or delegation
 
 Read [lead routing and spending](../development/LEAD-ROUTING.md),
@@ -44,12 +110,11 @@ installed model or an elapsed reset estimate does not establish quota.
 Preserve frozen tasks, one-invocation rules, early commits, actual checks,
 independent reviews and owner control. Read the complete guides for exceptions.
 
-The guide documents operating policy. The current runner does not enforce
-pricing or adaptive effort automatically, and new standalone installer guide
-packaging remains shipping work. On this machine, an owner-authorized local
-lead-template update points to readable installed guide copies; that manual
-update is not a new runtime release. Existing custom projects retain their
-owner instructions and need an explicit readable guide reference when updated.
+These guides document operating policy. The runner gates native workflow
+slots but does not enforce pricing or adapt reasoning effort automatically.
+The installer supplies lead guides; initialization copies them into
+`coord/docs/`. Existing custom instructions are preserved, so an older project
+may need an explicit reference to the current readable guides.
 
 ## Optional subscription routes
 

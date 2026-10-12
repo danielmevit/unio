@@ -40,15 +40,12 @@ pairing is not included.
 ## Start the lead AI
 
 Start your preferred AI coding CLI, such as `codex`, in the same repository.
-For a first small task, you can give it this prompt:
-
-```text
-Read MASTER.md and the project instructions. Plan one small change,
-check worker availability and explain how you will check the result.
-Wait for my approval before starting. Run
-unio dashboard ensure --open-browser and show its returned URL.
-Do not merge for me.
-```
+Paste the [README startup prompt](../README.md#start-with-your-ai), followed
+by the task you want done. The [AI startup guide](ai/START_HERE.md)
+explains the local checks and how to register the lead's configured alias.
+When trying a different lead, finish the previous lead's handoff and end its
+coordinating session first, then follow the
+[lead-switch steps](ai/START_HERE.md#switch-to-a-different-lead).
 
 Unio does not start that conversation for you or attach an existing one
 automatically. The lead reads your instructions and uses Unio's commands

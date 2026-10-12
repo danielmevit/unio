@@ -199,6 +199,7 @@ PATH change for future terminals.
 ### 2. Choose your path
 
 - **Already installed:** [open your project and follow everyday work](docs/DAILY-USE.md).
+- **Let my AI coordinate:** [start with your AI](#start-with-your-ai).
 - **Show me the whole idea:** [take the worked-example tour](docs/EXAMPLE.md).
 - **Walk me through setup:** [follow the complete guide](docs/GUIDEBOOK.md),
   including signing in to your AI tools.
@@ -219,15 +220,7 @@ unio doctor
 unio agents
 ```
 
-Open your favourite AI coding tool in `my-project/repo` and ask:
-
-```text
-Read MASTER.md and the project instructions. Read docs/ai/START_HERE.md
-if present; use the supplied lead routing and effort guides before assigning
-work. Help me plan one small change.
-Check which workers are available, explain how you will test the result,
-and wait for my approval before starting work. Do not merge for me.
-```
+Next, [start your lead AI](#start-with-your-ai) in `my-project/repo`.
 
 Start with one helper and add another when you want a second perspective.
 `agents` shows what is installed, not remaining quota or sign-in status.
@@ -237,6 +230,37 @@ Start with one helper and add another when you want a second perspective.
  safety system refuses to run them, [allow those commands once](docs/SETUP.md#9-lead-ai-permissions)
  instead of switching its safety checks off. Unio's own refusals,
  such as `STOP is active`, say why in their message.
+
+![](docs/brand/patterns/line.svg)
+
+## Start with your AI
+
+Open your AI coding CLI in your project's `repo/` folder. Choose a capable
+lead, such as Claude Code, Codex, Antigravity/Gemini or Mistral Vibe, and
+paste this prompt followed by the task you want done:
+
+```text
+Lead this project using Unio. Read AGENTS.md and MASTER.md if present,
+then docs/ai/START_HERE.md or ../coord/docs/LEAD-ROUTING.md.
+Read the newest handoff and coordination log before changing anything.
+If this checkout is not initialized for Unio, help me set it up first.
+Check the local setup, preserve my work mode and budget, and register
+your configured lead alias once the previous lead has finished.
+Open the managed dashboard and show me its link.
+For the task I give you, estimate the time, delegate through Unio,
+verify the changes and keep me updated. Preserve work and leave a clear
+handoff. Ask only for missing decisions or authority.
+```
+
+You start the conversation; the lead uses Unio to coordinate the workers.
+Typing `unio` shows command help. `unio lead` records the lead's budget
+reservation; it does not launch an AI or transfer a conversation.
+
+Trying a different lead? Finish the previous lead's work and handoff first,
+then start the new CLI in the same folder. The
+[AI startup guide](docs/ai/START_HERE.md#switch-to-a-different-lead)
+explains the checks, lead registration and shared-account limits. Your
+task files, results and handoffs stay in the workspace.
 
 ![](docs/brand/patterns/line.svg)
 
