@@ -2,53 +2,30 @@
 
 Your AIs, in sync.
 
-Current update, 2026-10-12: [v0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9)
-is the latest published release. Recovery, the browser launcher, manual capacity
-readings, explicit Codex metadata refresh, the managed dashboard and the saved
-dashboard redesign have shipped. Vibe, Perplexity and Copilot adapters are
-packaged; Perplexity has completed account-backed GLM/Kimi proposal trials.
-Adapters have different roles: proposal routes still need an implementation
-agent. See [setup](../integrations/README.md) and the [version plan](../VERSION-PLAN.md).
+Current update, 2026-10-12: **[v0.5.11](https://github.com/danielmevit/unio/releases/tag/v0.5.11)**
+is published and installed. **[v0.5.10](https://github.com/danielmevit/unio/releases/tag/v0.5.10)**
+is also published. Both complete release gates passed, followed by exact artifact,
+upgrade/rollback, installation-before-publication and official download checks.
+See the [release guide](../RELEASE-0.5.11.md) and [version plan](../VERSION-PLAN.md).
 
-The v0.5.10 candidate adds bounded recovery-save archival and storage usage,
-explicit cached Claude sign-in observations, remembered filters and daily-use
-instructions. It is not published yet. The CLI follow-up for v0.5.11 includes a
-checked [save-performance probe](SAVE-PERFORMANCE.md) and a checked
-[local fleet overview](../FLEET-STATUS.md). The fleet candidate passed its
-installed offline checks and native scope verification after lead completion.
-These are source candidates, not published releases. Continue with 0.5.x patches.
-The next CLI slice now includes a checked
-[read-only task planner](../TASK-PLAN.md): explain dependency evidence, file
-conflicts and shared-account limits before dispatch. Its focused suite and
-native scope/validation passed after personal corrections. Explicit
-[prepare/approve/start dispatch](../TASK-DISPATCH.md) is now checked source:
-eight offline workflow tests, five standalone-install tests and native scope
-verification passed. It rechecks readiness under the shared execution lock,
-preserves approval on refusal and never retries an uncertain attempt.
-Automatic scheduling remains planned. New real-workspace runs
-also reproduced the automatic-save timeout, giving the next performance task
-a concrete failure to investigate.
-Owner dashboard/site/branding updates through `faaa725` are preserved alongside
-the CLI candidates. The delivered interface is preserved; further visual redesign is
-not the current priority. The first save-latency worker produced a profile and
-unvalidated partial changes before reaching its configured token cap. That
-partial remains excluded.
-The subsequent bounded lead implementation batches sibling ignore checks,
-keeping depth-first traversal and retention behavior. Six focused tests passed;
-two full saves with identical starting history completed under the existing
-deadline while baseline attempts refused. The [measurements](SAVE-PERFORMANCE.md#sibling-ignore-batching--2026-10-11-source-candidate)
-are fixture-specific; history-scale real-workspace behavior needs further
-profiling. The bounded source slice passed six focused tests, 186 manual and
-61 automatic save checks, native scope/validation and personal lead review.
-It is not a new published release.
-The review pipeline now also has [concurrent collection](../REVIEW-COLLECTION.md):
-an explicit reviewer set receives the same complete material with independent
-account admission, private receipts and a combined read-only summary. Six
-focused installed mock cases passed, including real overlap, shared-budget
-refusal, changed inputs and interruption cleanup. Finding extraction and automatic
-follow-up remain later slices. Freeze the completed 0.5.10/0.5.11 delivery scope
-for combined release checks; do not add those later features during publication.
-Genuine lead-limit restart remains unobserved and experimental/opt-in.
+The shipped functional core now includes bounded recovery archival/storage usage,
+cached Claude sign-in, remembered filters, the daily-use guide, fleet overview,
+read-only task planning, explicitly approved single-attempt dispatch, individual
+review receipts and concurrent reviewer collection. Vibe, Perplexity and Copilot
+adapters are packaged; proposal routes still require implementation review.
+
+Sibling-ignore batching improved matched recovery fixtures, but general
+real-history timeout elimination is unproven. Keep those limits visible in
+[performance findings](SAVE-PERFORMANCE.md). Owner dashboard/site/branding work
+through `faaa725` is preserved; further visual redesign remains lower priority
+than functional work. Genuine lead-limit restart remains unobserved and
+experimental/opt-in.
+
+The next functional priority is transparent worker-selection guidance from useful
+project outcomes, availability and shared budgets. Automatic scheduling, finding
+aggregation, live-lead attachment, scoped phone pairing and native host support
+remain separate planned slices. Leads must follow the persistent
+[estimates, progress and continuity rules](LEAD-ROUTING.md).
 Earlier dated sections below preserve their historical context.
 
 ## Current focus: finish the functional core
@@ -78,41 +55,37 @@ low-tier lead.
 | Priority | Functional milestone | Current state |
 | --- | --- | --- |
 | Complete | v0.5.4 recovery, release and install | Published and installed after release checks. Genuine lead-limit restart remains unobserved; the feature is experimental and opt-in. |
-| 2 | Simple daily use and measured performance | Launcher and managed dashboard shipped; daily-use guide and save probe are checked follow-ups. Save/scan optimization still needs measured comparisons. |
-| 3 — CLI slice checked | Shared-account allowance and worker readiness | Native slots, manual readings and Codex refresh shipped. Cached Claude authentication is in the 0.5.10 candidate; the 0.5.11 fleet CLI combines local slots, bench/binary facts and cached observations. Other automatic provider readings remain planned. |
-| 4 — CLI slice checked | Ready-task dispatch and dependency handling | Read-only planner and explicit owner-granted single-attempt dispatch passed focused/native checks and personal review. Automatic scheduling remains planned. |
-| 5 — collection slice checked | Native independent review pipeline | Development source preserves separate receipts, summarizes exact-revision evidence and collects explicit reviewer sets concurrently. Finding aggregation remains planned. |
+| 2 | Simple daily use and measured performance | Launcher, daily-use guide, save probe and measured sibling-ignore batching shipped. Remaining real-history save/scan work still needs matched comparisons. |
+| 3 — CLI slice shipped | Shared-account allowance and worker readiness | Native slots, manual readings and Codex refresh shipped. Cached Claude authentication shipped in 0.5.10; the shipped 0.5.11 fleet CLI combines local slots, bench/binary facts and cached observations. Other automatic provider readings remain planned. |
+| 4 — CLI slice shipped | Ready-task dispatch and dependency handling | Read-only planner and explicit owner-granted single-attempt dispatch shipped in 0.5.11 after focused/native and release checks. Automatic scheduling remains planned. |
+| 5 — collection slice shipped | Native independent review pipeline | Released 0.5.11 preserves separate receipts, summarizes exact-revision evidence and collects explicit reviewer sets concurrently. Finding aggregation remains planned. |
 | 6 | Evidence-based routing and context efficiency | Ledger/score and curated guides exist; exact model/task profiles and automatic suggestions remain planned. |
 | 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
 ### Next useful slices
 
-The fleet CLI, read-only planner and explicit dispatch are checked source candidates.
-Their release status is in the [version plan](../VERSION-PLAN.md). Next:
+The completed 0.5.10/0.5.11 scope is released and installed. Its evidence is in
+the [version plan](../VERSION-PLAN.md). Next:
 
-1. **Ship the completed patch scope:** freeze archival, fleet, planner, explicit
-   dispatch and review collection work for the full release gate, isolated install
-   and publication checks. Keep stable installation separate until official bytes
-   are verified. Initial estimate: 1–2 hours if no substantial gate failures.
-2. **Evidence-based routing:** record model, route, effort, task category and
+1. **Evidence-based routing:** record model, route, effort, task category and
    correction burden from useful work, then offer transparent worker-selection
    suggestions using availability and shared budgets. Initial estimate: 3–6 hours
-   for a bounded CLI slice; automatic routing is separate. Update these estimates
+   for a bounded CLI slice; automatic routing is separate. Update the estimate
    when implementation findings or worker availability change.
-3. **Measured save optimization:** sibling-ignore batching is checked and measured.
+2. **Measured save optimization:** sibling-ignore batching is shipped and measured.
    Investigate remaining real-history/helper timeouts with matched workloads;
    no general speedup or universal timeout fix is established.
-4. **Review findings:** extract and organize findings from the now-checked
+3. **Review findings:** extract and organize findings from the shipped
    [concurrent collection](../REVIEW-COLLECTION.md) without hiding disagreement
    or treating agreement as human acceptance.
-5. **Lead continuity and phone access:** supported session attachment, lead transfer
+4. **Lead continuity and phone access:** supported session attachment, lead transfer
    after a handoff, then scoped pairing and message delivery. These need session
    ownership and transport work; a local dashboard is not remote control.
-6. **macOS and Windows:** audit platform assumptions, make the existing WSL2
-   route reproducible, port native macOS, then implement native Windows after
-   a backend feasibility checkpoint. Use actual host CI and save/restore checks
-   before declaring support. The [interactive session workspace](SESSION-WORKSPACE.md)
-   is a separate planned feature that reuses the current dashboard and engine.
+5. **macOS and Windows:** finish the platform audit, make the existing WSL2 route
+   reproducible, port native macOS, then implement native Windows after a backend
+   feasibility checkpoint. Use actual host CI and save/restore checks before
+   declaring support. The [interactive session workspace](SESSION-WORKSPACE.md)
+   reuses the existing dashboard and engine.
 
 The explicit dispatch slice reuses the existing queue's approval/reservation/
 replay protections and rechecks native admission at launch. A previous plan

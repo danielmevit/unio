@@ -56,4 +56,9 @@ Native macOS/Windows support, phone pairing, automatic scheduling and acting-lea
 handover remain planned. Lead cooldown restart remains experimental and opt-in;
 the genuine subscription-limit-to-restart cycle is still unobserved.
 
+The complete quality gate passed on `0e8636f` in 1528.528 seconds. Published
+source `e0dd00b` differs only in its final README; runtime, tests and every other
+tracked byte are identical. Exact packaged installation, 0.5.10 upgrade/rollback,
+local installation before publication and all six official download checks passed.
+
 [Release and downloads](https://github.com/danielmevit/unio/releases/tag/v0.5.11).

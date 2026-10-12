@@ -19,53 +19,52 @@ Report background activity only when an actual process is still running.
 
 ## Current delivery state — 2026-10-12
 
-Official and installed stable are **v0.5.10**, published from `db78932`.
-Its full gate passed in 1215.704 seconds, all six official assets matched, and
-installation preceded publication with configuration and owner templates preserved.
-A source push does not publish or install a new release. Check GitHub's latest
-stable and `unio version` before changing the operator's runner; active frozen
-calls keep their original engine and configuration.
+Official and installed stable are **[v0.5.11](https://github.com/danielmevit/unio/releases/tag/v0.5.11)**,
+published from `e0dd00b`. The complete gate passed on `0e8636f` in 1528.528 seconds;
+only the final README differs, with every runtime, test and other tracked byte
+identical. Exact installer/artifact checks, 0.5.10 upgrade/backup restoration,
+installation before publication and all six official download hashes passed.
+The managed dashboard serves the installed release's exact assets. Check
+GitHub's latest stable and `unio version` before changing the operator's runner.
 
-Development source contains the 0.5.10 archival, cached Claude authentication,
-remembered filters and daily-use candidate. The 0.5.11 candidate adds measured
-save optimization, fleet overview, prepared-task planning, explicit single-attempt
-dispatch, and immutable independent review receipts with `unio reviews`.
-These slices passed focused/native checks and personal lead review. Combined
-release validation, publication and official-byte installation remain pending.
-Continue 0.5.x; do not shift this batch to 0.6.0.
+**[v0.5.10](https://github.com/danielmevit/unio/releases/tag/v0.5.10)** is also published,
+from `db78932`. Its complete gate passed in 1215.704 seconds and its separate
+artifact, 0.5.9 upgrade/rollback, installation and six-download checks passed.
+Prior tags, agent configuration and owner templates were preserved in both upgrades.
 
-[Concurrent review collection](../REVIEW-COLLECTION.md) is implemented in source:
-`unio review-set` freezes common material, admits explicit reviewers separately,
-preserves individual receipts and summarizes current evidence without acceptance.
-Six focused installed mock cases passed. The frozen contract is `b0e5889`;
-implementation started as a token-capped GLM partial and was completed by this
-existing lead. Preserve that Source failure separately from lead checks.
-The next milestone is the remaining 0.5.11 release delivery: its scope is frozen;
-run the combined gate, check isolated installation and publish official bytes.
-Do not add finding aggregation, routing automation or other features during that
-gate. See the [current sequence and rough estimates](ROADMAP.md#next-useful-slices).
+Delivered work includes bounded recovery archival/storage usage, cached Claude
+sign-in observations, remembered task filters and the daily-use guide, followed
+by measured sibling-ignore batching, fleet overview, task planning, explicit
+approved dispatch and independent review receipts/concurrent collection. Read
+[the release guide](../RELEASE-0.5.11.md) and [version plan](../VERSION-PLAN.md).
+Source worker failures remain failures; later lead checks do not convert them
+into successful model deliveries. Preserve original receipts and partial work.
 
-Preserve the owner's newer dashboard/site/branding commits and any active writer
-in those scopes. The dashboard uses plain X controls, small status squares,
-frameless map controls and a monochrome board. The website embeds the real map
-through a GET-only demo shim. Keep its `activity.css` injection anchor; after
-any bridge edit regenerate the installer with `tools/embed-browser.py`. Public
-model task-fit updates also require `tools/embed-adapters.py` before committing.
+The next useful functional slice is evidence-based worker selection: transparent
+recommendations from recorded task results, task fit, availability and shared
+budgets. Initial estimate: **3–6 hours** for a bounded CLI slice; automatic routing
+is separate. See [current priorities](ROADMAP.md#next-useful-slices), then freeze
+one concrete task. Continue 0.5.x; do not shift this work to 0.6.0.
 
 Use YOLO/low: focused meaningful checks, one workflow per shared subscription
-including the lead, early commits and truthful handoffs. Delegate capable core
-work to available subscription agents. Routine/free agents support documentation
-and predefined chores; they cannot lead or own main implementation. A worker
-and one suitable replacement may attempt a concrete task; if no eligible route
-can finish, this existing lead completes it without a second Codex session.
-Current owner reservations, spending restrictions and actual receipts take
-precedence over old availability examples.
+including the lead, early commits and truthful handoffs. Capable subscription
+workers implement features; routine/free agents support bounded chores and cannot
+lead. After one worker and one suitable replacement fail, this existing lead
+finishes the correction without a second Codex session. Current owner holds,
+spending restrictions and actual availability override old examples.
 
-Get the managed dashboard URL from `unio dashboard ensure --open-browser`.
-Native [macOS/Windows support](CROSS-PLATFORM.md), the proposed
-[interactive session workspace](SESSION-WORKSPACE.md), remote pairing and
-additional map work remain later milestones. Windows currently uses WSL.
-Google/Bing account setup remains explicitly deferred.
+Owner dashboard/site/branding work through `faaa725` is preserved. The dashboard
+uses plain X controls, small status squares and frameless map controls. Keep the
+website demo's `activity.css` injection anchor; bridge changes require
+`tools/embed-browser.py`, and canonical routing/effort/scoreboard changes require
+`tools/embed-adapters.py`. Reuse unchanged release evidence for prose-only edits.
+Get the actual local URL from `unio dashboard ensure --open-browser`.
+
+Native [macOS/Windows support](CROSS-PLATFORM.md), the
+[interactive session workspace](SESSION-WORKSPACE.md), phone pairing and acting-lead
+handover remain planned. Windows currently uses WSL. Lead cooldown restart is
+experimental/opt-in; its genuine subscription-limit restart remains unobserved.
+Google/Bing account setup remains deferred.
 
 ## Earlier checked backend evidence
 
