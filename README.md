@@ -235,6 +235,11 @@ Start with one helper and add another when you want a second perspective.
 
 ## Start with your AI
 
+Building something new from scratch? Use the
+[new-project prompt](docs/ai/NEW-PROJECT-PROMPT.md): open an empty folder,
+describe your idea, and let your lead set up Unio and coordinate the workers.
+You do not need an existing repository or a clone of Unio's source.
+
 Open your AI coding CLI in your project's `repo/` folder. Choose a capable
 lead, such as Claude Code, Codex, Antigravity/Gemini or Mistral Vibe, and
 paste this prompt followed by the task you want done:
@@ -568,7 +573,7 @@ needed to rebuild the Word manuals with `tools/make-docx.sh`.
 The [UX proposal](docs/UX-DIRECTION.md) and [next steps](docs/development/ROADMAP.md) explain the
 scope and order; the [brand notes](docs/BRAND.md) explain the name.
 
-Continuing this project with another AI? Paste the prompt from
+Continuing development of Unio itself with another AI? Paste the prompt from
 [continue-with-ai-prompt.md](docs/development/continue-with-ai-prompt.md) and follow the
 [workspace rules](docs/development/WORKSPACE-RULES.md). The [M1 status](docs/M1-STATUS.md)
 and [findings index](docs/RESEARCH-FINDINGS.md) hold the details.

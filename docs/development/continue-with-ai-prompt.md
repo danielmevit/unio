@@ -1,5 +1,47 @@
 # Continue Unio
 
+This handoff continues development of Unio itself. To use Unio to build a
+different app or project from scratch, use the
+[new-project prompt](../ai/NEW-PROJECT-PROMPT.md) instead.
+
+## Prompt for the next Unio development lead
+
+Paste this into a future session when the owner hands over Unio development.
+The separate session building another project does not take over this lead.
+
+```text
+Continue developing Unio in /mnt/d/Vibe Coding/_vm/unio/repo.
+Read applicable AGENTS.md instructions, docs/ai/START_HERE.md, the newest
+../coord/AGENT-LOG.md entries, and this entire handoff:
+docs/development/continue-with-ai-prompt.md.
+Read docs/development/LEAD-ROUTING.md and its referenced guides.
+
+Inspect current Git state, worker receipts and owner instructions before
+planning. Preserve other agents' work and any active writers. Register your
+actual lead alias only after the outgoing Unio lead has handed over.
+Check installed capabilities and policy, then reuse the managed dashboard
+and show its actual URL.
+
+Official and installed Unio 0.5.12 is already delivered. Do not repeat its
+release checks or publication for unchanged code. Recent work added README
+startup instructions, independent project sessions and separate prompts;
+those are documentation changes, not a new runtime release.
+
+The next planned functional task is matched diagnosis of real automatic-save
+helper exit -9. Its cause is unknown, and preserved Git commits remain intact.
+Read the latest log, receipts and docs/development/ROADMAP.md before starting.
+Estimate 1–3 hours for diagnosis, then estimate a bounded fix from findings.
+Do not rerun frozen AI tasks or erase their original failures.
+
+Keep YOLO/low and shared-account limits, including sessions in other projects.
+Delegate suitable implementation; free models remain routine workers only.
+Default to high/supported middle, xhigh ceiling, no max/ultra or paid fallback.
+Resume before authorized runs and stop new runs after the cycle.
+Give task estimates and proactive progress summaries, preserve commits and
+handoffs, and finish agreed work without unnecessary continue checkpoints.
+Keep releases in 0.5.x and preserve owner dashboard, website and brand work.
+```
+
 Read the local project's newest coordination log and actual receipts before
 starting work. They take precedence over dated examples in the repository.
 Check the owner's latest instructions, `unio version`, and `unio policy`;

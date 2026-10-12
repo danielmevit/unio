@@ -7,6 +7,10 @@ AI calls outside that task.
 
 ## Start a separate project session
 
+Starting from an empty folder with a new idea? Follow
+[Build a new project using Unio](NEW-PROJECT-PROMPT.md) for the launch
+commands and a paste-ready lead prompt. No existing repository is required.
+
 Open another terminal and start the chosen AI coding CLI in the other
 project's checkout. This is a fresh conversation with its own task; it does
 not take over a lead on another project. Existing sessions can stay open.
