@@ -38,8 +38,11 @@ MAX_EXAMPLES = 8
 RECENT_DAYS = 90
 MIN_RECENT_ACCEPTED = 3
 SUGGEST_TIMEOUT_DEFAULT = 10
+LOCK_WAIT_SECONDS = 5.0
+FUTURE_SKEW_SECONDS = 300
 
 LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
+MODEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,127}')
 RECORD_NAME = re.compile(r'[0-9a-f]{32}\.json')
 HEX32 = re.compile(r'[0-9a-f]{32}')
 GIT_ID = re.compile(r'(?:[0-9a-f]{40}|[0-9a-f]{64})')
@@ -114,13 +117,17 @@ def fail(message):
 
 
 def is_label(value):
-    return isinstance(value, str) and LABEL.fullmatch(value) is not None
+    return isinstance(value, str) and 1 <= len(value) <= 64 and LABEL.fullmatch(value) is not None
+
+
+def is_model(value):
+    return isinstance(value, str) and 1 <= len(value) <= 128 and MODEL.fullmatch(value) is not None
 
 
 def ident_ok(value):
     # Native worker/task ID rules: no path separators, traversal, control
-    # characters, whitespace or leading dash.
-    return (isinstance(value, str) and value not in ('', '.', '..')
+    # characters, whitespace or leading dash; bounded length.
+    return (isinstance(value, str) and 1 <= len(value) <= 64 and value not in ('', '.', '..')
             and '..' not in value and not value.startswith('-')
             and not any(c.isspace() or ord(c) < 32 or c in '/\\' for c in value))
 
@@ -225,26 +232,43 @@ def valid_revision(value):
                     for item in value.values()))
 
 
+def record_identity(worker, task, revision):
+    canonical = json.dumps(revision, ensure_ascii=True, sort_keys=True,
+                           separators=(',', ':'))
+    digest = hashlib.sha256(
+        (worker + '\0' + task + '\0' + canonical).encode('utf-8')).hexdigest()
+    return digest[:32]
+
+
 def valid_record(d):
     """Exact schema-1 record view; any deviation is corruption, not data."""
     if not isinstance(d, dict) or set(d) != RECORD_KEYS:
         return None
-    if type(d['schema_version']) is not int or d['schema_version'] != 1:
+    if type(d['schema_version']) is not int or isinstance(d['schema_version'], bool) or d['schema_version'] != 1:
         return None
-    if not isinstance(d['id'], str) or len(d['id']) != 32 or GIT_ID.fullmatch(d['id']) is None:
+    if not isinstance(d['id'], str) or HEX32.fullmatch(d['id']) is None:
         return None
     if not ident_ok(d['worker']) or not ident_ok(d['task']):
         return None
-    if timestamp(d['recorded_at']) is None or timestamp(d['observed_at']) is None:
+    rec_t = timestamp(d['recorded_at'])
+    obs_t = timestamp(d['observed_at'])
+    if rec_t is None or obs_t is None:
+        return None
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if rec_t > now + datetime.timedelta(seconds=FUTURE_SKEW_SECONDS):
+        return None
+    if obs_t > now + datetime.timedelta(seconds=FUTURE_SKEW_SECONDS):
         return None
     if not valid_revision(d['revision']):
+        return None
+    if record_identity(d['worker'], d['task'], d['revision']) != d['id']:
         return None
     process = d['process']
     if not isinstance(process, dict) or set(process) != PROCESS_KEYS:
         return None
     if process['state'] not in ('succeeded', 'failed'):
         return None
-    if type(process['exit_code']) is not int or process['exit_code'] < 0:
+    if type(process['exit_code']) is not int or isinstance(process['exit_code'], bool) or process['exit_code'] < 0:
         return None
     if (process['state'] == 'succeeded') != (process['exit_code'] == 0):
         return None
@@ -256,7 +280,7 @@ def valid_record(d):
     if validation['scope'] not in ('OK', 'VIOLATION', 'UNCHECKED'):
         return None
     for key in ('checks_run', 'checks_failed'):
-        if type(validation[key]) is not int or validation[key] < 0:
+        if type(validation[key]) is not int or isinstance(validation[key], bool) or validation[key] < 0:
             return None
     if validation['checks_failed'] > validation['checks_run']:
         return None
@@ -266,7 +290,7 @@ def valid_record(d):
     profile = d['profile']
     if not isinstance(profile, dict) or set(profile) != PROFILE_KEYS:
         return None
-    if not is_label(profile['model']) or not is_label(profile['task_type']):
+    if not is_model(profile['model']) or not is_label(profile['task_type']):
         return None
     if profile['route'] not in ROUTES or profile['effort'] not in EFFORTS:
         return None
@@ -274,9 +298,19 @@ def valid_record(d):
         return None
     corrections = d['corrections']
     if corrections is not None and (type(corrections) is not int
+                                   or isinstance(corrections, bool)
                                    or not 0 <= corrections <= 10000):
         return None
-    if d['provenance'] != PROVENANCE:
+    prov = d['provenance']
+    if not isinstance(prov, dict) or set(prov) != set(PROVENANCE):
+        return None
+    if prov['source'] != 'operator_report':
+        return None
+    if prov['effective_model'] != 'unknown' or prov['effective_effort'] != 'unknown':
+        return None
+    if type(prov['human_acceptance']) is not bool or prov['human_acceptance'] is not False:
+        return None
+    if type(prov['independent_review']) is not bool or prov['independent_review'] is not False:
         return None
     if d['outcome'] == 'accepted' and not (process['state'] == 'succeeded'
                                            and validation['state'] == 'passed'):
@@ -284,14 +318,6 @@ def valid_record(d):
     if d['outcome'] == 'operational_failure' and process['state'] != 'failed':
         return None
     return d
-
-
-def record_identity(worker, task, revision):
-    canonical = json.dumps(revision, ensure_ascii=True, sort_keys=True,
-                           separators=(',', ':'))
-    digest = hashlib.sha256(
-        (worker + '\0' + task + '\0' + canonical).encode('utf-8')).hexdigest()
-    return digest[:32]
 
 
 def store_dirs(root):
@@ -321,6 +347,10 @@ def ensure_store_dir(path, label):
 def load_records(root):
     """Read the immutable store. Missing storage is an empty sample; anything
     unsafe, unknown, oversized or malformed is corruption and fails closed."""
+    coord = os.path.join(root, 'coord')
+    if not os.path.lexists(coord):
+        return []
+    check_store_dir(coord, 'coord')
     base, records_dir = store_dirs(root)
     if not os.path.lexists(base):
         return []
@@ -329,11 +359,15 @@ def load_records(root):
         return []
     check_store_dir(records_dir, 'coord/experience/records')
     names = []
+    count = 0
     try:
         with os.scandir(records_dir) as entries:
             for entry in entries:
                 if entry.name.startswith('.'):
                     continue  # transient writer scratch; never a published record
+                count += 1
+                if count > MAX_STORE_RECORDS:
+                    fail('experience store exceeds its record bound')
                 if RECORD_NAME.fullmatch(entry.name) is None:
                     fail('unknown entry in experience store: '
                          + entry.name.encode('unicode_escape').decode('ascii'))
@@ -363,30 +397,10 @@ def load_records(root):
             fail('invalid experience record schema: ' + name)
         if record['id'] != name[:-len('.json')]:
             fail('experience record identity mismatch: ' + name)
+        if record['id'] != record_identity(record['worker'], record['task'], record['revision']):
+            fail('experience record identity mismatch: ' + name)
         records.append(record)
     return records
-
-
-def sweep_temps(records_dir):
-    # The caller holds the store lock, so scratch left here is from a killed
-    # writer. Links are never followed or removed; reads refuse real records.
-    try:
-        names = os.listdir(records_dir)
-    except OSError:
-        return
-    for name in names:
-        if not name.startswith('.record-'):
-            continue
-        stale = os.path.join(records_dir, name)
-        try:
-            if os.path.islink(stale):
-                continue
-            if os.path.isdir(stale):
-                shutil.rmtree(stale)
-            else:
-                os.unlink(stale)
-        except OSError:
-            pass
 
 
 def same_assessment(old, new):
@@ -401,6 +415,8 @@ def write_record(root, record):
     """Transactional, lock-serialized store write. An identical replay is
     idempotent; a conflicting assessment for the same revision is refused
     with the existing record unchanged."""
+    coord = os.path.join(root, 'coord')
+    check_store_dir(coord, 'coord')
     base, records_dir = store_dirs(root)
     ensure_store_dir(base, 'coord/experience')
     ensure_store_dir(records_dir, 'coord/experience/records')
@@ -414,13 +430,20 @@ def write_record(root, record):
         info = os.fstat(lock_fd)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             fail('unsafe experience store lock')
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        deadline = time.monotonic() + LOCK_WAIT_SECONDS
+        while True:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (BlockingIOError, OSError):
+                if time.monotonic() >= deadline:
+                    fail('cannot lock experience store: busy')
+                time.sleep(0.025)
     except OSError:
         os.close(lock_fd)
         fail('cannot lock experience store')
     temp = None
     try:
-        sweep_temps(records_dir)
         existing = load_records(root)
         known = {item['id']: item for item in existing}
         if record['id'] in known:
@@ -474,15 +497,26 @@ def valid_result(obj, worker, task):
     """Strict native result view for exactly these identifiers and their
     current revision. Running, not-run, stale, failed-snapshot, mismatched
     or malformed evidence is refused, never recorded."""
-    if not isinstance(obj, dict) or obj.get('schema_version') != 1:
+    if not isinstance(obj, dict):
+        fail('malformed native result schema')
+    schema_ver = obj.get('schema_version')
+    if type(schema_ver) is not int or isinstance(schema_ver, bool) or schema_ver != 1:
         fail('malformed native result schema')
     if obj.get('worker') != worker or obj.get('task') != task:
         fail('native result identity mismatch')
+    updated_at = obj.get('updated_at')
+    t_up = timestamp(updated_at)
+    if t_up is None:
+        fail('malformed native updated_at timestamp')
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if t_up > now + datetime.timedelta(seconds=FUTURE_SKEW_SECONDS):
+        fail('implausibly future native observation timestamp')
     revision = obj.get('revision')
     current = obj.get('current_revision')
     if not valid_revision(revision) or current is None or current != revision:
         fail('native result has no current revision binding')
-    if obj.get('stale') is not False:
+    stale = obj.get('stale')
+    if type(stale) is not bool or stale is not False:
         fail('native result is stale for the current revision')
     process = obj.get('process')
     if not isinstance(process, dict):
@@ -492,7 +526,7 @@ def valid_result(obj, worker, task):
     if 'post_run_snapshot' in process:
         fail('native post-run snapshot failed; evidence is stale')
     code = process.get('exit_code')
-    if type(code) is not int or code < 0:
+    if type(code) is not int or isinstance(code, bool) or code < 0:
         fail('malformed native process exit')
     if (process['state'] == 'succeeded') != (code == 0):
         fail('inconsistent native process exit')
@@ -508,6 +542,7 @@ def valid_result(obj, worker, task):
         fail('malformed native validation scope')
     ran, failed = validation.get('checks_run'), validation.get('checks_failed')
     if (type(ran) is not int or type(failed) is not int
+            or isinstance(ran, bool) or isinstance(failed, bool)
             or ran < 0 or failed < 0 or failed > ran):
         fail('malformed native validation counts')
     if state == 'passed' and (validation['scope'] != 'OK' or ran < 1 or failed != 0):
@@ -520,8 +555,8 @@ def valid_result(obj, worker, task):
         fail('native validation evidence is bound to another revision')
     process_facts = {'state': process['state'], 'exit_code': code}
     validation_facts = {'state': state, 'scope': validation['scope'],
-                       'checks_run': ran, 'checks_failed': failed}
-    return process_facts, validation_facts, revision
+                        'checks_run': ran, 'checks_failed': failed}
+    return process_facts, validation_facts, revision, updated_at
 
 
 def build_profiles(records, now):
@@ -593,8 +628,12 @@ def agent_admission(report, agent):
         if agent in group['agents']:
             row = group['agents'][agent]
             auth_view = row.get('cached_auth')
-            fresh_signed_out = bool(auth_view and auth_view.get('status') == 'fresh'
-                                    and auth_view.get('authentication') == 'signed_out')
+            auth_status = auth_view.get('status') if auth_view else None
+            if auth_view and auth_status == 'fresh':
+                auth_val = auth_view.get('authentication', 'unknown')
+            else:
+                auth_val = 'unknown'
+            fresh_signed_out = (auth_val == 'signed_out')
             fresh = _fresh_windows(group)
             exhausted = any(window.get('usable_remaining_percent') == 0
                             for window in fresh)
@@ -604,7 +643,7 @@ def agent_admission(report, agent):
             return {'group': group_name,
                     'admission_state': row['admission_state'],
                     'reasons': row['reasons'],
-                    'auth': auth_view.get('authentication') if auth_view else 'unknown',
+                    'auth': auth_val,
                     'allowance': ('exhausted' if exhausted
                                    else 'available' if available else 'unknown'),
                     'fresh_signed_out': fresh_signed_out,
@@ -620,7 +659,7 @@ def cmd_record(runner, root, args):
         if not ident_ok(value):
             fail('invalid ' + label + ' ID: '
                  + value.encode('unicode_escape').decode('ascii'))
-    if not is_label(args.model):
+    if not is_model(args.model):
         fail('--model must be a bounded ASCII token')
     if not is_label(args.task_type):
         fail('--task-type must be a bounded ASCII token')
@@ -636,12 +675,12 @@ def cmd_record(runner, root, args):
             fail('--corrections must be an integer 0..10000')
         corrections = int(args.corrections)
     fleet = load_fleet_status()
-    observed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     obj, reason = fleet.observe(runner, str(root), ['result', args.worker, args.task],
                                 time.monotonic() + RECORD_DEADLINE_SECONDS)
     if obj is None:
         fail('native result unavailable (' + reason + '); nothing was recorded')
-    process_facts, validation_facts, revision = valid_result(obj, args.worker, args.task)
+    process_facts, validation_facts, revision, observed_at = valid_result(
+        obj, args.worker, args.task)
     if args.outcome == 'accepted':
         if process_facts['state'] != 'succeeded' or validation_facts['state'] != 'passed':
             fail('accepted requires Source exit zero and current native validation PASS')
@@ -908,11 +947,12 @@ def render_suggest(report):
 def check_duplicate_flags(argv):
     seen = set()
     for token in argv:
-        if token.startswith('--'):
+        if token.startswith('-'):
             name = token.split('=', 1)[0]
-            if name in seen:
+            norm = '--help' if name == '-h' else name
+            if norm in seen:
                 fail('duplicate option: ' + name)
-            seen.add(name)
+            seen.add(norm)
 
 
 def resolve_root(project):
@@ -920,10 +960,78 @@ def resolve_root(project):
         fail('no project selected; pass --project PATH')
     root = os.path.realpath(os.path.abspath(project))
     for required in ('coord', 'wt'):
-        if not os.path.isdir(os.path.join(root, required)):
+        path = os.path.join(root, required)
+        try:
+            info = os.lstat(path)
+        except OSError:
             fail('no Unio workspace (coord/ and wt/) under: '
                  + project.encode('unicode_escape').decode('ascii'))
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            fail('unsafe ' + required + ' directory: ' + required)
     return root
+
+
+RECORD_OPTIONS_VALUED = {'--model', '--route', '--effort', '--task-type',
+                         '--outcome', '--corrections', '--project'}
+RECORD_OPTIONS_FLAGS = {'-h', '--help'}
+SHOW_OPTIONS_VALUED = {'--task-type', '--project'}
+SHOW_OPTIONS_FLAGS = {'--json', '-h', '--help'}
+SUGGEST_OPTIONS_VALUED = {'--task-type', '--work-kind', '--timeout', '--project'}
+SUGGEST_OPTIONS_FLAGS = {'--json', '-h', '--help'}
+
+
+def make_record_parser():
+    p = argparse.ArgumentParser(
+        prog='unio experience record', allow_abbrev=False,
+        description='Record one final operator assessment of one native task revision.')
+    p.add_argument('worker', metavar='WORKER', help='worker ID')
+    p.add_argument('task', metavar='TASK', help='task ID')
+    p.add_argument('--model', required=True, metavar='MODEL',
+                   help='operator-reported requested model (bounded ASCII token)')
+    p.add_argument('--route', required=True, metavar='ROUTE',
+                   help='declared route; one of: ' + ', '.join(ROUTES))
+    p.add_argument('--effort', required=True, metavar='EFFORT',
+                   help='operator-reported requested effort; one of: ' + ', '.join(EFFORTS))
+    p.add_argument('--task-type', required=True, dest='task_type',
+                   metavar='TYPE', help='exact task type label')
+    p.add_argument('--outcome', required=True, metavar='OUTCOME',
+                   help='one of: ' + ', '.join(OUTCOMES))
+    p.add_argument('--corrections', metavar='N',
+                   help='operator-reported correction count 0..10000 (missing means unknown, not zero)')
+    p.add_argument('--project', metavar='PATH',
+                   help='explicit physical project root (coord/ and wt/)')
+    return p
+
+
+def make_show_parser():
+    p = argparse.ArgumentParser(
+        prog='unio experience show', allow_abbrev=False,
+        description='Show stored experience evidence grouped by profile.')
+    p.add_argument('--task-type', dest='task_type', metavar='TYPE',
+                   help='only records with this exact task type')
+    p.add_argument('--json', action='store_true',
+                   help='write exactly one schema-1 JSON object')
+    p.add_argument('--project', metavar='PATH',
+                   help='explicit physical project root (coord/ and wt/)')
+    return p
+
+
+def make_suggest_parser():
+    p = argparse.ArgumentParser(
+        prog='unio experience suggest', allow_abbrev=False,
+        description='Conditional worker selection advice for one task type.')
+    p.add_argument('--task-type', required=True, dest='task_type',
+                   metavar='TYPE', help='exact task type label')
+    p.add_argument('--work-kind', choices=WORK_KINDS, default='implementation',
+                   dest='work_kind', metavar='KIND',
+                   help='advice kind (default implementation; free routes are eligible for routine advice only)')
+    p.add_argument('--json', action='store_true',
+                   help='write exactly one schema-1 JSON object')
+    p.add_argument('--timeout', default=str(SUGGEST_TIMEOUT_DEFAULT),
+                   metavar='SECONDS', help='whole observation deadline, 1..60 seconds (default 10)')
+    p.add_argument('--project', metavar='PATH',
+                   help='explicit physical project root (coord/ and wt/)')
+    return p
 
 
 def main(argv=None):
@@ -931,71 +1039,129 @@ def main(argv=None):
     if not native:
         fail('installed runner path missing')
     runner = native.pop(0)
-    if not native:
-        sys.stdout.write(HELP)
-        return 0
-    command = native.pop(0)
-    if command in ('-h', '--help'):
-        sys.stdout.write(HELP)
-        return 0
-    if command not in ('record', 'show', 'suggest'):
-        fail("unknown command '" + command.encode('unicode_escape').decode('ascii')
-             + "' (use record, show or suggest)")
     check_duplicate_flags(native)
+
+    tokens = list(native)
+    project = None
+    asks_help = False
+    idx = 0
+    while idx < len(tokens):
+        t = tokens[idx]
+        if t in ('-h', '--help'):
+            asks_help = True
+            tokens.pop(idx)
+        elif t.startswith('--project='):
+            project = t.split('=', 1)[1]
+            tokens.pop(idx)
+        elif t == '--project':
+            tokens.pop(idx)
+            if idx >= len(tokens) or tokens[idx].startswith('-'):
+                fail('option --project requires a path argument')
+            project = tokens.pop(idx)
+        else:
+            break
+
+    if not tokens:
+        if asks_help or not native:
+            sys.stdout.write(HELP)
+            return 0
+        fail('command required (use record, show or suggest)')
+
+    cmd = tokens[0]
+    if cmd not in ('record', 'show', 'suggest'):
+        if cmd.startswith('-'):
+            fail('unrecognized option: ' + cmd)
+        fail("unknown command '" + cmd.encode('unicode_escape').decode('ascii')
+             + "' (use record, show or suggest)")
+
+    command = tokens.pop(0)
     if command == 'record':
-        parser = argparse.ArgumentParser(
-            prog='unio experience record', allow_abbrev=False,
-            description='Record one final operator assessment of one native task revision.')
-        parser.add_argument('worker', metavar='WORKER')
-        parser.add_argument('task', metavar='TASK')
-        parser.add_argument('--model', required=True, metavar='MODEL',
-                            help='operator-reported requested model (bounded ASCII token)')
-        parser.add_argument('--route', required=True, metavar='ROUTE',
-                            help='declared route; one of: ' + ', '.join(ROUTES))
-        parser.add_argument('--effort', required=True, metavar='EFFORT',
-                            help='operator-reported requested effort; one of: '
-                                 + ', '.join(EFFORTS))
-        parser.add_argument('--task-type', required=True, dest='task_type',
-                            metavar='TYPE', help='exact task type label')
-        parser.add_argument('--outcome', required=True, metavar='OUTCOME',
-                            help='one of: ' + ', '.join(OUTCOMES))
-        parser.add_argument('--corrections', metavar='N',
-                            help='operator-reported correction count 0..10000 '
-                                 '(missing means unknown, not zero)')
-        parser.add_argument('--project', metavar='PATH',
-                            help='explicit physical project root (coord/ and wt/)')
-        args = parser.parse_args(native)
-        return cmd_record(runner, resolve_root(args.project), args)
+        valued_opts = RECORD_OPTIONS_VALUED
+        flag_opts = RECORD_OPTIONS_FLAGS
+        max_pos = 2
+        parser = make_record_parser()
+    elif command == 'show':
+        valued_opts = SHOW_OPTIONS_VALUED
+        flag_opts = SHOW_OPTIONS_FLAGS
+        max_pos = 0
+        parser = make_show_parser()
+    else:
+        valued_opts = SUGGEST_OPTIONS_VALUED
+        flag_opts = SUGGEST_OPTIONS_FLAGS
+        max_pos = 0
+        parser = make_suggest_parser()
+
+    pos_count = 0
+    parsed_tokens = []
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        if t in ('-h', '--help'):
+            asks_help = True
+            parsed_tokens.append(t)
+            i += 1
+        elif t.startswith('--project='):
+            if project is not None:
+                fail('duplicate option: --project')
+            project = t.split('=', 1)[1]
+            parsed_tokens.append(t)
+            i += 1
+        elif t == '--project':
+            if project is not None:
+                fail('duplicate option: --project')
+            if i + 1 >= len(tokens) or tokens[i + 1].startswith('-'):
+                fail('option --project requires a path argument')
+            project = tokens[i + 1]
+            parsed_tokens.extend([t, tokens[i + 1]])
+            i += 2
+        elif t.startswith('--'):
+            opt_name = t.split('=', 1)[0]
+            if opt_name in valued_opts:
+                if '=' in t:
+                    parsed_tokens.append(t)
+                    i += 1
+                else:
+                    if i + 1 >= len(tokens) or tokens[i + 1].startswith('-'):
+                        fail('option ' + opt_name + ' requires a value')
+                    parsed_tokens.extend([t, tokens[i + 1]])
+                    i += 2
+            elif opt_name in flag_opts:
+                if '=' in t:
+                    fail('option ' + opt_name + ' does not take a value')
+                parsed_tokens.append(t)
+                i += 1
+            else:
+                fail('unrecognized option for ' + command + ': ' + opt_name)
+        elif t.startswith('-'):
+            if t in flag_opts:
+                parsed_tokens.append(t)
+                i += 1
+            else:
+                fail('unrecognized option for ' + command + ': ' + t)
+        else:
+            pos_count += 1
+            if pos_count > max_pos:
+                fail('surplus argument for ' + command + ': ' + t)
+            parsed_tokens.append(t)
+            i += 1
+
+    if asks_help:
+        parser.print_help()
+        return 0
+
+    if project is not None and not any(arg == '--project' or arg.startswith('--project=') for arg in parsed_tokens):
+        parsed_tokens.extend(['--project', project])
+
+    args = parser.parse_args(parsed_tokens)
+    if not args.project:
+        fail('no project selected; pass --project PATH')
+    resolved = resolve_root(args.project)
+
+    if command == 'record':
+        return cmd_record(runner, resolved, args)
     if command == 'show':
-        parser = argparse.ArgumentParser(
-            prog='unio experience show', allow_abbrev=False,
-            description='Show stored experience evidence grouped by profile.')
-        parser.add_argument('--task-type', dest='task_type', metavar='TYPE',
-                            help='only records with this exact task type')
-        parser.add_argument('--json', action='store_true',
-                            help='write exactly one schema-1 JSON object')
-        parser.add_argument('--project', metavar='PATH',
-                            help='explicit physical project root (coord/ and wt/)')
-        args = parser.parse_args(native)
-        return cmd_show(resolve_root(args.project), args)
-    parser = argparse.ArgumentParser(
-        prog='unio experience suggest', allow_abbrev=False,
-        description='Conditional worker selection advice for one task type.')
-    parser.add_argument('--task-type', required=True, dest='task_type',
-                        metavar='TYPE', help='exact task type label')
-    parser.add_argument('--work-kind', choices=WORK_KINDS, default='implementation',
-                        dest='work_kind', metavar='KIND',
-                        help='advice kind (default implementation; free routes '
-                             'are eligible for routine advice only)')
-    parser.add_argument('--json', action='store_true',
-                        help='write exactly one schema-1 JSON object')
-    parser.add_argument('--timeout', default=str(SUGGEST_TIMEOUT_DEFAULT),
-                        metavar='SECONDS',
-                        help='whole observation deadline, 1..60 seconds (default 10)')
-    parser.add_argument('--project', metavar='PATH',
-                        help='explicit physical project root (coord/ and wt/)')
-    args = parser.parse_args(native)
-    return cmd_suggest(runner, resolve_root(args.project), args)
+        return cmd_show(resolved, args)
+    return cmd_suggest(runner, resolved, args)
 
 
 if __name__ == '__main__':
