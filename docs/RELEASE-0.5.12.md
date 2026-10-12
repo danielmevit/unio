@@ -61,3 +61,18 @@ subscription-limit-to-restart cycle unobserved.
 The source changelog and version plan distinguish a checked development
 candidate from publication. Release downloads include `PROVENANCE.json` for
 the exact source, full quality gate and packaged installation evidence.
+
+## Validated delivery — 2026-10-12
+
+Published source is `81e21e708e4ebc22ace6749e3cc0e3dac8474974`. The complete
+`bash tools/quality-check.sh` passed on `3ff333c` in 954.14 seconds. Only checked
+README and changelog release labels differ; every other tracked byte is identical,
+as recorded in the downloadable provenance.
+
+The final integration passed all six native commands and ten focused journeys.
+Independent copied-install acceptance passed 31 checks across six task outcomes.
+The exact artifact selftest passed 40/40, upgrade from 0.5.11 and backup restoration
+passed, and the candidate was installed and its new commands tested on the real
+project before publication. All six official downloads matched prepared hashes.
+Agent configuration and all operator templates, including owner rules, survived
+installation. These checks made no live model call.

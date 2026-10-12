@@ -2,16 +2,17 @@
 
 Your AIs, in sync.
 
-Current update, 2026-10-12: **[v0.5.11](https://github.com/danielmevit/unio/releases/tag/v0.5.11)**
-is published and installed. **[v0.5.10](https://github.com/danielmevit/unio/releases/tag/v0.5.10)**
-is also published. Both complete release gates passed, followed by exact artifact,
-upgrade/rollback, installation-before-publication and official download checks.
-See the [release guide](../RELEASE-0.5.11.md) and [version plan](../VERSION-PLAN.md).
+Current update, 2026-10-12: **[v0.5.12](https://github.com/danielmevit/unio/releases/tag/v0.5.12)**
+is published and installed. Its complete release gate passed, followed by exact
+artifact, upgrade/rollback, installation-before-publication and official download
+checks. Versions 0.5.10 and 0.5.11 remain published with their separate validation.
+See the [release guide](../RELEASE-0.5.12.md) and [version plan](../VERSION-PLAN.md).
 
 The shipped functional core now includes bounded recovery archival/storage usage,
 cached Claude sign-in, remembered filters, the daily-use guide, fleet overview,
 read-only task planning, explicitly approved single-attempt dispatch, individual
-review receipts and concurrent reviewer collection. Vibe, Perplexity and Copilot
+review receipts, concurrent reviewer collection and task-specific worker experience.
+Vibe, Perplexity and Copilot
 adapters are packaged; proposal routes still require implementation review.
 
 Sibling-ignore batching improved matched recovery fixtures, but general
@@ -21,9 +22,9 @@ through `faaa725` is preserved; further visual redesign remains lower priority
 than functional work. Genuine lead-limit restart remains unobserved and
 experimental/opt-in.
 
-The 0.5.12 candidate implements transparent worker-selection guidance from useful
-project outcomes, availability and shared budgets; its release gate and delivery
-are pending. See the [operator guide](../MODEL-EXPERIENCE.md). Automatic scheduling, finding
+Version 0.5.12 adds transparent worker-selection guidance from useful project
+outcomes, availability and shared budgets. See the
+[operator guide](../MODEL-EXPERIENCE.md). Automatic scheduling, finding
 aggregation, live-lead attachment, scoped phone pairing and native host support
 remain separate planned slices. Leads must follow the persistent
 [estimates, progress and continuity rules](LEAD-ROUTING.md).
@@ -60,31 +61,28 @@ low-tier lead.
 | 3 — CLI slice shipped | Shared-account allowance and worker readiness | Native slots, manual readings and Codex refresh shipped. Cached Claude authentication shipped in 0.5.10; the shipped 0.5.11 fleet CLI combines local slots, bench/binary facts and cached observations. Other automatic provider readings remain planned. |
 | 4 — CLI slice shipped | Ready-task dispatch and dependency handling | Read-only planner and explicit owner-granted single-attempt dispatch shipped in 0.5.11 after focused/native and release checks. Automatic scheduling remains planned. |
 | 5 — collection slice shipped | Native independent review pipeline | Released 0.5.11 preserves separate receipts, summarizes exact-revision evidence and collects explicit reviewer sets concurrently. Finding aggregation remains planned. |
-| 6 — CLI candidate | Evidence-based routing and context efficiency | 0.5.12 implements explicit revision assessments, task-specific profiles and conditional local advice. Release validation/delivery is pending; automatic capture and routing remain planned. |
+| 6 — CLI slice shipped | Evidence-based routing and context efficiency | 0.5.12 ships explicit revision assessments, task-specific profiles and conditional local advice. Automatic capture and routing remain planned. |
 | 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
 ### Next useful slices
 
-The completed 0.5.10/0.5.11 scope is released and installed. Its evidence is in
+The completed scope through 0.5.12 is released and installed. Its evidence is in
 the [version plan](../VERSION-PLAN.md). Next:
 
-1. **Deliver the checked experience CLI:** the 0.5.12 candidate records model,
-   route, effort, task category and correction burden, with conditional options
-   using availability and shared budgets. Complete one frozen release gate,
-   installation and publication before expanding it. Initial estimate: 3–6 hours;
-   automatic capture/routing are separate.
-2. **Measured save optimization:** sibling-ignore batching is shipped and measured.
+1. **Measured save reliability and performance:** sibling-ignore batching is shipped and measured.
    Investigate remaining real-history/helper timeouts with matched workloads.
    Both current implementation runs reported automatic-save helper exit -9;
    the cause is not established, and their Git commits remain preserved.
-   no general speedup or universal timeout fix is established.
-3. **Review findings:** extract and organize findings from the shipped
+   No general speedup or universal timeout fix is established. Initial estimate:
+   1–3 hours for a matched diagnosis; estimate the bounded fix after finding the
+   cause. Keep real-workspace and fixture results separate.
+2. **Review findings:** extract and organize findings from the shipped
    [concurrent collection](../REVIEW-COLLECTION.md) without hiding disagreement
    or treating agreement as human acceptance.
-4. **Lead continuity and phone access:** supported session attachment, lead transfer
+3. **Lead continuity and phone access:** supported session attachment, lead transfer
    after a handoff, then scoped pairing and message delivery. These need session
    ownership and transport work; a local dashboard is not remote control.
-5. **macOS and Windows:** finish the platform audit, make the existing WSL2 route
+4. **macOS and Windows:** finish the platform audit, make the existing WSL2 route
    reproducible, port native macOS, then implement native Windows after a backend
    feasibility checkpoint. Use actual host CI and save/restore checks before
    declaring support. The [interactive session workspace](SESSION-WORKSPACE.md)

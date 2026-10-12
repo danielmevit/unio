@@ -1,10 +1,11 @@
 # Model experience from real project work
 
-Owner-approved feature direction, 2026-10-07. The first bounded CLI slice is
-implemented in the **0.5.12 development candidate**, under the
+Owner-approved feature direction, 2026-10-07. The first bounded CLI slice
+shipped in **[0.5.12](https://github.com/danielmevit/unio/releases/tag/v0.5.12)**, under the
 [frozen contract](MODEL-EXPERIENCE-CONTRACT.md): explicit final assessments tied
 to native task revisions, local task-specific evidence and conditional advice
-using the existing fleet observation. It is not published or installed yet.
+using the existing fleet observation. It is published and installed; the complete
+gate, exact assets, upgrade/rollback and official download checks passed.
 See the [operator guide](../MODEL-EXPERIENCE.md) for the implemented commands.
 Automatic metadata capture, routing and richer review-quality profiles remain
 planned. The existing
