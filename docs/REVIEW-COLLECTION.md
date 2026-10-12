@@ -4,8 +4,9 @@
 work at once. It keeps separate evidence for each reviewer and combines their
 recorded verdicts. You decide whether to accept and merge the work.
 
-**Availability:** development source; not included in published/installed
-v0.5.9. See the [collection contract](REVIEW-COLLECTION-CONTRACT.md).
+**Availability:** released in Unio v0.5.11 and available in later releases.
+Check `unio version` before using it; v0.5.9 does not include these commands.
+See the [collection contract](REVIEW-COLLECTION-CONTRACT.md).
 
 ## Start a collection
 

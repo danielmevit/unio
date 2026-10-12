@@ -26,6 +26,8 @@ Official and installed Unio 0.5.12 is already delivered. Do not repeat its
 release checks or publication for unchanged code. Recent work added README
 startup instructions, independent project sessions and separate prompts;
 those are documentation changes, not a new runtime release.
+The new-project guide now has separate YOLO, Medium and Safe-first prompts.
+Those options do not change this Unio development workspace's YOLO policy.
 
 The next planned functional task is matched diagnosis of real automatic-save
 helper exit -9. Its cause is unknown, and preserved Git commits remain intact.
