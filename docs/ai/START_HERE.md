@@ -5,6 +5,46 @@ project's own instructions; a worker reads WORKER.md and its one assigned
 task. Do not turn a worker session into a competing lead or start additional
 AI calls outside that task.
 
+## Start a separate project session
+
+Open another terminal and start the chosen AI coding CLI in the other
+project's checkout. This is a fresh conversation with its own task; it does
+not take over a lead on another project. Existing sessions can stay open.
+
+For a project already initialized with Unio, use its `repo/` folder and
+the [README startup prompt](../../README.md#start-with-your-ai). For a
+repository you want to clone into a new workspace, for example:
+
+```bash
+cd "/path/to/your/projects"
+unio new "YOUR_REPOSITORY_URL" "my-other-project" antigravity
+cd "my-other-project/repo"
+claude
+```
+
+Replace the URL, project name and worker alias with your own choices.
+This example sets up an Antigravity worker and opens Claude as the lead;
+initialization does not start worker jobs. The repository needs at least one
+commit. Give the new lead the task for this project, then follow the startup
+checks below. It registers `claude` in this workspace only.
+
+For an existing local checkout, preserve uncommitted work and inspect its
+layout before initialization. `unio init` puts `coord/` and `wt/` beside the
+Git checkout, so each project needs its own enclosing workspace. Do not
+initialize unrelated checkouts into a shared coordination directory or
+reclone an existing working copy just to start another conversation.
+
+Use this project's instructions, coordination records and dashboard. The
+Unio development repository's milestone handoff is for developing Unio;
+another project does not inherit those tasks. A separate Git worktree alone
+is not a separate Unio workspace or coordination policy.
+
+Subscription allowances still belong to the actual shared accounts. Native
+workflow caps count this workspace, not sessions in other workspaces. In low
+tier, manually respect accounts already occupied elsewhere: for example,
+another project's active Codex lead means no additional independent Codex
+worker on that same subscription. A separate project creates no extra quota.
+
 ## Start as the lead
 
 Start your AI coding CLI in the initialized project's `repo/` folder, beside
@@ -27,8 +67,11 @@ task. The lead should:
    `unio policy --json`. These make no AI calls. Read reported warnings;
    installed binaries alone do not prove authentication or spare allowance.
    `unio smoke` makes live calls and is not part of this startup check.
-3. After the previous lead has finished, register the configured alias for
-   the new lead using `unio lead`. For Claude Code configured as `claude`:
+3. Check this workspace's lead reservation and current coordination state.
+   For a new project, register the configured alias for its lead using
+   `unio lead`. If a lead is already active on this same project, follow the
+   handover procedure below instead of replacing it. For Claude Code
+   configured as `claude`:
 
    ```bash
    unio lead claude
@@ -50,6 +93,9 @@ Other projects receive their lead guides under `../coord/docs/` during
 initialization; use those when this repository's `docs/ai/` is absent.
 
 ## Switch to a different lead
+
+This procedure replaces the lead on the same project. Starting a separate
+project session does not require handing over or closing another project.
 
 Ask the outgoing lead to finish or checkpoint the agreed task, record actual
 checks, active workers and the exact next action, and leave a dated handoff

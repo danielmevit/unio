@@ -242,10 +242,11 @@ paste this prompt followed by the task you want done:
 ```text
 Lead this project using Unio. Read AGENTS.md and MASTER.md if present,
 then docs/ai/START_HERE.md or ../coord/docs/LEAD-ROUTING.md.
-Read the newest handoff and coordination log before changing anything.
-If this checkout is not initialized for Unio, help me set it up first.
+Read this project's handoff and coordination log if they exist.
+If Unio is not initialized here, inspect the layout and help me set up
+this project's own workspace without overwriting existing work.
 Check the local setup, preserve my work mode and budget, and register
-your configured lead alias once the previous lead has finished.
+your configured lead alias for this project. Do not replace an active lead.
 Open the managed dashboard and show me its link.
 For the task I give you, estimate the time, delegate through Unio,
 verify the changes and keep me updated. Preserve work and leave a clear
@@ -256,8 +257,13 @@ You start the conversation; the lead uses Unio to coordinate the workers.
 Typing `unio` shows command help. `unio lead` records the lead's budget
 reservation; it does not launch an AI or transfer a conversation.
 
-Trying a different lead? Finish the previous lead's work and handoff first,
-then start the new CLI in the same folder. The
+Starting another project? Open a new terminal in that project's workspace
+and use the prompt above with its own task. Your other AI sessions can stay
+open. Each project has its own lead reservation, tasks and dashboard; see
+[separate project sessions](docs/ai/START_HERE.md#start-a-separate-project-session).
+
+Replacing the lead on an existing project? Finish that lead's work and
+handoff first, then start the new CLI in the same folder. The
 [AI startup guide](docs/ai/START_HERE.md#switch-to-a-different-lead)
 explains the checks, lead registration and shared-account limits. Your
 task files, results and handoffs stay in the workspace.

@@ -43,8 +43,10 @@ Start your preferred AI coding CLI, such as `codex`, in the same repository.
 Paste the [README startup prompt](../README.md#start-with-your-ai), followed
 by the task you want done. The [AI startup guide](ai/START_HERE.md)
 explains the local checks and how to register the lead's configured alias.
-When trying a different lead, finish the previous lead's handoff and end its
-coordinating session first, then follow the
+For another project, open a separate terminal in its own workspace and follow
+[separate project sessions](ai/START_HERE.md#start-a-separate-project-session).
+Your other sessions can stay open. When replacing the lead on this same
+project, finish its handoff and end its coordinating session first, then follow the
 [lead-switch steps](ai/START_HERE.md#switch-to-a-different-lead).
 
 Unio does not start that conversation for you or attach an existing one
