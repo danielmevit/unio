@@ -4,7 +4,7 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.12 — choose workers from experience — unreleased
+## 0.5.12 — choose workers from experience — 2026-10-12
 
 See [release scope and usage](docs/RELEASE-0.5.12.md).
 
