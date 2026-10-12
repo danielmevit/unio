@@ -41,6 +41,15 @@ Read the latest log, receipts and docs/development/ROADMAP.md before starting.
 Estimate 1–3 hours for diagnosis, then estimate a bounded fix from findings.
 Do not rerun frozen AI tasks or erase their original failures.
 
+The subsequent optional CodeGraph Bash evaluation is documented in
+docs/development/CODEGRAPH-BASH-EVALUATION-2026-10-12.md. Its local prototype
+passes small fixtures but exposes grammar recovery errors on Unio's full CLI;
+default adoption is deferred. Do not install that prototype globally or index
+the working Unio repository based on the small-fixture result. Preserve the
+local patch and dated provider outcomes. Fresh Mistral/Vibe and Copilot checks
+returned answers; OpenCode Go responded but its local diagnostic step cap
+prevented clean task completion. None establishes remaining quota.
+
 Keep YOLO/low and shared-account limits, including sessions in other projects.
 Delegate suitable implementation; free models remain routine workers only.
 Default to high/supported middle, xhigh ceiling, no max/ultra or paid fallback.

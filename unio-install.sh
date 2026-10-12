@@ -26664,6 +26664,32 @@ the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
 
+## CodeGraph experiment and fresh route checks — 2026-10-12
+
+Mistral subscription / Vibe 2.26.1 / GLM 5.3 (`zai-glm-5-3`) / high saved
+`3e7932d` integrating an existing upstream Bash PR, then returned Source 2
+(infrastructure failure). Native scope passed, but only two of three checks
+passed: the required new test was absent. Grok subscription / Grok CLI 1.0.46 /
+`grok-4.7` / high was the one replacement; HTTP 402 reported exhausted usage
+balance and it made no edits. The existing Codex lead completed the bounded
+experiment. Small Bash fixtures passed; the real Unio CLI exposed incorrect
+parser recovery, so this is not an accepted general Bash implementation.
+
+GitHub Copilot Free / Copilot 1.0.95 / Auto Balance / effort not exposed
+returned a supporting checklist. The lead rejected its assumption that shell
+source paths are relative to the script file. Its proposal is not independent
+approval and does not establish suitability for semantic acceptance.
+
+Fresh owner-requested availability checks at 21:05 +0200 confirmed responses
+from Mistral/Vibe GLM 5.3/high and Copilot Auto Balance, each with Source/native/
+adapter exit 0. OpenCode Go / OpenCode 1.18.35 / `opencode-go/glm-5.3` / high
+returned model text and native exit 0, but the local `steps=1` diagnostic cap
+forced a maximum-steps response: connectivity established, clean task completion
+not established. Do not reuse that cap for real tasks. Perplexity was not needed
+or freshly tested. Effective model/effort and remaining allowance stay Unknown;
+past failures and new availability observations remain separate.
+See the [bounded findings](https://github.com/danielmevit/unio/blob/main/docs/development/CODEGRAPH-BASH-EVALUATION-2026-10-12.md).
+
 ## Matching protocol names — 2026-10-12
 
 Vibe 2.26.1 / GLM 5.3 / high ended `PROTOCOL-NAMES-VIBE-1` with Source 2
