@@ -18,8 +18,8 @@ names and public labels are the 0.5.13 update.
 | Mode | How the lead organizes work | Checks and review |
 | --- | --- | --- |
 | `yolo` | Finish a useful feature in a coherent batch. Delegate implementation and keep coordination brief. | Focused checks for changed behavior, a real smoke check where relevant, and a brief lead review. Avoid routine extra reviewer calls. Run the full required gate at a release boundary. |
-| `balanced` | Deliver manageable feature batches with more integration attention. | Focused checks plus relevant integration checks. Ask for an independent review when the change or an unresolved finding warrants it. |
-| `thorough` | Use smaller checkpoints and inspect interfaces and failure paths carefully. | Broader integration checks and the project's full gate at integration boundaries. Arrange independent reviews from different AI labs according to the project's review policy, followed by the lead's assessment. |
+| `balanced` | Deliver manageable feature batches with more integration attention. | Focused and relevant integration checks; one independent review for substantive implementation batches, a second for sensitive changes or unresolved disagreement, then lead assessment. |
+| `thorough` | Plan risks, interfaces, failure cases and rollback before small reviewable batches. | Broader integration/security checks and the required project gate; two capable independent reviews from different known AI labs, both different from the author, then lead assessment and owner acceptance under existing authority. |
 
 `balanced` is the default (`medium` is its compatibility alias). A mode shapes the next task's scope, validation and
 review plan; it never silently removes an already frozen task's Validate
