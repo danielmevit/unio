@@ -63,6 +63,43 @@ scope and release checked work before continually expanding it. These are
 mandatory instructions for an active lead; they do not create a background
 notification service while the lead session is stopped.
 
+## Name the model route in every work summary
+
+Owner rule, recorded 2026-10-12: a model name alone does not identify the
+account or tool doing the work. At assignment, completion, failure and every
+overall progress summary, name the subscription/provider route, CLI or
+adapter, requested model, requested effort, task and observed state. Give the
+CLI version at assignment and preserve it with the dated run receipt. Later
+short updates may omit the unchanged version, but must still identify the
+route; do not call three different accounts simply "GLM".
+
+For example:
+
+- Mistral subscription / Vibe CLI / GLM 5.3 (`zai-glm-5-3`) / high — task
+  X: checkpoint committed; tests pending.
+- OpenCode Go / OpenCode CLI / GLM 5.3 / high — task Y: running; last
+  observed action and its time.
+- Perplexity Pro / Perplexity adapter / GLM 5.3 / Thinking enabled — task
+  Z: proposal returned; implementation and acceptance pending.
+- GitHub Copilot Free / Copilot CLI / Auto Balance / effort not exposed —
+  checklist returned; underlying model and AI lab unknown unless native
+  evidence establishes them.
+
+Use the actual configured model ID in receipts; these examples are not model
+availability checks or authorization for paid fallback. Keep requested and
+observed model/effort distinct. A route chooses the tool/account; an AI lab
+identifies the model's origin, when known. An Auto route may not establish a
+fixed model or lab. Preserve Unknown where the provider supplies no evidence.
+
+Each task's durable log/handoff records its task and worker IDs, provider and
+subscription route, CLI/adapter version, requested model and effort, actual
+start/end timestamps from `date`, saved revision, checks and result. Distinguish
+native preparation from a started provider session, and a source exit from
+lead acceptance. Record failed routes and replacements separately. Say which
+workers are active, finished or unavailable; do not imply background activity
+from an old receipt. Never include authentication tokens or private account
+identifiers in public summaries.
+
 ## Mandatory continuity until the authorized work is complete
 
 The lead must keep progressing through the agreed task and its necessary

@@ -99,6 +99,9 @@ task. The lead should:
    URL. Give a time estimate, confirm the intended task and delegate bounded
    work through Unio under the owner's existing authorization. Resume new
    runs only when authorized; stop new runs after the assignment cycle.
+   In each work summary, identify the provider/subscription route, CLI, model,
+   effort, task and observed state. Follow the [reporting rule](../development/LEAD-ROUTING.md#name-the-model-route-in-every-work-summary);
+   a bare model name such as "GLM" is insufficient when several routes exist.
 
 For an existing checkout not yet initialized, follow the
 [setup guide](../SETUP.md) before these project commands. Do not run

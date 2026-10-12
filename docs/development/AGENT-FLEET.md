@@ -7,6 +7,15 @@ not an automatic scheduler or proof that an account has allowance left.
 The account inventory below was checked on 2026-10-10. Current owner
 instructions and fresher observations take precedence.
 
+## Make each assignment visible
+
+Follow the [mandatory reporting rule](LEAD-ROUTING.md#name-the-model-route-in-every-work-summary).
+Tell the owner which subscription/provider route, CLI, model and effort owns
+each task, with its current state and latest observed progress. At handoff or
+completion, retain dated run evidence and the saved revision. For GLM, always
+distinguish Mistral/Vibe, OpenCode Go and Perplexity Pro; the same model name
+does not identify the same account, capability or allowance.
+
 ## Routing and budget are different
 
 Copilot Auto Balance chooses eligible hosted models for each prompt; it does
