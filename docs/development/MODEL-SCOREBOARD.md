@@ -5,6 +5,27 @@ the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
 
+## Matching protocol names — 2026-10-12
+
+Vibe 2.26.1 / GLM 5.3 / high ended `PROTOCOL-NAMES-VIBE-1` with Source 2
+after a journal-confirmed backend connection failure. Recorded cumulative
+usage was 1,907,934 tokens, estimated $2.7293316 within the existing
+subscription. This was not evidence of quota exhaustion or a separate charge.
+The lead saved its uncommitted three-file patch on the worker branch. Native
+verification found scope OK but only 2/3 checks passed: a new test assumed
+low tier after its setup had selected high. The original failure is preserved.
+
+One capable replacement, Antigravity 1.3.3 / Gemini 3.1 Pro High / high,
+committed the correction as `2345982`. Native Source exited 0, while its
+terminal provider event reported ERROR with an interrupted stream; neither
+signal is erased. The clean committed candidate subsequently passed native
+scope verification and all 3/3 required checks, including the 64-check
+work-policy suite. The lead inspected the complete patch and accepted this
+bounded candidate on that evidence. No task retry, third worker or AI review
+call was made. Effective model/effort and remaining allowance stay Unknown.
+Automatic-save helper exit -9 was observed on both runs and remains a separate
+unresolved operational issue; preserved Git commits are not successful saves.
+
 ## Concurrent review collection — 2026-10-12
 
 Vibe 2.26.1 / GLM 5.3 / high ended `REVIEW-COLLECTION-VIBE-1` with Source 3
