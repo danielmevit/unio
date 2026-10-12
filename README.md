@@ -112,8 +112,6 @@ dashboard stays up until `unio dashboard stop`, which never stops workers.
 The [website](https://danielmevit.github.io/unio/) runs the real dashboard on
 a demo project that you can drag, zoom and click.
 
-![The Unio website: the headline in dot letters and the live work map demo](docs/screenshots/website.webp)
-
 **What needs you.** Every task with its run, checks and review, its state and
 the next command to copy.
 
