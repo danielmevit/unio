@@ -18820,7 +18820,7 @@ def render_human(root, doc):
     else:
         activity = '  workflows: (none active)'
     return (
-        'work policy (coord/work-policy.json; a missing file means defaults medium/low):\n'
+        'work policy (coord/work-policy.json; a missing file means defaults balanced/low):\n'
         '  mode: %(mode)s — %(mode_blurb)s\n'
         '  tier: %(tier)s — %(tier_blurb)s\n'
         '  lead: %(lead)s — register with `unio lead <agent>`; it counts as one workflow in its budget group until `unio lead none`\n'

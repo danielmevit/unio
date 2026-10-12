@@ -95,6 +95,7 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
     human = unio('policy')
     check('human policy shows limits and native state',
           human.returncode == 0 and 'mode: balanced' in human.stdout
+          and 'defaults balanced/low' in human.stdout
           and 'tier: low' in human.stdout and 'capacity: unknown' in human.stdout
           and 'workflow_enforcement: native_workflows' in human.stdout)
     doc = json.loads(unio('policy', '--json').stdout)
@@ -151,13 +152,21 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
     check('account grouping recorded in JSON',
           json.loads(unio('policy', '--json').stdout)['accounts']
           == {'glm': 'go-primary', 'opencode': 'go-primary'})
+    unio('lead', 'codex')
+    prior = json.loads(unio('policy', '--json').stdout)
+    prior_state = json.loads(state_file.read_text())
     out = unio('mode', 'thorough')
     doc = json.loads(unio('policy', '--json').stdout)
+    saved = json.loads(state_file.read_text())
+    unrelated = [k for k in prior if k not in ('mode', 'protocol', 'updated_at')]
+    unrelated_state = [k for k in prior_state if k not in ('mode', 'updated_at')]
     check('mode switch keeps tier, lead and accounts independent',
           out.returncode == 0 and doc['mode'] == 'safe'
-          and doc['protocol'] == 'thorough' and doc['tier'] == 'low'
-          and doc['lead_agent'] is None
-          and doc['accounts'] == {'glm': 'go-primary', 'opencode': 'go-primary'})
+          and doc['protocol'] == 'thorough'
+          and prior['lead_agent'] == 'codex'
+          and all(doc[k] == prior[k] for k in unrelated)
+          and all(saved[k] == prior_state[k] for k in unrelated_state))
+    unio('lead', 'none')
     unio('mode', 'medium')
     unio('tier', 'low')
 
