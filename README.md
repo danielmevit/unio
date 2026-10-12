@@ -51,7 +51,13 @@ session, preserving their work and the agreed checks.
 through WSL, plus a [local browser workspace](bridge/README.md) in the source
 archive. Use it to prepare and run tasks, follow worker output and inspect files.
 
-*Install [Unio 0.5.12](https://github.com/danielmevit/unio/releases/tag/v0.5.12), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
+*Install [Unio 0.5.13](https://github.com/danielmevit/unio/releases/tag/v0.5.13), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
+
+**Added in 0.5.13:** use matching YOLO, Balanced and Thorough commands, and
+choose Low / Medium / Max reasoning independently from review depth and
+coordination tier. Each [startup prompt](docs/ai/NEW-PROJECT-PROMPT.md) exposes
+these choices; the [release guide](docs/RELEASE-0.5.13.md) explains compatibility
+and the current manual effort controls.
 
 **Added in 0.5.12:** keep task-specific outcomes with
 [`unio experience`](docs/MODEL-EXPERIENCE.md) and inspect conditional worker
