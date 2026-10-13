@@ -6,6 +6,8 @@ Current update, 2026-10-14: **[v0.5.16](https://github.com/danielmevit/unio/rele
 installed and pushed. Recovery performance and static worker diagnostics passed
 the combined gate and actual installed acceptance. Managed effort control is
 next; its separate refusal prototype remains excluded.
+See the [Sol low field trial](SOL-LOW-FIELD-TRIAL-2026-10-13.md) for actual
+worker outcomes and the limits of the subscription-efficiency observations.
 
 The functional core includes recovery saving, shared-account policy and capacity
 observations, managed daily startup, read-only planning, explicit single-attempt
