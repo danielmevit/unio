@@ -4,6 +4,21 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.15 (unreleased) — review findings in one place — 2026-10-13
+
+See [usage, compatibility and limits](docs/RELEASE-0.5.15.md).
+
+- Add local `unio reviews WORKER TASK --findings [--json]` to collect structured
+  findings with exact source citations and deterministic grouping.
+- Preserve recorded verdict disagreement, missing/failed/stale evidence and
+  explicit incompleteness; finding text never authorizes execution or acceptance.
+- Bind new review instructions inside protocol-2 material and retain exact
+  protocol-1 receipts without rewriting historical evidence.
+- Bound parsing/output and detect stdout replacement or worker revision drift.
+- Add 19 focused installed findings checks and dated readiness results for
+  subscription and verified-free workers. Keep failures separate from coding ranks.
+- Plan per-worker effort control for a later milestone; no live switch added.
+
 ## 0.5.14 — configurable recovery-save budgets — 2026-10-13
 
 See [release scope and usage](docs/RELEASE-0.5.14.md).

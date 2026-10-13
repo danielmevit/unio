@@ -21,7 +21,9 @@ The matched diagnosis and capture-budget implementation are delivered in
 passed on `5e0ee6d` in 1775.746 seconds; only final README/changelog labels differ.
 Artifacts, isolated upgrade/restore, installation before publication, installed
 mock workflow, dashboard identity and all six official download hashes passed.
-Next functional priority: organize findings from independent-review receipts.
+The 0.5.15 findings candidate completes that next slice; final release delivery
+is pending. After it is pushed, honor the owner-requested break.
+Mid-run worker effort control is planned only; see WORKER-EFFORT-CONTROL.md.
 Historical kill causes remain unknown; saving performance remains a separate
 measured follow-up. Preserve the existing dashboard/site/brand work.
 
@@ -43,7 +45,8 @@ actual lead alias only after the outgoing Unio lead has handed over.
 Check installed capabilities and policy, then reuse the managed dashboard
 and show its actual URL.
 
-Official and installed Unio 0.5.14 is delivered. Do not repeat its release
+Check the newest delivery state below: 0.5.14 is delivered and 0.5.15 is the
+current findings candidate. Do not repeat completed release
 checks or publication for unchanged code. Matching protocol commands are
 yolo/balanced/thorough; medium/safe remain aliases. Low/Medium/Max reasoning
 is prominent and independently changeable in the README and all three startup
@@ -60,9 +63,11 @@ The automatic-save diagnosis and optional 1–300s capture-budget implementation
 are accepted at dbe3399. A populated Windows-mounted fixture failed at the
 unchanged 30s default and saved successfully in 217.33s with a 300s budget.
 This is a reliability option, not a speedup. Check current release receipts:
-0.5.14 is published and installed with the full gate and delivery checks passed. Next functional
-priority is findings aggregation from independent review receipts; estimate a
-bounded first slice at 3–6 hours. Preserve historical failures and Unknowns.
+0.5.14 is published and installed with the full gate and delivery checks passed.
+The 0.5.15 findings candidate is implemented; consult its current delivery state
+below before any further work. After delivery, stop for the requested break.
+On owner resume, prioritize measured save performance and worker connection/
+effort reliability. CodeGraph improvements remain deferred.
 
 The optional CodeGraph Bash evaluation and its grammar follow-up are in
 docs/development/CODEGRAPH-BASH-EVALUATION-2026-10-12.md. Local candidate
@@ -103,7 +108,39 @@ questions. Finish, honor an explicit owner pause, or explain a genuine blocker;
 before an unavoidable stop, save work and leave a dated actionable handoff.
 Report background activity only when an actual process is still running.
 
-## Current delivery state — 2026-10-13
+## Current delivery state — 2026-10-13: 0.5.15 candidate
+
+The review-findings implementation is committed at `66a9daa`, from dedicated
+ChatGPT subscription / Codex CLI 0.162.1 / GPT-6.1 Sol high, Source/native 0.
+Effective identity/effort and remaining allowance remain Unknown. Installed
+worker checks passed 19 findings, 9 receipt and 6 collection methods. The original
+native verify returned INCOMPLETE because frozen task headings lacked `##`;
+its original task/hash and failed receipt are retained unchanged. A distinct
+machine-only acceptance task uses the same original scope and six commands.
+Machine-only acceptance passed scope (12 patterns) and all six required
+commands. The lead accepted the inspected implementation at `66a9daa`; release
+checks remain separate from successful Source delivery.
+
+The initial Mistral subscription / Vibe 2.26.1 / GLM 5.3 high implementation
+stopped Source/native 3 at a 4M cumulative token cap after 583.561 seconds
+(4,046,959 reported tokens, estimated $5.8820756). This is not proof of monthly
+subscription exhaustion. Its partial draft `ef24582` and failed 12-method
+suite (five failures, two errors) remain separate from Sol completion.
+
+Native acceptance and personal lead review passed. One frozen release gate
+and 0.5.15 installation/publication are pending. Main and installed remain 0.5.14 until delivery succeeds. No
+Source workers are active; native tier is restored to low with the real Codex
+lead/shared group and STOP retained. Dated readiness: 20 calls, 14 exact responses;
+see [the full route report](WORKER-READINESS-2026-10-13.md), not older availability
+claims. Legacy global model flags were not used and are not silently rewritten.
+
+Owner instruction: finish this milestone, push it and take a break. Do not start
+another feature automatically. [Per-worker effort control](WORKER-EFFORT-CONTROL.md)
+is a near-term plan only, initially 4–8 hours for a Codex-first slice after a
+capability audit. CodeGraph improvements are deferred. Preserve the owner's
+website/dashboard/brand payloads and all original failures and receipts.
+
+## Earlier 0.5.14 delivery state — 2026-10-13
 
 Official and installed stable are **[v0.5.14](https://github.com/danielmevit/unio/releases/tag/v0.5.14)**,
 from `d0abc60`. Full gate `5e0ee6d` passed in 1775.746 seconds; only final

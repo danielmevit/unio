@@ -1,9 +1,41 @@
 # Model scoreboard and delegation guide
 
-Updated 2026-10-12 from real Unio work. Read this before delegation, alongside
+Updated 2026-10-13 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
+
+## Readiness and findings implementation — 2026-10-13
+
+Read the [dated route checks](https://github.com/danielmevit/unio/blob/main/docs/development/WORKER-READINESS-2026-10-13.md)
+before using an older availability observation. Twenty tiny native diagnostics
+returned fourteen exact responses. Mistral subscription / Vibe 2.26.1 / GLM
+5.3 high and Medium 3.5 high responded; Perplexity Pro / pinned web adapter
+0.16.1 / GLM, Kimi and Sol Thinking responded; Copilot Free / CLI 1.0.95 /
+Auto Balance responded (effort not configurable, underlying model/lab Unknown).
+Antigravity / agy 1.3.4 / Gemini 3.8 Flash high responded; the older Gemini
+3.1 Pro high selector was rejected with zero turns/tokens. OpenCode Go /
+CLI 1.18.35 / GLM high and Qwen medium reported an actual Go usage limit.
+Seven approved zero-cost Zen models responded at their recorded settings;
+Big Pickle, Exo and Ling Fin failures remain separate. Grok was unauthenticated;
+Claude was owner-held. These are readiness checks, not reasoning or coding ranks.
+All effective identities and worker remaining allowances remain Unknown.
+
+The later Mistral/Vibe GLM high findings implementation stopped at its configured
+per-run token cap (Source/native 3, 4,046,959 reported cumulative tokens,
+estimated $5.8820756, 583.561 seconds). That does not prove monthly allowance
+exhaustion. The original uncommitted draft was preserved by the lead as WIP
+`ef24582`; its unchanged suite failed with five failures and two errors across
+12 methods. It was not accepted. A dedicated ChatGPT / Codex CLI 0.162.1 /
+GPT-6.1 Sol high correction preserved early checkpoint `1ca4351`, then committed
+`66a9daa` with Source/native exit 0. Its installed offline checks passed 19
+findings, 9 receipt and 6 collection methods. The original task heading format
+made native verification INCOMPLETE; its immutable failure is preserved beside
+a distinct machine-only acceptance task with the same scope and commands.
+The separate machine acceptance passed scope (12 patterns) and all six required
+commands; the lead accepted the inspected implementation. Final release checks
+remain separate. Consult the latest handoff for delivery state.
+Do not convert the original GLM failure into a successful model delivery.
 
 ## Bash grammar correction — 2026-10-12
 

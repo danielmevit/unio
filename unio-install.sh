@@ -15232,6 +15232,23 @@ Read [lead routing and spending](LEAD-ROUTING.md) and [task budgets](TASK-TIME-B
 A listed model is an inventory entry, not authorization to use a paid route.
 
 
+## Current selector check — 2026-10-13
+
+Antigravity / agy 1.3.4 currently advertises `gemini-3.8-flash-high`,
+`gemini-3.8-flash-medium` and `gemini-3.8-flash-low`. The high selector returned
+a successful Unio diagnostic with no separate `--effort` flag. The previously
+advertised `gemini-3.1-pro-high` was rejected as unavailable with zero
+turns/tokens; its earlier fixed-effort guidance is historical, not current
+availability. Run the native `agy models` metadata command before selecting
+an exact route, and use the advertised selector rather than inventing a mapping
+from generic CLI effort options. Do not replay a failed frozen task automatically.
+
+The [dated readiness evidence](https://github.com/danielmevit/unio/blob/main/docs/development/WORKER-READINESS-2026-10-13.md)
+also distinguishes OpenCode Go usage limits from free-model access, deprecation
+and availability errors. Catalog presence, a successful tiny answer, and a
+remaining-allowance reading establish different facts. None proves effective
+model identity or a quality ranking. CodeGraph improvements remain deferred.
+
 ## Select review, effort and concurrency separately
 
 Read the [Low / Medium / Max reasoning profiles](https://github.com/danielmevit/unio/blob/main/docs/ai/REASONING-PROFILES.md)
@@ -17507,7 +17524,7 @@ cat > "$BIN_DIR/unio" <<'UNIO_BIN_EOF'
 #   PROJECT/coord/    board.md, base, docs/, tasks/, reports/, blockers.md, STOP
 set -euo pipefail
 
-UNIO_VERSION="0.5.14"
+UNIO_VERSION="0.5.15"
 CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
 CONF_FILE="$CONF_DIR/agents.conf"
 TPL_DIR="$CONF_DIR/templates"
@@ -27100,10 +27117,42 @@ LEAD_ESCALATION_TPL_EOF
 cat > "$TPL_DIR/MODEL-SCOREBOARD.md" <<'MODEL_SCOREBOARD_TPL_EOF'
 # Model scoreboard and delegation guide
 
-Updated 2026-10-12 from real Unio work. Read this before delegation, alongside
+Updated 2026-10-13 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
+
+## Readiness and findings implementation — 2026-10-13
+
+Read the [dated route checks](https://github.com/danielmevit/unio/blob/main/docs/development/WORKER-READINESS-2026-10-13.md)
+before using an older availability observation. Twenty tiny native diagnostics
+returned fourteen exact responses. Mistral subscription / Vibe 2.26.1 / GLM
+5.3 high and Medium 3.5 high responded; Perplexity Pro / pinned web adapter
+0.16.1 / GLM, Kimi and Sol Thinking responded; Copilot Free / CLI 1.0.95 /
+Auto Balance responded (effort not configurable, underlying model/lab Unknown).
+Antigravity / agy 1.3.4 / Gemini 3.8 Flash high responded; the older Gemini
+3.1 Pro high selector was rejected with zero turns/tokens. OpenCode Go /
+CLI 1.18.35 / GLM high and Qwen medium reported an actual Go usage limit.
+Seven approved zero-cost Zen models responded at their recorded settings;
+Big Pickle, Exo and Ling Fin failures remain separate. Grok was unauthenticated;
+Claude was owner-held. These are readiness checks, not reasoning or coding ranks.
+All effective identities and worker remaining allowances remain Unknown.
+
+The later Mistral/Vibe GLM high findings implementation stopped at its configured
+per-run token cap (Source/native 3, 4,046,959 reported cumulative tokens,
+estimated $5.8820756, 583.561 seconds). That does not prove monthly allowance
+exhaustion. The original uncommitted draft was preserved by the lead as WIP
+`ef24582`; its unchanged suite failed with five failures and two errors across
+12 methods. It was not accepted. A dedicated ChatGPT / Codex CLI 0.162.1 /
+GPT-6.1 Sol high correction preserved early checkpoint `1ca4351`, then committed
+`66a9daa` with Source/native exit 0. Its installed offline checks passed 19
+findings, 9 receipt and 6 collection methods. The original task heading format
+made native verification INCOMPLETE; its immutable failure is preserved beside
+a distinct machine-only acceptance task with the same scope and commands.
+The separate machine acceptance passed scope (12 patterns) and all six required
+commands; the lead accepted the inspected implementation. Final release checks
+remain separate. Consult the latest handoff for delivery state.
+Do not convert the original GLM failure into a successful model delivery.
 
 ## Bash grammar correction — 2026-10-12
 

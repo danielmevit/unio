@@ -2,32 +2,22 @@
 
 Your AIs, in sync.
 
-Current update, 2026-10-12: **[v0.5.12](https://github.com/danielmevit/unio/releases/tag/v0.5.12)**
-is published and installed. Its complete release gate passed, followed by exact
-artifact, upgrade/rollback, installation-before-publication and official download
-checks. Versions 0.5.10 and 0.5.11 remain published with their separate validation.
-See the [release guide](../RELEASE-0.5.12.md) and [version plan](../VERSION-PLAN.md).
+Current update, 2026-10-13: **[v0.5.14](https://github.com/danielmevit/unio/releases/tag/v0.5.14)**
+is published and installed. The bounded **0.5.15 review-findings candidate** adds
+local actionable findings, exact source references and protocol-aware legacy
+compatibility; focused worker checks passed and final delivery is pending.
+See the [release scope](../RELEASE-0.5.15.md) and [version plan](../VERSION-PLAN.md).
 
-The shipped functional core now includes bounded recovery archival/storage usage,
-cached Claude sign-in, remembered filters, the daily-use guide, fleet overview,
-read-only task planning, explicitly approved single-attempt dispatch, individual
-review receipts, concurrent reviewer collection and task-specific worker experience.
-Vibe, Perplexity and Copilot
-adapters are packaged; proposal routes still require implementation review.
+The functional core includes recovery saving, shared-account policy and capacity
+observations, managed daily startup, read-only planning, explicit single-attempt
+dispatch, separate review receipts, concurrent collection and task-specific worker
+experience. Proposal routes require implementation review. Genuine lead-limit
+restart remains experimental/opt-in and unobserved. General save speedups need
+matched evidence; bounded capture budgets in 0.5.14 do not make saving faster.
 
-Sibling-ignore batching improved matched recovery fixtures, but general
-real-history timeout elimination is unproven. Keep those limits visible in
-[performance findings](SAVE-PERFORMANCE.md). Owner dashboard/site/branding work
-through `faaa725` is preserved; further visual redesign remains lower priority
-than functional work. Genuine lead-limit restart remains unobserved and
-experimental/opt-in.
-
-Version 0.5.12 adds transparent worker-selection guidance from useful project
-outcomes, availability and shared budgets. See the
-[operator guide](../MODEL-EXPERIENCE.md). Automatic scheduling, finding
-aggregation, live-lead attachment, scoped phone pairing and native host support
-remain separate planned slices. Leads must follow the persistent
-[estimates, progress and continuity rules](LEAD-ROUTING.md).
+The owner requested pushing this findings milestone and then taking a break.
+Do not begin another implementation automatically. Preserve owner dashboard,
+website and brand work; further visual redesign remains lower priority.
 Earlier dated sections below preserve their historical context.
 
 ## Current focus: finish the functional core
@@ -60,7 +50,7 @@ low-tier lead.
 | 2 | Simple daily use and measured performance | Launcher, daily-use guide, save probe and measured sibling-ignore batching shipped. Remaining real-history save/scan work still needs matched comparisons. |
 | 3 — CLI slice shipped | Shared-account allowance and worker readiness | Native slots, manual readings and Codex refresh shipped. Cached Claude authentication shipped in 0.5.10; the shipped 0.5.11 fleet CLI combines local slots, bench/binary facts and cached observations. Other automatic provider readings remain planned. |
 | 4 — CLI slice shipped | Ready-task dispatch and dependency handling | Read-only planner and explicit owner-granted single-attempt dispatch shipped in 0.5.11 after focused/native and release checks. Automatic scheduling remains planned. |
-| 5 — collection slice shipped | Native independent review pipeline | Released 0.5.11 preserves separate receipts, summarizes exact-revision evidence and collects explicit reviewer sets concurrently. Finding aggregation remains planned. |
+| 5 — collection slice shipped | Native independent review pipeline | Released 0.5.11 preserves separate receipts, summarizes exact-revision evidence and collects explicit reviewer sets concurrently. Structured finding aggregation is the 0.5.15 candidate; final delivery pending. |
 | 6 — CLI slice shipped | Evidence-based routing and context efficiency | 0.5.12 ships explicit revision assessments, task-specific profiles and conditional local advice. Automatic capture and routing remain planned. |
 | 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
@@ -69,12 +59,13 @@ low-tier lead.
 The optional [CodeGraph Bash evaluation](CODEGRAPH-BASH-EVALUATION-2026-10-12.md)
 now has a locally corrected grammar with 32 selected checks, 100 upstream corpus
 cases, 8 exact real-CLI boundaries and 7 chosen call links passing. Wider Bash
-coverage and embedded-source indexing remain open. Keep its patch experimental;
+coverage and embedded-source indexing remain open. The owner has explicitly deferred further CodeGraph improvements. Keep its patch experimental;
 it does not replace the functional priorities below or authorize a global
 CodeGraph upgrade/index.
 
-The completed scope through 0.5.12 is released and installed. Its evidence is in
-the [version plan](../VERSION-PLAN.md). Next:
+The completed scope through 0.5.14 is released and installed. The current
+0.5.15 candidate closes the bounded review-findings slice. After delivery and
+the requested break, use the [version plan](../VERSION-PLAN.md) and this order:
 
 1. **Measured save reliability and performance:** sibling-ignore batching is shipped.
    The 2026-10-13 [diagnosis](AUTOSAVE-HELPER-2026-10-13.md) reproduced a controller
@@ -83,9 +74,14 @@ the [version plan](../VERSION-PLAN.md). Next:
    performance remains a separate follow-up. Keep historical kill causes Unknown.
    Initial follow-up estimate: 2–4 hours for a measured bounded optimization slice;
    preserve complete old-save validation, failure evidence and last-good recovery.
-2. **Review findings:** extract and organize findings from the shipped
-   [concurrent collection](../REVIEW-COLLECTION.md) without hiding disagreement
-   or treating agreement as human acceptance.
+2. **Worker connection reliability and effort control:** use the
+   [dated route observations](WORKER-READINESS-2026-10-13.md) to validate model
+   selectors, distinguish quota/access/deprecation errors, and address native
+   transport retries without replaying failed tasks. Audit legacy operator
+   configuration separately; do not silently overwrite it. Plan a bounded
+   [per-worker effort-control slice](WORKER-EFFORT-CONTROL.md), initially 4–8 hours
+   for Codex capability audit and supported request-boundary control. No live
+   effort switch is implemented in 0.5.15.
 3. **Lead continuity and phone access:** supported session attachment, lead transfer
    after a handoff, then scoped pairing and message delivery. These need session
    ownership and transport work; a local dashboard is not remote control.

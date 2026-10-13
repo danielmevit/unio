@@ -5,7 +5,7 @@ the exact current work. It makes no provider calls or coordination writes and
 works while STOP is set. Human acceptance is always false; the command does
 not retry, execute a suggestion, fix code or authorize integration.
 
-**Availability:** development source; not included in published v0.5.14.
+**Introduced in Unio 0.5.15.**
 
 ## Workflow
 

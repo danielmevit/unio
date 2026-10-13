@@ -10,6 +10,23 @@ Read [lead routing and spending](LEAD-ROUTING.md) and [task budgets](TASK-TIME-B
 A listed model is an inventory entry, not authorization to use a paid route.
 
 
+## Current selector check — 2026-10-13
+
+Antigravity / agy 1.3.4 currently advertises `gemini-3.8-flash-high`,
+`gemini-3.8-flash-medium` and `gemini-3.8-flash-low`. The high selector returned
+a successful Unio diagnostic with no separate `--effort` flag. The previously
+advertised `gemini-3.1-pro-high` was rejected as unavailable with zero
+turns/tokens; its earlier fixed-effort guidance is historical, not current
+availability. Run the native `agy models` metadata command before selecting
+an exact route, and use the advertised selector rather than inventing a mapping
+from generic CLI effort options. Do not replay a failed frozen task automatically.
+
+The [dated readiness evidence](https://github.com/danielmevit/unio/blob/main/docs/development/WORKER-READINESS-2026-10-13.md)
+also distinguishes OpenCode Go usage limits from free-model access, deprecation
+and availability errors. Catalog presence, a successful tiny answer, and a
+remaining-allowance reading establish different facts. None proves effective
+model identity or a quality ranking. CodeGraph improvements remain deferred.
+
 ## Select review, effort and concurrency separately
 
 Read the [Low / Medium / Max reasoning profiles](https://github.com/danielmevit/unio/blob/main/docs/ai/REASONING-PROFILES.md)
