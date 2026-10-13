@@ -16,10 +16,17 @@ experience. Proposal routes require implementation review. Genuine lead-limit
 restart remains experimental/opt-in and unobserved. General save speedups need
 matched evidence; bounded capture budgets in 0.5.14 do not make saving faster.
 
-The owner requested pushing this findings milestone and then taking a break.
-Do not begin another implementation automatically. Preserve owner dashboard,
+The earlier requested break ended when the owner authorized three serial
+GPT-6.1 Sol low tasks: measured saving, worker connection reliability and
+per-worker effort control. Preserve owner dashboard,
 website and brand work; further visual redesign remains lower priority.
 Earlier dated sections below preserve their historical context.
+
+The 0.5.16 candidate completes the first bounded save optimization: fewer
+stored-file pathname checks with full byte validation. See the
+[measurement limitations](SAVE-PERFORMANCE.md#descriptor-bound-deep-reading--2026-10-13-source-candidate).
+Release checks and installation are pending. Connection reliability is next,
+followed by supported effort control; the latter remains unimplemented.
 
 ## Current focus: finish the functional core
 

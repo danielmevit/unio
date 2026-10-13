@@ -4,6 +4,20 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.16 (unreleased) — measured recovery saving — 2026-10-13
+
+See [measured results and limits](docs/RELEASE-0.5.16.md).
+
+- Reduce redundant pathname lookups when deeply validating recovery saves;
+  check private metadata on the exact no-follow descriptor supplying the bytes.
+- Retain every stored-content hash, both worktree observations, metadata-only
+  scans, retention pins and corrupt/newest protection. Capture budgets stay unchanged.
+- Add installed recovery and adversarial-file checks, and record alternating
+  populated-history measurements with refusals preserved separately.
+- Completed populated-fixture captures took 304.93 seconds on the baseline and
+  249.01 seconds on the candidate. Storage variation remains uncontrolled;
+  this does not establish a universal speedup or success at the default 30 seconds.
+
 ## 0.5.15 — review findings in one place — 2026-10-13
 
 See [usage, compatibility and limits](docs/RELEASE-0.5.15.md).

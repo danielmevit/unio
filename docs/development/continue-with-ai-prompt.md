@@ -1,3 +1,32 @@
+# Current continuation — 2026-10-13: measured saving candidate
+
+The owner resumed after 0.5.15 and authorized three serial GPT-6.1 Sol low
+tasks through actual Unio. Current lead configuration is GPT-6.1 Sol / xhigh;
+the dedicated worker requests Sol / low. Both use the existing shared Codex
+subscription. Effective serving identities remain Unknown. Preserve the real
+lead/account mapping, admit only one dedicated worker beside the lead using
+temporary medium, close unrelated admissions and restore low when idle.
+
+The first task, SAVE-PERFORMANCE-SOL-LOW-1, has a committed implementation,
+passing native verification and personal lead acceptance. Proposed 0.5.16
+contains descriptor-bound deep-save metadata checks, meaningful installed
+tests and matched generated-fixture measurements. No automatic default-budget
+success or model-effort token savings is established. Read the
+[release scope](../RELEASE-0.5.16.md) and [measurement record](SAVE-PERFORMANCE.md).
+Final full gate, install acceptance and publication are pending; do not call
+the candidate released. Private task/Source/verify/acceptance/delivery receipts
+are under workspace tmp/unio-next/receipts/. Original failures remain preserved.
+
+After delivery, continue worker connection reliability, then per-worker effort
+control using the owner's low-effort experiment. No silent effort escalation,
+blind Source retry, paid fallback, extra review fleet or inline lead code fix.
+Keep task prompts compact and avoid repeatedly polling unchanged tool output.
+CodeGraph and further dashboard/site/brand changes remain deferred. Earlier
+dated checkpoints below are historical; this current direction supersedes
+their break instruction.
+
+---
+
 # Continue Unio
 
 This handoff continues development of Unio itself. To use Unio to build a
