@@ -2,12 +2,10 @@
 
 Your AIs, in sync.
 
-Current update, 2026-10-13: **[v0.5.15](https://github.com/danielmevit/unio/releases/tag/v0.5.15)**
-is published, installed and pushed to main. Local review findings now retain
-exact sources, recorded disagreement and incomplete evidence; protocol-1 receipts
-remain compatible. The full frozen-source gate, exact artifacts, isolated upgrade
-and restore, installed findings acceptance and all six official download hashes
-passed. See the [release guide](../RELEASE-0.5.15.md) and [version plan](../VERSION-PLAN.md).
+Current update, 2026-10-14: **[v0.5.16](https://github.com/danielmevit/unio/releases/tag/v0.5.16)** is released,
+installed and pushed. Recovery performance and static worker diagnostics passed
+the combined gate and actual installed acceptance. Managed effort control is
+next; its separate refusal prototype remains excluded.
 
 The functional core includes recovery saving, shared-account policy and capacity
 observations, managed daily startup, read-only planning, explicit single-attempt

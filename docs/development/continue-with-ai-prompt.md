@@ -1,3 +1,29 @@
+# Current delivery — 2026-10-14: v0.5.16
+
+[Unio 0.5.16](https://github.com/danielmevit/unio/releases/tag/v0.5.16) is published, installed and pushed from 9ee2a206a81faf65c6bd47058efca4fa385837bb.
+Combined gate 9b4dfc4bed52bf92b96b578f42aff61a0c9a109a passed in 1555.436 seconds.
+Only final README/changelog labels differ. Exact assets, 0.5.15 upgrade/restore,
+actual installed saving and command-audit acceptance, dashboard source identity
+and six official download hashes passed. The release combines two completed
+milestones: recovery performance and static worker diagnostics.
+
+Implementation used ChatGPT subscription / Codex CLI0.162.1 / requested
+GPT-6.1 Sol low. Configured leadGPT-6.1 Sol xhigh; effective identities Unknown.
+Original command-audit fixture issues and the focused correction are recorded
+separately. No extra AI review fleet was used under the owner's YOLO policy.
+
+Managed effort control remains unfinished. Prototype0776d80 is saved on
+wip/codex-effort-boundary-20261013 and excluded from this release. Next work is
+its concrete owned Source backend, channel, slot binding and native effort RPC;
+do not label refusal checks a completed switch or replay unchanged Source tasks.
+Preserve the owner's low-effort experiment, real shared-account/lead reservation,
+early commits and failures. Read local coord/AGENT-LOG.md and
+tmp/unio-next/manifest.json for current activity and capacity.
+
+Earlier candidate/break notes below are historical.
+
+---
+
 # Current bundle continuation — 2026-10-13
 
 The owner requests multiple useful milestones in one release. Proposed0.5.16
