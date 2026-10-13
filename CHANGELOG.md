@@ -4,7 +4,7 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.16 (unreleased) — recovery performance and worker diagnostics — 2026-10-13
+## 0.5.16 — recovery performance and worker diagnostics — 2026-10-14
 
 See [measured results and limits](docs/RELEASE-0.5.16.md).
 
