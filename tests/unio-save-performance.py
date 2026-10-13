@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
                    check=True, capture_output=True, timeout=120)
     engine = base/'bin/unio'
     calls = base/'provider-calls'
-    (base/'conf/agents.conf').write_text("mock=sh -c 'echo invoked >> \"%s\"; exit 99'\n" % calls)
+    (base/'conf/agents.conf').write_text("mock=bash -c 'echo invoked >> \"%s\"; exit 99'\n" % calls)
     root = base/'project with spaces'; repo = root/'repo'; repo.mkdir(parents=True)
 
     def git(where, *args):
@@ -53,6 +53,8 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     unio('stop')
     (root/'coord/tasks/T.md').write_text('# T\nOffline only\n')
     wt = root/'wt/mock-source'
+    (wt/'committed.txt').write_bytes(b'carried commit\n')
+    git(wt, 'add', 'committed.txt'); git(wt, 'commit', '-qm', 'carried')
     (wt/'file.txt').write_bytes(b'staged\0bytes\n'); git(wt, 'add', 'file.txt')
     (wt/'file.txt').write_bytes(b'working\0bytes\n')
     (wt/'new.bin').write_bytes(bytes(range(256)))
@@ -89,13 +91,18 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     dest = root/'wt/mock-dest'
     check('restore worktree bytes exact', (dest/'file.txt').read_bytes() == (wt/'file.txt').read_bytes()
           and (dest/'new.bin').read_bytes() == (wt/'new.bin').read_bytes())
+    check('restore carried commit exact', git(dest, 'rev-parse', 'HEAD') == git(wt, 'rev-parse', 'HEAD')
+          and (dest/'committed.txt').read_bytes() == b'carried commit\n')
     check('restore index exact', git(dest, 'ls-files', '--stage', '-z') == git(wt, 'ls-files', '--stage', '-z'))
     # Claimed source is pinned. A different worker's newest must also survive.
-    old = [clone(n) for n in range(1, 7)]
-    newest = old[-1][0]
+    old = [clone(n, 'mock-source') for n in range(1, 7)]
+    newest, _ = clone(7, 'other-worker')
     (wt/'new.bin').write_bytes(b'next state')
     check('retention capture succeeds', unio('save', 'create', 'mock-source', 'T').returncode == 0)
     check('claim pin and other worker newest survive', original.exists() and (store/newest).exists())
+    check('retention really archives older unpinned snapshots',
+          any((store/'archive'/key/'snapshot').exists() for key, _ in old))
+    check('archived byte accounting remains available', unio('save', 'usage', '--json').returncode == 0)
 
     def refused(path, key):
         try:
@@ -105,6 +112,8 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
         return False
 
     bad_id, bad = clone(10, 'corrupt-worker')
+    check('metadata-only observation remains explicitly separate',
+          'bodies' not in module.load_save(str(bad), bad_id, False))
     pooled = next((bad/'pool').iterdir()); exact = pooled.read_bytes()
     pooled.write_bytes(b'z'*len(exact))
     check('same-size corrupted old body refused', refused(bad, bad_id))
@@ -128,7 +137,9 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     check('capture preserves corrupt evidence', result.returncode == 0
           and all(p.exists() and hashlib.sha256((p/'manifest.json').read_bytes()).hexdigest() == before[str(p)]
                   for p in protected))
-    check('last good remains inspectable', unio('save', 'inspect', '--worker', 'mock-source', '--json').returncode == 0)
+    inspected = unio('save', 'inspect', '--worker', 'mock-source', '--json')
+    check('last good remains inspectable', inspected.returncode == 0)
+    last_good_id = json.loads(inspected.stdout)['last_good']['save_id']
     # Change privacy metadata at open, after any pathname preflight. The
     # installed loader must validate the descriptor before reading its bytes.
     race_id, race = clone(15, 'race-worker')
@@ -143,6 +154,27 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     with patch.object(module.os, 'open', racing_open):
         check('privacy change at open refused on actual descriptor', refused(race, race_id))
     race_file.chmod(0o600)
+    bundle_id, bundle_bad = clone(16, 'bundle-worker')
+    bundle_file = bundle_bad/'bundle'; bundle_bytes = bundle_file.read_bytes()
+    bundle_file.write_bytes(b'z'*len(bundle_bytes))
+    check('corrupted carried bundle refused', refused(bundle_bad, bundle_id))
+    fifo_id, fifo_bad = clone(17, 'fifo-worker')
+    fifo_file = next((fifo_bad/'pool').iterdir()); fifo_file.unlink(); os.mkfifo(fifo_file, 0o600)
+    check('stored FIFO refused without blocking', refused(fifo_bad, fifo_id))
+    owner_file = base/'owner-check'; owner_file.write_bytes(b'private'); owner_file.chmod(0o600)
+    real_fstat = os.fstat
+
+    def foreign_owner(fd):
+        values = list(real_fstat(fd)); values[4] = os.getuid() + 1
+        return os.stat_result(values)
+
+    with patch.object(module.os, 'fstat', foreign_owner):
+        try:
+            module.read_stored_at(None, str(owner_file), 100)
+        except module.Refuse:
+            check('descriptor owner refused before bytes', True)
+        else:
+            check('descriptor owner refused before bytes', False)
     # Worktree observations still perform fresh reads on each pass.
     capture = module.capture; observations = [0]
 
@@ -156,5 +188,8 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     with patch.dict(os.environ, env), patch.object(module, 'capture', changing):
         check('changing worktree refused across real observations', module.cmd_create(str(root), 'mock-source', 'T') != 0)
     check('both observations performed', observations[0] == 2)
+    after_refusal = json.loads(unio('save', 'inspect', '--worker', 'mock-source', '--json').stdout)
+    check('last good survives changed-worktree refusal', after_refusal['last_good']['save_id'] == last_good_id
+          and after_refusal['latest_attempt']['status'] == 'refused')
     check('provider never invoked', not calls.exists())
 print('%d save-performance checks passed' % passed)

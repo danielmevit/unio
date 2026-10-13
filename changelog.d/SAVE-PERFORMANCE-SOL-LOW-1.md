@@ -1,0 +1,1 @@
+Reduce redundant stored-file pathname lookups during deep recovery-save validation by checking metadata on the exact no-follow descriptor supplying the bytes; retain full hashes, metadata-only scans and retention protections.

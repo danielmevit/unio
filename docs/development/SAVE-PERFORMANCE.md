@@ -165,3 +165,102 @@ sample demonstrates reduced query overhead and successful captures on this
 fixture, not a general speed percentage or proof that every real-workspace
 automatic save now finishes within its deadline. Profile history-sized real
 workloads before choosing the next optimization.
+
+## Descriptor-bound deep reading — 2026-10-13 source candidate
+
+`SAVE-PERFORMANCE-SOL-LOW-1` uses the existing ChatGPT subscription through
+Codex CLI 0.162.1, requesting `gpt-6.1-sol` with LOW effort. Effective model,
+effort and remaining allowance are Unknown. Worker completion is separate
+from lead acceptance and release.
+
+Deep loading previously checked each stored task/body/bundle through a
+pathname stat, then opened it without following links and obtained descriptor
+metadata again for its bounded read. The candidate opens each such file once,
+checks its owner, 0600 mode, single link, regular type and size on that exact
+descriptor, and supplies that descriptor stat to the bounded reader. It still
+reads and hashes every body, validates index Git object IDs, task content and
+bundle bytes/header, and checks the complete manifest and directory layout.
+Metadata-only inspection retains its separate pathname checks.
+
+Both worktree observations and all existing retention scans still run. No
+metadata-only result becomes content-valid, and no file, manifest or body
+result is reused between loads. Retention pins, newest/corrupt protection,
+archive accounting, publication verification and capture budgets are unchanged.
+The installed regression suite also changes privacy metadata at file-open time
+to confirm that validation follows the descriptor actually supplying bytes.
+
+The private comparison installs frozen source `9989ed34` and the candidate
+separately. It loads the helper from each installed engine and times its real
+manual-create path, including worker/store locks, both Git/worktree observations,
+retention, publication and attempt bookkeeping. Shell-wrapper startup,
+installation and fixture preparation are outside these timings. Calls and
+cumulative function time are instrumented; overlapping times must not be added.
+The regression smoke checks also invoke the installed CLI directly.
+
+The task-generated `v9fs` fixture has 400 worktree paths, 4,901,321 worktree
+bytes, 400 unique content bodies and no carried commits. Its small-history
+case has one prior save; the populated case has 32 content-valid prior saves,
+two per old worker. All starting saves contain the same verified snapshot
+content, with distinct identities, workers and publication times. Later resets
+move those same generated directories back from active/archive storage. The
+source Git/worktree input is identical. Original diagnostic stores are untouched.
+Both installations explicitly select a 300-second capture budget and use private
+configuration with offline shell mocks (explicit Bash for subsequent runs);
+no provider run is part of the fixture.
+
+| History | Engine observation | Elapsed seconds | Result |
+| --- | --- | ---: | --- |
+| 1 save | Baseline | 24.29 | Complete |
+| 1 save | Candidate | 23.95 | Complete |
+| 32 saves | Baseline 1 | 320.43 | Refused at the 300-second capture bound; prior saves retained |
+| 32 saves | Candidate 1 | 244.28 | Complete; one eligible old save archived |
+| 32 saves | Baseline 2 | 304.93 | Complete; one eligible old save archived |
+| 32 saves | Candidate 2 | 249.01 | Complete; one eligible old save archived |
+
+The four populated observations alternate baseline/candidate. Total elapsed
+includes attempt bookkeeping outside the helper's capture checks; this explains
+why a successful manual helper can report more than the configured 300 seconds.
+These measurements do not exercise the automatic controller's wall-clock stop.
+The refused first baseline is preserved separately and is not a completed-save
+latency sample.
+
+For the completed second pair, both engines made 98 save-validation calls,
+20 Git calls, two observations and **14,141 byte-reader calls**. Pathname privacy
+checks fell from **39,593 to 26,360** (13,233 fewer). Their cumulative time fell
+from 45.27 to 32.45 seconds. The small-history case similarly fell from 2,020
+to 1,218 checks while retaining 1,617 byte-reader calls. Candidate reader counts
+include both ordinary `read_at` and descriptor-bound `read_stored_at` calls.
+This is measured code-level reduction in metadata work, with every deep body
+read retained.
+
+Storage/cache variation remains substantial. The first populated baseline
+followed a bulk-copy reset; subsequent resets used directory renames. In the
+second pair, the observation phases alone took 20.25 versus 10.44 seconds,
+although their code and inputs are unchanged. Body reading remains the largest
+profiled cost. Instrumentation, host I/O and cache state are uncontrolled;
+there are only two observations per populated engine and one per small-history
+engine. The elapsed differences therefore support this fixture's observed
+outcomes, not a universal speed percentage or proof that automatic captures
+fit the unchanged default thirty-second deadline. No native-Linux/tmpfs
+comparison or model-effort performance attribution is claimed.
+
+| Installed input | SHA-256 |
+| --- | --- |
+| Frozen installer source | `9ffd7a5c8e218a5257700824a6d84800cf85c484321f32f4307321a4f619cc6a` |
+| Baseline installed engine | `8e4e6f58c70a716812224b8bc96f4205274b09054801c8bc5ff5d58f4f86f4ab` |
+| Candidate installer source | `5b5c5fa3439839996f4a1e8a58319d2a9920ec3f1038636bf5789f332d5a889f` |
+| Candidate installed engine | `91f24e17313ffe0b5aa6a7e73eb8276ae4c39abc9b7cb88870f46d5b577a5a4f` |
+
+Private scripts, dated receipts, profiles, the original refusal and an initial
+baseline source-label erratum remain in task scratch. The baseline installed
+helper was independently matched byte-for-byte to frozen source; the erratum
+changes neither engine/helper hashes nor measurements. All installer bytes
+outside the saving payload match the frozen source.
+
+`tests/unio-save-performance.py` exercises the installed helper and real CLI,
+exact staged/worktree/binary/commit restoration, archival with claim pins and
+newest protection, corrupt bodies/manifests/bundles, symlinks, hardlinks, modes,
+owner checks, FIFO refusal, privacy changes at open and fresh changing-worktree
+observations. Its repeated-pathname-I/O assertion fails against the frozen
+installed baseline. The suite is registered once in the quality gate; full
+release validation and acceptance remain with the lead.
