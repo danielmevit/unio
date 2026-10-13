@@ -76,13 +76,14 @@ CodeGraph upgrade/index.
 The completed scope through 0.5.12 is released and installed. Its evidence is in
 the [version plan](../VERSION-PLAN.md). Next:
 
-1. **Measured save reliability and performance:** sibling-ignore batching is shipped and measured.
-   Investigate remaining real-history/helper timeouts with matched workloads.
-   Both current implementation runs reported automatic-save helper exit -9;
-   the cause is not established, and their Git commits remain preserved.
-   No general speedup or universal timeout fix is established. Initial estimate:
-   1–3 hours for a matched diagnosis; estimate the bounded fix after finding the
-   cause. Keep real-workspace and fixture results separate.
+1. **Measured save reliability and performance:** sibling-ignore batching is shipped.
+   The 2026-10-13 [diagnosis](AUTOSAVE-HELPER-2026-10-13.md) reproduced a controller
+   deadline kill on a populated Windows-mounted store. The accepted 0.5.14 source
+   adds optional bounded capture budgets and honest deadline diagnostics; release
+   delivery is pending. Its configured capture succeeded in 217.33 seconds, so
+   performance remains a separate follow-up. Keep historical kill causes Unknown.
+   Initial follow-up estimate: 2–4 hours for a measured bounded optimization slice;
+   preserve complete old-save validation, failure evidence and last-good recovery.
 2. **Review findings:** extract and organize findings from the shipped
    [concurrent collection](../REVIEW-COLLECTION.md) without hiding disagreement
    or treating agreement as human acceptance.

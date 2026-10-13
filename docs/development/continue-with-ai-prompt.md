@@ -16,8 +16,12 @@ budget and registered lead, record any temporary native `medium` tier needed
 for admission, then restore the prior tier when the worker is idle. Keep
 unrelated admissions closed. One invocation per task, no paid API fallback
 or blind retry. Read the [complete correction rule](../ai/LEAD-ESCALATION.md#dedicated-fix-worker--unio-owner-rule-2026-10-13).
-Next functional priority: matched diagnosis of automatic-save helper exit
-`-9`, initially 1–3 hours; its cause is still unknown.
+The matched diagnosis and bounded capture-budget implementation are accepted at
+`dbe3399`, with 70 focused checks and native scoped verification passing. The
+0.5.14 release candidate still needs its full gate and delivery; check the latest
+local log and official release before acting. Next functional priority: organize
+findings from the shipped independent-review receipts. Historical kill causes
+remain unknown, and save performance remains a separate measured follow-up.
 
 ## Prompt for the next Unio development lead
 
@@ -50,11 +54,13 @@ Unio development workspace's xhigh ceiling or authorize max here.
 
 The protocol-name slice is complete in 0.5.13. Preserve its frozen contract
 and original GLM/Gemini receipts, including the failed and interrupted events.
-The next planned functional task is matched diagnosis of real automatic-save
-helper exit -9. Its cause is unknown, and preserved Git commits remain intact.
-Read the latest log, receipts and docs/development/ROADMAP.md before starting.
-Estimate 1–3 hours for diagnosis, then estimate a bounded fix from findings.
-Do not rerun frozen AI tasks or erase their original failures.
+The automatic-save diagnosis and optional 1–300s capture-budget implementation
+are accepted at dbe3399. A populated Windows-mounted fixture failed at the
+unchanged 30s default and saved successfully in 217.33s with a 300s budget.
+This is a reliability option, not a speedup. Check current release receipts:
+0.5.14 delivery was pending when this candidate was prepared. Next functional
+priority is findings aggregation from independent review receipts; estimate a
+bounded first slice at 3–6 hours. Preserve historical failures and Unknowns.
 
 The optional CodeGraph Bash evaluation and its grammar follow-up are in
 docs/development/CODEGRAPH-BASH-EVALUATION-2026-10-12.md. Local candidate

@@ -4,6 +4,21 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.14 — configurable recovery-save budgets — unreleased
+
+See [release scope and usage](docs/RELEASE-0.5.14.md).
+
+- Add optional `UNIO_SAVE_CAPTURE_TIMEOUT`: whole seconds 1–300, default 30,
+  shared by manual and automatic capture helpers and their controller.
+- Refuse invalid capture settings before save effects while keeping worker exits,
+  inspection/usage and restoration independent.
+- Explain controller-evidenced deadline failures alongside actual helper exits;
+  preserve last-good saves and the original cancellation cleanup ceiling.
+- Add 70 focused runtime checks and a matched populated-store measurement:
+  the explicitly configured capture succeeded in 217.33 seconds. This is a
+  reliability option, not a general performance improvement.
+- Document dedicated Sol correction routing and preserve all other payloads.
+
 ## 0.5.13 — matching protocols and clearer effort — 2026-10-12
 
 See [release scope and usage](docs/RELEASE-0.5.13.md).
