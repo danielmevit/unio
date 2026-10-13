@@ -51,7 +51,12 @@ session, preserving their work and the agreed checks.
 through WSL, plus a [local browser workspace](bridge/README.md) in the source
 archive. Use it to prepare and run tasks, follow worker output and inspect files.
 
-*Install [Unio 0.5.13](https://github.com/danielmevit/unio/releases/tag/v0.5.13), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
+*Install [Unio 0.5.14](https://github.com/danielmevit/unio/releases/tag/v0.5.14), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
+
+**Added in 0.5.14:** give slow recovery saves an optional bounded capture
+budget and see clear deadline failures. The default stays 30 seconds;
+[the saving guide](docs/WORK-SAVING.md#capture-time-budget) explains the
+1–300 second setting and its latency tradeoff.
 
 **Added in 0.5.13:** use matching YOLO, Balanced and Thorough commands, and
 choose Low / Medium / Max reasoning independently from review depth and
