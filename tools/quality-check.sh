@@ -39,6 +39,7 @@ python3 tests/unio-limit-wall.py
 python3 tests/unio-watch.py
 python3 tests/unio-opencode.py
 python3 -B tests/unio-prompt-transport.py
+python3 -B tests/unio-command-audit.py
 python3 -B tests/unio-perplexity.py
 python3 -B tests/unio-vibe.py
 python3 -B tests/unio-copilot.py

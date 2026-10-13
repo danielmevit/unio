@@ -18652,6 +18652,154 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
     ready=final=='completed' and after==d['before'] and not reasons
     print('%s %s %d %d'%(d['id'],final,bound,int(ready)))
 
+
+# Static command audit: deliberately independent of agent_data's PATH/bench
+# inspection and all project migration. No subprocess, expansion or probing.
+def command_audit(conf, mode):
+    remedies = {
+        'command_unknown': 'Inspect the wrapper/compound form locally; check native help yourself.',
+        'whole_taskfile_argv': 'Text suggests whole-TASKFILE argv expansion; use stdin or a file flag for large material.',
+        'legacy_opencode_permission': 'Dated legacy flag hint (2026-10-13); check native opencode run help yourself.',
+        'transport_unknown': 'Task transport is not statically established; check native file/stdin help yourself.',
+        'selector_unknown': 'Selector combination is unverified; check native help yourself.',
+        'effort_ambiguous': 'Effort controls are conflicting or unverified; check native help yourself.',
+        'auto_balance': 'Auto Balance does not identify a fixed model or lab.',
+    }
+    def invalid():
+        raise ValueError('invalid, unreadable, malformed or over-bound command audit input')
+    try:
+        fd = os.open(conf, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        with os.fdopen(fd, 'rb') as f:
+            info = os.fstat(f.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > 65536: invalid()
+            data = f.read(65537)
+        if len(data) > 65536: invalid()
+        lines = data.decode('utf-8').splitlines()
+        if len(lines) > 512: invalid()
+        rows = []; names = set()
+        for line in lines:
+            if not line.strip() or line.lstrip().startswith('#'): continue
+            if '=' not in line: invalid()
+            name, command = line.split('=', 1)
+            # Aliases and selector facts are the only input-derived text emitted.
+            if (not re.fullmatch(r'[a-z][a-z0-9_-]{0,31}', name)
+                    or re.search(r'token|secret|password|api[_-]?key|^sk-', name)
+                    or name in names or not command.strip() or len(command.encode()) > 4096
+                    or any(ord(c) < 32 and c != '\t' for c in command)): invalid()
+            names.add(name)
+            if len(names) > 128: invalid()
+            issues = set()
+            if re.search(r'\$\(\s*(?:cat\s+|<\s*)["\']?\$\{?TASKFILE\}?', command):
+                issues.add('whole_taskfile_argv')
+            lex = shlex.shlex(command, posix=True, punctuation_chars='();<>|&')
+            lex.whitespace_split = True; lex.commenters = ''
+            tokens = list(lex)
+            stdin = False; argv = []; unknown = False
+            i = 0
+            while i < len(tokens):
+                t = tokens[i]
+                if t == '<' and i + 1 < len(tokens) and tokens[i+1] in ('$TASKFILE', '${TASKFILE}') and not stdin:
+                    stdin = True; i += 2; continue
+                if t and all(c in '();<>|&' for c in t): unknown = True
+                # Only literal TASKFILE references are understood; never expand.
+                remainder = t.replace('${TASKFILE}', '').replace('$TASKFILE', '')
+                if any(c in remainder for c in '$`*?[]') or '\n' in t: unknown = True
+                argv.append(t); i += 1
+            if argv and os.path.basename(argv[0]) == 'opencode' and '--dangerously-skip-permissions' in argv:
+                issues.add('legacy_opencode_permission')
+            tool = 'Unknown'; model = 'Unknown'; effort = 'Unknown'; transport = 'Unknown'
+            native = {'codex','claude','opencode','grok','agy','vibe','copilot'}
+            if argv and not unknown and os.path.basename(argv[0]) in native and not argv[0].startswith(('~','-')):
+                tool = os.path.basename(argv[0])
+            else: issues.add('command_unknown')
+            if tool != 'Unknown':
+                args = argv[1:]
+                form = (tool not in ('codex','opencode') or bool(args) and args[0] == {'codex':'exec','opencode':'run'}[tool])
+                if not form: issues.add('command_unknown')
+                # Parse only explicit selectors, retaining no arbitrary values.
+                models = []; efforts = []; malformed = False; foreign_effort = False
+                j = 0
+                while j < len(args):
+                    t = args[j]
+                    if t == '--': break
+                    flags = ('--model','-m')
+                    if t in flags or t.startswith('--model='):
+                        if t.startswith('--model='): value = t.split('=',1)[1]
+                        elif j+1 < len(args) and not args[j+1].startswith('-'): j += 1; value = args[j]
+                        else: value = ''; malformed = True
+                        models.append(value)
+                    elif t in ('--effort','--variant','--reasoning-effort') or t.startswith(('--effort=','--variant=','--reasoning-effort=')):
+                        flag = t.split('=',1)[0]
+                        if '=' in t: value = t.split('=',1)[1]
+                        elif j+1 < len(args) and not args[j+1].startswith('-'): j += 1; value = args[j]
+                        else: value = ''; malformed = True
+                        efforts.append(value)
+                        if (tool,flag) not in (('claude','--effort'),('opencode','--variant')): foreign_effort = True
+                    elif t in ('-c','--config') or t.startswith('--config='):
+                        if t.startswith('--config='): value = t.split('=',1)[1]
+                        elif j+1 < len(args): j += 1; value = args[j]
+                        else: value = ''; malformed = True
+                        if value.startswith('model_reasoning_effort='):
+                            efforts.append(value.split('=',1)[1].strip('"\''))
+                            if tool != 'codex': foreign_effort = True
+                        elif value.startswith('model='):
+                            models.append(value.split('=',1)[1].strip('"\''))
+                            if tool != 'codex': malformed = True
+                        else: malformed = True  # other config may override selectors
+                    elif re.search(r'effort|thinking|reasoning', t) and t.startswith('-'):
+                        foreign_effort = True
+                    j += 1
+                # Conservative structural forms, not a current catalog or proof
+                # of availability. Arbitrary model text is never reflected.
+                model_pattern = r'(?:gpt-\d{1,2}(?:\.\d{1,2})?-(?:sol|astra|luna)|claude-(?:opus|sonnet|haiku)-\d{1,2}(?:[.-]\d{1,2})?|gemini-\d{1,2}(?:\.\d{1,2})?-(?:pro|flash)(?:-high)?|glm[-_]\d{1,2}(?:[.-]\d{1,2})?|qwen\d{1,2}(?:\.\d{1,2})?-(?:max|plus)|mistral-medium-\d{1,2}(?:-\d{1,2})?)'
+                if len(models) == 1 and not malformed:
+                    value = models[0]
+                    candidate = value
+                    if tool == 'opencode' and value.startswith(('opencode-go/','opencode/')):
+                        candidate = value.split('/',1)[1]
+                    if value == 'auto-balance' and tool == 'copilot':
+                        model = value; issues.add('auto_balance')
+                    elif re.fullmatch(model_pattern, candidate) and (candidate == value or tool == 'opencode'):
+                        model = value
+                    else: issues.add('selector_unknown')
+                elif models or malformed: issues.add('selector_unknown')
+                if len(efforts) == 1 and efforts[0] in ('low','medium','high','xhigh') and not foreign_effort and not malformed:
+                    effort = efforts[0]
+                elif efforts or foreign_effort: issues.add('effort_ambiguous')
+                def file_flag(flag):
+                    return any(t == flag and k+1 < len(args) and args[k+1] in ('$TASKFILE','${TASKFILE}') for k,t in enumerate(args))
+                if form:
+                    if stdin and ((tool == 'codex' and '-' in args) or (tool == 'claude' and '-p' in args)):
+                        transport = 'stdin'
+                    elif (tool == 'opencode' and file_flag('--file')) or (tool == 'grok' and file_flag('--prompt-file')):
+                        transport = 'file'
+                    elif tool == 'agy' and '-p' in args:
+                        k = args.index('-p')
+                        if k+1 < len(args) and re.search(r'File: \$(?:TASKFILE|\{TASKFILE\})$', args[k+1]): transport = 'file_pointer'
+                if transport == 'Unknown': issues.add('transport_unknown')
+                if tool == 'opencode' and '--dangerously-skip-permissions' in args:
+                    issues.add('legacy_opencode_permission')
+                if not form:
+                    model = effort = 'Unknown'
+            rows.append(dict(alias=name, tool=tool, requested_model=model, requested_effort=effort,
+                transport=transport, authentication='Unknown', capacity='Unknown', effective_model='Unknown',
+                effective_effort='Unknown', issues=[dict(code=c, remedy=remedies[c]) for c in sorted(issues)]))
+        out = dict(schema_version=1, source='local_static', authentication='Unknown', capacity='Unknown',
+            effective_model='Unknown', effective_effort='Unknown', agents=rows)
+        if mode == '--json': rendered = json.dumps(out, indent=2)
+        else:
+            text = ['Local static command audit; not readiness or compatibility proof.',
+                    'Authentication/capacity/effective model/effective effort: Unknown. No commands executed.']
+            for row in rows:
+                text.append('{alias}: tool={tool}; requested model={requested_model}; requested effort={requested_effort}; transport={transport}'.format(**row))
+                text.extend('  '+issue['code']+': '+issue['remedy'] for issue in row['issues'])
+            rendered = '\n'.join(text)
+        if len(rendered.encode()) > 131072: invalid()
+    except (ValueError, OSError, UnicodeError):
+        print('unio command audit: invalid, unreadable, malformed or over-bound input', file=sys.stderr)
+        sys.exit(2)
+    print(rendered)
+
 def agent_data(conf,offdir):
     output=[]
     for line in regular(conf).decode().splitlines():
@@ -18909,6 +19057,7 @@ try:
     elif cmd=='verdict': print(verdict(*a))
     elif cmd=='review-set-create': review_set_create(*a)
     elif cmd=='review-set-finalize': review_set_finalize(*a)
+    elif cmd=='command-audit': command_audit(*a)
     elif cmd=='agents': agents(*a)
     elif cmd=='watch': watch(*a)
     elif cmd=='handoff': handoff(*a)
@@ -24751,6 +24900,22 @@ cmd_score() { # fleet scorecard straight from the ledger; myapp = full view
 
 # ----------------------------------------------------------------- doctor
 cmd_doctor() { # preflight: catch what would otherwise waste a run or quota
+  if [ "$#" -gt 0 ]; then
+    if [ "${1:-}" != --commands ] || [ "$#" -gt 2 ] || { [ "$#" -eq 2 ] && [ "$2" != --json ]; }; then
+      echo 'unio doctor: usage: doctor [--commands [--json]]' >&2
+      return 2
+    fi
+    local audit_root audit_conf="$CONF_FILE"
+    if audit_root=$(find_root); then
+      # Reject an existing nonregular override rather than silently falling back.
+      if [ -e "$audit_root/coord/agents.conf" ] || [ -L "$audit_root/coord/agents.conf" ]; then
+        audit_conf="$audit_root/coord/agents.conf"
+      fi
+    fi
+    command -v python3 >/dev/null || { echo 'unio command audit: Python 3 required' >&2; return 2; }
+    quality command-audit "$audit_conf" "${2:-human}"
+    return
+  fi
   local root; root=$(find_root) || die "not inside a Unio project"
   local base conf warn=0 bad=0
   base=$(get_base "$root"); conf=$(conf_for_root "$root")
@@ -25330,6 +25495,8 @@ setup / health
                                      neutral dir — run after every CLI update
   unio selftest                 rehearse the whole loop with mock agents
                                      in a throwaway sandbox — zero quota
+  unio doctor --commands [--json] local bounded static command audit; no execution
+                                     works outside projects and under STOP
   unio doctor                   preflight a project: base branch, agent
                                      binaries, python3, worktree health, stale
                                      state, disk — catch what would waste a run
