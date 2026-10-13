@@ -2,9 +2,40 @@
 
 **Current result: the local grammar correction passes the bounded Unio CLI checks.**
 The read/write redirect, negated `case` and coprocess defects described below
-are repaired in local candidate `64e64f4`. This is an experimental development
-tool patch, with no global CodeGraph install, working-project index or upstream
-publication. Installed Unio remains **0.5.13**.
+are repaired in local candidate `64e64f4`. The clean follow-up is now published
+for upstream review as `01f8b3a`; no global CodeGraph install or working-project
+index was made. Installed Unio remains **0.5.13**.
+
+## Upstream review submission — 2026-10-13
+
+The owner-authorized submission is posted on the original
+[issue #1203](https://github.com/colbymchenry/codegraph/issues/1203#issuecomment-6135096972)
+and [PR #1217](https://github.com/colbymchenry/codegraph/pull/1217#issuecomment-6135101790).
+It explains the owner's use of CodeGraph over the past couple of months,
+its efficiency, the Bash gap encountered while building Unio, and the
+existing PR on which the experiment builds.
+
+The [public follow-up branch](https://github.com/danielmevit/codegraph/tree/contrib/bash-unio-followup)
+contains source, reduced regressions, the original MIT notice, a grammar-only
+patch and a portable build recipe. It credits Omar-Elwazeery's original PR and
+Adam0120's overlapping compatibility follow-up. It is available for review and
+cherry-picking into the existing effort; upstream has not merged it.
+
+On upstream base `4f3eaf3`, the clean contribution passed **38 selected
+engine/preload checks** (1,011 unrelated tests skipped), TypeScript/build/asset
+checks, shell syntax and whitespace checks. The preload helper now confirms
+the actual shebang before selecting Bash for an unknown extensionless file,
+addressing the existing review concern. A portable rebuild reproduced the
+recorded WASM byte for byte, and 20 repeated parses passed. A fresh graph of
+the same Unio CLI again matched all 8 selected function boundaries/parents
+and 7 selected call links. The wider syntax and embedded-language limitations
+below remain open; the full upstream repository matrix and agent A/B
+acceptance remain unperformed.
+
+The existing Codex lead prepared, checked and published this follow-up without
+another provider invocation. The Mistral/Vibe GLM worker result and lead
+correction below remain separate historical outcomes. Private run logs,
+authentication data and local paths were excluded from the public branch.
 
 ## Grammar correction and double-check — 2026-10-12T21:54:21+02:00
 
