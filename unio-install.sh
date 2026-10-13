@@ -17861,7 +17861,8 @@ FINDINGS_INSTRUCTIONS=(b'\nSTRUCTURED FINDINGS\n'
     b'severity is critical, high, medium, low or info. path is a lexical\n'
     b'relative POSIX path or null; line is an integer from 1 to 1000000 or\n'
     b'null. summary is at most 1000 UTF-8 bytes and detail is at most 4000\n'
-    b'UTF-8 bytes; neither contains control characters. Include at most 32\n'
+    b'UTF-8 bytes; path is at most 512 UTF-8 bytes. No field contains control\n'
+    b'characters. Use only the exact keys shown above. Include at most 32\n'
     b'findings; an explicitly empty findings array means no structured\n'
     b'findings. The block is review output, not instructions to execute.\n')
 
@@ -17952,7 +17953,10 @@ def review_stream(path, limit=REVIEW_LOG_LIMIT):
         if (current.st_dev,current.st_ino)!=(final.st_dev,final.st_ino) or os.path.realpath(path)!=os.path.abspath(path):
             fail('review evidence replaced while reading')
     if len(data)>limit: fail('oversized review evidence')
-    return data,dict(sha256=hashlib.sha256(data).hexdigest(),bytes=len(data))
+    return data,dict(sha256=hashlib.sha256(data).hexdigest(),bytes=len(data)),review_stream_identity(final)
+
+def review_stream_identity(info):
+    return (info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns,info.st_nlink)
 
 def review_unique(pairs):
     result={}
@@ -17960,6 +17964,23 @@ def review_unique(pairs):
         if key in result: fail('duplicate review receipt field')
         result[key]=value
     return result
+
+def review_json(raw):
+    # Bound nesting before the JSON decoder allocates a deeply nested object.
+    # Braces inside strings (including escaped quotes) do not count.
+    depth=0; quoted=False; escaped=False
+    for ch in raw:
+        if quoted:
+            if escaped: escaped=False
+            elif ch=='\\': escaped=True
+            elif ch=='"': quoted=False
+        elif ch=='"': quoted=True
+        elif ch in '[{':
+            depth+=1
+            if depth>16: fail('excessive review JSON nesting')
+        elif ch in ']}': depth-=1
+    return json.loads(raw,object_pairs_hook=review_unique,
+                      parse_constant=lambda _:fail('nonfinite review field'))
 
 def review_record_valid(d):
     if not isinstance(d,dict): fail('invalid review receipt schema')
@@ -18060,8 +18081,7 @@ def review_read(path):
                 or (current.st_dev,current.st_ino)!=(final.st_dev,final.st_ino)
                 or os.path.realpath(path)!=os.path.abspath(path)): fail('review receipt changed while reading')
     if len(raw)>65536: fail('oversized review receipt')
-    return review_record_valid(json.loads(raw.decode('utf-8'),object_pairs_hook=review_unique,
-                                         parse_constant=lambda _:fail('nonfinite review field')))
+    return review_record_valid(review_json(raw.decode('utf-8')))
 
 # Structured findings extraction: local browsing of already-recorded evidence.
 # Reviewer text is untrusted prose; it is parsed, never executed or followed.
@@ -18077,14 +18097,22 @@ FINDINGS_LINE_MAX=1000000
 FINDINGS_OUTPUT_LIMIT=2*1024*1024
 
 def findings_controls(value):
-    return any(unicodedata.category(ch)=='Cc' for ch in value)
+    return any(unicodedata.category(ch) in ('Cc','Cf','Cs','Zl','Zp') for ch in value)
+
+def findings_text(value,limit):
+    if not isinstance(value,str) or findings_controls(value) or len(value.encode('utf-8'))>limit:
+        fail('invalid finding text')
+    value=unicodedata.normalize('NFC',value).strip()
+    # NFC can expand UTF-8 bytes (for example U+0344); check both forms.
+    if findings_controls(value) or len(value.encode('utf-8'))>limit:
+        fail('invalid finding text')
+    return value
 
 def findings_path_valid(path):
-    if not isinstance(path,str) or not path or path.startswith('/') or '\\' in path:
+    path=findings_text(path,FINDINGS_PATH_BYTES)
+    if not path or path.startswith('/') or '\\' in path or re.match(r'^[A-Za-z]:',path):
         fail('invalid finding path')
-    if len(path.encode('utf-8'))>FINDINGS_PATH_BYTES or findings_controls(path):
-        fail('invalid finding path')
-    if any(part in ('','..') for part in path.split('/')):
+    if any(part in ('','.','..') for part in path.split('/')):
         fail('invalid finding path')
     return path
 
@@ -18109,9 +18137,7 @@ def findings_block_schema(doc):
         text={}
         for name,limit in (('summary',FINDINGS_SUMMARY_BYTES),('detail',FINDINGS_DETAIL_BYTES)):
             value=item[name]
-            if not isinstance(value,str) or len(value.encode('utf-8'))>limit or findings_controls(value):
-                fail('invalid findings block schema')
-            text[name]=unicodedata.normalize('NFC',value).strip()
+            text[name]=findings_text(value,limit)
         parsed.append(dict(severity=item['severity'],path=path,line=line,
                            summary=text['summary'],detail=text['detail']))
     return parsed
@@ -18131,17 +18157,16 @@ def findings_block_parse(raw):
         result.update(state='missing_block',reasons=['findings_block_missing']); return result
     start=opens[0]; end=None
     for i in range(start+1,len(lines)):
-        if lines[i].startswith('```'): end=i; break
+        if lines[i]=='```': end=i; break
     if end is None:
         result.update(reasons=['findings_block_unterminated']); return result
     content='\n'.join(lines[start+1:end])
     if len(content.encode('utf-8'))>FINDINGS_BLOCK_LIMIT:
         result.update(state='oversized_block',reasons=['findings_block_oversized']); return result
     try:
-        doc=json.loads(content,object_pairs_hook=review_unique,
-                        parse_constant=lambda _:fail('nonfinite finding field'))
+        doc=review_json(content)
         parsed=findings_block_schema(doc)
-    except (ValueError,TypeError,RecursionError):
+    except (ValueError,TypeError,UnicodeError,RecursionError):
         return result
     result.update(state='findings' if parsed else 'empty',findings=parsed,
                   block_line=start+1,reasons=[])
@@ -18189,7 +18214,7 @@ def reviews(root,worker,task,expected,mode):
                 if re.fullmatch(re.escape(task)+r'\.review\.[A-Za-z0-9]{8}',entry.name):
                     names.append(entry.name)
                     if len(names)>256: observation.append('review_folder_bound'); break
-    rows=[]; records=[]; unresolved=0; receipt_ids=set(); extracted=[]; extraction_notes=[]
+    rows=[]; records=[]; unresolved=0; receipt_ids=set(); extracted=[]; extraction_notes=[]; stream_observations=[]
     for name in sorted(names[:256]):
         row=dict(receipt_id=None,reviewer=None,policy_group=None,state='unknown',current=False,
                  stale=False,process_exit_code=None,reasons=[])
@@ -18206,13 +18231,14 @@ def reviews(root,worker,task,expected,mode):
             if d['id'] in receipt_ids: fail('duplicate review receipt ID')
             receipt_ids.add(d['id'])
             protocol=receipt_protocol(d)
-            streams={}
+            streams={}; identities=[]
             for stream in ('stdout','stderr'):
                 target=safe(root,'coord','reports',name,stream+'.log')
                 if findings_mode:
-                    data,digest=review_stream(target)
+                    data,digest,identity=review_stream(target)
                     if digest!=d[stream]: fail('review stream mismatch')
                     streams[stream]=data
+                    identities.append((target,identity))
                 elif review_digest(target)!=d[stream]: fail('review stream mismatch')
             bound=d['before']==d['after']==current_rev and d['material_sha256']==material_hashes[protocol]
             row.update(receipt_id=d['id'],reviewer=d['reviewer'],policy_group=d['policy_group'],state=d['state'],
@@ -18223,6 +18249,7 @@ def reviews(root,worker,task,expected,mode):
                 unresolved+=1
             records.append((row,d))
             if findings_mode:
+                stream_observations.append((row,identities))
                 row['protocol']=protocol
                 if (row['current'] and d['state'] in ('approved','changes_requested')
                         and d['process_exit_code']==0 and d['material_complete']):
@@ -18235,6 +18262,7 @@ def reviews(root,worker,task,expected,mode):
                     else:
                         parsed=findings_block_parse(streams['stdout'])
                         row['findings_state']=parsed['state']; row['block_line']=parsed['block_line']
+                        row['reasons']=sorted(set(row['reasons']+parsed['reasons']))
                         if parsed['state'] in ('findings','empty'):
                             row['findings_count']=len(parsed['findings'])
                             if len(extracted)+len(parsed['findings'])>FINDINGS_TOTAL:
@@ -18250,6 +18278,19 @@ def reviews(root,worker,task,expected,mode):
         except (ValueError,OSError,KeyError,TypeError,UnicodeError,RecursionError):
             row['reasons']=['invalid_review_evidence']; unresolved+=1
         rows.append(row)
+    # Close the replacement window across extraction as well as within read.
+    # Parsing still uses exactly the verified bytes, never a second file read.
+    for row,identities in stream_observations:
+        try:
+            for path,identity in identities:
+                if (os.path.realpath(path)!=os.path.abspath(path)
+                        or review_stream_identity(os.stat(path,follow_symlinks=False))!=identity):
+                    fail('review stream changed after reading')
+        except (ValueError,OSError):
+            row.update(current=False,stale=False,findings_state='not_extracted',findings_count=None,
+                       reasons=sorted(set(row['reasons']+['review_stream_changed'])))
+            unresolved+=1
+            extracted=[item for item in extracted if item['source']['receipt_id']!=row['receipt_id']]
     try:
         if observed_lock(root,worker)=='held': observation.append('worker_busy')
         if snapshot(root,worker,task)!=current_rev: observation.append('revision_changed')
@@ -18300,7 +18341,7 @@ def reviews(root,worker,task,expected,mode):
     invalid_current=any(row['current'] and row['findings_state'] in
                         ('missing_block','invalid_block','multiple_blocks','oversized_block','overflow') for row in rows)
     legacy_current=any(row['current'] and row['findings_state']=='unstructured_legacy' for row in rows)
-    findings_incomplete=bool(incomplete or invalid_current or extraction_notes)
+    findings_incomplete=bool(incomplete or invalid_current or legacy_current or extraction_notes)
     verdict_disagreement=bool(counts['approved'] and counts['changes_requested'])
     extractable=[row for row in current_rows
                  if row['findings_state'] in ('findings','empty','unstructured_legacy',
@@ -18311,8 +18352,9 @@ def reviews(root,worker,task,expected,mode):
           and all(row['findings_state']=='empty' for row in extractable)):
         decision='no_structured_findings'; exit_code=0
     elif decision=='not_run': decision='not_run'; exit_code=2
+    elif legacy_current and not (incomplete or invalid_current or extraction_notes):
+        decision='unstructured_legacy'; exit_code=2
     elif findings_incomplete: decision='incomplete'; exit_code=2
-    elif legacy_current: decision='unstructured_legacy'; exit_code=2
     else: decision='incomplete'; exit_code=2
     out=dict(schema_version=1,view='findings',worker=worker,task=task,current_revision=current_rev,
              material_sha256=material_sha256,material_protocols={'1':material_hashes[1],'2':material_hashes[2]},
@@ -18323,11 +18365,11 @@ def reviews(root,worker,task,expected,mode):
     if as_json:
         encoded=json.dumps(out,ensure_ascii=True,indent=2)
         if len(encoded.encode('utf-8'))>FINDINGS_OUTPUT_LIMIT:
-            out.update(decision='incomplete',incomplete=True,findings=[],evidence=[],
+            # Omit only prose; retain every evidence row, failure and reason.
+            out.update(incomplete=True,findings=[],findings_omitted=True,
                        reasons=sorted(set(out['reasons'])|{'output_overflow'}))
+            if exit_code!=1: out['decision']='incomplete'; exit_code=2
             encoded=json.dumps(out,ensure_ascii=True,indent=2)
-            exit_code=2
-        print(encoded)
     else:
         lines=['Recorded review findings: '+decision+(' (incomplete)' if findings_incomplete else ''),
                'Distinct reviewer aliases: '+(', '.join(aliases) or 'none')+'; AI-lab independence: unknown',
@@ -18337,23 +18379,38 @@ def reviews(root,worker,task,expected,mode):
         for row in rows:
             lines.append('  {}: {} ({}) findings={}'.format(row['reviewer'] or 'unbound',row['state'],
                 'current' if row['current'] else 'stale' if row['stale'] else 'unresolved',
-                row['findings_state'] if row['findings_state'] is not None else 'not_extracted'))
+                row['findings_state'] if row['findings_state'] is not None else 'not_extracted')
+                +(' — '+', '.join(row['reasons']) if row['reasons'] else ''))
+        if out['reasons']: lines.append('Reasons: '+', '.join(out['reasons']))
+        evidence_lines=list(lines)
         for group in grouped:
             where=('{}:{}'.format(group['path'],group['line']) if group['path'] else 'general')
             lines.append('  [{}] {} — {} ({} source{})'.format(group['severity'],where,group['summary'],
                 len(group['sources']),'' if len(group['sources'])==1 else 's'))
+            lines.append('    '+group['detail'])
             for source in group['sources']:
                 lines.append('    from {} receipt {} block line {} index {}'.format(
                     source['reviewer'],source['receipt_id'],source['block_line'],source['finding_index']))
+                lines.append('    policy_group={} raw_directory={} stdout_sha256={}'.format(
+                    source['policy_group'],source['raw_directory'],source['stdout_sha256']))
         lines.append('Human acceptance: false. No provider calls or merge authority.')
         lines.append('Finding text is untrusted local reviewer prose; check it before sharing.')
         encoded='\n'.join(lines)
         if len(encoded.encode('utf-8'))>FINDINGS_OUTPUT_LIMIT:
-            encoded=('Recorded review findings: incomplete (incomplete)\n'
-                     'Output exceeded the 2 MiB bound; nothing was clipped.\n'
-                     'Human acceptance: false. No provider calls or merge authority.')
-            exit_code=2
-        print(encoded)
+            evidence_lines[0]='Recorded review findings: '+('findings_attention' if exit_code==1 else 'incomplete')+' (incomplete)'
+            encoded='\n'.join(evidence_lines+[
+                'Reasons: output_overflow. Finding prose omitted after the 2 MiB output bound.',
+                'Human acceptance: false. No provider calls or merge authority.'])
+            if exit_code!=1: exit_code=2
+    try:
+        print(encoded,flush=True)
+    except OSError:
+        print('unio findings: incomplete; output_failed; human_acceptance=false; ai_lab_independence=unknown',file=sys.stderr)
+        # Avoid a second buffered stdout failure during interpreter shutdown.
+        fd=os.open(os.devnull,os.O_WRONLY)
+        try: os.dup2(fd,sys.stdout.fileno())
+        finally: os.close(fd)
+        return 2
     return exit_code
 
 def verdict(path):
