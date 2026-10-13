@@ -2,11 +2,12 @@
 
 Your AIs, in sync.
 
-Current update, 2026-10-13: **[v0.5.14](https://github.com/danielmevit/unio/releases/tag/v0.5.14)**
-is published and installed. The bounded **0.5.15 review-findings candidate** adds
-local actionable findings, exact source references and protocol-aware legacy
-compatibility; focused worker checks passed and final delivery is pending.
-See the [release scope](../RELEASE-0.5.15.md) and [version plan](../VERSION-PLAN.md).
+Current update, 2026-10-13: **[v0.5.15](https://github.com/danielmevit/unio/releases/tag/v0.5.15)**
+is published, installed and pushed to main. Local review findings now retain
+exact sources, recorded disagreement and incomplete evidence; protocol-1 receipts
+remain compatible. The full frozen-source gate, exact artifacts, isolated upgrade
+and restore, installed findings acceptance and all six official download hashes
+passed. See the [release guide](../RELEASE-0.5.15.md) and [version plan](../VERSION-PLAN.md).
 
 The functional core includes recovery saving, shared-account policy and capacity
 observations, managed daily startup, read-only planning, explicit single-attempt
@@ -50,7 +51,7 @@ low-tier lead.
 | 2 | Simple daily use and measured performance | Launcher, daily-use guide, save probe and measured sibling-ignore batching shipped. Remaining real-history save/scan work still needs matched comparisons. |
 | 3 — CLI slice shipped | Shared-account allowance and worker readiness | Native slots, manual readings and Codex refresh shipped. Cached Claude authentication shipped in 0.5.10; the shipped 0.5.11 fleet CLI combines local slots, bench/binary facts and cached observations. Other automatic provider readings remain planned. |
 | 4 — CLI slice shipped | Ready-task dispatch and dependency handling | Read-only planner and explicit owner-granted single-attempt dispatch shipped in 0.5.11 after focused/native and release checks. Automatic scheduling remains planned. |
-| 5 — collection slice shipped | Native independent review pipeline | Released 0.5.11 preserves separate receipts, summarizes exact-revision evidence and collects explicit reviewer sets concurrently. Structured finding aggregation is the 0.5.15 candidate; final delivery pending. |
+| 5 — collection slice shipped | Native independent review pipeline | Released 0.5.11 preserves separate receipts, summarizes exact-revision evidence and collects explicit reviewer sets concurrently. Structured finding aggregation shipped in 0.5.15. |
 | 6 — CLI slice shipped | Evidence-based routing and context efficiency | 0.5.12 ships explicit revision assessments, task-specific profiles and conditional local advice. Automatic capture and routing remain planned. |
 | 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
@@ -63,9 +64,9 @@ coverage and embedded-source indexing remain open. The owner has explicitly defe
 it does not replace the functional priorities below or authorize a global
 CodeGraph upgrade/index.
 
-The completed scope through 0.5.14 is released and installed. The current
-0.5.15 candidate closes the bounded review-findings slice. After delivery and
-the requested break, use the [version plan](../VERSION-PLAN.md) and this order:
+The completed scope through 0.5.15 is released and installed. After the
+requested break and a new owner continuation, use the
+[version plan](../VERSION-PLAN.md) and this order:
 
 1. **Measured save reliability and performance:** sibling-ignore batching is shipped.
    The 2026-10-13 [diagnosis](AUTOSAVE-HELPER-2026-10-13.md) reproduced a controller

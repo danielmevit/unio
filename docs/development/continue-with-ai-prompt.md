@@ -21,8 +21,8 @@ The matched diagnosis and capture-budget implementation are delivered in
 passed on `5e0ee6d` in 1775.746 seconds; only final README/changelog labels differ.
 Artifacts, isolated upgrade/restore, installation before publication, installed
 mock workflow, dashboard identity and all six official download hashes passed.
-The 0.5.15 findings candidate completes that next slice; final release delivery
-is pending. After it is pushed, honor the owner-requested break.
+The 0.5.15 findings slice is delivered, installed and pushed. Honor the
+owner-requested break; start another implementation only after owner continuation.
 Mid-run worker effort control is planned only; see WORKER-EFFORT-CONTROL.md.
 Historical kill causes remain unknown; saving performance remains a separate
 measured follow-up. Preserve the existing dashboard/site/brand work.
@@ -45,8 +45,8 @@ actual lead alias only after the outgoing Unio lead has handed over.
 Check installed capabilities and policy, then reuse the managed dashboard
 and show its actual URL.
 
-Check the newest delivery state below: 0.5.14 is delivered and 0.5.15 is the
-current findings candidate. Do not repeat completed release
+Check the newest delivery state below: 0.5.15 is delivered and installed.
+Do not repeat completed release
 checks or publication for unchanged code. Matching protocol commands are
 yolo/balanced/thorough; medium/safe remain aliases. Low/Medium/Max reasoning
 is prominent and independently changeable in the README and all three startup
@@ -64,8 +64,8 @@ are accepted at dbe3399. A populated Windows-mounted fixture failed at the
 unchanged 30s default and saved successfully in 217.33s with a 300s budget.
 This is a reliability option, not a speedup. Check current release receipts:
 0.5.14 is published and installed with the full gate and delivery checks passed.
-The 0.5.15 findings candidate is implemented; consult its current delivery state
-below before any further work. After delivery, stop for the requested break.
+The 0.5.15 findings slice is delivered; consult its current delivery state
+below and honor the requested break until the owner resumes.
 On owner resume, prioritize measured save performance and worker connection/
 effort reliability. CodeGraph improvements remain deferred.
 
@@ -108,7 +108,39 @@ questions. Finish, honor an explicit owner pause, or explain a genuine blocker;
 before an unavoidable stop, save work and leave a dated actionable handoff.
 Report background activity only when an actual process is still running.
 
-## Current delivery state — 2026-10-13: 0.5.15 candidate
+## Current delivery state — 2026-10-13: 0.5.15 delivered
+
+Official **[v0.5.15](https://github.com/danielmevit/unio/releases/tag/v0.5.15)** is published and installed from `6894b20`,
+and its source is pushed to main. Full gate `af19d35` passed
+in 1749.293 seconds. Only final README/changelog release labels differ;
+all other tracked bytes match the frozen gate. Exact six artifacts, isolated
+0.5.14 upgrade/restore, installation before publication, three actual installed
+findings journeys, managed dashboard source identity and all six official
+download hashes passed. Prior tags, agent configuration and owner templates
+were preserved. Final documentation state may have a later main commit.
+
+The dedicated ChatGPT subscription / Codex CLI 0.162.1 / GPT-6.1 Sol high
+implementation `66a9daa` completed Source/native 0. The lead inspected and accepted
+it after separate machine acceptance passed 12 scope patterns and all 6 commands.
+The original heading-format INCOMPLETE and Mistral/Vibe GLM token-cap failure
+remain preserved separately; neither is rewritten as success. Effective model,
+effort and worker remaining allowance remain Unknown.
+
+Read the [findings guide](../REVIEW-FINDINGS.md) and
+[dated 20-route readiness report](WORKER-READINESS-2026-10-13.md). Native policy
+is YOLO/low, actual Codex lead/shared budget retained, no active workers and STOP.
+Local delivery receipts are under `tmp/unio-next/receipts/`, notably
+`quality-PATCH-0515-20261013.json`, `delivery-PATCH-0515-20261013.json`,
+`findings-installed-acceptance-20261013.json` and the final main handoff receipt.
+
+**Stop here for the owner's requested break.** On a later owner continuation,
+follow the [roadmap](ROADMAP.md): measured saving performance and worker
+connection/effort reliability before further UI work. Mid-run worker effort
+control is [planned only](WORKER-EFFORT-CONTROL.md), initially 4–8 hours for a
+Codex-first capability audit and bounded slice. CodeGraph improvements remain
+deferred. Do not replay completed tests or start more Source tasks unprompted.
+
+## Earlier 0.5.15 candidate state — 2026-10-13
 
 The review-findings implementation is committed at `66a9daa`, from dedicated
 ChatGPT subscription / Codex CLI 0.162.1 / GPT-6.1 Sol high, Source/native 0.
