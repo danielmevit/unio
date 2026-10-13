@@ -49,8 +49,47 @@ when later deleted), symbolic links, hard links, FIFOs, nested repositories,
 unmerged, sparse, assume-unchanged, skip-worktree or intent-to-add index
 states, an operation in progress, unsafe or case-colliding path names and
 anything over the bounds: 4000 paths, 100 commits, 4 MiB per file, 32 MiB
-stored, 1 MiB task text, 30 seconds. The source HEAD, index and files are
+stored, 1 MiB task text, 30 seconds by default for capture. The source HEAD, index and files are
 never written.
+
+### Capture time budget
+
+`UNIO_SAVE_CAPTURE_TIMEOUT` optionally sets the capture budget in positive whole
+seconds from **1 through 300**. Unset means **30 seconds**. For example:
+
+```bash
+UNIO_SAVE_CAPTURE_TIMEOUT=120 unio save create WORKER TASK
+UNIO_SAVE_CAPTURE_TIMEOUT=120 unio run WORKER TASK
+```
+
+The same value bounds manual capture and the native automatic baseline,
+periodic and final capture helpers, including their controller's stop/reap
+deadline. An invalid value (including empty, zero, fractions or values above
+300) refuses capture before observing the worktree or creating save-store,
+lock or attempt evidence. Automatic saving reports the refusal while provider
+execution and its real exit remain independent. Read-only `inspect` and
+`usage`, and restoration, remain usable with invalid capture configuration.
+
+A larger budget allows slow storage and retained-history validation more time;
+it also allows a longer wait before provider startup and after provider exit.
+Periodic capture runs while the provider continues. All existing integrity,
+stable-byte, secret, retention and immutable-save checks still apply, including
+validation of older saves. This setting changes neither the agent task timeout
+nor the 120-second restore budget or read-only live-observation bounds. After
+cancellation, final capture retains the original maximum 30 seconds of cleanup
+and one-second helper escalation grace even with a larger capture budget.
+`unio kill` retains its sixty-second orderly-shutdown limit.
+
+When the controller stops a helper for its capture deadline, the existing
+automatic-save failure message includes `capture deadline exceeded (N seconds)`
+alongside the real helper exit and last-good retention notice. Arbitrary
+SIGKILL, external termination and provider exit codes receive no deadline
+label without a controller-initiated deadline stop. Attempt/result schemas
+and the last successful snapshot are unchanged.
+
+See the [measured Windows-mounted-store example](development/AUTOSAVE-HELPER-2026-10-13.md#configured-budget-measurement)
+for the latency tradeoff on a populated store. The setting is also listed in
+`unio help`.
 
 Saves live under the private `coord/saves/` directory: one directory per
 save with `manifest.json`, the literal task text, a content pool named by
@@ -110,7 +149,7 @@ observation time; final saves also record the actual process exit.
 The same validated, bounded format and retention rules apply as for manual
 saves. The native shell keeps its existing worker and shared-account ownership;
 providers and capture children inherit neither lock nor account-control pipes.
-Capture children have a thirty-second deadline and are stopped and reaped.
+Capture children use the capture budget (thirty seconds by default) and are stopped and reaped.
 Provider execution continues if saving fails. Its real exit and native quality
 receipts remain separate from saving; a refused or failed final capture keeps
 the previous good save visible through `unio save inspect --worker WORKER`.
@@ -197,6 +236,14 @@ retention, pinning, caps, destination refusals, rollback and Unknown.
 exits without a final answer, exact restore, timeout, termination, periodic
 change capture and deduplication, capture failure, last-good retention and
 released worker/account ownership without allowance telemetry.
+
+`tests/unio-save-capture-budget.py` exercises actual manual and native automatic
+captures with the default and configured budgets, invalid input before effects,
+controller deadlines versus external kills, real exits, last-good retention and
+bounded cancellation. It uses private installations and deliberate offline
+mocks; one case waits for the real sixty-second periodic interval and one
+checks the thirty-second final-cancellation ceiling. The quality gate includes
+this suite.
 
 `tests/unio-work-saving-continue.py` drives real offline native runs: exact
 restored state and separately authorized task text, real exits, replay and

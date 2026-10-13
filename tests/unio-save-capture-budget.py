@@ -9,7 +9,8 @@
 
 A Git shim delays one real observation per helper or sends a real signal to
 that helper. Production clocks, capture code, admission and cleanup are intact.
-The sole long case waits for the real sixty-second periodic capture interval.
+The long cases exercise the real sixty-second periodic interval and the original
+thirty-second final-cancellation cleanup ceiling.
 No provider/model/network call, global install or inherited capture setting.
 """
 import fcntl
@@ -132,8 +133,11 @@ if gate and '--show-object-format' in sys.argv:
                 mode = 'pass'
         if mode in ('stop', 'kill'):
             os.kill(helper, signal.SIGSTOP if mode == 'stop' else signal.SIGKILL)
-        (gate / (str(helper) + '.json')).write_text(json.dumps(dict(
+        evidence = gate / (str(helper) + '.json')
+        temporary = gate / (str(helper) + '.json.tmp')
+        temporary.write_text(json.dumps(dict(
             helper=helper, shim=os.getpid(), mode=mode, at=time.monotonic())))
+        temporary.replace(evidence)
         if mode == 'delay': time.sleep(1.4)
 os.execv(''' + repr(real_git) + ''', ['git', *sys.argv[1:]])
 ''')
