@@ -4,7 +4,7 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.15 (unreleased) — review findings in one place — 2026-10-13
+## 0.5.15 — review findings in one place — 2026-10-13
 
 See [usage, compatibility and limits](docs/RELEASE-0.5.15.md).
 

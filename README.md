@@ -51,7 +51,7 @@ session, preserving their work and the agreed checks.
 through WSL, plus a [local browser workspace](bridge/README.md) in the source
 archive. Use it to prepare and run tasks, follow worker output and inspect files.
 
-*Install [Unio 0.5.14](https://github.com/danielmevit/unio/releases/tag/v0.5.14), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
+*Install [Unio 0.5.15](https://github.com/danielmevit/unio/releases/tag/v0.5.15), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
 
 **Added in 0.5.14:** give slow recovery saves an optional bounded capture
 budget and see clear deadline failures. The default stays 30 seconds;
@@ -79,7 +79,7 @@ each attempt's evidence; reviews never grant human acceptance or merge code.
 Recovery capture also batches Git ignore queries, with measured improvements
 and remaining timeout limits in the [release guide](docs/RELEASE-0.5.11.md).
 
-**In development:** browse [structured review findings](docs/REVIEW-FINDINGS.md)
+**Added in 0.5.15:** browse [structured review findings](docs/REVIEW-FINDINGS.md)
 with `unio reviews --findings`. This opt-in local view preserves evidence and
 recorded verdict disagreement, makes no provider calls and never grants human
 acceptance. Ordinary review summaries continue to exclude reviewer prose.
