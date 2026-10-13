@@ -1,0 +1,1 @@
+Command-audit test portability correction: fixtures now honor caller TMPDIR using TemporaryDirectory and retain isolated parent traversal. Replace unrelated installer payload snapshots with installed static-audit/default-doctor separation checks. The frozen 8c0c550 exact-byte proof is preserved in a dated private correction receipt; product source is unchanged.

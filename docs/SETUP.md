@@ -252,6 +252,11 @@ prompt-file flag, so its short prompt names the file and tells the agent
 to read ALL of it, every chunk, before acting. The pointer message in
 `agents.conf` asks for that full read; keep it if you edit the line.
 
+Before spending a provider run, use `unio doctor --commands` or
+`unio doctor --commands --json` for a local static command audit. It works
+outside projects and under STOP, reads the project override when present,
+and executes no configured command. See [usage and limits](WORKER-CONNECTIONS.md).
+
 Reinstalling never rewrites an existing `agents.conf`. Older lines that
 contain `"$(cat "$TASKFILE")"` keep working for small tasks, but
 `unio doctor` warns about each one and shows the replacement. It only
