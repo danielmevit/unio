@@ -15544,6 +15544,140 @@ these options does not enable max in that workspace.
 UNIO_REASONING_PROFILES_MD
 fi
 # END EMBEDDED ADAPTERS
+# BEGIN EMBEDDED CODEX WORKER
+# Check every generated destination before replacing any effort file.
+for effort_dir in "$CONF_DIR/lib"; do
+  if [ -L "$effort_dir" ] || { [ -e "$effort_dir" ] && [ ! -d "$effort_dir" ]; }; then
+    echo "unio: refusing unsafe effort directory: $effort_dir" >&2
+    exit 1
+  fi
+done
+for effort_name in codex-worker.py WORKER-EFFORT.md; do
+  effort_file="$CONF_DIR/lib/$effort_name"
+  if [ -L "$effort_file" ] || { [ -e "$effort_file" ] && { [ ! -f "$effort_file" ] || [ "$(stat -c '%h' -- "$effort_file")" != 1 ]; }; }; then
+    echo "unio: refusing unsafe effort file: $effort_file" >&2
+    exit 1
+  fi
+done
+mkdir -p "$CONF_DIR/lib"
+cat > "$CONF_DIR/lib/codex-worker.py" <<'UNIO_CODEX_WORKER_PY'
+#!/usr/bin/env python3
+# Unio — Copyright (C) 2026 Daniel Mitev
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
+"""Read-only effort capability boundary. No managed Source backend yet."""
+import argparse
+import datetime
+import json
+from pathlib import Path
+import re
+
+LEVELS = ('low', 'medium', 'high', 'xhigh')
+ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z')
+REASON = ('No owned managed Codex app-server Source backend is installed. '
+          'Legacy exec and unmanaged sessions cannot be attached. '
+          'No effort request was queued or sent; the current turn is unchanged.')
+
+
+def inspect(project, worker, effort=None):
+    """Do not infer a live task, slot, model or effort from files/process names."""
+    if not ID.fullmatch(worker):
+        raise ValueError('invalid worker identifier')
+    root = Path(project)
+    if not root.is_absolute() or root.is_symlink():
+        raise ValueError('project must be a physical absolute directory')
+    for path in (root, root / 'coord', root / 'wt', root / 'wt' / worker):
+        if path.is_symlink() or not path.is_dir():
+            raise ValueError('missing or unsafe project/worker directory')
+    if root.resolve() != root:
+        raise ValueError('project path contains replaced or nonphysical components')
+    if effort is not None and effort not in LEVELS:
+        raise ValueError('supported request levels: low medium high xhigh')
+    return {
+        'schema_version': 1,
+        'observed_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        'worker': worker,
+        'operation': 'request' if effort is not None else 'get',
+        'state': 'unsupported',
+        'requested_effort': effort,
+        'native_acknowledged': False,
+        'configured_effort': None,
+        'pending_next_supported_turn': False,
+        'effective_effort': 'Unknown',
+        'model': 'Unknown',
+        'task': 'Unknown',
+        'managed_worker_identity': 'Unknown',
+        'subscription_route': 'Unknown',
+        'cli_version': 'Unknown',
+        'reason': REASON,
+        'application_boundary': 'subsequent turns only (native schema capability; backend unavailable)',
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Inspect/request worker reasoning effort. '
+        'Bounded first slice: requests are unsupported until an owned managed Source backend exists. '
+        'No provider calls, restart, interrupt or new turn. Effective effort stays Unknown.')
+    parser.add_argument('--project', required=True)
+    parser.add_argument('worker')
+    parser.add_argument('effort', nargs='?', choices=LEVELS)
+    parser.add_argument('--json', action='store_true')
+    args = parser.parse_args()
+    try:
+        result = inspect(args.project, args.worker, args.effort)
+    except (ValueError, OSError) as exc:
+        parser.exit(2, 'unio worker-effort: ' + str(exc) + '\n')
+    if args.json:
+        print(json.dumps(result, sort_keys=True))
+    else:
+        print(f'{args.worker}: unsupported; effective effort Unknown')
+        print(result['reason'])
+        print(result['application_boundary'])
+    return 2 if args.effort is not None else 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+UNIO_CODEX_WORKER_PY
+cat > "$CONF_DIR/lib/WORKER-EFFORT.md" <<'UNIO_WORKER_EFFORT_MD'
+# Worker effort capability boundary
+
+This is a bounded first slice, not a completed effort switch. Run inside a
+Unio workspace:
+
+```
+unio worker-effort codex-1 --json
+unio worker-effort codex-1 low --json
+```
+
+Inspection returns exit 0 with `state: unsupported`. A valid request returns
+exit 2 with `state: unsupported`, its requested level, no native acknowledgement,
+no configured effort and no pending turn. Invalid arguments or unsafe/missing
+worker directories return exit 2. Requested effort is an input, not proof of
+configuration or execution. Live task, subscription, model, CLI version and
+managed identity remain Unknown; no process names or stale reports are used to
+invent them. This command is read-only and makes no provider calls.
+
+The installed Codex 0.162.1 schemas expose `thread/settings/update` with effort
+for **subsequent turns**. Its response is empty. Configuration evidence is in
+`thread/settings/updated.threadSettings.effort` or
+`thread/read.thread.reasoningEffort`; neither proves per-request serving effort.
+`turn/steer` has no effort field. Never interrupt, restart, continue or start a
+new turn to force a request to apply.
+
+Unio still runs the existing configured exec command through Source admission,
+STOP, timeout and saving. Legacy exec cannot be retroactively attached. An
+owned managed app-server backend, private bounded channel, authenticated current
+worker/task/native slot identity, serialized requests and cleanup remain future
+work. No channel or receipt store is created by this slice. An external channel
+or fabricated state file cannot enable the command. No global configuration,
+model, sandbox, permissions, service tier, subscription or account is changed.
+
+Only low/medium/high/xhigh request syntax is accepted; max/ultra are excluded.
+This syntax is not a claim that an arbitrary model supports these levels.
+Acceptance of a real managed backend requires offline installed fake-app-server
+coverage and a separately authorized native acceptance after the Source is idle.
+UNIO_WORKER_EFFORT_MD
+# END EMBEDDED CODEX WORKER
 # BEGIN EMBEDDED MODEL EXPERIENCE
 # Check every generated destination before replacing any experience file.
 for experience_dir in "$CONF_DIR/lib"; do
@@ -24767,6 +24901,16 @@ cmd_plan() { # local plan observation and recommendations before dispatch
   exec python3 -I -S -B "$cli" "$engine" "$@"
 }
 
+# ---------------------------------------------------------- worker effort
+cmd_worker_effort() {
+  local root cli="$CONF_DIR/lib/codex-worker.py"
+  [ -f "$cli" ] || die "worker effort files missing; rerun the matching installer"
+  case "${1:-}" in -h|--help) exec python3 -I -S -B "$cli" --help;; esac
+  root=$(find_root) || die "worker-effort requires a Unio project"
+  root=$(cd -- "$root" && pwd -P) || return 2
+  exec python3 -I -S -B "$cli" --project "$root" "$@"
+}
+
 # ---------------------------------------------------------- experience
 cmd_experience() { # local worker experience records and selection advice
   command -v python3 >/dev/null || die "experience requires Python 3.9 or newer"
@@ -25708,6 +25852,9 @@ skip-worktree index flags (verify, review, handoff); FIFOs, devices, sockets,
 nested repositories, submodules (run, verify, review, result, handoff). If one
 appears during a run, run keeps the worker's real exit, marks the result
 post_run_snapshot=failed (stale, never ready) and returns nonzero.
+worker-effort WORKER [low|medium|high|xhigh] [--json]
+  Inspect capability; effort requests currently return unsupported (exit 2).
+  No managed Source backend yet; effective effort is Unknown.
 Env: UNIO_TIMEOUT (3600s)  UNIO_VERIFY_TIMEOUT (900s)
      UNIO_REVIEW_TIMEOUT (900s)  UNIO_ALLOW_SECRETS=1 (init override)
      UNIO_SAVE_CAPTURE_TIMEOUT (whole seconds 1–300; default 30; save capture only)
@@ -25749,6 +25896,7 @@ case "${1:-help}" in
   dashboard) shift; cmd_dashboard "$@";;
   fleet)    shift; cmd_fleet "$@";;
   plan)     shift; cmd_plan "$@";;
+  worker-effort) shift; cmd_worker_effort "$@";;
   experience) shift; cmd_experience "$@";;
   dispatch) shift; cmd_dispatch "$@";;
   capacity) shift; cmd_capacity "$@";;
@@ -28549,7 +28697,7 @@ cat > "$COMP_DIR/unio" <<'COMPLETION_EOF'
 _unio() {
   local cur cmd root d cmds
   cur="${COMP_WORDS[COMP_CWORD]}"
-  cmds="new init run verify result handoff save diff sync review reviews review-set race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan experience dispatch capacity readiness off on smoke selftest stop resume allow-retry version license help"
+  cmds="new init run verify result handoff save diff sync review reviews review-set race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan experience worker-effort dispatch capacity readiness off on smoke selftest stop resume allow-retry version license help"
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$cmds" -- "$cur") ); return
   fi
@@ -28571,6 +28719,7 @@ _unio() {
     readiness) COMPREPLY=( $(compgen -W "show refresh claude --agent --json --project" -- "$cur") );;
     fleet) COMPREPLY=( $(compgen -W "--project --json --timeout --help" -- "$cur") );;
     plan) COMPREPLY=( $(compgen -W "--inventory --project --json --timeout --help" -- "$cur") );;
+    worker-effort) COMPREPLY=( $(compgen -W "$workers low medium high xhigh --json --help" -- "$cur") );;
     experience)
       local word action=""
       for word in "${COMP_WORDS[@]:2:COMP_CWORD-2}"; do
