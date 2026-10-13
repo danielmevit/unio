@@ -1,0 +1,1 @@
+Correct Gemini fixed-model guidance for agy 1.3.4: select the high/low model and omit the unsupported separate effort flag. Preserve the zero-turn setup failure separately from model-quality evidence. Runtime commands are unchanged.

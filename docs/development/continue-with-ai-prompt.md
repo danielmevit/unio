@@ -16,12 +16,14 @@ budget and registered lead, record any temporary native `medium` tier needed
 for admission, then restore the prior tier when the worker is idle. Keep
 unrelated admissions closed. One invocation per task, no paid API fallback
 or blind retry. Read the [complete correction rule](../ai/LEAD-ESCALATION.md#dedicated-fix-worker--unio-owner-rule-2026-10-13).
-The matched diagnosis and bounded capture-budget implementation are accepted at
-`dbe3399`, with 70 focused checks and native scoped verification passing. The
-0.5.14 release candidate still needs its full gate and delivery; check the latest
-local log and official release before acting. Next functional priority: organize
-findings from the shipped independent-review receipts. Historical kill causes
-remain unknown, and save performance remains a separate measured follow-up.
+The matched diagnosis and capture-budget implementation are delivered in
+**v0.5.14**, published and installed on 2026-10-13 from `d0abc60`. Its full gate
+passed on `5e0ee6d` in 1775.746 seconds; only final README/changelog labels differ.
+Artifacts, isolated upgrade/restore, installation before publication, installed
+mock workflow, dashboard identity and all six official download hashes passed.
+Next functional priority: organize findings from independent-review receipts.
+Historical kill causes remain unknown; saving performance remains a separate
+measured follow-up. Preserve the existing dashboard/site/brand work.
 
 ## Prompt for the next Unio development lead
 
@@ -41,7 +43,7 @@ actual lead alias only after the outgoing Unio lead has handed over.
 Check installed capabilities and policy, then reuse the managed dashboard
 and show its actual URL.
 
-Official and installed Unio 0.5.13 is delivered. Do not repeat its release
+Official and installed Unio 0.5.14 is delivered. Do not repeat its release
 checks or publication for unchanged code. Matching protocol commands are
 yolo/balanced/thorough; medium/safe remain aliases. Low/Medium/Max reasoning
 is prominent and independently changeable in the README and all three startup
@@ -58,7 +60,7 @@ The automatic-save diagnosis and optional 1–300s capture-budget implementation
 are accepted at dbe3399. A populated Windows-mounted fixture failed at the
 unchanged 30s default and saved successfully in 217.33s with a 300s budget.
 This is a reliability option, not a speedup. Check current release receipts:
-0.5.14 delivery was pending when this candidate was prepared. Next functional
+0.5.14 is published and installed with the full gate and delivery checks passed. Next functional
 priority is findings aggregation from independent review receipts; estimate a
 bounded first slice at 3–6 hours. Preserve historical failures and Unknowns.
 
@@ -101,7 +103,52 @@ questions. Finish, honor an explicit owner pause, or explain a genuine blocker;
 before an unavoidable stop, save work and leave a dated actionable handoff.
 Report background activity only when an actual process is still running.
 
-## Current delivery state — 2026-10-12
+## Current delivery state — 2026-10-13
+
+Official and installed stable are **[v0.5.14](https://github.com/danielmevit/unio/releases/tag/v0.5.14)**,
+from `d0abc60`. Full gate `5e0ee6d` passed in 1775.746 seconds; only final
+README/changelog labels differ. Exact artifacts, 0.5.13 upgrade/restore,
+installation before publication, installed capture/native-exit smoke, dashboard
+asset identity and six official download hashes passed. Prior tags, agent
+configuration and operator templates were preserved.
+
+`UNIO_SAVE_CAPTURE_TIMEOUT` optionally selects 1–300 whole seconds, default 30,
+for manual/automatic capture. Controller-evidenced deadline messages preserve
+real helper exits; cancellation retains its original cleanup ceiling. A matched
+populated Windows-mounted fixture saved in 217.33 seconds with a 300-second
+budget. This does not establish a speedup or the causes of historical kills.
+Read [the release guide](../RELEASE-0.5.14.md).
+
+Worker evidence is separate from delivery: ChatGPT subscription / Codex CLI
+0.162.1 / requested GPT-6.1 Sol high delivered accepted `dbe3399` with native
+scope and 3/3 checks passing. Mistral subscription / Vibe 2.26.1 / GLM 5.3 high
+release preparation failed with ConnectTimeout, zero reported tokens and no
+edits. Antigravity / agy 1.3.4 / Gemini 3.1 Pro high preparation failed before
+inference because the fixed model rejected a separate effort flag. Copilot Free /
+CLI 1.0.95 / Auto Balance returned a text contract proposal; its effort is not
+configurable and underlying model/lab remain Unknown. The release-preparation failures were preserved without replay; the lead
+completed release metadata and delivery administration.
+
+Before new Gemini assignments, use the fixed high/low model selector without
+`--effort` on agy 1.3.4; read the updated [effort guide](MODEL-EFFORT.md).
+Check current availability before assignments. A Grok preflight reported no
+sign-in; no Grok task was dispatched. Remaining allowances remain Unknown.
+
+Next findings-aggregation slice: initially 3–6 hours, revise after inspecting
+source and freezing the output contract. The Copilot draft and separate lead
+assessment are private under `tmp/unio-next/review-findings-contract-copilot-20261013/`.
+No stable structured finding format is established; do not build a parser for
+an invented format, infer semantic disagreement from exact-text grouping, or
+claim arbitrary reviewer prose contains no private data. No implementation began.
+
+The CodeGraph supplement remains [fork commit 01f8b3a](https://github.com/danielmevit/codegraph/commit/01f8b3a91b6ed2b6310cd0df6a53a2f27c9dffb2),
+offered through an edited existing comment on [PR 1217](https://github.com/colbymchenry/codegraph/pull/1217#issuecomment-6135101790)
+and the original issue. No separate PR or extra comment was created. This does
+not place our commit on the original author's branch. Check upstream feedback;
+do not restart that side project or globally adopt/index CodeGraph without a
+separate decision. The remaining 4–8 hour hardening estimate is not started work.
+
+## Earlier delivery state — 2026-10-12
 
 Official and installed stable are **[v0.5.13](https://github.com/danielmevit/unio/releases/tag/v0.5.13)**,
 published from `f9997dc`. The complete gate passed on `cffea1c` in 994.414 seconds; only final README/changelog release labels differ.
@@ -169,8 +216,8 @@ Continue 0.5.x; do not shift this work to 0.6.0.
 Use YOLO/low: focused meaningful checks, one workflow per shared subscription
 including the lead, early commits and truthful handoffs. Capable subscription
 workers implement features; routine/free agents support bounded chores and cannot
-lead. After one worker and one suitable replacement fail, this existing lead
-finishes the correction without a second Codex session. Current owner holds,
+lead. The latest dedicated Sol correction rule above supersedes older direct-lead
+correction defaults. Lead release administration remains separate. Current owner holds,
 spending restrictions and actual availability override old examples.
 
 Owner dashboard/site/branding work through `0d46dff` is preserved. The dashboard

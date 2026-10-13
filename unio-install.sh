@@ -15304,7 +15304,7 @@ come from `opencode models opencode-go --verbose` and
 | --- | --- | --- | --- |
 | Codex / `gpt-6.1-sol` | Model: low, medium, high, xhigh, max; CLI configuration `model_reasoning_effort` | high; medium for routine work | xhigh ceiling; max is forbidden by owner policy. Do not infer ultra support from another model or client. |
 | Claude / `claude-opus-5-5` | low, medium, high, xhigh, max; installed Claude Code accepts `--effort` | high; medium for routine coordination or writing | xhigh ceiling; max is forbidden by owner policy. The model's API default is medium; pin the chosen level explicitly. |
-| Antigravity / `gemini-3.1-pro-high`, `gemini-3.1-pro-low` | Native `agy models` exposes High and Low for Gemini 3.1 Pro | `gemini-3.1-pro-high --effort high` | High is the top exposed level. Match the low model with low only when deliberately chosen. Generic CLI medium/xhigh/max flags do not create Pro variants; high/xhigh was rejected before inference. |
+| Antigravity / `gemini-3.1-pro-high`, `gemini-3.1-pro-low` | Native `agy models` exposes High and Low for Gemini 3.1 Pro | `gemini-3.1-pro-high`; omit `--effort` on agy 1.3.4 | High is the top exposed level. Match the low model with low only when deliberately chosen. Generic CLI medium/xhigh/max flags do not create Pro variants; high/xhigh was rejected before inference. |
 | Antigravity / `claude-opus-4-6-thinking` | Native catalog lists the Thinking model; `--effort high` was rejected before inference on2026-10-07 | Exact model default; omit `--effort` | Effective reasoning level remains Unknown. This route is separate from Claude Code Opus5.5 and does not expose its effort scale. |
 | Grok / `grok-4.7` | low, medium, high, xhigh; installed Grok Build uses `--reasoning-effort` / `--effort` | high; medium for routine work | xhigh is the highest documented level. No documented max on this model. |
 | Copilot Free / `auto --auto-tier balance` | Balance is routing; this Auto route rejects explicit effort flags | Omit effort; effective effort Unknown | Native1.0.95 rejected an explicit medium flag before a response. Do not equate Balance with high/xhigh or a fixed model/lab. No max/ultra or local/BYOK fallback. See [Copilot setup](../integrations/GITHUB-COPILOT.md). |
@@ -15332,6 +15332,13 @@ to its effort. A native Pro-high/xhigh dispatch was rejected before inference.
 Keep Pro at high by default. Record requested effort separately from the
 effective reasoning observed in a response.
 
+On **2026-10-13**, agy **1.3.4** rejected the matching high model plus
+`--effort high` before inference (zero turns/tokens). For these fixed Gemini
+variants, select `--model gemini-3.1-pro-high` or deliberately select the low
+model, and **omit `--effort`**. This supersedes the older matching-flag example;
+the generic effort list does not establish a supported override for this model.
+The rejection is CLI evidence, not a Gemini code-quality or quota verdict.
+
 ## How the lead applies a choice
 
 Use a separate per-run configuration and a wrapper pinned to the exact
@@ -15343,7 +15350,7 @@ Examples of the effort portion of a wrapper are:
 ```bash
 codex exec -m gpt-6.1-sol -c 'model_reasoning_effort="high"' -
 claude --model claude-opus-5-5 --effort high
-agy --model gemini-3.1-pro-high --effort high
+agy --model gemini-3.1-pro-high
 grok --model grok-4.7 --reasoning-effort high
 opencode run --model opencode-go/glm-5.3 --variant high
 opencode run --model opencode-go/qwen3.8-max --variant medium

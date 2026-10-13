@@ -78,9 +78,8 @@ the [version plan](../VERSION-PLAN.md). Next:
 
 1. **Measured save reliability and performance:** sibling-ignore batching is shipped.
    The 2026-10-13 [diagnosis](AUTOSAVE-HELPER-2026-10-13.md) reproduced a controller
-   deadline kill on a populated Windows-mounted store. The accepted 0.5.14 source
-   adds optional bounded capture budgets and honest deadline diagnostics; release
-   delivery is pending. Its configured capture succeeded in 217.33 seconds, so
+   deadline kill on a populated Windows-mounted store. Released and installed 0.5.14
+   adds optional bounded capture budgets and honest deadline diagnostics. Its configured capture succeeded in 217.33 seconds, so
    performance remains a separate follow-up. Keep historical kill causes Unknown.
    Initial follow-up estimate: 2–4 hours for a measured bounded optimization slice;
    preserve complete old-save validation, failure evidence and last-good recovery.
