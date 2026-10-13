@@ -78,6 +78,9 @@ last-good, archive-collision, cancellation and index-safety regressions.
 
 ## Validation
 
-Installer syntax and six directory-walk tests passed. Frozen manual and
-automatic save suites are still running; final results will be recorded before
-handoff. The lead owns acceptance and any release gate.
+All frozen checks passed: installer syntax; 61 automatic-save checks; 186
+manual-save checks; six directory-walk tests; and `git diff --check`. Tests used
+task-local installation, configuration and temporary directories. No release
+gate or extra AI invocation was started. Recommend accepting the diagnostic
+findings; performance correction and historical attribution remain open. The
+lead owns acceptance and any release gate.
