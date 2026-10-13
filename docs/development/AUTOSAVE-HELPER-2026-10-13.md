@@ -61,7 +61,7 @@ helper is byte-identical at the historical base, 0.5.12 release and frozen
 
 ## Disposition and next action
 
-No implementation correction is applied: the measured workload exceeds the
+The diagnostic task applied no implementation correction: the measured workload exceeds the
 fixed capture bound, and stopping/reaping retains the prior snapshot. The
 table compares workloads, not a before/after code repair. No timeout, integrity
 check, secret filter or save-retention rule was changed.
@@ -75,6 +75,65 @@ workspace throughout. That storage comparison has not been measured here.
 If it still exceeds the bound, scope a separate repair for repeated store
 validation and bounded failure bookkeeping, retaining corrupt-evidence,
 last-good, archive-collision, cancellation and index-safety regressions.
+
+## Configured-budget measurement
+
+`SAVE-BUDGET-SOL-1` adds an operator-selected capture budget; it does not speed
+up capture or weaken retained-history validation. The lead accepted the
+diagnostic findings as the basis for this new implementation task. Route:
+existing ChatGPT subscription / Codex CLI 0.162.1 / requested `gpt-6.1-sol` /
+high; effective model, effort and allowance remain Unknown. Implementation
+acceptance and the full release gate remain with the lead. No version bump,
+release, global installation or owner configuration change is included.
+
+Set `UNIO_SAVE_CAPTURE_TIMEOUT` to positive whole seconds **1–300**; unset
+retains **30 seconds**. Invalid values refuse capture before save-store effects,
+while read-only inspection/usage remain usable. Manual and automatic baseline,
+periodic and final helpers use the same selected capture budget. Agent task
+and restore timeouts, shared-account policy and STOP are unchanged. Cancellation
+retains the original final-cleanup ceiling of thirty seconds and the one-second
+helper escalation grace. See [capture time budget](../WORK-SAVING.md#capture-time-budget)
+for commands and tradeoffs.
+
+A new task-local copy of the existing diagnostic fixture was measured on the
+same Windows-mounted filesystem: 400 worktree paths, approximately 5.44 MB of
+tracked content, 1,024 ignored generated files, and the same initial 32
+content-valid saves (one baseline plus 31 synthetic saves of 250 paths and
+approximately 3 MB each). The worktree fingerprint was matched to the diagnostic
+baseline before each capture. The frozen controller and the new controller ran
+sequentially against that private store, using deliberate offline capture mocks;
+no diagnostic script or additional provider/model call was executed.
+
+| Baseline capture | Effective budget | Controller elapsed | Actual helper result |
+| --- | ---: | ---: | --- |
+| Frozen payload `1fa1c47`, default | 30 s | 40.36 s | -9; prior good snapshot retained |
+| New payload `558f2de`, explicitly configured | 300 s | 217.33 s | 0; verified snapshot published, one eligible old save archived |
+
+Before: controller TERM at 30.03 seconds, SIGKILL at 31.03 seconds, followed
+by failure bookkeeping. After: no controller stop signal, complete old-save
+validation and a new snapshot with the same fingerprint. The source HEAD and
+raw index remained unchanged, and the previous good save remained content-valid.
+The original diagnostic save files were read-only and their hashes were checked.
+Raw profiles, stdout/stderr, receipts, fixture failures and reproduction mocks
+are retained in private project tmp.
+
+These are individual, instrumented measurements with filesystem/cache variation,
+not a throughput benchmark or a historical-kill attribution. A larger budget
+deliberately trades longer startup/final-save waits for a chance to complete slow
+storage work; this example requires over three minutes despite succeeding.
+The default safety bound remains thirty seconds. Failure bookkeeping and
+escalation can add elapsed time beyond the selected capture deadline.
+
+The existing automatic failure message now includes the real helper exit and
+`capture deadline exceeded (N seconds)` only when the controller actually
+initiates a deadline stop. External SIGKILL and Source exits are not relabeled.
+Save/result schemas, prior snapshot bytes, integrity checks and retention rules
+are unchanged. The new quality-gate suite passed **70 focused runtime checks**:
+actual manual/native captures, changed configured outcomes, invalid input before
+effects, honest deadline versus external-kill reasons, real exits, last-good
+retention, real periodic capture and bounded cancellation. Installer syntax,
+CLI environment-help smoke and unrelated-payload byte checks also passed.
+The broad saving suites were not replayed during this implementation task.
 
 ## Validation
 
