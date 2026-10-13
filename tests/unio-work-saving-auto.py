@@ -52,6 +52,7 @@ with tempfile.TemporaryDirectory(prefix='auto-saving-') as directory:
                GIT_AUTHOR_NAME='mock', GIT_COMMITTER_NAME='mock',
                GIT_AUTHOR_EMAIL='mock@example.invalid', GIT_COMMITTER_EMAIL='mock@example.invalid')
     env.pop('UNIO_SAVE_TEST_FAULT', None)
+    env.pop('UNIO_SAVE_CAPTURE_TIMEOUT', None)  # These suites assert default compatibility.
     subprocess.run(['bash', str(SOURCE / 'unio-install.sh')], env=env, check=True, capture_output=True)
     at = str(base / 'bin' / 'unio')
     root = base / 'project with spaces'

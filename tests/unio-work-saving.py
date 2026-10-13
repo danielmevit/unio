@@ -51,6 +51,7 @@ with tempfile.TemporaryDirectory(prefix='work-saving-') as directory:
                GIT_AUTHOR_EMAIL='mock@example.invalid', GIT_COMMITTER_EMAIL='mock@example.invalid',
                GIT_OPTIONAL_LOCKS='0', UNIO_AUTO_VERIFY='0', UNIO_AUTO_SYNC='0', UNIO_AUTO_OFF='0')
     env.pop('UNIO_SAVE_TEST_FAULT', None)
+    env.pop('UNIO_SAVE_CAPTURE_TIMEOUT', None)  # These suites assert default compatibility.
     subprocess.run(['bash', str(source / 'unio-install.sh')], env=env, check=True, capture_output=True)
     (base / 'conf' / 'agents.conf').write_text("mock=sh -c 'echo called >> \"%s\"'\n" % calls)
     at = str(base / 'bin' / 'unio')

@@ -21065,13 +21065,18 @@ def capture_child(root, worker, task, reason, run_id, provider_exit, interrupted
         os._exit(rc)
     deadline, stopping, status = time.monotonic() + seconds, None, None
     deadline_stop = False
+    cancel_deadline = None
     while status is None:
         found, result = os.waitpid(pid, os.WNOHANG)
         if found:
             status = os.waitstatus_to_exitcode(result)
             break
         now = time.monotonic()
-        cancelled = reason != 'final-failure' and bool(interrupted[0])
+        # A final checkpoint may finish after cancellation, but a larger capture
+        # budget must not extend the original thirty-second cleanup allowance.
+        if interrupted[0] and reason == 'final-failure' and cancel_deadline is None:
+            cancel_deadline = now + CAPTURE_SECONDS
+        cancelled = bool(interrupted[0]) and (reason != 'final-failure' or now >= cancel_deadline)
         obsolete = reason == 'periodic' and provider is not None and provider.poll() is not None
         if stopping is None and (now >= deadline or cancelled or obsolete):
             # TERM unwinds the helper's Git subprocess cleanup before escalation.
