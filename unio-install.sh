@@ -19575,6 +19575,18 @@ class Refuse(Exception):
         self.exit_code = exit_code if exit_code is not None else (2 if code in ('lock_busy', 'unknown') else 1)
 
 
+def capture_seconds():
+    value = os.environ.get('UNIO_SAVE_CAPTURE_TIMEOUT')
+    if value is None:
+        return CAPTURE_SECONDS
+    # ASCII whole seconds only; avoid converting an unbounded integer string.
+    significant = value.lstrip('0')
+    if (not re.fullmatch('[0-9]+', value) or not significant or len(significant) > 3
+            or int(significant) > 300):
+        raise Refuse('excessive', 'UNIO_SAVE_CAPTURE_TIMEOUT must be positive whole seconds 1–300 (default 30 when unset)')
+    return int(significant)
+
+
 class Budget:
     def __init__(self, seconds, reads=MAX_OBSERVED):
         self.seconds, self.deadline, self.left = seconds, time.monotonic() + seconds, reads
@@ -20952,15 +20964,17 @@ def require_lock(root, worker):
 
 
 def cmd_create(root, worker, task):
+    seconds = capture_seconds()  # Refuse bad configuration before locks/store effects.
     with os.fdopen(require_lock(root, worker), 'rb'):
-        return create_locked(root, worker, task)
+        return create_locked(root, worker, task, seconds=seconds)
 
 
-def create_locked(root, worker, task, reason='manual', run_id=None, provider_exit=None):
+def create_locked(root, worker, task, reason='manual', run_id=None, provider_exit=None, seconds=None):
+    seconds = capture_seconds() if seconds is None else seconds
     store = open_store(root, True)
     observed_at = stamp()
     try:
-        budget = Budget(CAPTURE_SECONDS)
+        budget = Budget(seconds)
         first, task_bytes = capture(root, worker, task, budget)
         fault('between-passes')
         second, task_bytes2 = capture(root, worker, task, budget)
@@ -21027,8 +21041,9 @@ def signal_group(pid, sig):
         pass
 
 
-def capture_child(root, worker, task, reason, run_id, provider_exit, interrupted, provider=None):
+def capture_child(root, worker, task, reason, run_id, provider_exit, interrupted, provider=None, seconds=None):
     """Isolate a capture, enforce its wall deadline, and reap it before returning."""
+    seconds = capture_seconds() if seconds is None else seconds
     fault('capture-launch')
     sys.stdout.flush()
     sys.stderr.flush()
@@ -21040,7 +21055,7 @@ def capture_child(root, worker, task, reason, run_id, provider_exit, interrupted
             os.setsid()
             signal.signal(signal.SIGTERM, cancelled)
             signal.signal(signal.SIGINT, cancelled)
-            rc = create_locked(root, worker, task, reason, run_id, provider_exit)
+            rc = create_locked(root, worker, task, reason, run_id, provider_exit, seconds)
         except (Refuse, OSError) as e:
             print('unio: automatic save failed: %s' % e, file=sys.stderr)
             rc = 1
@@ -21048,7 +21063,8 @@ def capture_child(root, worker, task, reason, run_id, provider_exit, interrupted
             sys.stdout.flush()
             sys.stderr.flush()
         os._exit(rc)
-    deadline, stopping, status = time.monotonic() + CAPTURE_SECONDS, None, None
+    deadline, stopping, status = time.monotonic() + seconds, None, None
+    deadline_stop = False
     while status is None:
         found, result = os.waitpid(pid, os.WNOHANG)
         if found:
@@ -21061,6 +21077,7 @@ def capture_child(root, worker, task, reason, run_id, provider_exit, interrupted
             # TERM unwinds the helper's Git subprocess cleanup before escalation.
             try:
                 os.kill(pid, signal.SIGTERM)
+                deadline_stop = now >= deadline and not cancelled and not obsolete
             except ProcessLookupError:
                 pass
             stopping = now
@@ -21072,8 +21089,9 @@ def capture_child(root, worker, task, reason, run_id, provider_exit, interrupted
                 pass
         time.sleep(0.05)
     if status != 0:
-        print('unio: automatic %s save unavailable (helper exit %s); previous good save retained'
-              % (reason, status), file=sys.stderr)
+        detail = '; capture deadline exceeded (%d seconds)' % seconds if deadline_stop else ''
+        print('unio: automatic %s save unavailable (helper exit %s%s); previous good save retained'
+              % (reason, status, detail), file=sys.stderr)
         # A killed/crashed helper may not have recorded its own refusal.
         if status not in (1, 2):
             try:
@@ -21085,7 +21103,14 @@ def capture_child(root, worker, task, reason, run_id, provider_exit, interrupted
 
 def automatic_capture(root, worker, task, reason, run_id, provider_exit, interrupted, provider=None):
     try:
-        capture_child(root, worker, task, reason, run_id, provider_exit, interrupted, provider)
+        seconds = capture_seconds()
+    except Refuse as e:
+        # Invalid capture configuration must not publish even failure bookkeeping.
+        print('unio: automatic %s save could not start: %s; provider exit is independent'
+              % (reason, e), file=sys.stderr)
+        return
+    try:
+        capture_child(root, worker, task, reason, run_id, provider_exit, interrupted, provider, seconds)
     except (Refuse, OSError) as e:
         print('unio: automatic %s save could not start: %s; provider exit is independent'
               % (reason, e), file=sys.stderr)
@@ -25082,6 +25107,7 @@ appears during a run, run keeps the worker's real exit, marks the result
 post_run_snapshot=failed (stale, never ready) and returns nonzero.
 Env: UNIO_TIMEOUT (3600s)  UNIO_VERIFY_TIMEOUT (900s)
      UNIO_REVIEW_TIMEOUT (900s)  UNIO_ALLOW_SECRETS=1 (init override)
+     UNIO_SAVE_CAPTURE_TIMEOUT (whole seconds 1–300; default 30; save capture only)
      UNIO_AUTO_OFF (accepted for compatibility, no effect: worker output
                     never benches an agent; bench only via 'unio off/on')
      UNIO_AUTO_VERIFY=1 (append verify verdict; propagate failed/incomplete checks)
