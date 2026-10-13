@@ -147,8 +147,15 @@ Grok, Antigravity/Gemini, Claude Code and Codex are the main implementation
 agents. Use available workers from that group for product features, core
 behavior, UI, complex debugging and substantive security corrections. The
 owner's designated lead normally plans, coordinates, reviews and integrates.
-After a worker and one suitable replacement fail to finish, it directly
-implements the remaining correction in its existing session. Follow
+For Unio development, delegate fixes the lead would otherwise implement to
+Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / high through Unio. The lead defines
+the scope/checks, coordinates, reviews and integrates; it does not repair
+the implementation inline. The owner permits one focused Sol correction
+worker beside the registered lead, with real shared-budget accounting and a
+recorded temporary native tier change if required. Read the
+[2026-10-13 correction rule](../ai/LEAD-ESCALATION.md#dedicated-fix-worker--unio-owner-rule-2026-10-13).
+For other projects without an owner override, a worker and one suitable
+replacement may escalate to implementation in the existing lead session. Follow
 [bounded escalation](../ai/LEAD-ESCALATION.md) and consult the
 [model scoreboard](MODEL-SCOREBOARD.md) before delegation. This does not
 create another workflow or grant extra spending or integration authority.
@@ -162,7 +169,8 @@ free model into another role. Escalate difficult findings to a main worker.
 This is a standing owner policy, not an invented reasoning-score ranking.
 
 Choose using task fit and current availability. Low tier counts the lead's
-workflow, so do not launch a second independent job on its shared allowance.
+workflow; a second job on its shared allowance requires an explicit owner
+exception such as the focused Sol correction rule above.
 If Codex leads and Claude is exhausted, use available Grok and
 Antigravity/Gemini for implementation. Antigravity (`agy`) is a multi-model
 CLI; record its selected model and AI lab. A past capacity failure is dated

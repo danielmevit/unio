@@ -4,6 +4,21 @@ This handoff continues development of Unio itself. To use Unio to build a
 different app or project from scratch, use the
 [new-project prompt](../ai/NEW-PROJECT-PROMPT.md) instead.
 
+## Latest owner correction policy — 2026-10-13
+
+Resume Unio functional work after the completed CodeGraph side project.
+Delegate any code fix the lead would otherwise implement to a dedicated
+**Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / high** worker through Unio.
+The lead scopes, coordinates, reviews and integrates. This supersedes older
+direct-lead takeover instructions for new corrections. The owner authorizes
+one focused Sol correction worker beside the lead; keep the real shared
+budget and registered lead, record any temporary native `medium` tier needed
+for admission, then restore the prior tier when the worker is idle. Keep
+unrelated admissions closed. One invocation per task, no paid API fallback
+or blind retry. Read the [complete correction rule](../ai/LEAD-ESCALATION.md#dedicated-fix-worker--unio-owner-rule-2026-10-13).
+Next functional priority: matched diagnosis of automatic-save helper exit
+`-9`, initially 1–3 hours; its cause is still unknown.
+
 ## Prompt for the next Unio development lead
 
 Paste this into a future session when the owner hands over Unio development.
@@ -350,7 +365,9 @@ and [work modes](../WORK-MODES.md).
   feature, personal lead assessment and the complete gate at release. Reuse
   unchanged passing evidence. Future owners can select another review policy.
 - Low tier allows one independent workflow per shared budget, including the
-  lead. Do not start an extra Codex worker beside a Codex lead. Independent
+  lead. The latest correction rule above permits one focused Sol worker beside
+  this lead, with a recorded temporary tier change and restoration. Other
+  extra Codex workflows remain unauthorized. Independent
   budgets may advance disjoint ready tasks concurrently.
 - Available Codex, Claude, Grok, Gemini and explicitly pinned Vibe workers
   are main implementation options.
@@ -367,9 +384,9 @@ and [work modes](../WORK-MODES.md).
   max or ultra; a high-only route stays high. A requested level does not
   prove the effective level.
 - Use one Source invocation per task unless the owner explicitly authorizes
-  another. Preserve a struggling worker, try one suitable replacement, then
-  let the existing lead finish the remaining correction. Do not cycle through
-  more sessions on the lead's limited budget.
+  another. Preserve struggling workers and apply the dedicated Sol correction
+  route above instead of repairing their implementation in the lead session.
+  Do not reset failed-task history or cycle through additional sessions.
 - Substantial tasks normally get 90 minutes, or up to two hours for heavier
   work. Commit an early coherent checkpoint, preserve reports and inspect
   automatic saves. A snapshot is not a commit or an off-device backup.

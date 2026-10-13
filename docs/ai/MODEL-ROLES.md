@@ -6,7 +6,7 @@ choice for one run. The owner can explicitly change the policy.
 
 | Role | Agents | Work they own |
 | --- | --- | --- |
-| Lead | The owner's designated subscription agent | Planning, contracts, delegation, coordination, final assessment and authorized integration; direct implementation after bounded worker escalation |
+| Lead | The owner's designated subscription agent | Planning, contracts, delegation, coordination, final assessment and authorized integration; follow the owner's explicit correction route before direct implementation |
 | Main implementation workers | Grok, Antigravity/Gemini, Claude Code and Codex | Product features, core behavior, architecture within the assigned scope, complex debugging, UI and substantive security corrections |
 | Optional implementation workers | Explicitly approved Mistral Vibe / GLM 5.3 and Medium 3.5 routes | Scoped implementation through the pinned adapter; inspect actual results |
 | Research and proposal workers | Perplexity Pro Thinking routes | Selected-context research and code drafts for a capable implementation agent to check and apply |
@@ -25,8 +25,15 @@ routes and checked outcomes in [the inventory](../FREE-MODELS.md).
 
 ## When delegation struggles
 
+For Unio development, the [2026-10-13 dedicated correction rule](LEAD-ESCALATION.md#dedicated-fix-worker--unio-owner-rule-2026-10-13)
+supersedes direct lead fixes: dispatch one bounded Codex CLI / GPT-6.1 Sol /
+high task through Unio, then personally assess its result. One such correction
+worker alongside the registered lead is explicitly owner-authorized; preserve
+the real shared budget and record/restore any temporary native tier change.
+Other project owners can explicitly select their own correction route.
+
 Follow [worker, replacement, lead](LEAD-ESCALATION.md): one suitable worker,
-one capable available replacement, then the lead directly finishes the
+one capable available replacement, then, absent an owner override, the lead finishes the
 remaining correction in its existing session. Preserve the previous work
 and failures; do not send a struggling model another blind attempt. In low
 tier this is the same lead workflow, not permission for another worker CLI.
@@ -41,7 +48,9 @@ Do not silently substitute a different account, CLI or paid API route.
 
 In low tier, an agent already serving as lead occupies its shared budget's
 single independent workflow. For example, a Codex lead must not launch a
-second independent Codex implementation session. Other available budgets
+second independent Codex implementation session without an explicit owner
+exception. The focused Unio correction rule above is such an exception. Other
+available budgets
 can work concurrently. Authorized helpers inside one workflow are allowed;
 they do not turn it into several independent features or test assignments.
 Read the separate [mode and tier guide](../WORK-MODES.md).

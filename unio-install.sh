@@ -15003,8 +15003,15 @@ Grok, Antigravity/Gemini, Claude Code and Codex are the main implementation
 agents. Use available workers from that group for product features, core
 behavior, UI, complex debugging and substantive security corrections. The
 owner's designated lead normally plans, coordinates, reviews and integrates.
-After a worker and one suitable replacement fail to finish, it directly
-implements the remaining correction in its existing session. Follow
+For Unio development, delegate fixes the lead would otherwise implement to
+Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / high through Unio. The lead defines
+the scope/checks, coordinates, reviews and integrates; it does not repair
+the implementation inline. The owner permits one focused Sol correction
+worker beside the registered lead, with real shared-budget accounting and a
+recorded temporary native tier change if required. Read the
+[2026-10-13 correction rule](../ai/LEAD-ESCALATION.md#dedicated-fix-worker--unio-owner-rule-2026-10-13).
+For other projects without an owner override, a worker and one suitable
+replacement may escalate to implementation in the existing lead session. Follow
 [bounded escalation](../ai/LEAD-ESCALATION.md) and consult the
 [model scoreboard](MODEL-SCOREBOARD.md) before delegation. This does not
 create another workflow or grant extra spending or integration authority.
@@ -15018,7 +15025,8 @@ free model into another role. Escalate difficult findings to a main worker.
 This is a standing owner policy, not an invented reasoning-score ranking.
 
 Choose using task fit and current availability. Low tier counts the lead's
-workflow, so do not launch a second independent job on its shared allowance.
+workflow; a second job on its shared allowance requires an explicit owner
+exception such as the focused Sol correction rule above.
 If Codex leads and Claude is exhausted, use available Grok and
 Antigravity/Gemini for implementation. Antigravity (`agy`) is a multi-model
 CLI; record its selected model and AI lab. A past capacity failure is dated
@@ -26495,7 +26503,7 @@ choice for one run. The owner can explicitly change the policy.
 
 | Role | Agents | Work they own |
 | --- | --- | --- |
-| Lead | The owner's designated subscription agent | Planning, contracts, delegation, coordination, final assessment and authorized integration; direct implementation after bounded worker escalation |
+| Lead | The owner's designated subscription agent | Planning, contracts, delegation, coordination, final assessment and authorized integration; follow the owner's explicit correction route before direct implementation |
 | Main implementation workers | Grok, Antigravity/Gemini, Claude Code and Codex | Product features, core behavior, architecture within the assigned scope, complex debugging, UI and substantive security corrections |
 | Optional implementation workers | Explicitly approved Mistral Vibe / GLM 5.3 and Medium 3.5 routes | Scoped implementation through the pinned adapter; inspect actual results |
 | Research and proposal workers | Perplexity Pro Thinking routes | Selected-context research and code drafts for a capable implementation agent to check and apply |
@@ -26514,8 +26522,15 @@ routes and checked outcomes in [the inventory](../FREE-MODELS.md).
 
 ## When delegation struggles
 
+For Unio development, the [2026-10-13 dedicated correction rule](LEAD-ESCALATION.md#dedicated-fix-worker--unio-owner-rule-2026-10-13)
+supersedes direct lead fixes: dispatch one bounded Codex CLI / GPT-6.1 Sol /
+high task through Unio, then personally assess its result. One such correction
+worker alongside the registered lead is explicitly owner-authorized; preserve
+the real shared budget and record/restore any temporary native tier change.
+Other project owners can explicitly select their own correction route.
+
 Follow [worker, replacement, lead](LEAD-ESCALATION.md): one suitable worker,
-one capable available replacement, then the lead directly finishes the
+one capable available replacement, then, absent an owner override, the lead finishes the
 remaining correction in its existing session. Preserve the previous work
 and failures; do not send a struggling model another blind attempt. In low
 tier this is the same lead workflow, not permission for another worker CLI.
@@ -26530,7 +26545,9 @@ Do not silently substitute a different account, CLI or paid API route.
 
 In low tier, an agent already serving as lead occupies its shared budget's
 single independent workflow. For example, a Codex lead must not launch a
-second independent Codex implementation session. Other available budgets
+second independent Codex implementation session without an explicit owner
+exception. The focused Unio correction rule above is such an exception. Other
+available budgets
 can work concurrently. Authorized helpers inside one workflow are allowed;
 they do not turn it into several independent features or test assignments.
 Read the separate [mode and tier guide](../WORK-MODES.md).
@@ -26590,6 +26607,39 @@ Standing lead policy, owner-approved on 2026-10-08. Delegate first, preserve
 useful work, and take responsibility when delegation stops making progress.
 Read this at startup and before assigning a correction.
 
+## Dedicated fix worker — Unio owner rule, 2026-10-13
+
+For Unio development, when the lead finds a defect or would otherwise repair
+a worker's implementation itself, delegate the bounded correction through
+Unio to **Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / high effort**. The lead
+defines the failure, scope and checks, then reviews and integrates the result.
+It must not silently implement the fix in the coordinating session. This
+supersedes the earlier direct-lead takeover default for this workspace.
+Other project owners can explicitly choose their own correction route.
+
+Use the existing approved ChatGPT subscription, a dedicated worker worktree,
+a pinned per-run configuration and one native Source invocation per task.
+Commit early and preserve previous edits, failed outcomes and dated receipts.
+Report preparation, actual provider invocation, committed work, checks and
+lead acceptance separately. Requested identity and effort are not proof of
+effective settings or remaining allowance. If the route cannot finish,
+preserve its work and report the actual failure; do not invent success, retry
+blindly or fall back to an inline lead fix.
+
+The owner authorizes **one focused Sol correction worker at a time alongside
+the coordinating lead**, including when they share the Codex subscription.
+This is an explicit exception to this workspace's usual low-tier concurrency,
+not extra allowance or permission for unrelated parallel Codex assignments.
+Keep the real shared budget mapping and registered lead. If native low-tier
+admission would refuse the second slot, record the exception, temporarily
+select `unio tier medium` for the correction cycle, and restore the prior tier
+once the worker is idle. Keep unrelated admissions closed with STOP while
+the correction runs; never fake another account group or erase the lead.
+
+Resume before the authorized native run and stop new admissions afterward.
+Keep current spending, review and integration rules. No API-key fallback,
+additional token purchase, max/ultra effort or extra review fleet is implied.
+
 ## Worker, replacement, lead
 
 1. Give a suitable worker one bounded assignment with a clear scope and
@@ -26602,7 +26652,9 @@ Read this at startup and before assigning a correction.
    failing evidence and saved work. Prefer a different AI lab when suitable.
    Respect the current run's deadline and the owner's interruption policy;
    obtain an orderly handoff before changing ownership. Do not blindly retry.
-3. If the replacement also cannot finish, the lead implements the remaining
+3. Apply an owner's explicit correction route first, including the dedicated
+   Sol rule above for Unio development. Without such an override, if the
+   replacement also cannot finish, the lead implements the remaining
    correction directly in its existing session. Do not send the problem back
    to either struggling model or start a ladder of weaker workers. When no
    eligible replacement is available, the lead can take over sooner.
@@ -26626,7 +26678,7 @@ the existing lead.
 - Wait until the old writer and its owned children are idle. Freeze the new
   task, base, scope, ownership and checks before editing a dedicated branch.
   Preserve uncommitted work before cleanup; do not reset or clean it away.
-- In low tier, direct work is part of the existing lead workflow. Do not
+- Without an explicit owner exception, in low tier direct work is part of the existing lead workflow. Do not
   spawn another lead-provider CLI, worker or independent test agent. Keep
   the lead reservation; do not bypass budget admission by changing aliases.
 - Make an early coherent commit, run checks appropriate to the change and
