@@ -7,6 +7,7 @@ import datetime
 import json
 from pathlib import Path
 import re
+import sys
 
 LEVELS = ('low', 'medium', 'high', 'xhigh')
 ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z')
@@ -58,6 +59,8 @@ def main():
     parser.add_argument('worker')
     parser.add_argument('effort', nargs='?', choices=LEVELS)
     parser.add_argument('--json', action='store_true')
+    if len(sys.argv) > 16 or any(len(arg) > 4096 for arg in sys.argv[1:]):
+        parser.exit(2, 'unio worker-effort: arguments exceed bounded input limits\n')
     args = parser.parse_args()
     try:
         result = inspect(args.project, args.worker, args.effort)

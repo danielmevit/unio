@@ -415,3 +415,10 @@ approval flags (§2).
 - OpenCode Go plan: https://opencode.ai/go
 - Grok Build (`grok -p`, `--always-approve`): https://x.ai/news/grok-build-cli and https://mer.vin/2026/05/grok-build-cli-xai-terminal-coding-agent-with-plan-mode-subagents-and-headless-ci/
 - Antigravity official docs: https://antigravity.google/docs/cli-using
+
+## Worker effort inspection
+
+`unio worker-effort WORKER [low|medium|high|xhigh] [--json]` inspects the
+current capability boundary. This first slice reports unsupported and refuses
+requests (exit 2); it cannot attach to legacy exec or unmanaged sessions.
+No provider call or pending change occurs. See [WORKER-EFFORT.md](WORKER-EFFORT.md).

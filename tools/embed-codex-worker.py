@@ -54,7 +54,7 @@ def main():
     if sys.argv[1:] == ['--check']:
         if old != updated:
             raise SystemExit('embedded effort differs; run python3 -B tools/embed-codex-worker.py')
-        print('embedded effort: stores and CLI byte-identical')
+        print('embedded effort: helper and guide byte-identical')
     elif not sys.argv[1:]:
         installer.write_text(updated)
     else:

@@ -15570,6 +15570,7 @@ import datetime
 import json
 from pathlib import Path
 import re
+import sys
 
 LEVELS = ('low', 'medium', 'high', 'xhigh')
 ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z')
@@ -15621,6 +15622,8 @@ def main():
     parser.add_argument('worker')
     parser.add_argument('effort', nargs='?', choices=LEVELS)
     parser.add_argument('--json', action='store_true')
+    if len(sys.argv) > 16 or any(len(arg) > 4096 for arg in sys.argv[1:]):
+        parser.exit(2, 'unio worker-effort: arguments exceed bounded input limits\n')
     args = parser.parse_args()
     try:
         result = inspect(args.project, args.worker, args.effort)
@@ -24903,8 +24906,11 @@ cmd_plan() { # local plan observation and recommendations before dispatch
 
 # ---------------------------------------------------------- worker effort
 cmd_worker_effort() {
-  local root cli="$CONF_DIR/lib/codex-worker.py"
-  [ -f "$cli" ] || die "worker effort files missing; rerun the matching installer"
+  local root arg cli="$CONF_DIR/lib/codex-worker.py"
+  [ -f "$cli" ] && [ ! -L "$cli" ] && [ ! -L "$CONF_DIR/lib" ] || die "worker effort files missing or unsafe; rerun the matching installer"
+  for arg in "$@"; do
+    case "$arg" in --project|--project=*) echo "unio: worker-effort uses the current Unio project" >&2; return 2;; esac
+  done
   case "${1:-}" in -h|--help) exec python3 -I -S -B "$cli" --help;; esac
   root=$(find_root) || die "worker-effort requires a Unio project"
   root=$(cd -- "$root" && pwd -P) || return 2

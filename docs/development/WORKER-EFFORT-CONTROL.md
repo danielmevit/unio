@@ -1,8 +1,11 @@
 # Change a worker's reasoning effort during work
 
-Status: planned near-term functionality, requested by the owner on 2026-10-13.
+Status: bounded capability/refusal CLI slice implemented on 2026-10-13;
+managed Source backend and native effort application remain unimplemented.
 Part of the next worker-reliability milestone, after review-findings delivery.
-No native Unio effort-switch command is implemented by this document.
+`unio worker-effort WORKER [low|medium|high|xhigh] [--json]` reports unsupported
+and refuses requests without provider calls. See [the shipped guide](../WORKER-EFFORT.md).
+This is not a completed effort switch.
 
 ## Intended experience
 
