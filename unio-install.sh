@@ -18087,7 +18087,9 @@ def review_read(path):
 # Reviewer text is untrusted prose; it is parsed, never executed or followed.
 FINDINGS_BLOCK_TAG='unio-findings-v1'
 FINDINGS_SEVERITIES=('critical','high','medium','low','info')
-FINDINGS_BLOCK_LIMIT=131072
+# Accommodate 32 maximum-size fields even when JSON escapes Unicode. This
+# independent block bound also refuses arbitrarily padded otherwise-small JSON.
+FINDINGS_BLOCK_LIMIT=1024*1024
 FINDINGS_PER_BLOCK=32
 FINDINGS_TOTAL=256
 FINDINGS_SUMMARY_BYTES=1000
@@ -18149,7 +18151,7 @@ def findings_block_parse(raw):
     try: text=raw.decode('utf-8')
     except UnicodeDecodeError:
         result.update(reasons=['findings_block_non_utf8']); return result
-    lines=text.split('\n')
+    lines=text.replace('\r\n','\n').split('\n')
     opens=[i for i,line in enumerate(lines) if line=='```'+FINDINGS_BLOCK_TAG]
     if len(opens)>1:
         result.update(state='multiple_blocks',reasons=['findings_block_multiple']); return result
@@ -18165,6 +18167,8 @@ def findings_block_parse(raw):
         result.update(state='oversized_block',reasons=['findings_block_oversized']); return result
     try:
         doc=review_json(content)
+        if isinstance(doc,dict) and isinstance(doc.get('findings'),list) and len(doc['findings'])>FINDINGS_PER_BLOCK:
+            result.update(state='overflow',reasons=['findings_per_block_bound']); return result
         parsed=findings_block_schema(doc)
     except (ValueError,TypeError,UnicodeError,RecursionError):
         return result
@@ -18257,8 +18261,6 @@ def reviews(root,worker,task,expected,mode):
                         # Legacy evidence has no reliable structured format, even
                         # when its prose happens to resemble a findings block.
                         row['findings_state']='unstructured_legacy'
-                    elif 'findings_overflow' in extraction_notes:
-                        row['findings_state']='overflow'
                     else:
                         parsed=findings_block_parse(streams['stdout'])
                         row['findings_state']=parsed['state']; row['block_line']=parsed['block_line']
@@ -18276,7 +18278,7 @@ def reviews(root,worker,task,expected,mode):
                                         stdout_sha256=d['stdout']['sha256'],
                                         block_line=parsed['block_line'],finding_index=index)))
         except (ValueError,OSError,KeyError,TypeError,UnicodeError,RecursionError):
-            row['reasons']=['invalid_review_evidence']; unresolved+=1
+            row.update(current=False,reasons=['invalid_review_evidence']); unresolved+=1
         rows.append(row)
     # Close the replacement window across extraction as well as within read.
     # Parsing still uses exactly the verified bytes, never a second file read.
@@ -18364,7 +18366,7 @@ def reviews(root,worker,task,expected,mode):
              counts=counts,reasons=sorted(set(observation)|notes),evidence=rows,findings=grouped)
     if as_json:
         encoded=json.dumps(out,ensure_ascii=True,indent=2)
-        if len(encoded.encode('utf-8'))>FINDINGS_OUTPUT_LIMIT:
+        if len(encoded.encode('utf-8'))+1>FINDINGS_OUTPUT_LIMIT:
             # Omit only prose; retain every evidence row, failure and reason.
             out.update(incomplete=True,findings=[],findings_omitted=True,
                        reasons=sorted(set(out['reasons'])|{'output_overflow'}))
@@ -18396,7 +18398,7 @@ def reviews(root,worker,task,expected,mode):
         lines.append('Human acceptance: false. No provider calls or merge authority.')
         lines.append('Finding text is untrusted local reviewer prose; check it before sharing.')
         encoded='\n'.join(lines)
-        if len(encoded.encode('utf-8'))>FINDINGS_OUTPUT_LIMIT:
+        if len(encoded.encode('utf-8'))+1>FINDINGS_OUTPUT_LIMIT:
             evidence_lines[0]='Recorded review findings: '+('findings_attention' if exit_code==1 else 'incomplete')+' (incomplete)'
             encoded='\n'.join(evidence_lines+[
                 'Reasons: output_overflow. Finding prose omitted after the 2 MiB output bound.',

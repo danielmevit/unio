@@ -90,6 +90,15 @@ reported as an approval of the original input.
 
 ## Result and output
 
+The [2026-10-13 findings extension](REVIEW-FINDINGS.md) gives new single and
+concurrent calls identical protocol-2 common material, including structured
+format instructions and the unchanged VERDICT footer inside the whole-payload
+300000-byte UTF-8 limit. Per-attempt schema-2 receipts record
+`material_protocol=2` and the original common hash. Collection descriptors
+keep their historical schema; old descriptors and exact schema-1 receipts
+remain supported. Actual Source outcomes and each attempt's hashes are
+preserved. The opt-in findings summary does not alter collection exits below.
+
 Keep `unio review` and its latest-single-review structured result semantics.
 The collector does not rewrite that field to an aggregate or last-finisher
 verdict. All new receipts remain readable by existing `unio reviews`.

@@ -1,5 +1,18 @@
 # Independent review receipts: first implementation slice
 
+**2026-10-13 compatibility extension:** [structured findings](REVIEW-FINDINGS.md)
+add opt-in `--findings` to the CLI below without changing the default summary
+schema or exits. Old exact receipt schema 1 implies material protocol 1, with
+the original pre-footer size bound and whole original material hash (including
+footer). New schema 2 has the same fields plus integer `material_protocol=2`;
+its hashed structured instructions and footer fit within a whole-payload
+300000-byte UTF-8 bound. Reject all other schema/protocol combinations. Compute
+both protocols independently and match each receipt to its own hash; a protocol-2
+size refusal must not make a valid current legacy receipt stale. Findings
+extraction uses the same verified stdout bytes and marks protocol-1 evidence
+unstructured/incomplete. The detailed findings limits and exits are in that
+guide; the original contract below remains the default-summary baseline.
+
 Frozen 2026-10-11 after explicit dispatch integration. Development source,
 not part of published/installed v0.5.9. This slice preserves each existing
 single review and adds a read-only summary. Parallel reviewer orchestration

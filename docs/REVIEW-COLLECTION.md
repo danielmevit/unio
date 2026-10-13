@@ -1,5 +1,11 @@
 # Review the same work in parallel
 
+To browse actionable excerpts after collecting reviews, use
+[`unio reviews --findings`](REVIEW-FINDINGS.md). New single and concurrent
+reviews use the same whole-payload protocol-2 material and schema-2 receipts;
+ordinary verdict summaries retain their existing behavior. The opt-in findings
+view makes no new provider calls and has separate completeness/exit rules.
+
 `unio review-set` asks an explicit set of agents to review the same committed
 work at once. It keeps separate evidence for each reviewer and combines their
 recorded verdicts. You decide whether to accept and merge the work.

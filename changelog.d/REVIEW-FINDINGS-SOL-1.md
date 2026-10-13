@@ -1,0 +1,1 @@
+- Add opt-in local structured review findings with protocol-aware legacy compatibility, exact source citations, strict bounds and explicit incomplete evidence. Completed from the preserved failed Mistral/Vibe draft by the dedicated Codex correction worker; lead acceptance remains separate.

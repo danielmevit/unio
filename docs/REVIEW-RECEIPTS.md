@@ -4,9 +4,9 @@
 who reviewed it, which verdicts disagree and what evidence is still missing.
 You remain responsible for accepting and merging the work.
 
-**Availability:** development source; not included in published/installed
-v0.5.9. This first slice preserves receipts and reads them. Parallel review
-launches are a separate milestone.
+Receipts and [parallel review collection](REVIEW-COLLECTION.md) are available
+since v0.5.11. The opt-in [structured findings view](REVIEW-FINDINGS.md) is in
+development; it is not included in published v0.5.14.
 
 ## Run reviews, then read their evidence
 
@@ -66,6 +66,13 @@ Invalid or unsupported input also exits 2. JSON always reports
 decision, not human acceptance. Summary output excludes raw review prose,
 task requests and private commands; inspect local raw files deliberately when
 you need the findings.
+
+For actionable local excerpts, add `--findings` (optionally `--json`). New
+review calls request a structured block using whole-payload material protocol
+2 and schema-2 receipts. Exact schema-1/protocol-1 receipts remain valid in
+ordinary summaries; the findings view marks them incomplete/unstructured
+legacy evidence. See the [findings guide](REVIEW-FINDINGS.md) for its separate
+exit semantics, bounds and privacy rules.
 
 See the [frozen receipt contract](REVIEW-RECEIPTS-CONTRACT.md) for bounds and
 exact evidence rules.

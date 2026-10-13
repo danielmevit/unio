@@ -79,6 +79,11 @@ each attempt's evidence; reviews never grant human acceptance or merge code.
 Recovery capture also batches Git ignore queries, with measured improvements
 and remaining timeout limits in the [release guide](docs/RELEASE-0.5.11.md).
 
+**In development:** browse [structured review findings](docs/REVIEW-FINDINGS.md)
+with `unio reviews --findings`. This opt-in local view preserves evidence and
+recorded verdict disagreement, makes no provider calls and never grants human
+acceptance. Ordinary review summaries continue to exclude reviewer prose.
+
 **Added in 0.5.10:** remember task filters across dashboard reloads, archive
 older recovery saves without deleting their history, and inspect local storage
 with `unio save usage`. Explicit `unio readiness refresh claude` records sign-in
