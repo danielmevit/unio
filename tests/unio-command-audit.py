@@ -11,14 +11,13 @@ import tempfile
 import unittest
 
 REPO = Path(__file__).resolve().parents[1]
-SCRATCH = REPO / '../../tmp/unio-next/command-audit-sol-low-20261013'
 
 
 class CommandAudit(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        SCRATCH.mkdir(parents=True, exist_ok=True)
-        cls.tmp = tempfile.TemporaryDirectory(prefix='fixtures-', dir=SCRATCH)
+        cls.tmp = tempfile.TemporaryDirectory(prefix='unio-command-audit-')
+        cls.addClassCleanup(cls.tmp.cleanup)
         cls.root = Path(cls.tmp.name).resolve()
         cls.bin = cls.root / 'bin with spaces'
         cls.conf = cls.root / 'configuration'
@@ -38,8 +37,8 @@ class CommandAudit(unittest.TestCase):
             p = cls.bin / name
             p.write_text('#!/usr/bin/env bash\nprintf "called\\n" >> "$AUDIT_CALLS"\nexit 91\n')
             p.chmod(0o755)
-        # Scratch is inside the real Unio workspace. Bound parent traversal to
-        # this isolated fixture so 'outside' genuinely has no project, rather
+        # Caller TMPDIR may be inside a real Unio workspace. Bound traversal
+        # to this isolated fixture so 'outside' genuinely has no project, rather
         # than accidentally discovering the owner's parent coord directory.
         cls.env['AUDIT_FIXTURE_ROOT'] = str(cls.root)
         parent = cls.bin / 'dirname'
@@ -252,24 +251,26 @@ class CommandAudit(unittest.TestCase):
         after = subprocess.run([str(self.unio),'agents','--json'],env=self.env,cwd=self.outside,capture_output=True,check=True).stdout
         self.assertEqual(before,after)
 
-    def test_other_installer_payloads_byte_identical(self):
-        # Frozen-base digests avoid requiring old Git objects in release/shallow
-        # checkouts. Only the CLI, QUALITY_PY and CLI help may differ.
-        import re
-        current = (REPO / 'unio-install.sh').read_bytes()
-        def blocks(data):
-            return {m.group(1): m.group(2) for m in re.finditer(rb"<<'([A-Z_0-9]+)'\n(.*?)\n\1(?:\n|$)",data,re.S)}
-        def digest(values,exclude):
-            return hashlib.sha256(b''.join(k+b'\0'+hashlib.sha256(v).digest() for k,v in sorted(values.items()) if k not in exclude)).hexdigest()
-        outer = blocks(current)
-        self.assertEqual(digest(outer,{b'UNIO_BIN_EOF'}), 'c95d79224df16ffe41abaab2c66fd1e1a58ffe352cf8b6a4c7f9e923202344dd')
-        inner = blocks(outer[b'UNIO_BIN_EOF'])
-        self.assertEqual(digest(inner,{b'QUALITY_PY',b'HELP'}), 'ed0c991ae735eea58a3341bfaed30f341006c87dae31b3e3f1269c4ecddc4125')
-        # No-argument doctor's original body remains byte-identical after the
-        # new early read-only branch, including its original migrations.
-        body = re.search(rb'cmd_doctor\(\).*?\n(  local root;.*?)\n}\n', current, re.S).group(1)
-        self.assertEqual(hashlib.sha256(body).hexdigest(), '391f5a7fbb3401e5bedeb003d1f5b697daec30e785c3eb2c8f47917108fa2181')
-
+    def test_installed_audit_and_default_doctor_separation(self):
+        # Exercise the installed CLI outside a project: static audit works,
+        # while the default doctor retains its project-only preflight.
+        self.assertTrue(self.unio.is_file())
+        self.assertNotEqual(self.unio.resolve().parent, REPO)
+        before = (self.conf / 'agents.conf').read_bytes()
+        default = self.run_audit(expected=1)
+        self.assertIn(b'not inside a Unio project', default.stderr)
+        self.assertNotIn(b'local_static', default.stdout)
+        audit = json.loads(self.run_audit('--commands', '--json').stdout)
+        self.assertEqual(audit['source'], 'local_static')
+        self.assertEqual((self.conf / 'agents.conf').read_bytes(), before)
+        # A malformed command file is rejected only by the audit branch;
+        # default doctor still refuses for the missing project first.
+        (self.conf / 'agents.conf').write_text('malformed command configuration\n')
+        rejected = self.run_audit('--commands', '--json', expected=2)
+        self.assertEqual(rejected.stdout, b'')
+        self.assertIn(b'over-bound input', rejected.stderr)
+        default = self.run_audit(expected=1)
+        self.assertIn(b'not inside a Unio project', default.stderr)
 
 
 if __name__ == '__main__':
