@@ -20138,8 +20138,8 @@ def under(root, *parts):
     return p
 
 
-def read_fd(fd, limit, budget, what):
-    st = os.fstat(fd)
+def read_fd(fd, limit, budget, what, checked_stat=None):
+    st = os.fstat(fd) if checked_stat is None else checked_stat
     if not stat.S_ISREG(st.st_mode):
         raise Refuse('unsupported_type', 'not a regular file: ' + what)
     if st.st_size > limit:
@@ -20941,6 +20941,24 @@ def private_at(dfd, name, kind):
     return st
 
 
+def read_stored_at(dfd, name, limit):
+    """Validate private metadata on the exact no-follow descriptor being read.
+
+    Deep loading needs no separate pathname stat: this descriptor's metadata
+    supplies both the privacy checks and the bounded read. No state is cached
+    between files, loads, retention passes or worktree observations.
+    """
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=dfd)
+    try:
+        st = os.fstat(fd)
+        if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid()
+                or stat.S_IMODE(st.st_mode) != 0o600 or st.st_nlink != 1):
+            raise Refuse('invalid_save', 'unsafe stored file: ' + name)
+        return read_fd(fd, limit, None, name, checked_stat=st)
+    finally:
+        os.close(fd)
+
+
 def load_save(path, save_id, deep):
     """Validate one published (or staged) save; deep also rereads every byte."""
     try:
@@ -20966,22 +20984,27 @@ def load_save(path, save_id, deep):
         try:
             if os.listdir(cfd) != ['task.md'] or set(os.listdir(pfd)) != set(sizes):
                 raise Refuse('invalid_save', 'stored content files do not match the manifest')
-            if private_at(cfd, 'task.md', 'file').st_size != doc['context']['task_bytes']:
+            if not deep and private_at(cfd, 'task.md', 'file').st_size != doc['context']['task_bytes']:
                 raise Refuse('invalid_save', 'task context size mismatch')
-            for digest, size in sizes.items():
-                if private_at(pfd, digest, 'file').st_size != size:
-                    raise Refuse('invalid_save', 'stored content size mismatch: ' + digest)
-            if g['commit_ids'] and private_at(dfd, 'bundle', 'file').st_size != g['bundle_bytes']:
+            if not deep:
+                for digest, size in sizes.items():
+                    if private_at(pfd, digest, 'file').st_size != size:
+                        raise Refuse('invalid_save', 'stored content size mismatch: ' + digest)
+            if not deep and g['commit_ids'] and private_at(dfd, 'bundle', 'file').st_size != g['bundle_bytes']:
                 raise Refuse('invalid_save', 'bundle size mismatch')
             stored_bytes = manifest_size + doc['context']['task_bytes'] + sum(sizes.values()) + g['bundle_bytes']
             if not deep:
                 return dict(manifest=doc, stored_bytes=stored_bytes)
-            task = read_at(cfd, 'task.md', MAX_TASK)[1]
+            task_stat, task = read_stored_at(cfd, 'task.md', MAX_TASK)
+            if task_stat.st_size != doc['context']['task_bytes'] or len(task) != doc['context']['task_bytes']:
+                raise Refuse('invalid_save', 'task context size mismatch')
             if sha(task) != doc['context']['task_sha256']:
                 raise Refuse('invalid_save', 'task context hash mismatch')
             bodies = {}
             for digest, size in sizes.items():
-                body = read_at(pfd, digest, MAX_BODY)[1]
+                body_stat, body = read_stored_at(pfd, digest, MAX_BODY)
+                if body_stat.st_size != size:
+                    raise Refuse('invalid_save', 'stored content size mismatch: ' + digest)
                 if sha(body) != digest or len(body) != size:
                     raise Refuse('invalid_save', 'stored content hash mismatch: ' + digest)
                 bodies[digest] = body
@@ -20991,7 +21014,9 @@ def load_save(path, save_id, deep):
                     raise Refuse('invalid_save', 'index content does not match its Git object: ' + e['path'])
             bundle = None
             if g['commit_ids']:
-                bundle = read_at(dfd, 'bundle', MAX_STORED)[1]
+                bundle_stat, bundle = read_stored_at(dfd, 'bundle', MAX_STORED)
+                if bundle_stat.st_size != g['bundle_bytes']:
+                    raise Refuse('invalid_save', 'bundle size mismatch')
                 if sha(bundle) != g['bundle_sha256'] or len(bundle) != g['bundle_bytes']:
                     raise Refuse('invalid_save', 'bundle hash mismatch')
                 prereqs, refs = bundle_header(bundle, g['object_format'])
