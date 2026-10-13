@@ -18683,7 +18683,7 @@ def command_audit(conf, mode):
             name, command = line.split('=', 1)
             # Aliases and selector facts are the only input-derived text emitted.
             if (not re.fullmatch(r'[a-z][a-z0-9_-]{0,31}', name)
-                    or re.search(r'token|secret|password|api[_-]?key|^sk-', name)
+                    or re.search(r'token|secret|password|account|credential|api[_-]?key|^sk-', name)
                     or name in names or not command.strip() or len(command.encode()) > 4096
                     or any(ord(c) < 32 and c != '\t' for c in command)): invalid()
             names.add(name)
@@ -18703,41 +18703,57 @@ def command_audit(conf, mode):
                 if t and all(c in '();<>|&' for c in t): unknown = True
                 # Only literal TASKFILE references are understood; never expand.
                 remainder = t.replace('${TASKFILE}', '').replace('$TASKFILE', '')
-                if any(c in remainder for c in '$`*?[]') or '\n' in t: unknown = True
+                if any(c in remainder for c in '$`*?[]{}~') or '\n' in t or t.startswith('#'): unknown = True
                 argv.append(t); i += 1
             if argv and os.path.basename(argv[0]) == 'opencode' and '--dangerously-skip-permissions' in argv:
                 issues.add('legacy_opencode_permission')
             tool = 'Unknown'; model = 'Unknown'; effort = 'Unknown'; transport = 'Unknown'
             native = {'codex','claude','opencode','grok','agy','vibe','copilot'}
-            if argv and not unknown and os.path.basename(argv[0]) in native and not argv[0].startswith(('~','-')):
+            if argv and not unknown and os.path.basename(argv[0]) in native and not any(c in argv[0] for c in '$`') and not argv[0].startswith(('~','-')):
                 tool = os.path.basename(argv[0])
             else: issues.add('command_unknown')
             if tool != 'Unknown':
                 args = argv[1:]
+                options = args[:args.index('--')] if '--' in args else args
                 form = (tool not in ('codex','opencode') or bool(args) and args[0] == {'codex':'exec','opencode':'run'}[tool])
                 if not form: issues.add('command_unknown')
                 # Parse only explicit selectors, retaining no arbitrary values.
                 models = []; efforts = []; malformed = False; foreign_effort = False
+                known_values = {
+                    'codex': {'--sandbox','--output-last-message','-o','--cd','-C'},
+                    'claude': {'--output-format','--permission-mode'},
+                    'opencode': {'--file','-f','--format'},
+                    'grok': {'--prompt-file'},
+                    'agy': {'-p','--print-timeout'},
+                    'vibe': set(), 'copilot': set(),
+                }
+                known_switches = {
+                    'codex': {'--skip-git-repo-check','--dangerously-bypass-approvals-and-sandbox','--full-auto','--json'},
+                    'claude': {'-p','--print','--dangerously-skip-permissions'},
+                    'opencode': {'--auto','--dangerously-skip-permissions'},
+                    'grok': {'--always-approve'}, 'agy': {'--dangerously-skip-permissions'},
+                    'vibe': set(), 'copilot': set(),
+                }
+                transport_flags = set(); switches = set(); stdin_arg = False; unsupported = False
                 j = 0
-                while j < len(args):
-                    t = args[j]
-                    if t == '--': break
+                while j < len(options):
+                    t = options[j]
                     flags = ('--model','-m')
                     if t in flags or t.startswith('--model='):
                         if t.startswith('--model='): value = t.split('=',1)[1]
-                        elif j+1 < len(args) and not args[j+1].startswith('-'): j += 1; value = args[j]
+                        elif j+1 < len(options) and not options[j+1].startswith('-'): j += 1; value = options[j]
                         else: value = ''; malformed = True
                         models.append(value)
                     elif t in ('--effort','--variant','--reasoning-effort') or t.startswith(('--effort=','--variant=','--reasoning-effort=')):
                         flag = t.split('=',1)[0]
                         if '=' in t: value = t.split('=',1)[1]
-                        elif j+1 < len(args) and not args[j+1].startswith('-'): j += 1; value = args[j]
+                        elif j+1 < len(options) and not options[j+1].startswith('-'): j += 1; value = options[j]
                         else: value = ''; malformed = True
                         efforts.append(value)
                         if (tool,flag) not in (('claude','--effort'),('opencode','--variant')): foreign_effort = True
                     elif t in ('-c','--config') or t.startswith('--config='):
                         if t.startswith('--config='): value = t.split('=',1)[1]
-                        elif j+1 < len(args): j += 1; value = args[j]
+                        elif j+1 < len(options): j += 1; value = options[j]
                         else: value = ''; malformed = True
                         if value.startswith('model_reasoning_effort='):
                             efforts.append(value.split('=',1)[1].strip('"\''))
@@ -18746,12 +18762,26 @@ def command_audit(conf, mode):
                             models.append(value.split('=',1)[1].strip('"\''))
                             if tool != 'codex': malformed = True
                         else: malformed = True  # other config may override selectors
+                    elif t in known_values[tool]:
+                        if j+1 < len(options):
+                            # Track values so a selector/output value cannot be
+                            # mistaken for a prompt/stdin option later.
+                            if t in ('--file','-f','--prompt-file','-p'): transport_flags.add(j)
+                            j += 1
+                        else: malformed = True
+                    elif t == '-': stdin_arg = True
+                    elif t in known_switches[tool]: switches.add(t)
+                    elif t in ('--profile','-P') or t.startswith('--profile='):
+                        malformed = True; foreign_effort = True
                     elif re.search(r'effort|thinking|reasoning', t) and t.startswith('-'):
                         foreign_effort = True
+                    elif t.startswith('-'):
+                        unsupported = True
                     j += 1
+                if unsupported: malformed = True
                 # Conservative structural forms, not a current catalog or proof
                 # of availability. Arbitrary model text is never reflected.
-                model_pattern = r'(?:gpt-\d{1,2}(?:\.\d{1,2})?-(?:sol|astra|luna)|claude-(?:opus|sonnet|haiku)-\d{1,2}(?:[.-]\d{1,2})?|gemini-\d{1,2}(?:\.\d{1,2})?-(?:pro|flash)(?:-high)?|glm[-_]\d{1,2}(?:[.-]\d{1,2})?|qwen\d{1,2}(?:\.\d{1,2})?-(?:max|plus)|mistral-medium-\d{1,2}(?:-\d{1,2})?)'
+                model_pattern = r'(?:gpt-[0-9]{1,2}(?:\.[0-9]{1,2})?-(?:sol|astra|luna)|claude-(?:opus|sonnet|haiku)-[0-9]{1,2}(?:[.-][0-9]{1,2})?|gemini-[0-9]{1,2}(?:\.[0-9]{1,2})?-(?:pro|flash)(?:-high)?|glm[-_][0-9]{1,2}(?:[.-][0-9]{1,2})?|qwen[0-9]{1,2}(?:\.[0-9]{1,2})?-(?:max|plus)|mistral-medium-[0-9]{1,2}(?:-[0-9]{1,2})?)'
                 if len(models) == 1 and not malformed:
                     value = models[0]
                     candidate = value
@@ -18759,7 +18789,7 @@ def command_audit(conf, mode):
                         candidate = value.split('/',1)[1]
                     if value == 'auto-balance' and tool == 'copilot':
                         model = value; issues.add('auto_balance')
-                    elif re.fullmatch(model_pattern, candidate) and (candidate == value or tool == 'opencode'):
+                    elif re.fullmatch(model_pattern, candidate) and (tool != 'opencode' or candidate != value):
                         model = value
                     else: issues.add('selector_unknown')
                 elif models or malformed: issues.add('selector_unknown')
@@ -18767,15 +18797,14 @@ def command_audit(conf, mode):
                     effort = efforts[0]
                 elif efforts or foreign_effort: issues.add('effort_ambiguous')
                 def file_flag(flag):
-                    return any(t == flag and k+1 < len(args) and args[k+1] in ('$TASKFILE','${TASKFILE}') for k,t in enumerate(args))
-                if form:
-                    if stdin and ((tool == 'codex' and '-' in args) or (tool == 'claude' and '-p' in args)):
+                    return any(options[k] == flag and k+1 < len(options) and options[k+1] in ('$TASKFILE','${TASKFILE}') for k in transport_flags)
+                if form and not malformed and len(transport_flags) <= 1:
+                    if stdin and ((tool == 'codex' and stdin_arg) or (tool == 'claude' and bool(switches & {'-p','--print'}))):
                         transport = 'stdin'
                     elif (tool == 'opencode' and file_flag('--file')) or (tool == 'grok' and file_flag('--prompt-file')):
                         transport = 'file'
-                    elif tool == 'agy' and '-p' in args:
-                        k = args.index('-p')
-                        if k+1 < len(args) and re.search(r'File: \$(?:TASKFILE|\{TASKFILE\})$', args[k+1]): transport = 'file_pointer'
+                    elif tool == 'agy':
+                        if any(options[k] == '-p' and re.search(r'File: \$(?:TASKFILE|\{TASKFILE\})$', options[k+1]) for k in transport_flags): transport = 'file_pointer'
                 if transport == 'Unknown': issues.add('transport_unknown')
                 if tool == 'opencode' and '--dangerously-skip-permissions' in args:
                     issues.add('legacy_opencode_permission')
@@ -18786,7 +18815,9 @@ def command_audit(conf, mode):
                 effective_effort='Unknown', issues=[dict(code=c, remedy=remedies[c]) for c in sorted(issues)]))
         out = dict(schema_version=1, source='local_static', authentication='Unknown', capacity='Unknown',
             effective_model='Unknown', effective_effort='Unknown', agents=rows)
-        if mode == '--json': rendered = json.dumps(out, indent=2)
+        encoded = json.dumps(out, indent=2)
+        if len(encoded.encode()) + 1 > 131072: invalid()
+        if mode == '--json': rendered = encoded
         else:
             text = ['Local static command audit; not readiness or compatibility proof.',
                     'Authentication/capacity/effective model/effective effort: Unknown. No commands executed.']
@@ -18794,7 +18825,7 @@ def command_audit(conf, mode):
                 text.append('{alias}: tool={tool}; requested model={requested_model}; requested effort={requested_effort}; transport={transport}'.format(**row))
                 text.extend('  '+issue['code']+': '+issue['remedy'] for issue in row['issues'])
             rendered = '\n'.join(text)
-        if len(rendered.encode()) > 131072: invalid()
+        if len(rendered.encode()) + 1 > 131072: invalid()
     except (ValueError, OSError, UnicodeError):
         print('unio command audit: invalid, unreadable, malformed or over-bound input', file=sys.stderr)
         sys.exit(2)

@@ -34,10 +34,17 @@ class CommandAudit(unittest.TestCase):
         # evidence; it cannot reach a real provider, auth store or network.
         cls.calls = cls.root / 'provider-called'
         cls.env['AUDIT_CALLS'] = str(cls.calls)
-        for name in ('codex', 'claude', 'opencode', 'grok', 'agy', 'vibe', 'copilot', 'wrapper'):
+        for name in ('codex', 'claude', 'opencode', 'grok', 'agy', 'vibe', 'copilot', 'wrapper', 'git'):
             p = cls.bin / name
             p.write_text('#!/usr/bin/env bash\nprintf "called\\n" >> "$AUDIT_CALLS"\nexit 91\n')
             p.chmod(0o755)
+        # Scratch is inside the real Unio workspace. Bound parent traversal to
+        # this isolated fixture so 'outside' genuinely has no project, rather
+        # than accidentally discovering the owner's parent coord directory.
+        cls.env['AUDIT_FIXTURE_ROOT'] = str(cls.root)
+        parent = cls.bin / 'dirname'
+        parent.write_text('#!/usr/bin/env bash\nif [ "$1" = "$AUDIT_FIXTURE_ROOT" ]; then printf "/\\n"; else exec /usr/bin/dirname "$@"; fi\n')
+        parent.chmod(0o755)
         cls.env['PATH'] = str(cls.bin) + os.pathsep + os.environ['PATH']
         cls.defaults = (cls.conf / 'agents.conf').read_bytes()
         cls.project = cls.root / 'project with spaces'
@@ -112,7 +119,8 @@ class CommandAudit(unittest.TestCase):
                  f'API_TOKEN=PRIVATE codex exec -', 'env KEY=PRIVATE codex exec -',
                  'wrapper --model gpt-6.1-sol', '/private/wrapper codex exec -',
                  'codex exec - | wrapper', 'codex exec - && wrapper',
-                 'bash -c "codex exec -"', '$(codex) exec -', 'codex exec > /private/output']
+                 'bash -c "codex exec -"', '$(codex) exec -', 'codex exec > /private/output', '${TASKFILE}/codex exec -',
+                 'codex exec - # --model gpt-6.1-sol', '/{private,other}/codex exec -']
         d = self.audit(''.join(f'alias{i}={form}\n' for i,form in enumerate(forms)))
         for row in d['agents']:
             self.assertEqual(row['tool'], 'Unknown')
@@ -140,6 +148,49 @@ class CommandAudit(unittest.TestCase):
             self.assertIn('effort_ambiguous', {i['code'] for i in row['issues']})
         for row in d['agents'][4:]: self.assertEqual(row['requested_model'], 'Unknown')
 
+    def test_option_boundary_and_profile(self):
+        d = self.audit('sol=codex exec -- -m gpt-6.1-sol --file "$TASKFILE"\n'
+                       'grokalias=grok -- --prompt-file "$TASKFILE"\n'
+                       'profile=codex exec -m gpt-6.1-sol -c model_reasoning_effort=low --profile custom - < "$TASKFILE"\n')
+        for row in d['agents']:
+            self.assertEqual(row['requested_model'], 'Unknown')
+            self.assertEqual(row['requested_effort'], 'Unknown')
+        self.assertEqual(d['agents'][1]['transport'], 'Unknown')
+
+    def test_output_bound_shared_between_views(self):
+        command = 'opencode run -m PRIVATE --variant PRIVATE --dangerously-skip-permissions'
+        text = ''.join(f'a{i:031d}={command}\n' for i in range(128))
+        (self.conf / 'agents.conf').write_text(text)
+        human = subprocess.run([str(self.unio),'doctor','--commands'],env=self.env,cwd=self.outside,capture_output=True,timeout=10)
+        machine = subprocess.run([str(self.unio),'doctor','--commands','--json'],env=self.env,cwd=self.outside,capture_output=True,timeout=10)
+        self.assertEqual(human.returncode,machine.returncode)
+        self.assertEqual(human.returncode,0)
+        self.assertGreater(len(machine.stdout),120000)
+        for result in (human,machine):
+            self.assertLessEqual(len(result.stdout),131072)
+            self.assertNotIn(b'PRIVATE', result.stdout+result.stderr)
+
+    def test_option_values_are_not_transport(self):
+        d = self.audit('sol=codex exec --output-last-message - < "$TASKFILE"\n'
+                       'claudealias=claude --output-format "-p" < "$TASKFILE"\n'
+                       'agyalias=agy --print-timeout "-p" "File: $TASKFILE"\n'
+                       'grokalias=grok --unknown --prompt-file "$TASKFILE"\n'
+                       'flagged=codex exec --unverified -m gpt-6.1-sol - < "$TASKFILE"\n'
+                       'route=opencode run -m glm-5.3 --file "$TASKFILE"\n')
+        for row in d['agents'][:-1]:
+            self.assertEqual(row['transport'], 'Unknown')
+        self.assertEqual(d['agents'][-2]['requested_model'], 'Unknown')
+        self.assertEqual(d['agents'][-1]['requested_model'], 'Unknown')
+
+    def test_duplicate_transport_unknown(self):
+        d = self.audit('grokalias=grok --prompt-file "$TASKFILE" --prompt-file /private/other\n'
+                       'opencodealias=opencode run --file /private/other --file "$TASKFILE"\n'
+                       'agyalias=agy -p "File: $TASKFILE" -p "different prompt"\n')
+        for row in d['agents']:
+            self.assertEqual(row['transport'], 'Unknown')
+            self.assertIn('transport_unknown', {i['code'] for i in row['issues']})
+        self.assertNotIn('/private/other', json.dumps(d))
+
     def test_strict_arguments(self):
         for args in [('--json',),('--commands','--commands'),('--commands','--json','extra'),
                      ('--commands','--json','--json'),('--commands','extra'),('extra',),('--help',)]:
@@ -158,6 +209,12 @@ class CommandAudit(unittest.TestCase):
         (self.conf / 'agents.conf').write_bytes(b'\xff')
         self.run_audit('--commands',expected=2)
 
+    def test_input_bounds_accept_exact_limits(self):
+        for text in ('#'+'x'*65535, '\n'*511+'sol=wrapper', 'sol=wrapper '+'x'*(4096-len('wrapper ')),
+                     ''.join(f'alias{i}=wrapper\n' for i in range(128))):
+            (self.conf / 'agents.conf').write_text(text)
+            self.run_audit('--commands','--json')
+
     def test_nonregular_missing_and_symlink(self):
         cfg = self.conf / 'agents.conf'
         cfg.unlink()
@@ -175,8 +232,9 @@ class CommandAudit(unittest.TestCase):
         (self.conf / 'off').mkdir(exist_ok=True)
         (self.conf / 'off' / 'projectalias').write_text('PRIVATE BENCH\n')
         def snapshot():
-            return {str(p.relative_to(self.root)): (p.stat().st_mode,hashlib.sha256(p.read_bytes()).hexdigest())
-                    for base in (self.project,self.conf) for p in base.rglob('*') if p.is_file()}
+            return {str(p.relative_to(self.root)): (p.lstat().st_mode, p.lstat().st_mtime_ns,
+                    os.readlink(p) if p.is_symlink() else hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else 'directory')
+                    for base in (self.project,self.conf) for p in base.rglob('*')}
         before = snapshot()
         d = json.loads(self.run_audit('--commands','--json',cwd=self.project / 'wt' / 'worker').stdout)
         self.assertEqual([a['alias'] for a in d['agents']], ['projectalias'])
@@ -195,19 +253,23 @@ class CommandAudit(unittest.TestCase):
         self.assertEqual(before,after)
 
     def test_other_installer_payloads_byte_identical(self):
-        base = subprocess.run(['git','show','425a9e36845b7e37917f922a91ad2773f7eee730:unio-install.sh'],cwd=REPO,capture_output=True,check=True).stdout
+        # Frozen-base digests avoid requiring old Git objects in release/shallow
+        # checkouts. Only the CLI, QUALITY_PY and CLI help may differ.
+        import re
         current = (REPO / 'unio-install.sh').read_bytes()
         def blocks(data):
-            import re
             return {m.group(1): m.group(2) for m in re.finditer(rb"<<'([A-Z_0-9]+)'\n(.*?)\n\1(?:\n|$)",data,re.S)}
-        old,new = blocks(base),blocks(current)
-        self.assertEqual(old.keys(),new.keys())
-        for name in old:
-            if name != b'UNIO_BIN_EOF': self.assertEqual(old[name],new[name],name)
-        # Embedded CLI's other adapters remain exactly unchanged too.
-        old,new = blocks(old[b'UNIO_BIN_EOF']),blocks(new[b'UNIO_BIN_EOF'])
-        for name in old:
-            if name not in (b'QUALITY_PY', b'HELP'): self.assertEqual(old[name],new[name],name)
+        def digest(values,exclude):
+            return hashlib.sha256(b''.join(k+b'\0'+hashlib.sha256(v).digest() for k,v in sorted(values.items()) if k not in exclude)).hexdigest()
+        outer = blocks(current)
+        self.assertEqual(digest(outer,{b'UNIO_BIN_EOF'}), 'c95d79224df16ffe41abaab2c66fd1e1a58ffe352cf8b6a4c7f9e923202344dd')
+        inner = blocks(outer[b'UNIO_BIN_EOF'])
+        self.assertEqual(digest(inner,{b'QUALITY_PY',b'HELP'}), 'ed0c991ae735eea58a3341bfaed30f341006c87dae31b3e3f1269c4ecddc4125')
+        # No-argument doctor's original body remains byte-identical after the
+        # new early read-only branch, including its original migrations.
+        body = re.search(rb'cmd_doctor\(\).*?\n(  local root;.*?)\n}\n', current, re.S).group(1)
+        self.assertEqual(hashlib.sha256(body).hexdigest(), '391f5a7fbb3401e5bedeb003d1f5b697daec30e785c3eb2c8f47917108fa2181')
+
 
 
 if __name__ == '__main__':

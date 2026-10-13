@@ -30,7 +30,8 @@ Only conservative, nonsensitive structural model forms and explicit effort
 values are shown. These are not a current model catalog or evidence that a
 flag/selector combination is supported by your installed version. Other model
 text remains Unknown with a `selector_unknown` hint. Duplicate selectors,
-conflicting/unrecognized effort controls and additional config overrides remain
+conflicting/unrecognized effort controls, unrecognized options, profiles and
+additional config overrides remain
 Unknown. No implicit effort is inferred from a model name. Copilot Auto Balance
 is reported as a requested policy, not a fixed underlying model or lab.
 
@@ -48,10 +49,11 @@ are separate evidence, not live allowance or audit results.
 
 Input must be UTF-8 regular configuration, with no final-file symlink: at most
 65,536 bytes, 512 lines, 128 unique aliases and 4,096 bytes per command. Aliases
-must match `[a-z][a-z0-9_-]{0,31}` and cannot contain secret/token/password/API-key
-markers. Blank lines and comments are allowed; other lines require `alias=command`.
+must match `[a-z][a-z0-9_-]{0,31}` and cannot contain
+secret/token/password/account/credential/API-key markers. Blank lines and comments are allowed; other lines require `alias=command`.
 Empty commands, malformed quoting, control characters and duplicate aliases are
-rejected with a controlled diagnostic. Output is capped at 131,072 bytes.
+rejected with a controlled diagnostic. The canonical JSON facts and each
+output are capped at 131,072 bytes in both views.
 
 Raw commands, arbitrary executable/wrapper paths, environment values, account
 identifiers and unvalidated selector text are never printed. Human and JSON
