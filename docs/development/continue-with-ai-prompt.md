@@ -1,3 +1,26 @@
+# Current bundle continuation — 2026-10-13
+
+The owner requests multiple useful milestones in one release. Proposed0.5.16
+combines accepted measured saving and static worker-command diagnostics.
+Development revisionc0ce8d4 is pushed. Original audit source8c0c550 passed
+checks and needed a dedicated portable-fixture correctionc0ce8d4; preserve
+both outcomes separately. Saving425a9e3 and its old627abd9 gate are component
+evidence only. A final combined gate, installation and publication are pending.
+
+Route: ChatGPT subscription/Codex CLI0.162.1/requested GPT-6.1 Sol low.
+Configured leadGPT-6.1 Sol xhigh; effective identities Unknown. No extra
+AI reviewers under YOLO. Effort source0776d80 is an honestly labelled
+prototype that only refuses unsupported requests, saved separately and
+excluded here. Next work is its actual owned managed-session backend,
+channel, native slot binding, RPC and request-boundary acceptance.
+
+Read local coord/AGENT-LOG.md and tmp/unio-next/manifest.json for exact dated
+Source/verify/acceptance/delivery receipts. The owner resumed after the
+earlier break. Older break/candidate notes below are historical. Preserve
+the real lead/shared budget, low experiment, early commits and failures.
+
+---
+
 # Current continuation — 2026-10-13: measured saving candidate
 
 The owner resumed after 0.5.15 and authorized three serial GPT-6.1 Sol low

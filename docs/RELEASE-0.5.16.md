@@ -1,4 +1,4 @@
-# Unio 0.5.16 — measured recovery saving
+# Unio 0.5.16 — recovery performance and worker diagnostics
 
 Recovery saves do less repeated filesystem metadata work when validating
 stored task text, content bodies and commit bundles. The loader checks private
@@ -26,6 +26,23 @@ and the first baseline followed a bulk-copy reset. The default budget remains
 30 seconds; this populated fixture still exceeds it. No universal speed
 percentage, automatic-controller deadline success or reasoning-effort quota
 savings is claimed. See the [full measurement record](development/SAVE-PERFORMANCE.md#descriptor-bound-deep-reading--2026-10-13-source-candidate).
+
+## Inspect worker settings before a run
+
+Run unio doctor --commands [--json] for a local, bounded static audit of
+configured worker commands. It explains cautious requested model, effort
+and transport facts and legacy or ambiguous settings. It works under STOP
+and outside projects, preserving settings and ordinary doctor behavior.
+It never executes commands, reads authentication stores, probes quota or
+makes model calls. Unknown remains Unknown; static text is not compatibility
+or readiness proof. Read the [command-audit guide](WORKER-CONNECTIONS.md).
+
+Seventeen installed fixtures cover poison commands, privacy, strict arguments,
+bounds, overrides and unchanged state. They also pass from a minimal copied
+source tree with caller-selected temporary storage.
+
+Managed worker effort control remains unfinished. Its separate refusal
+prototype is excluded; this release does not add a live effort switch.
 
 ## Validation and delivery
 

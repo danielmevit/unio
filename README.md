@@ -56,6 +56,10 @@ archive. Use it to prepare and run tasks, follow worker output and inspect files
 **In development:** recovery saving avoids redundant stored-file lookups
 while retaining complete content validation. Read the
 [measured results and remaining limits](docs/RELEASE-0.5.16.md).
+The same release adds unio doctor --commands [--json] for a
+[local worker-command audit](docs/WORKER-CONNECTIONS.md), with useful transport
+and legacy-setting hints before spending a worker run.
+
 
 **Added in 0.5.14:** give slow recovery saves an optional bounded capture
 budget and see clear deadline failures. The default stays 30 seconds;

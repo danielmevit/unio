@@ -25,8 +25,9 @@ Earlier dated sections below preserve their historical context.
 The 0.5.16 candidate completes the first bounded save optimization: fewer
 stored-file pathname checks with full byte validation. See the
 [measurement limitations](SAVE-PERFORMANCE.md#descriptor-bound-deep-reading--2026-10-13-source-candidate).
-Release checks and installation are pending. Connection reliability is next,
-followed by supported effort control; the latter remains unimplemented.
+The candidate also includes static worker-command diagnostics. Combined release
+checks and installation are pending. Managed effort control remains unfinished;
+its separate refusal prototype is excluded.
 
 ## Current focus: finish the functional core
 

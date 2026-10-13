@@ -4,9 +4,16 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.16 (unreleased) — measured recovery saving — 2026-10-13
+## 0.5.16 (unreleased) — recovery performance and worker diagnostics — 2026-10-13
 
 See [measured results and limits](docs/RELEASE-0.5.16.md).
+
+- Add local unio doctor --commands [--json] to inspect worker command settings
+  before a run, preserving Unknowns and explaining legacy transport/flag hints.
+- Keep the audit read-only under STOP and outside projects; never execute a
+  configured command, read sign-in stores or rewrite settings.
+- Add installed poison/privacy/bounds/state coverage with portable fixtures.
+
 
 - Reduce redundant pathname lookups when deeply validating recovery saves;
   check private metadata on the exact no-follow descriptor supplying the bytes.
