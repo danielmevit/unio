@@ -116,6 +116,18 @@ elif mode=='tool_only':raw=dump([assistant(5,'preamble',toolRequests=[{'name':'v
 elif mode=='whitespace':raw=dump(framed('   '))
 elif mode=='ambiguous':raw=dump([assistant(5,'one'),assistant(6,'two'),result()])
 elif mode=='chunks':raw=dump([assistant(6,'rsicht €\n',chunkIndex=1,chunkCount=2),assistant(5,'Übe',chunkIndex=0,chunkCount=2),result()])
+elif mode=='bad_id_null':bad=assistant(5,content);bad['id']=None;raw=dump([bad,result()])
+elif mode=='bad_id_int':bad=assistant(5,content);bad['id']=12345;raw=dump([bad,result()])
+elif mode=='bad_id_list':bad=assistant(5,content);bad['id']=['not-a-uuid'];raw=dump([bad,result()])
+elif mode=='bad_id_object':bad=assistant(5,content);bad['id']={'uuid':uid(5)};raw=dump([bad,result()])
+elif mode=='huge_usage_number':r=result();r['usage']['premiumRequests']=10**400;raw=dump(framed(content)[:-1]+[r])
+elif mode=='conflicting_turn_id':raw=dump([assistant(5,'A',chunkIndex=0,chunkCount=2,turnId='turn-a',originatingMessageId='origin-a'),assistant(6,'B',chunkIndex=1,chunkCount=2,turnId='turn-b',originatingMessageId='origin-a'),result()])
+elif mode=='conflicting_origin_id':raw=dump([assistant(5,'A',chunkIndex=0,chunkCount=2,turnId='turn-a',originatingMessageId='origin-a'),assistant(6,'B',chunkIndex=1,chunkCount=2,turnId='turn-a',originatingMessageId='origin-b'),result()])
+elif mode=='conflicting_both_ids':raw=dump([assistant(5,'A',chunkIndex=0,chunkCount=2,turnId='turn-a',originatingMessageId='origin-a'),assistant(6,'B',chunkIndex=1,chunkCount=2,turnId='turn-b',originatingMessageId='origin-b'),result()])
+elif mode=='malformed_group_id_null':raw=dump([assistant(5,'A',chunkIndex=0,chunkCount=2,turnId=None),assistant(6,'B',chunkIndex=1,chunkCount=2,turnId='turn-a'),result()])
+elif mode=='malformed_group_id_int':raw=dump([assistant(5,'A',chunkIndex=0,chunkCount=2,originatingMessageId=123),assistant(6,'B',chunkIndex=1,chunkCount=2,originatingMessageId='origin-a'),result()])
+elif mode=='malformed_group_id_empty':raw=dump([assistant(5,'A',chunkIndex=0,chunkCount=2,turnId=''),assistant(6,'B',chunkIndex=1,chunkCount=2,turnId='turn-a'),result()])
+elif mode=='coherent_group_ids':raw=dump([assistant(6,'second part €\n',chunkIndex=1,chunkCount=2,turnId='turn-1',originatingMessageId='orig-1'),assistant(5,'first part: ',chunkIndex=0,chunkCount=2,turnId='turn-1',originatingMessageId='orig-1'),result()])
 elif mode=='preamble':raw=dump([assistant(5,'I will view',toolRequests=[{'name':'view'}]),assistant(6,content),result()])
 else:raw=dump(framed(content))
 out=sys.stdout.buffer
@@ -327,15 +339,129 @@ class CopilotTests(unittest.TestCase):
         modes = ["malformed", "truncated", "crlf", "nonfinite", "overflow", "duplicate_key", "deep",
                  "duplicate_id", "duplicate_result", "not_last", "missing_result", "wrong_result",
                  "result_failed", "blocked", "delta_only", "subagent", "tool_only", "whitespace",
-                 "ambiguous"]
+                 "ambiguous", "bad_id_null", "bad_id_int", "bad_id_list", "bad_id_object",
+                 "huge_usage_number", "conflicting_turn_id", "conflicting_origin_id",
+                 "conflicting_both_ids", "malformed_group_id_null", "malformed_group_id_int",
+                 "malformed_group_id_empty"]
         for mode in modes:
             with self.subTest(mode=mode):
                 p = self.invoke(FAKE_MODE=mode)
                 self.assertEqual(p.returncode, 2, p.stderr)
                 body = json.loads(p.stdout)
-                self.assertEqual((body["outcome"], body["native_exit"]), ("empty_or_invalid_response", 0))
+                self.assertEqual((body["outcome"], body["native_exit"], body["adapter_exit"]),
+                                 ("empty_or_invalid_response", 0, 2))
                 self.assertFalse(Path(body["proposal"]).exists())
                 self.assertNotIn("RAW-SECRET-SENTINEL", p.stdout)
+                self.assertNotIn("Traceback", p.stderr)
+                r = json.loads(Path(body["receipt"]).read_text())
+                self.assertEqual(r["adapter_exit"], 2)
+                self.assertEqual(r["outcome"], "empty_or_invalid_response")
+                self.assertTrue(Path(r["raw_stdout_path"]).exists())
+
+    def test_coherent_chunked_and_plain_exact_proposals(self):
+        p = self.invoke(FAKE_MODE="coherent_group_ids")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        r = self.receipt()
+        self.assertEqual(r["outcome"], "proposal_recorded")
+        self.assertEqual(Path(r["proposal_path"]).read_text(encoding="utf-8"), "first part: second part €\n")
+        self.receipts.joinpath(r["proposal_path"]).parent.rename(self.root / "done-coherent")
+
+        proposal_dict = {
+            "title": "Exact patch proposal with quotes \"inner\" and newline\nsecond line",
+            "utf8_symbol": "Übersicht € — 100%",
+            "large_number": 10**400,
+            "edits": [{"path": "src/file.py", "content": "x = 1\ny = \"quoted\"\n"}]
+        }
+        content = json.dumps(proposal_dict, ensure_ascii=False, indent=2)
+        p = self.invoke(FAKE_MODE="ok", FAKE_CONTENT=content)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        r = self.receipt()
+        self.assertEqual(r["outcome"], "proposal_recorded")
+        saved = Path(r["proposal_path"]).read_text(encoding="utf-8")
+        self.assertEqual(saved, content)
+        self.assertEqual(json.loads(saved)["large_number"], 10**400)
+
+    def test_unit_regressions_three_defects(self):
+        base = {'timestamp': '2026-10-14T08:00:00.000Z', 'parentId': None,
+                'type': 'assistant.message', 'data': {'messageId': 'm1', 'content': 'text'}}
+        for bad_id in [None, 12345, ['list'], {'dict': 1}, True]:
+            with self.subTest(bad_id=bad_id):
+                event = dict(base, id=bad_id)
+                with self.assertRaises(worker.Refusal) as ctx:
+                    worker.require_assistant(event)
+                self.assertEqual(str(ctx.exception), worker.INVALID)
+
+        res_base = {'type': 'result', 'timestamp': '2026-10-14T08:00:01.000Z',
+                    'sessionId': '11111111-1111-4111-8111-111111111111', 'exitCode': 0,
+                    'usage': {'premiumRequests': 0, 'totalApiDurationMs': 1, 'sessionDurationMs': 2,
+                              'codeChanges': {'linesAdded': 0, 'linesRemoved': 0, 'filesModified': 0}}}
+        for key in ('premiumRequests', 'totalApiDurationMs', 'sessionDurationMs'):
+            with self.subTest(usage_key=key):
+                r = json.loads(json.dumps(res_base))
+                r['usage'][key] = 10**400
+                with self.assertRaises(worker.Refusal) as ctx:
+                    worker.require_result(r)
+                self.assertEqual(str(ctx.exception), worker.INVALID)
+
+        for key in ('linesAdded', 'linesRemoved', 'filesModified'):
+            with self.subTest(code_change_key=key):
+                r = json.loads(json.dumps(res_base))
+                r['usage']['codeChanges'][key] = 10**400
+                with self.assertRaises(worker.Refusal) as ctx:
+                    worker.require_result(r)
+                self.assertEqual(str(ctx.exception), worker.INVALID)
+
+        self.assertFalse(worker.finite_number(10**400))
+        self.assertFalse(worker.finite_number(-10**400))
+        self.assertTrue(worker.finite_number(0))
+        self.assertTrue(worker.finite_number(42))
+        self.assertTrue(worker.finite_number(3.14))
+
+        def make_chunk(idx, count, content, turn_id=None, origin_id=None):
+            data = {'messageId': f'm{idx}', 'content': content, 'chunkIndex': idx, 'chunkCount': count}
+            if turn_id is not None:
+                data['turnId'] = turn_id
+            if origin_id is not None:
+                data['originatingMessageId'] = origin_id
+            return {'id': f'00000000-0000-4000-8000-{idx:012d}', 'timestamp': '2026-10-14T08:00:00.000Z',
+                    'parentId': None, 'type': 'assistant.message', 'data': data}
+
+        c0 = make_chunk(0, 2, 'A', turn_id='turn-a', origin_id='origin-a')
+        c1 = make_chunk(1, 2, 'B', turn_id='turn-b', origin_id='origin-a')
+        with self.assertRaises(worker.Refusal) as ctx:
+            worker.completion_text([c0, c1])
+        self.assertEqual(str(ctx.exception), worker.INVALID)
+
+        c0 = make_chunk(0, 2, 'A', turn_id='turn-a', origin_id='origin-a')
+        c1 = make_chunk(1, 2, 'B', turn_id='turn-a', origin_id='origin-b')
+        with self.assertRaises(worker.Refusal) as ctx:
+            worker.completion_text([c0, c1])
+        self.assertEqual(str(ctx.exception), worker.INVALID)
+
+        c0 = make_chunk(0, 2, 'A', turn_id='turn-a', origin_id='origin-a')
+        c1 = make_chunk(1, 2, 'B', turn_id='turn-b', origin_id='origin-b')
+        with self.assertRaises(worker.Refusal) as ctx:
+            worker.completion_text([c0, c1])
+        self.assertEqual(str(ctx.exception), worker.INVALID)
+
+        for bad in (None, 123, [], {}, ""):
+            chunk_bad = {'id': '00000000-0000-4000-8000-000000000001', 'timestamp': '2026-10-14T08:00:00.000Z',
+                         'parentId': None, 'type': 'assistant.message',
+                         'data': {'messageId': 'm1', 'content': 'text', 'chunkIndex': 0, 'chunkCount': 1, 'turnId': bad}}
+            with self.assertRaises(worker.Refusal) as ctx:
+                worker.completion_text([chunk_bad])
+            self.assertEqual(str(ctx.exception), worker.INVALID)
+            with self.assertRaises(worker.Refusal) as ctx:
+                worker.require_assistant(chunk_bad)
+            self.assertEqual(str(ctx.exception), worker.INVALID)
+
+        c0 = make_chunk(0, 2, 'Hello, ', turn_id='turn-ok', origin_id='origin-ok')
+        c1 = make_chunk(1, 2, 'World!\n', turn_id='turn-ok', origin_id='origin-ok')
+        self.assertEqual(worker.completion_text([c0, c1]), 'Hello, World!\n')
+
+        c0 = make_chunk(0, 2, 'Foo ', turn_id=None, origin_id=None)
+        c1 = make_chunk(1, 2, 'Bar', turn_id=None, origin_id=None)
+        self.assertEqual(worker.completion_text([c0, c1]), 'Foo Bar')
 
 
 if __name__ == "__main__":
