@@ -69,6 +69,7 @@ python3 -B bridge/tests/provider_capacity_test.py
 python3 -B tests/unio-provider-capacity.py
 python3 -B tests/unio-work-policy.py
 python3 -B tests/unio-work-policy-guard.py
+python3 -B tests/unio-project-root.py
 python3 -B tests/unio-save-walk.py
 python3 -B tests/unio-save-performance.py
 python3 -B tests/unio-work-saving.py

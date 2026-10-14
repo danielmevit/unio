@@ -121,6 +121,32 @@ setup), init does NOT overwrite it; it tells you to add one line: "Also read
 and follow MASTER.md." Workers are likewise told to follow the repo's
 AGENTS.md reading ritual, with Unio boundaries taking precedence.
 
+### Project-root boundary
+
+Commands that act on a project (mode/tier/lead/account, stop/resume, run,
+verify, ...) select it by walking up from your current directory to the
+nearest `coord/` + `wt/` pair. On the way up they remember the first Git
+boundary (a `.git` — a full repository, a fresh `git init` with no commits
+yet, or a linked worktree's `.git` file). That boundary must belong to the
+project found: its main clone (any name, directly under the project root)
+or a registered worker worktree under `wt/`. Anything else is an unrelated
+nested Git repository — for example something you cloned into the
+workspace scratch or into a vendor directory — and Unio refuses to act on
+the enclosing project from inside it, before touching any policy, lock or
+provider:
+
+```text
+unio: refusing to act on the enclosing project from inside an unrelated Git repository
+```
+
+The refusal tells you the two ways out: `cd` into the enclosing project
+(or any non-Git directory inside it, such as `coord/` or the scratch), or
+`cd` to the nested repository's own root and run `unio init` there to give
+it its own workspace. Unio never initializes, resets policy or fabricates
+identity for you. An initialized nested workspace is selected normally
+from inside it, and commands that take an explicit project path (e.g.
+`unio score <project-root>`) are unaffected.
+
 ## 4. Run a cycle
 
 ```bash
