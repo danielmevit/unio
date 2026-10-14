@@ -23562,11 +23562,37 @@ check_id() { # $1=value $2=what it is
   esac
 }
 
+# A Git boundary is a directory holding a `.git` entry: a full repository
+# (even an unborn `git init` one) or a linked worktree's `.git` file. A test
+# repository created under the workspace scratch ran `unio account mock
+# codex` before its own `unio init`; find_root walked past that boundary and
+# the enclosing real project gained a test alias. The first Git boundary
+# crossed on the way up must therefore belong to the project found above it:
+# its main clone (any name — a direct child of the root) or a registered
+# worker worktree (the `.unio-worker` marker, or a direct child of wt/ for
+# workspaces from before the marker). Any other boundary is an unrelated
+# nested repository: refuse before any policy write, lock or provider call,
+# and point at local init or the intended project instead.
 find_root() {
-  local d="$PWD"
+  local d="$PWD" boundary="" owner
   while [ "$d" != "/" ]; do
-    if [ -d "$d/coord" ] && [ -d "$d/wt" ]; then echo "$d"; return 0; fi
-    d=$(dirname "$d")
+    if [ -d "$d/coord" ] && [ -d "$d/wt" ]; then
+      if [ -n "$boundary" ]; then
+        owner=$(dirname -- "$boundary")
+        if [ "$owner" != "$d" ] && [ "$owner" != "$d/wt" ] \
+          && [ ! -f "$boundary/.unio-worker" ]; then
+          echo "unio: refusing to act on the enclosing project from inside an unrelated Git repository" >&2
+          echo "  you are inside the Git repository: $boundary" >&2
+          echo "  enclosing Unio project: $d — only its clone and registered worker worktrees act on it" >&2
+          echo "  to work on the enclosing project: cd '$d' (or a non-Git directory inside it)" >&2
+          echo "  to work on this repository: cd to its root and run 'unio init' there" >&2
+          return 1
+        fi
+      fi
+      echo "$d"; return 0
+    fi
+    if [ -z "$boundary" ] && [ -e "$d/.git" ]; then boundary="$d"; fi
+    d=$(dirname -- "$d")
   done
   return 1
 }
@@ -25247,7 +25273,7 @@ cmd_version() {
 cmd_browser() {
   command -v python3 >/dev/null || die "browser requires Python 3.9 or newer"
   local project="" engine browser_dir
-  project=$(find_root) || true # An explicit --project also works outside a workspace.
+  project=$(find_root 2>/dev/null) || true # An explicit --project also works outside a workspace.
   engine=$(readlink -f -- "$0") || die "cannot resolve this Unio executable"
   browser_dir="$CONF_DIR/lib/browser"
   [ -f "$browser_dir/launcher.py" ] && [ -f "$browser_dir/server.py" ] \
@@ -25269,7 +25295,7 @@ cmd_dashboard() { # detached read-only browser per project; never calls a provid
     || die "dashboard files missing; rerun the matching Unio installer"
   engine=$(readlink -f -- "$0") || die "cannot resolve this Unio executable"
   # Only a default; an explicit --project wins. The service refuses symlinked paths.
-  if root=$(find_root); then root=$(cd -- "$root" && pwd -P) || root=""; fi
+  if root=$(find_root 2>/dev/null); then root=$(cd -- "$root" && pwd -P) || root=""; fi
   UNIO_CONF_DIR="$conf"
   export UNIO_CONF_DIR
   # Isolated imports: the installed helper is the only code it loads.
@@ -25298,7 +25324,7 @@ cmd_fleet() { # local agent fleet snapshot and observation
     case "$arg" in -h|--help) asks_help=true;; esac
   done
   if ! $explicit && ! $asks_help; then
-    if root=$(find_root); then
+    if root=$(find_root 2>/dev/null); then
       # The stores refuse symlinked paths; select the same root physically.
       root=$(cd -- "$root" && pwd -P) || die "fleet: project directory unavailable"
       set -- --project "$root" "$@"
@@ -25329,7 +25355,7 @@ cmd_plan() { # local plan observation and recommendations before dispatch
     esac
   done
   if ! $explicit && ! $asks_help; then
-    if root=$(find_root); then
+    if root=$(find_root 2>/dev/null); then
       # The stores refuse symlinked paths; select the same root physically.
       root=$(cd -- "$root" && pwd -P) || die "plan: project directory unavailable"
       set -- --project "$root" "$@"
@@ -25361,7 +25387,7 @@ cmd_experience() { # local worker experience records and selection advice
     esac
   done
   if ! $explicit && ! $asks_help; then
-    if root=$(find_root); then
+    if root=$(find_root 2>/dev/null); then
       # The store refuses symlinked paths; select the same root physically.
       root=$(cd -- "$root" && pwd -P) || die "experience: project directory unavailable"
       set -- --project "$root" "$@"
@@ -25411,7 +25437,7 @@ cmd_capacity() { # manual readings; only explicit refresh codex reads provider m
     case "$arg" in -h|--help) asks_help=true;; esac
   done
   if ! $explicit; then
-    if root=$(find_root); then
+    if root=$(find_root 2>/dev/null); then
       # The store refuses symlinked paths; select the same root physically.
       root=$(cd -- "$root" && pwd -P) || die "capacity: project directory unavailable"
       set -- --project "$root" "$@"
@@ -25446,7 +25472,7 @@ cmd_readiness() { # explicit metadata only; show never invokes an agent
     case "$arg" in -h|--help) asks_help=true;; esac
   done
   if ! $explicit; then
-    if root=$(find_root); then
+    if root=$(find_root 2>/dev/null); then
       # The store refuses symlinked paths; select the same root physically.
       root=$(cd -- "$root" && pwd -P) || die "readiness: project directory unavailable"
       set -- --project "$root" "$@"
@@ -25512,7 +25538,7 @@ cmd_doctor() { # preflight: catch what would otherwise waste a run or quota
       return 2
     fi
     local audit_root audit_conf="$CONF_FILE"
-    if audit_root=$(find_root); then
+    if audit_root=$(find_root 2>/dev/null); then
       # Reject an existing nonregular override rather than silently falling back.
       if [ -e "$audit_root/coord/agents.conf" ] || [ -L "$audit_root/coord/agents.conf" ]; then
         audit_conf="$audit_root/coord/agents.conf"
