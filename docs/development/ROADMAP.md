@@ -35,6 +35,12 @@ one combined gate, rather than publish each corrective slice separately.
 
 ## Current focus: finish the functional core
 
+Local preflight before another implementation run: audit the original save-store
+corrupt archive/duplicate-ID condition without deleting evidence. Current source
+work is committed and pushed; automatic capture health is not established for
+that existing store. Estimate 30–90 minutes for an inventory and reversible
+recovery plan. This operator condition is separate from release quality gates.
+
 Next bounded improvement: prevent mutating settings commands in a new nested,
 uninitialized Git repository from silently selecting an enclosing Unio project.
 The field trial exposed this through a fixture policy call. Preserve legitimate

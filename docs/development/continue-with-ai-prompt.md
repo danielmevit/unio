@@ -28,8 +28,17 @@ Two test-added dummy budget aliases were restored while idle; real account maps
 and the Codex lead stayed intact. Canonical receipts and new log timestamps use
 `date`; private worker fixture failures remain separate from final acceptance.
 
-Next: implement the nested/uninitialized project-root mutation guardrail (roughly
-1–2 hours), then freeze a useful bundle and run one full release gate. Keep UI
+Before another implementation run, audit this workspace's original save history
+under STOP while idle: corrupt/unsupported archived evidence and duplicate
+active/archive IDs still refuse captures; the 30-second deadline was also seen.
+Prior good evidence is retained, and all current code is committed/pushed. This
+existing local-store condition was preserved, not fixed by the performance task.
+Estimate 30–90 minutes for a read-only inventory and a reviewable recovery plan;
+keep original bytes/receipts and use only checked, reversible repair steps.
+Never delete evidence or weaken content/retention validation to make a check pass.
+
+Then implement the nested/uninitialized project-root mutation guardrail (roughly
+1–2 hours), freeze a useful bundle and run one full release gate. Keep UI
 polish later. Before a new assignment verify official latest/installed versions,
 actual routing policy and worker idleness. The low experiment was scoped; do not
 silently make it the default for unrelated future work. Owner's ordinary fix rule
