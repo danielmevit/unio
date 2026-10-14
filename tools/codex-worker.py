@@ -120,6 +120,10 @@ class Server:
         self.doc = None
 
     def stop(self, number, frame):
+        # Native supervision and timeout can both forward cancellation. A
+        # second exception while unwinding can interrupt entry into close().
+        if self.stop_code is not None:
+            return
         self.stop_code = 128 + number
         raise Cancelled('interrupted')
 

@@ -148,10 +148,54 @@ class Harness:
         self.finish(143)
 
 
+def repeated_cancellation(h):
+    # Deliver the second forwarded signal at the cleanup-entry window instead
+    # of depending on native timeout/supervisor scheduling to hit that window.
+    check = r'''
+import json, os, runpy, signal, socket, sys
+from pathlib import Path
+backend = runpy.run_path(sys.argv[1])
+server = backend['Server'](None)
+server.directory = Path(sys.argv[2]) / 'duplicate-cancel'
+server.directory.mkdir(mode=0o700)
+server.listener = socket.socket(socket.AF_UNIX)
+server.listener.bind(str(server.directory / 'control.sock'))
+server.manifest = server.directory / 'manifest.json'
+server.manifest.write_text('{}')
+server.manifest.chmod(0o600)
+server.manifest_inode = backend['read_private'](server.manifest)[1]
+signal.signal(signal.SIGTERM, server.stop)
+signal.signal(signal.SIGINT, server.stop)
+original = signal.signal
+def before_ignore(number, handler):
+    if number == signal.SIGTERM and handler == signal.SIG_IGN:
+        os.kill(os.getpid(), signal.SIGTERM)
+        os.kill(os.getpid(), signal.SIGINT)
+    return original(number, handler)
+signal.signal = before_ignore
+try:
+    os.kill(os.getpid(), signal.SIGTERM)
+except backend['Cancelled']:
+    pass
+finally:
+    server.close()
+assert server.stop_code == 143
+assert not server.manifest.exists()
+assert not server.directory.exists()
+sys.exit(server.stop_code)
+'''
+    result = subprocess.run(['python3', '-I', '-S', '-B', '-c', check, str(h.helper), str(h.base)],
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == 143, (result.returncode, result.stdout, result.stderr)
+    assert not (h.base / 'duplicate-cancel').exists()
+    print('ok repeated TERM/INT at cleanup entry preserves first exit143 and removes owned channel', flush=True)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='unio-documented-') as directory:
         h=Harness(directory, documented=True)
         try:
+            repeated_cancellation(h)
             name=h.start()
             doc=json.loads(h.manifest.read_text())
             assert doc['worker']=='codexmanaged' and doc['task']==name
