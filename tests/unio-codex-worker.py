@@ -28,7 +28,7 @@ for line in sys.stdin:
     if method == 'initialized': continue
     if method == 'initialize': result = {}
     elif method == 'account/read': result = {'account':{'type':os.environ.get('FAKE_AUTH','chatgpt')}}
-    elif method == 'model/list': result = {'data':[{'id':'test-sol','model':'test-sol','supportedReasoningEfforts':[{'reasoningEffort':v} for v in ['low','high','xhigh','ultra']]}]}
+    elif method == 'model/list': result = {'data':[{'id':os.environ.get('FAKE_MODEL','test-sol'),'model':os.environ.get('FAKE_MODEL','test-sol'),'supportedReasoningEfforts':[{'reasoningEffort':v} for v in ['low','high','xhigh','ultra']]}]}
     elif method == 'thread/start': result = {'thread':{'id':'private-thread','reasoningEffort':effort}}
     elif method == 'turn/start':
         assert not started
@@ -64,7 +64,8 @@ for line in sys.stdin:
 '''
 
 class Harness:
-    def __init__(self, directory):
+    def __init__(self, directory, documented=False):
+        self.worker = 'codexmanaged' if documented else 'mock'
         self.base = Path(directory)
         self.root = self.base / 'project with spaces'
         self.repo = self.root / 'repo'
@@ -87,17 +88,24 @@ class Harness:
         assert self.helper.read_bytes() == (SOURCE/'tools/codex-worker.py').read_bytes()
         # Test configuration only: same real native account route, mocked provider.
         (self.base/'conf/agents.conf').write_text('mock=python3 -I -S -B "$UNIO_CONF_DIR/lib/codex-worker.py" run --model test-sol --effort low\nlegacy=true\ncodex=true\n')
+        if documented:
+            guide=(self.base/'conf/lib/WORKER-EFFORT.md').read_text()
+            entry=next(line for line in guide.splitlines() if line.startswith('codexmanaged='))
+            with (self.base/'conf/agents.conf').open('a') as config:
+                config.write(entry+'\n')
+            self.env['FAKE_MODEL']='gpt-6.1-sol'
         for args in [('init','-q','-b','main'),('config','user.name','mock'),('config','user.email','mock@example.invalid')]:
             subprocess.run(['git',*args],cwd=self.repo,env=self.env,check=True,capture_output=True)
         (self.repo/'seed').write_text('seed')
         for args in [('add','seed'),('commit','-qm','seed')]:
             subprocess.run(['git',*args],cwd=self.repo,env=self.env,check=True,capture_output=True)
-        self.call('init','mock','legacy')
-        self.call('account','mock','codex')
+        self.call('account',self.worker,'codex')
+        self.call('init',self.worker,'legacy')
+        self.call('account',self.worker,'codex')
         self.call('account','legacy','codex')
         self.call('tier','medium')
         self.call('lead','codex')
-        self.manifest = self.root/'coord/.locks/codex-worker-mock.json'
+        self.manifest = self.root/('coord/.locks/codex-worker-'+self.worker+'.json')
         self.process = None
         self.task = 0
 
@@ -110,7 +118,7 @@ class Harness:
         self.task += 1
         name = 'TASK-'+str(self.task)
         (self.root/'coord/tasks'/ (name+'.md')).write_text('# Task\nNATIVE-TASK-SENTINEL\n## Allowed scope\n- task-output.txt\n## Validate\n$ test -f task-output.txt\n')
-        self.process = subprocess.Popen([self.unio,'run','mock',name],cwd=self.repo,
+        self.process = subprocess.Popen([self.unio,'run',self.worker,name],cwd=self.repo,
             env=dict(self.env,FAKE_MODE=mode,UNIO_TIMEOUT=timeout,**(extra or {})),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         if mode == 'hold':
             deadline=time.monotonic()+12
@@ -130,7 +138,7 @@ class Harness:
         return out,err
 
     def effort(self,level=None,code=0):
-        args=['worker-effort','mock']+([level] if level else [])+['--json']
+        args=['worker-effort',self.worker]+([level] if level else [])+['--json']
         return json.loads(self.call(*args,code=code).stdout)
 
     def messages(self):
@@ -142,6 +150,27 @@ class Harness:
 
 
 def main():
+    with tempfile.TemporaryDirectory(prefix='unio-documented-') as directory:
+        h=Harness(directory, documented=True)
+        try:
+            name=h.start()
+            doc=json.loads(h.manifest.read_text())
+            assert doc['worker']=='codexmanaged' and doc['task']==name
+            assert Path(doc['slot']).parent.name=='codex'
+            messages=h.messages()
+            assert len([m for m in messages if 'launch' in m])==1
+            turn=next(m for m in messages if m.get('method')=='turn/start')
+            thread=next(m for m in messages if m.get('method')=='thread/start')
+            assert thread['params']['model']=='gpt-6.1-sol' and turn['params']['effort']=='low'
+            # The real shared group retains its lead reservation: a second worker refuses.
+            (h.root/'coord/tasks/OTHER.md').write_text('NATIVE-TASK-SENTINEL')
+            h.call('run','legacy','OTHER',code=2)
+            assert len([m for m in h.messages() if 'launch' in m])==1
+            h.terminate()
+            print('ok installed documented config/account/init/run reaches managed backend in shared codex group with lead reservation',flush=True)
+        finally:
+            if h.process is not None and h.process.poll() is None:
+                h.process.terminate();h.process.communicate(timeout=25)
     with tempfile.TemporaryDirectory(prefix='unio-codex-') as directory:
         h=Harness(directory)
         try:

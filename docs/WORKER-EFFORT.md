@@ -1,23 +1,30 @@
 # Managed Codex Source and worker effort
 
-Opt in with a separate agents.conf entry (keep existing codex exec unchanged):
-
-```ini
-codex-managed=python3 -I -S -B "${UNIO_CONF_DIR:-$HOME/.config/unio}/lib/codex-worker.py" run --model gpt-6.1-sol --effort low
-```
-
-Map this alias to the same existing Codex account budget group using the native
-work policy. For an existing group named `codex`, use:
+Opt in with a separate alias `codexmanaged` (no hyphen: native worker names
+select the agent before the first hyphen). Keep the existing `codex` exec entry
+unchanged. Append this entry once to your existing agents.conf:
 
 ```sh
-unio account codex-managed codex
-unio init codex-managed
-unio run codex-managed TASK
+cat >> "${UNIO_CONF_DIR:-$HOME/.config/unio}/agents.conf" <<'UNIO_MANAGED_AGENT'
+codexmanaged=python3 -I -S -B "${UNIO_CONF_DIR:-$HOME/.config/unio}/lib/codex-worker.py" run --model gpt-6.1-sol --effort low
+UNIO_MANAGED_AGENT
 ```
 
-Use the owner's actual existing group if it has a different name. The registered
-lead still consumes its slot; select the owner's authorized native concurrency
-tier before admission. No allowance is inferred from the slot count.
+From the initialized project repository, map the alias to the real existing
+Codex subscription group, initialize its worker, then run an existing task file
+`coord/tasks/TASK.md`:
+
+```sh
+unio account codexmanaged codex
+unio init codexmanaged
+unio run codexmanaged TASK
+```
+
+Use the owner's actual existing group if it has a different name. Preserve the
+registered lead and its reserved slot. Before running, select the owner's
+authorized native concurrency tier (for example `unio tier medium` permits one
+worker beside a lead in the same group); restore any temporary tier after the
+worker is idle. No allowance is inferred from the slot count.
 Run `unio run WORKER TASK` normally. The Source launches
 `codex app-server --listen stdio://` under the existing CLI subscription login.
 It inherits the CLI's existing permission/sandbox settings; configure those

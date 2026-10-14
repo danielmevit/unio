@@ -15,6 +15,7 @@ smoke=importlib.util.module_from_spec(spec);spec.loader.exec_module(smoke)
 def main():
     with tempfile.TemporaryDirectory(prefix='unio-effort-') as directory:
         h=smoke.Harness(directory)
+        socket_fd=None
         try:
             result=json.loads(h.call('worker-effort','legacy','--json',code=2).stdout)
             assert result['state']=='unsupported' and not h.receipt.exists()
@@ -24,9 +25,12 @@ def main():
             h.start(extra={'FAKE_READ_ONLY':'1'})
             original=h.manifest.read_bytes()
             doc=json.loads(original)
+            socket_path=Path(doc['socket'])
+            socket_fd=os.open(socket_path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            socket_address=f'/proc/self/fd/{socket_fd}/{socket_path.name}'
             def raw(request):
                 with socket.socket(socket.AF_UNIX) as conn:
-                    conn.settimeout(20);conn.connect(doc['socket']);conn.sendall(request)
+                    conn.settimeout(20);conn.connect(socket_address);conn.sendall(request)
                     data=conn.recv(16384)
                     return json.loads(data)
             before=len(h.messages())
@@ -62,9 +66,10 @@ def main():
             socket_path=Path(doc['socket']);socket_saved=socket_path.with_suffix('.saved')
             socket_path.rename(socket_saved)
             with socket.socket(socket.AF_UNIX) as replacement_socket:
-                replacement_socket.bind(str(socket_path));socket_path.chmod(0o600);replacement_socket.listen(1)
+                replacement_socket.bind(socket_address);socket_path.chmod(0o600);replacement_socket.listen(1)
                 assert h.effort('high',code=2)['state']=='stale-or-invalid'
             socket_path.unlink();socket_saved.rename(socket_path)
+            os.close(socket_fd);socket_fd=None
             for mutate in [lambda d:d.update(pid_stamp='stale'), lambda d:d.update(worker='other'),
                            lambda d:d.update(slot_inode=[0,0]), lambda d:d.update(holder_stamp='stale')]:
                 changed=json.loads(original);mutate(changed);h.manifest.write_text(json.dumps(changed))
@@ -113,6 +118,8 @@ def main():
             assert pending.returncode==2,(out,err)
             print('ok cancellation during active effort RPC reaps backend/provider and preserves 143',flush=True)
         finally:
+            if socket_fd is not None:
+                os.close(socket_fd)
             if h.process is not None and h.process.poll() is None:
                 h.process.terminate()
                 h.process.communicate(timeout=25)

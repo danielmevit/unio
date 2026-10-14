@@ -1,0 +1,1 @@
+Fix installed managed Codex offline fixtures for long caller TMPDIR socket paths without changing runtime. Document a usable codexmanaged opt-in alias in the existing Codex budget group, with an installed offline regression covering backend invocation and the lead reservation.
