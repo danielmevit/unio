@@ -124,13 +124,16 @@ AGENTS.md reading ritual, with Unio boundaries taking precedence.
 ### Project-root boundary
 
 Commands that act on a project (mode/tier/lead/account, stop/resume, run,
-verify, ...) select it by walking up from your current directory to the
+verify, ...) select it by walking up from your physical current directory
+(including after a logical shell `cd` through a symlink) to the
 nearest `coord/` + `wt/` pair. On the way up they remember the first Git
 boundary (a `.git` — a full repository, a fresh `git init` with no commits
 yet, or a linked worktree's `.git` file). That boundary must belong to the
 project found: its main clone (any name, directly under the project root)
-or a registered worker worktree under `wt/`. Anything else is an unrelated
-nested Git repository — for example something you cloned into the
+or a direct child worktree under `wt/`, including pre-marker worktrees.
+A `.unio-worker` file elsewhere does not authorize selecting the enclosing
+project. Anything else is an unrelated nested Git repository — for example
+something you cloned into the
 workspace scratch or into a vendor directory — and Unio refuses to act on
 the enclosing project from inside it, before touching any policy, lock or
 provider:
@@ -146,6 +149,10 @@ it its own workspace. Unio never initializes, resets policy or fabricates
 identity for you. An initialized nested workspace is selected normally
 from inside it, and commands that take an explicit project path (e.g.
 `unio score <project-root>`) are unaffected.
+
+This is an accidental-selection layout guard, not a sandbox or repository
+authentication. An independent clone directly under the project root or
+`wt/` still fits the supported legacy topology and is allowed.
 
 ## 4. Run a cycle
 

@@ -23568,22 +23568,23 @@ check_id() { # $1=value $2=what it is
 # codex` before its own `unio init`; find_root walked past that boundary and
 # the enclosing real project gained a test alias. The first Git boundary
 # crossed on the way up must therefore belong to the project found above it:
-# its main clone (any name — a direct child of the root) or a registered
-# worker worktree (the `.unio-worker` marker, or a direct child of wt/ for
-# workspaces from before the marker). Any other boundary is an unrelated
-# nested repository: refuse before any policy write, lock or provider call,
-# and point at local init or the intended project instead.
+# its main clone (any name — a direct child of the root) or a direct child
+# of wt/ (including pre-marker worktrees). A copied `.unio-worker` marker
+# cannot authorize other layouts. This guards accidental selection, not
+# repository identity: direct-child clones retain the legacy allowance.
+# Resolve physical cwd once so logical shell paths through symlinks use
+# the real layout. Refuse other boundaries before writes or provider calls.
 find_root() {
-  local d="$PWD" boundary="" owner
+  local d boundary="" owner
+  d=$(pwd -P) || return 1
   while [ "$d" != "/" ]; do
     if [ -d "$d/coord" ] && [ -d "$d/wt" ]; then
       if [ -n "$boundary" ]; then
         owner=$(dirname -- "$boundary")
-        if [ "$owner" != "$d" ] && [ "$owner" != "$d/wt" ] \
-          && [ ! -f "$boundary/.unio-worker" ]; then
+        if [ "$owner" != "$d" ] && [ "$owner" != "$d/wt" ]; then
           echo "unio: refusing to act on the enclosing project from inside an unrelated Git repository" >&2
           echo "  you are inside the Git repository: $boundary" >&2
-          echo "  enclosing Unio project: $d — only its clone and registered worker worktrees act on it" >&2
+          echo "  enclosing Unio project: $d — only direct child clones and wt/ worktrees act on it" >&2
           echo "  to work on the enclosing project: cd '$d' (or a non-Git directory inside it)" >&2
           echo "  to work on this repository: cd to its root and run 'unio init' there" >&2
           return 1

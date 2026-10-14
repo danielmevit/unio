@@ -12,12 +12,13 @@ to let find_root walk past the Git boundary, so `unio account mock codex`
 run before the inner `unio init` edited the real project's policy. These
 regressions freeze the outer policy and STOP bytes and require every
 setter plus stop/resume to refuse from unrelated nested repositories —
-unborn and committed ones under workspace scratch, one inside the main
-clone, and a linked worktree — with no lock, policy or provider activity.
+unborn and committed ones under workspace scratch, ones inside the main
+clone, copied worker markers, and a linked worktree — with no lock,
+policy or provider activity.
 The main clone (non-default name, path with spaces), registered worker
 worktrees (.git files, with and without the marker), the workspace root,
-non-Git scratch directories, a symlinked path, an initialized inner
-workspace using its own state, and an explicitly targeted read-only
+non-Git scratch directories, genuine Bash logical symlink paths, an
+initialized inner workspace using its own state, and an explicitly targeted read-only
 command keep working. No live provider is called; the configured agent
 command writes a canary file that must stay absent.
 """
@@ -70,6 +71,15 @@ with tempfile.TemporaryDirectory(prefix='project-root-') as directory:
     def unio(*args, cwd):
         return subprocess.run([at, *args], cwd=str(cwd), env=env,
                               capture_output=True, text=True, timeout=60)
+
+    def logical_unio(*args, cwd):
+        # subprocess(cwd=symlink) loses Bash's logical PWD. Actually cd in
+        # Bash, assert the logical path, and pass all paths as positional args.
+        return subprocess.run(
+            ['bash', '--noprofile', '--norc', '-c',
+             'cd -L -- "$1" && [ "$PWD" = "$1" ] && shift && exec "$@"',
+             'logical-unio', str(cwd), at, *args], cwd=str(base), env=env,
+            capture_output=True, text=True, timeout=60)
 
     # Outer project: non-default clone name, spaces in the workspace path.
     root = base / 'guard project'
@@ -165,6 +175,22 @@ with tempfile.TemporaryDirectory(prefix='project-root-') as directory:
               stat_snapshot() == state)
     check('no provider canary after refusals', not canary.exists())
 
+    # A copied marker is not registration proof outside the supported
+    # direct clone/wt layout, even inside the main clone's subtree.
+    for name, marked in (('marked scratch repo', scratch / 'marked repo'),
+                         ('marked repo inside clone', clone / 'vendor' / 'marked repo')):
+        (marked / 'sub').mkdir(parents=True)
+        git('init', '-q', cwd=marked)
+        (marked / '.unio-worker').write_bytes((worker / '.unio-worker').read_bytes())
+        for args in (('account', 'unrelated', 'codex'), ('stop',), ('resume',)):
+            out = unio(*args, cwd=marked / 'sub')
+            check('%s: %s refused despite copied marker' % (name, ' '.join(args)),
+                  out.returncode != 0
+                  and 'refusing to act on the enclosing project' in out.stderr
+                  and str(marked) in out.stderr, out)
+            check('%s: exact outer policy/STOP, mtimes and locks frozen' % name,
+                  stat_snapshot() == state)
+
     # Explicitly targeted read-only command still works from a nested repo.
     out = unio('score', str(root), cwd=unborn / 'sub')
     check('explicit score targets the given root',
@@ -188,6 +214,17 @@ with tempfile.TemporaryDirectory(prefix='project-root-') as directory:
         out = unio('account', cwd=d)
         check('%s reads outer accounts' % name,
               out.returncode == 0 and 'mockagent=codex' in out.stdout, out)
+
+    # Links under scratch would appear unrelated when walking logical PWD.
+    # Spaces, apostrophes and shell syntax also exercise positional passing.
+    for name, target in (('main', clone), ('worker', worker)):
+        logical_link = scratch / (name + " alias ' $(literal)")
+        logical_link.symlink_to(target)
+        out = logical_unio('tier', 'high', cwd=logical_link / 'src')
+        check('Bash logical cd through scratch %s symlink sets outer tier' % name,
+              out.returncode == 0, out)
+        check('logical %s symlink preserves exact outer policy/STOP and locks' % name,
+              snapshot() == state[:3])
 
     # stop/resume keep working from valid locations; bytes return to frozen.
     out = unio('resume', cwd=worker / 'src')
