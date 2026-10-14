@@ -16030,10 +16030,11 @@ UNIO_CODEX_WORKER_PY
 cat > "$CONF_DIR/lib/WORKER-EFFORT.md" <<'UNIO_WORKER_EFFORT_MD'
 # Managed Codex Source and worker effort
 
-Development source preview for the next bundled 0.5.x release. The current
-official and installed stable release is 0.5.16. These examples explicitly
-choose low effort to match the field trial; use the project's reasoning policy
-when choosing a supported level for another assignment.
+Introduced in 0.5.17 as an opt-in experimental managed Source and control
+channel. Effort requests configure future turns; a single-turn Source can finish
+before a pending choice is used. Starting effort remains selected in the alias.
+These examples use low to match the field trial; choose another supported level
+according to the project's reasoning policy.
 
 Opt in with a separate alias `codexmanaged` (no hyphen: native worker names
 select the agent before the first hyphen). Keep the existing `codex` exec entry
@@ -18095,7 +18096,7 @@ cat > "$BIN_DIR/unio" <<'UNIO_BIN_EOF'
 #   PROJECT/coord/    board.md, base, docs/, tasks/, reports/, blockers.md, STOP
 set -euo pipefail
 
-UNIO_VERSION="0.5.16"
+UNIO_VERSION="0.5.17"
 CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
 CONF_FILE="$CONF_DIR/agents.conf"
 TPL_DIR="$CONF_DIR/templates"

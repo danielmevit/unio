@@ -1,9 +1,10 @@
 # Managed Codex Source and worker effort
 
-Development source preview for the next bundled 0.5.x release. The current
-official and installed stable release is 0.5.16. These examples explicitly
-choose low effort to match the field trial; use the project's reasoning policy
-when choosing a supported level for another assignment.
+Introduced in 0.5.17 as an opt-in experimental managed Source and control
+channel. Effort requests configure future turns; a single-turn Source can finish
+before a pending choice is used. Starting effort remains selected in the alias.
+These examples use low to match the field trial; choose another supported level
+according to the project's reasoning policy.
 
 Opt in with a separate alias `codexmanaged` (no hyphen: native worker names
 select the agent before the first hyphen). Keep the existing `codex` exec entry

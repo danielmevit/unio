@@ -4,7 +4,7 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.17 (unreleased) — managed Codex worker controls
+## 0.5.17 (unreleased) — managed workers and safer project selection
 
 - Add an opt-in managed Codex Source and `unio worker-effort` over an owned
   private channel, retaining native task, account and cancellation boundaries.
@@ -17,6 +17,13 @@ version is released.
 - Pass focused native checks and a genuine writable-task/commit acceptance
   with an acknowledged same-level low request. Cross-level requests are
   covered offline. Full bundle release checks and publication remain pending.
+
+- Refuse accidental enclosing-project selection across unrelated nested Git
+  repositories; preserve physical main/worker paths and logical shell symlinks.
+- Ignore copied worker markers outside the supported clone/wt layout and add
+  installed regressions for policy/STOP preservation. This is a layout guard,
+  not repository authentication or an OS sandbox.
+- Document the checked local save-store recovery without deleting snapshots.
 
 ## 0.5.16 — recovery performance and worker diagnostics — 2026-10-14
 

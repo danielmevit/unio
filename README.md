@@ -53,6 +53,11 @@ archive. Use it to prepare and run tasks, follow worker output and inspect files
 
 *Install [Unio 0.5.16](https://github.com/danielmevit/unio/releases/tag/v0.5.16), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
 
+**In development for 0.5.17:** safer project selection and an opt-in managed
+Codex worker, with owned status/effort requests and explicit startup settings.
+Effort updates target future turns; they do not establish a change to current
+inference. Read the [scope and limits](docs/RELEASE-0.5.17.md).
+
 **Added in 0.5.16:** recovery saving avoids redundant stored-file lookups
 while retaining complete content validation. Read the
 [measured results and remaining limits](docs/RELEASE-0.5.16.md).

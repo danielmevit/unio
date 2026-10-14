@@ -35,19 +35,18 @@ one combined gate, rather than publish each corrective slice separately.
 
 ## Current focus: finish the functional core
 
-Local preflight before another implementation run: audit the original save-store
-corrupt archive/duplicate-ID condition without deleting evidence. Current source
-work is committed and pushed; automatic capture health is not established for
-that existing store. Estimate 30–90 minutes for an inventory and reversible
-recovery plan. This operator condition is separate from release quality gates.
+Local save-store recovery is complete: 34 snapshots passed deep validation; only
+one proven empty archive reservation was reversibly quarantined. Metadata usage
+and subsequent explicit-budget baseline captures succeeded. See the
+[operator record](SAVE-STORE-RECOVERY-2026-10-14.md); automatic repair and default
+30-second success are not established.
 
-Next bounded improvement: prevent mutating settings commands in a new nested,
-uninitialized Git repository from silently selecting an enclosing Unio project.
-The field trial exposed this through a fixture policy call. Preserve legitimate
-nested-directory use and explicit project targeting; refuse ambiguity before
-writing. Estimate 1–2 hours for implementation and focused checks. This is a
-planned guardrail, not implemented runtime. Bundle it with the new managed-worker
-source before a future release, rather than releasing each small correction.
+The nested-project guard is accepted from9f62865 after Mistral/Vibe GLM high
+implementation and a dedicated Sol high correction. Native and personal checks
+cover the original mutation, copied markers and genuine Bash symlinks. See the
+[dated findings](PROJECT-ROOT-GUARD-2026-10-14.md). The next0.5.17 bundle combines
+this with experimental managed Codex workers; one frozen release gate and
+shipping checks remain. Current-inference effort changes remain unfinished.
 
 
 The owner requested a milestone review on 2026-10-08. The

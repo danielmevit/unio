@@ -1,3 +1,35 @@
+# Current candidate — 2026-10-14: 0.5.17 bundle
+
+Accepted runtime9f62865 combines managed Codex Source/control-channel foundation
+with a physical project-root layout guard. Mistral/Vibe2.26.1/GLM5.3 high built
+the guard; personal review caught two cases, corrected by dedicated ChatGPT/
+Codex0.162.1/GPT-6.1 Sol high. Native verification and personal installed probes
+passed. CopilotFree/CLI1.0.95/AutoBalance drafted the checked recovery note.
+Effective identities/efforts and remaining allowances remain Unknown.
+Original Sol interruption and all actual failed checks remain preserved.
+
+The original local save store is recovered:34 deep-valid snapshots, one empty
+reservation quarantined without content deletion; subsequent explicit-budget
+native baselines succeed. Read SAVE-STORE-RECOVERY-2026-10-14.md and
+PROJECT-ROOT-GUARD-2026-10-14.md. This is not an automatic repair feature.
+
+Stable installed/public remains0.5.16 while this frozen0.5.17 candidate receives
+one combined full gate, exact artifacts, upgrade/restore and installation checks.
+No publication yet. Managed effort requests configure future turns; current-turn
+inference changes are not established and a one-turn Source can end before using
+a pending setting. Guide and release scope disclose that limitation.
+
+Use actual Unio native background mode for independent provider workflows.
+Preserve the real Codex lead/account groups, low tier and STOP between new runs.
+Owner default corrections use one dedicated Sol high with recorded temporary
+medium admission, restored after idle. No blind retries, inline product fixes,
+paid fallback, max/ultra or extra reviewer fleet. Website/dashboard/brand unchanged.
+Read private coord/AGENT-LOG.md and tmp/unio-next/manifest.json for live state.
+
+Earlier entries below are historical.
+
+---
+
 # Current development — 2026-10-14: stable 0.5.16, next bundle source checked
 
 Official/latest and installed stable remain [v0.5.16](https://github.com/danielmevit/unio/releases/tag/v0.5.16).
