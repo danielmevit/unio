@@ -88,6 +88,51 @@ wrapper cannot safely exclude cause refusal. These are execution controls
 on a trusted host, not an operating-system sandbox or a guarantee about
 upstream GitHub behavior. Review any update before widening compatibility.
 
+## Machine-readable delivery
+
+Installed Copilot CLI 1.0.95 help describes `--output-format json` as JSONL,
+one JSON object per line. The wrapper keeps `--stream off` and `--silent`,
+and adds that format. It does not use rendered text. This source slice stays
+on 0.5.17 until a combined bundle is released; it does not assign a new
+version.
+
+The contract was read from the installed 1.0.95 executable
+(`@github/copilot` 1.0.95, build `f5ba5057`), not from a live model call.
+`Han` writes `JSON.stringify(sessionEvent)` plus a line feed. It omits
+internal model-log events and a fixed exclusion set that includes
+`session.idle`, `assistant.streaming_delta`, `assistant.usage`, permission
+events, `system.message` and skill events. After a prompt-mode session,
+`Gan` appends one terminal record with `type` `result`, `timestamp`,
+`sessionId`, integer `exitCode`, and `usage` (`premiumRequests`,
+`totalApiDurationMs`, `sessionDurationMs`, and `codeChanges` of
+`linesAdded`, `linesRemoved`, `filesModified`). A blocked run also adds
+`outcome` and `blocker`; that shape is not success.
+
+`assistant.message` `data.content` is the full assistant text in the
+session-event schema. `assistant.message_delta` is incremental and is not
+the completion. User messages, tool results, and subagent events (an
+`agentId` or a non-empty `parentToolCallId`) are not the proposal. When a
+response is split, `chunkIndex` and `chunkCount` identify the parts; the
+adapter concatenates one complete group in index order and inserts nothing
+between parts. One other root text message, or more than one such group,
+is ambiguous and fails closed.
+
+The raw JSONL stays in the private `native-stdout.jsonl`. `proposal.md` is
+written only after the native process exits 0 and the stream proves one
+final `result` with `exitCode` 0 plus one unambiguous root completion.
+Decoded JSON strings are kept as the model wrote them: escaped newlines,
+quotes, backslashes and Unicode become the original characters, with no
+rich wrap, markdown strip or JSON repair. Duplicate keys, duplicate event
+ids, nonfinite numbers, truncated or CRLF frames, a missing or repeated
+result, and a result that is not last all fail as an empty or invalid
+response. A nonzero native exit stays `native_failed` and does not become
+a proposal. Effective model, AI lab, effort and remaining allowance stay
+Unknown; a model name inside an event is not treated as proof.
+
+Native secret redaction still runs inside the CLI before a line is written.
+The adapter does not undo it. Visible `parentId` values can point at events
+`Han` omitted, so the adapter does not require an unbroken parent chain.
+
 ## Limits and receipts
 
 Default task deadline is 15 minutes; up to 2 hours can be selected for a justified
@@ -97,13 +142,15 @@ session limit, observed after a model response and capable of overshoot;
 it neither measures remaining account allowance nor enforces a billing cap.
 It does not authorize extra charges. A failed run never starts another route.
 
-Each invocation writes a new private receipt, frozen task and native proposal/
-usage output. Preserve the actual exit, configured route, task hash and elapsed
-time. Effective model, AI lab, effort and remaining allowance stay Unknown
+Each invocation writes a new private receipt, the raw JSONL transcript,
+and, only for a proved completion, `proposal.md`, plus native usage output.
+Preserve the actual exit, configured route, task hash and elapsed time.
+Effective model, AI lab, effort and remaining allowance stay Unknown
 unless separately supported evidence establishes them. Raw answers, usage and
 diagnostics may contain task/session data: keep them private. A native usage
 file measures that session's consumption, not the account's remaining quota.
-The adapter's stdout contains operational metadata, not raw account settings.
+The adapter's stdout contains operational metadata, not raw account settings
+or proposal text.
 
 ## Trial status
 
