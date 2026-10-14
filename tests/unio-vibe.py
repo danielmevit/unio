@@ -370,7 +370,7 @@ class VibeTests(unittest.TestCase):
         original=worker.HEARTBEAT_SECONDS
         worker.HEARTBEAT_SECONDS=.2
         try:
-            cmd='import sys, time; sys.stdout.close(); time.sleep(.8)'
+            cmd='import os,time; os.close(1); time.sleep(.8)'
             code,_=worker.owned_call([sys.executable,'-c',cmd],dict(os.environ),5,progress=progress)
         finally:
             worker.HEARTBEAT_SECONDS=original
@@ -384,7 +384,7 @@ class VibeTests(unittest.TestCase):
         self.assertNotIn('Vibe progress:',out.getvalue())
 
     def test_deadline_supervision_survives_child_closing_stdout_early(self):
-        cmd='import sys, time; sys.stdout.close(); time.sleep(10)'
+        cmd='import os,time; os.close(1); time.sleep(10)'
         with self.assertRaises(worker.Refusal):
             worker.owned_call([sys.executable,'-c',cmd],dict(os.environ),.2)
 

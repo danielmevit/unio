@@ -148,16 +148,16 @@ success, readiness, quota or token savings.
 
 Records that are malformed, oversized or of an unmapped shape are counted in the
 receipt, never turned into progress. Parsing is incremental and bounded: split
-UTF-8 sequences and split records across reads are reassembled, each record is
-capped at 256 KiB, and a run prints at most 10,000 public lines, so a noisy or
+UTF-8 sequences and split records across reads are reassembled, each decoded record is
+capped at 262,144 Unicode characters, and a run prints at most 10,000 public lines, so a noisy or
 hostile stream can neither grow memory nor spam the log. Overall output bounds and
 owned process-group, deadline and cancellation handling are unchanged.
 
 No raw assistant or reasoning text, prompt, tool argument or result, file path,
 command string, export, authentication or error text is ever printed publicly.
 The receipt and final adapter line add only bounded progress counts and the last
-observed label and time; requested and effective model/effort and remaining
-allowance stay Unknown, and progress output drives no policy or admission
+observed label and time; the requested model and requested high effort are explicitly known settings;
+effective model/effort and remaining allowance are Unknown, and progress output drives no policy or admission
 decision.
 
 Limitations: the stream carries only completed entries, so history entries
@@ -166,7 +166,9 @@ certified currently-running tool state. For example, `running shell command`
 means such an event was observed in completed history, not that a command is
 executing right now. Silence between records is normal while the CLI works; the
 heartbeat is the only signal during it. The first slice shows operational
-labels only, not message excerpts or a console.
+labels only, not message excerpts or a console. This source addition follows
+v0.5.17 and is not yet released or installed in the stable standalone adapter;
+no new release number has been assigned.
 
 ## References
 

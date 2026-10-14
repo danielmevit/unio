@@ -79,6 +79,10 @@ beside it; ordinary low-tier limits apply outside that scoped exception.
 | 6 — CLI slice shipped | Evidence-based routing and context efficiency | 0.5.12 ships explicit revision assessments, task-specific profiles and conditional local advice. Automatic capture and routing remain planned. |
 | 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
+The source-only Vibe worker-progress slice now emits safe fixed labels and a
+liveness-only heartbeat; code verification is complete. It is pending the next
+release bundle; the installed and publicly released version remains v0.5.17.
+
 ### Next useful slices
 
 The optional [CodeGraph Bash evaluation](CODEGRAPH-BASH-EVALUATION-2026-10-12.md)
