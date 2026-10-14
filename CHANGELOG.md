@@ -4,7 +4,7 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.18 — worker reliability — unreleased
+## 0.5.18 — worker reliability — 2026-10-14
 
 See [candidate scope and trial limits](docs/RELEASE-0.5.18.md).
 The published and installed release remains 0.5.17.

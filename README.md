@@ -51,13 +51,13 @@ session, preserving their work and the agreed checks.
 through WSL, plus a [local browser workspace](bridge/README.md) in the source
 archive. Use it to prepare and run tasks, follow worker output and inspect files.
 
-*Install [Unio 0.5.17](https://github.com/danielmevit/unio/releases/tag/v0.5.17), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
+*Install [Unio 0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
 
-**In development for 0.5.18:** safer worker progress and outcomes. Vibe can
-report fixed live labels and a separate liveness heartbeat. The optional
-Antigravity connector keeps process exit apart from the structured result.
-Copilot proposals can keep exact native JSONL text. This candidate is not
-published or installed. Read the [candidate notes](docs/RELEASE-0.5.18.md).
+**Added in 0.5.18:** clearer worker progress and reliable result handling.
+Vibe reports safe live labels and a separate liveness heartbeat. The optional
+Antigravity connector distinguishes process exit from its structured result.
+Copilot proposals preserve exact native JSONL text. Read the
+[release notes and limitations](docs/RELEASE-0.5.18.md).
 
 **Added in 0.5.17:** safer project selection and an opt-in managed
 Codex worker, with owned status/effort requests and explicit startup settings.
