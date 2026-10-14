@@ -117,6 +117,55 @@ a fair reasoning comparison. Preserve them, use larger task-sized bounds for new
 authorized work, and judge models by accepted real task outcomes. A catalog entry
 for a newer Mistral model does not establish this account's access or its quality.
 
+## Live progress during a run
+
+The provider invocation uses the installed CLI's documented `--output streaming`
+route: one newline-delimited JSON record per completed session history entry
+(installed 2.26.1 schema, camelCase fields; entries have `type` message, reasoning,
+effect, callback, checkpoint or notice, and effects carry `detail.kind` with a
+settled `state.status`). Every raw byte still lands in the bounded private
+native-stdout log. The adapter's own stdout prints only fixed allowlisted
+operational labels, flushed as each record is recognized:
+
+```text
+Vibe progress: assistant response observed
+Vibe progress: assistant reasoning observed
+Vibe progress: running shell command
+Vibe progress: reading file
+Vibe progress: editing file
+Vibe progress: writing file
+Vibe progress: searching files
+Vibe progress: updating task list
+Vibe progress: tool call observed
+Vibe progress: tool failure observed
+```
+
+During about 30 seconds with no recognized record, the adapter prints a
+liveness-only heartbeat, `Vibe heartbeat: adapter process alive; no new provider
+event observed`. It is clearly distinct from an observed provider/tool event and
+claims only that the adapter process is alive — never actual reasoning, task
+success, readiness, quota or token savings.
+
+Records that are malformed, oversized or of an unmapped shape are counted in the
+receipt, never turned into progress. Parsing is incremental and bounded: split
+UTF-8 sequences and split records across reads are reassembled, each record is
+capped at 256 KiB, and a run prints at most 10,000 public lines, so a noisy or
+hostile stream can neither grow memory nor spam the log. Overall output bounds and
+owned process-group, deadline and cancellation handling are unchanged.
+
+No raw assistant or reasoning text, prompt, tool argument or result, file path,
+command string, export, authentication or error text is ever printed publicly.
+The receipt and final adapter line add only bounded progress counts and the last
+observed label and time; requested and effective model/effort and remaining
+allowance stay Unknown, and progress output drives no policy or admission
+decision.
+
+Limitations: the stream carries only completed entries, so a tool call and its
+result arrive as one settled record — `running shell command` means such an event
+was observed, not that a command is executing right now. Silence between records
+is normal while the CLI works; the heartbeat is the only signal during it. The
+first slice shows operational labels only, not message excerpts or a console.
+
 ## References
 
 Real corrected-wrapper trial, 2026-10-09: GLM 5.3 saved the first adapter-packaging

@@ -13596,6 +13596,8 @@ cat > "$CONF_DIR/lib/adapters/vibe-worker.py" <<'UNIO_VIBE_WORKER_PY'
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
 """Optional, explicitly pinned Vibe 2.26.1 worker. No dependency installation."""
 import argparse
+import codecs
+from datetime import datetime, timezone
 import hashlib
 import json
 import math
@@ -13618,6 +13620,23 @@ MODELS = {
 PROMPT_BYTES = 1048576
 OUTPUT_BYTES = 16777216
 EXPORT_BYTES = 8388608
+# Public progress bounds: one NDJSON record and total printed lines are capped so
+# a noisy or hostile stream can neither grow memory nor spam the public log.
+HEARTBEAT_SECONDS = 30.0
+PROGRESS_RECORD_BYTES = 262144
+PROGRESS_LINES = 10000
+PROGRESS_PREFIX = "Vibe progress: "
+HEARTBEAT_PREFIX = "Vibe heartbeat: "
+HEARTBEAT_LABEL = "adapter process alive; no new provider event observed"
+# Fixed operational labels only. Nothing from a stream record is ever printed.
+EFFECT_LABELS = {
+    "shell": "running shell command",
+    "file_read": "reading file",
+    "file_edit": "editing file",
+    "file_write": "writing file",
+    "file_search": "searching files",
+    "todo": "updating task list",
+}
 
 
 class Refusal(Exception):
@@ -13656,6 +13675,114 @@ def strict_json(data):
     return json.loads(data, object_pairs_hook=pairs, parse_constant=constant)
 
 
+class Progress:
+    """Bounded fixed-label public progress from the CLI's NDJSON stream.
+
+    The provider invocation uses the installed CLI's documented --output
+    streaming route: one JSON record per completed session history entry.
+    Raw bytes still go to the private native stdout log; this class only
+    ever prints allowlisted operational labels, never record content,
+    prompts, answers, reasoning, tool arguments/results, paths, commands,
+    exports, authentication or error text. Unknown events are counted,
+    not invented progress. The heartbeat reports adapter process liveness
+    only and is distinct from an observed provider/tool event.
+    """
+
+    def __init__(self, stream=None):
+        self.stream = sys.stdout if stream is None else stream
+        self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self.buffer = ""
+        self.discard = False
+        self.events = 0
+        self.heartbeats = 0
+        self.malformed = 0
+        self.unlabeled = 0
+        self.printed = 0
+        self.last_label = None
+        self.last_observed_at = None
+        self.last_emit = time.monotonic()
+
+    def silent_for(self):
+        return time.monotonic() - self.last_emit
+
+    def heartbeat(self):
+        self.heartbeats += 1
+        self.last_emit = time.monotonic()
+        self._print(HEARTBEAT_PREFIX + HEARTBEAT_LABEL)
+
+    def feed(self, chunk):
+        text = self.decoder.decode(chunk)
+        if self.discard:
+            end = text.find("\n")
+            if end < 0:
+                return
+            self.discard = False
+            text = text[end + 1:]
+        self.buffer += text
+        while True:
+            end = self.buffer.find("\n")
+            if end < 0:
+                if len(self.buffer) > PROGRESS_RECORD_BYTES:
+                    self.malformed += 1
+                    self.buffer = ""
+                    self.discard = True
+                return
+            line = self.buffer[:end]
+            self.buffer = self.buffer[end + 1:]
+            if len(line) > PROGRESS_RECORD_BYTES:
+                self.malformed += 1
+                continue
+            self.record(line)
+
+    def record(self, line):
+        line = line.strip()
+        if not line:
+            return
+        try:
+            value = json.loads(line)
+        except (ValueError, RecursionError):
+            self.malformed += 1
+            return
+        label = self.label(value)
+        if label is None:
+            self.unlabeled += 1
+            return
+        self.events += 1
+        self.last_label = label
+        self.last_observed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.last_emit = time.monotonic()
+        self._print(PROGRESS_PREFIX + label)
+
+    def label(self, value):
+        if not isinstance(value, dict):
+            return None
+        kind = value.get("type")
+        if kind == "message":
+            return "assistant response observed" if value.get("role") == "assistant" else None
+        if kind == "reasoning":
+            return "assistant reasoning observed"
+        if kind == "effect":
+            detail = value.get("detail")
+            state = value.get("state")
+            if not isinstance(detail, dict) or not isinstance(state, dict):
+                return None
+            if state.get("status") == "failed":
+                return "tool failure observed"
+            return EFFECT_LABELS.get(detail.get("kind"), "tool call observed")
+        return None
+
+    def _print(self, line):
+        if self.printed >= PROGRESS_LINES:
+            return
+        self.printed += 1
+        print(line, file=self.stream, flush=True)
+
+    def summary(self):
+        return dict(events=self.events, heartbeats=self.heartbeats,
+                    malformed_records=self.malformed, unlabeled_records=self.unlabeled,
+                    last_label=self.last_label, last_observed_at=self.last_observed_at)
+
+
 def model_environment(label, inherited=None):
     wire, lab, inp, cache, out = MODELS[label]
     model = dict(name=wire, alias=label, provider="mistral", thinking="high",
@@ -13673,7 +13800,7 @@ def model_environment(label, inherited=None):
     return env, wire, lab
 
 
-def owned_call(argv, env, seconds, log=None, output_limit=OUTPUT_BYTES):
+def owned_call(argv, env, seconds, log=None, output_limit=OUTPUT_BYTES, progress=None):
     """Bound owned process-group lifetime and output, including preflight output."""
     child = subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL,
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -13688,6 +13815,8 @@ def owned_call(argv, env, seconds, log=None, output_limit=OUTPUT_BYTES):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise Refusal("timeout")
+            if progress is not None and progress.silent_for() >= HEARTBEAT_SECONDS:
+                progress.heartbeat()
             for key, _ in poll.select(min(remaining, .2)):
                 chunk = os.read(key.fileobj.fileno(), 65536)
                 if not chunk:
@@ -13700,6 +13829,8 @@ def owned_call(argv, env, seconds, log=None, output_limit=OUTPUT_BYTES):
                     capture.extend(chunk)
                 else:
                     log.write(chunk)
+                if progress is not None:
+                    progress.feed(chunk)
         try:
             code = child.wait(timeout=max(.001, deadline - time.monotonic()))
         except subprocess.TimeoutExpired:
@@ -13765,6 +13896,7 @@ def main():
     args = parser.parse_args()
     record = None
     receipt = None
+    progress = None
     started = time.monotonic()
     exit_code = 2
     try:
@@ -13809,11 +13941,13 @@ def main():
         argv = [cli, "--prompt-file", str(task), "--workdir", str(Path.cwd()), "--trust",
                 "--agent", "auto-approve", "--max-price", str(args.max_price),
                 "--max-tokens", str(args.max_tokens), "--time-limit", str(args.time_limit),
-                "--max-turns", str(args.max_turns), "--output-dir", str(export), "--output", "text"]
+                "--max-turns", str(args.max_turns), "--output-dir", str(export),
+                "--output", "streaming"]
         for name in ("bash", "read_file", "write_file", "edit", "grep"):
             argv.extend(["--enabled-tools", name])
+        progress = Progress()
         with (directory / "native-stdout.log").open("xb") as log:
-            code, _ = owned_call(argv, env, args.time_limit + 20, log)
+            code, _ = owned_call(argv, env, args.time_limit + 20, log, progress=progress)
         record["process_exit"] = code
         record["outcome"] = "process_finished"
         exit_code = code if code in (0, 1, 2, 3, 4) else 2
@@ -13838,10 +13972,15 @@ def main():
         exit_code = 124 if state == "timeout" else 2
     finally:
         if record is not None:
+            if progress is not None:
+                record["progress"] = progress.summary()
             record.update(adapter_exit=exit_code, elapsed_seconds=round(time.monotonic() - started, 3), finished_at=date())
             receipt.write_text(json.dumps(record, indent=2) + "\n")
-            print(json.dumps({"receipt": str(receipt), "adapter_exit": exit_code,
-                              "process_exit": record["process_exit"], "export_state": record.get("export_state", "unknown")}))
+            final = {"receipt": str(receipt), "adapter_exit": exit_code,
+                     "process_exit": record["process_exit"], "export_state": record.get("export_state", "unknown")}
+            if progress is not None:
+                final.update(progress_events=progress.events, progress_last_label=progress.last_label)
+            print(json.dumps(final))
     return exit_code
 
 

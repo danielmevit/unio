@@ -5,6 +5,17 @@ does not claim implementation. Keep the running UI design task unchanged and
 assign this work as a separate bounded native Unio slice against its verified
 dependency base. See the [version plan](VERSION-PLAN.md).
 
+## Implemented native adapter progress
+
+One bounded slice is implemented at the adapter level: the optional
+[Vibe worker](integrations/MISTRAL-VIBE.md#live-progress-during-a-run) now
+prints fixed allowlisted operational labels and a liveness-only heartbeat to
+its own stdout before the native process exits, derived from the CLI's
+documented streaming route. It emits no message excerpts, paths, commands or
+raw output, invents no completion state, and drives no policy decision. The
+browser console contract below remains the fuller design; its observation
+layers can consume these labels as already-public worker output.
+
 ## What the owner sees
 
 Each worker has its actual task and lifecycle state, the latest short
