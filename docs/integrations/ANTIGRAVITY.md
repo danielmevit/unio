@@ -45,8 +45,8 @@ work into smaller tasks instead of raising the bound.
 
 ## Native versus adapter exit contract
 
-The invocation is `agy -p <task> --model <selector>
---dangerously-skip-permissions --print-timeout <limit>
+The invocation is `agy -p <task> --mode accept-edits --model <selector>
+--dangerously-skip-permissions --disable-slash-commands --print-timeout <limit>
 --output-format stream-json`, run in the adapter's current working
 directory. The raw NDJSON stream is preserved in a private
 `native-stdout.log`; the adapter parses only the top-level
@@ -80,10 +80,12 @@ installation and its native Google account credentials are all
 `trusted_host`, and `sandbox` is false. `--dangerously-skip-permissions`
 matches the owner's proven invocation (the stream reports
 `permission_mode: always-proceed`); it is an execution control, not an
-operating-system sandbox. The adapter reads no credential, changes no
-plugin, MCP, auth or billing setting, and performs no network request
-itself. Each invocation owns one new process group with bounded stdout,
-stderr, time and cleanup; only that group is signalled.
+operating-system sandbox. `--mode accept-edits` and
+`--disable-slash-commands` preserve established print-mode flags without
+interactive edit prompts or slash command expansion. The adapter reads
+no credential, changes no plugin, MCP, auth or billing setting, and performs
+no network request itself. Each invocation owns one new process group with
+bounded stdout, stderr, time and cleanup; only that group is signalled.
 
 ## Manual setup
 
@@ -118,11 +120,13 @@ Each run creates a new 0700 directory under the receipt parent holding a
 0600 frozen task copy, the raw native stdout/stderr logs and a receipt
 with the pinned selectors, task hash, bounds, native and adapter exits and
 the terminal verdict. Public stdout carries only finite operational
-metadata: receipt path, exits, outcome and terminal status. Prompts,
-answers, provider error text and conversation IDs never appear publicly;
-keep the raw logs private. Legacy raw `agents.conf` command lines are left
-untouched: the adapter is opt-in, and a legacy line keeps its own native
-behavior.
+metadata: receipt path, exits, outcome and terminal status. Terminal status
+is allowlisted to `SUCCESS`, `ERROR`, or `null` when missing or unrecognised,
+so provider-supplied status strings never leak outside the private raw log.
+Prompts, answers, provider error text and conversation IDs never appear
+publicly; keep the raw logs private. Legacy raw `agents.conf` command lines
+are left untouched: the adapter is opt-in, and a legacy line keeps its own
+native behavior.
 
 ## Trial status
 

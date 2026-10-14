@@ -16,6 +16,7 @@ SOURCE = Path(__file__).resolve().parent.parent
 ADAPTER = SOURCE / 'tools' / 'antigravity-worker.py'
 SECRET = 'RAW-SECRET-PAYLOAD-7f3a'
 TASK = 'NATIVE-TASK-SENTINEL do the bounded work.\n'
+UNKNOWN_SENTINEL = 'AGY_UNKNOWN_STATUS_SENTINEL'
 
 # The fake CLI asserts the exact pinned invocation shape and records every
 # launch; it never reaches a provider. FAKE_MODE selects the stream it emits.
@@ -31,11 +32,14 @@ if sys.argv[1:] == ['--version']:
 if os.environ.get('FAKE_VERSION_ONLY'):
     sys.exit(0)
 argv = sys.argv[1:]
-assert argv[0] == '-p' and argv[2] == '--model', argv
-assert argv[4] == '--dangerously-skip-permissions' and argv[5] == '--print-timeout', argv
-assert argv[7:] == ['--output-format', 'stream-json'], argv
+assert argv[0] == '-p' and argv[2:4] == ['--mode', 'accept-edits'], argv
+assert argv[4] == '--model', argv
+assert argv[5] in ('gemini-3.8-flash-high', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-low'), argv
+assert argv[6] == '--dangerously-skip-permissions', argv
+assert argv[7] == '--disable-slash-commands', argv
+assert argv[8] == '--print-timeout', argv
+assert argv[10:] == ['--output-format', 'stream-json'], argv
 assert '--effort' not in argv and '-e' not in argv, argv
-assert argv[3] in ('gemini-3.8-flash-high', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-low'), argv
 task = Path(os.environ['FAKE_TASK']).read_bytes()
 assert argv[1].encode() == task, 'task text must arrive as the single -p argument'
 mode = os.environ.get('FAKE_MODE', 'success')
@@ -55,7 +59,7 @@ if mode == 'hold':
         f.write(json.dumps({'pid': os.getpid(), 'child': child.pid}) + '\n')
     time.sleep(30)
     sys.exit(0)
-emit({'event': 'init', 'conversation_id': 'conv-private-1', 'init': {'model': argv[3]}})
+emit({'event': 'init', 'conversation_id': 'conv-private-1', 'init': {'model': argv[5]}})
 emit({'event': 'step_update', 'step_update': {'conversation_id': 'conv-private-1',
     'step_index': 1, 'state': 'DONE', 'text_delta': 'assistant did useful work ' + os.environ.get('FAKE_SECRET', '')}})
 if mode == 'forged_only':
@@ -97,7 +101,9 @@ if mode == 'duplicate_terminal':
     emit({'event': 'result', 'result': {'conversation_id': 'conv-private-1', 'status': 'SUCCESS', 'response': 'two'}})
     sys.exit(0)
 if mode == 'unknown_status':
-    emit({'event': 'result', 'result': {'conversation_id': 'conv-private-1', 'status': 'FAILED', 'response': 'text'}})
+    emit({'event': 'result', 'result': {'conversation_id': 'conv-private-1',
+          'status': os.environ.get('FAKE_UNKNOWN_STATUS', 'AGY_UNKNOWN_STATUS_SENTINEL'),
+          'response': 'harmless response with AGY_UNKNOWN_STATUS_SENTINEL ' + os.environ.get('FAKE_SECRET', '')}})
     sys.exit(0)
 if mode == 'wrongtyped':
     emit({'event': 'result', 'result': 'SUCCESS'})
@@ -211,12 +217,17 @@ def main():
         check('exactly one provider call, version preflight quiet and single',
               len(h.provider_calls()) == 1
               and len([i for i in h.invocations() if i['argv'] == ['--version']]) == 1)
+        first_call = h.provider_calls()[0]
+        check('argv includes exact mode accept-edits and disable-slash-commands',
+              first_call['argv'][2:4] == ['--mode', 'accept-edits']
+              and first_call['argv'][6] == '--dangerously-skip-permissions'
+              and first_call['argv'][7] == '--disable-slash-commands')
 
         # Explicit medium/low selectors derive effort from the selector only.
         for selector, model in (('medium', 'gemini-3.8-flash-medium'), ('low', 'gemini-3.8-flash-low')):
             result = h.run('--selector', selector)
             check('explicit ' + selector + ' selector pinned without generic effort flag',
-                  result.returncode == 0 and h.provider_calls()[-1]['argv'][3] == model)
+                  result.returncode == 0 and h.provider_calls()[-1]['argv'][5] == model)
         result = h.run('--prompt-file', str(h.task))
         check('--prompt-file transport matches TASKFILE bytes',
               result.returncode == 0 and len(h.provider_calls()) == 4)
@@ -260,6 +271,26 @@ def main():
             check(mode + ' refuses invented success',
                   result.returncode == 2 and summary['native_exit'] == 0
                   and summary['outcome'] == outcome and summary['adapter_exit'] == 2)
+
+        # Unknown string status regression: sentinel in status and content returns
+        # adapter 2 / native 0; public output and operational receipt exclude sentinel;
+        # private raw log retains it.
+        result = h.run(mode='unknown_status')
+        summary = public_summary(result)
+        receipt_path = Path(summary['receipt'])
+        run = receipt_path.parent
+        record = json.loads(receipt_path.read_text())
+        check('unknown status returns adapter 2 and native 0',
+              result.returncode == 2 and summary['adapter_exit'] == 2 and summary['native_exit'] == 0)
+        check('unknown status outcome is unknown_terminal_status with null terminal_status',
+              summary['outcome'] == 'unknown_terminal_status'
+              and summary['terminal_status'] is None
+              and record['terminal_status'] is None)
+        check('unknown status public output and operational receipt exclude sentinel',
+              UNKNOWN_SENTINEL not in result.stdout and UNKNOWN_SENTINEL not in result.stderr
+              and UNKNOWN_SENTINEL not in receipt_path.read_text())
+        check('unknown status private raw log retains sentinel',
+              UNKNOWN_SENTINEL in (run / 'native-stdout.log').read_text())
 
         # Oversized task refused before any provider call, including --version.
         big = h.base / 'big-task.md'

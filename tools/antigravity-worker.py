@@ -269,7 +269,8 @@ def parse_stream(raw):
     if len(terminals) != 1:
         return "ambiguous_terminal_result", None, False
     status, error = terminals[0]
-    return "valid", status, error is not None and error != ""
+    normalized_status = status if status in ("SUCCESS", "ERROR") else None
+    return "valid", normalized_status, error is not None and error != ""
 
 
 def main():
@@ -333,8 +334,10 @@ def main():
                       outcome="preflight", task_path=str(task), stdout_path=str(stdout_path),
                       stderr_path=str(stderr_path))
         write_receipt(receipt, record)
-        argv = [cli, "-p", data.decode("utf-8"), "--model", SELECTORS[args.selector],
-                "--dangerously-skip-permissions", "--print-timeout", native_duration(args.time_limit),
+        argv = [cli, "-p", data.decode("utf-8"), "--mode", "accept-edits",
+                "--model", SELECTORS[args.selector],
+                "--dangerously-skip-permissions", "--disable-slash-commands",
+                "--print-timeout", native_duration(args.time_limit),
                 "--output-format", "stream-json"]
         record["invocations"] = 1
         record["outcome"] = "starting"

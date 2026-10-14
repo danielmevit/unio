@@ -44,6 +44,7 @@ python3 -B tests/unio-command-audit.py
 python3 -B tests/unio-perplexity.py
 python3 -B tests/unio-vibe.py
 python3 -B tests/unio-copilot.py
+python3 -B tests/unio-antigravity.py
 python3 -B tests/unio-adapters-install.py
 python3 -B bridge/tests/progress_test.py
 python3 -B bridge/tests/progress_api_test.py
