@@ -53,6 +53,7 @@ ASSISTANT_DATA_KEYS = {
     "serviceRequestId", "rte", "apiCallId", "serverTools", "reasoningBlocks", "turnId",
     "parentToolCallId", "citations", "fusion",
 }
+GROUP_KEYS = ("turnId", "originatingMessageId")
 RESULT_KEYS = {"type", "timestamp", "sessionId", "exitCode", "usage"}
 USAGE_KEYS = {"premiumRequests", "totalApiDurationMs", "sessionDurationMs", "codeChanges"}
 CHANGE_KEYS = {"linesAdded", "linesRemoved", "filesModified"}
@@ -126,7 +127,12 @@ def whole_number(value):
 
 
 def finite_number(value):
-    return (isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value))
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def subagent(event):
@@ -173,7 +179,7 @@ def parse_jsonl(raw):
 def require_assistant(event):
     if set(event) - ASSISTANT_EVENT_KEYS or not {"id", "timestamp", "parentId", "type", "data"} <= set(event):
         raise Refusal(INVALID)
-    if event["type"] != "assistant.message" or not UUID.fullmatch(event["id"]):
+    if event["type"] != "assistant.message" or not isinstance(event["id"], str) or not UUID.fullmatch(event["id"]):
         raise Refusal(INVALID)
     if not identifier(event["timestamp"]):
         raise Refusal(INVALID)
@@ -189,6 +195,9 @@ def require_assistant(event):
         raise Refusal(INVALID)
     if not identifier(data["messageId"]) or not isinstance(data["content"], str):
         raise Refusal(INVALID)
+    for key in GROUP_KEYS:
+        if key in data and not identifier(data[key]):
+            raise Refusal(INVALID)
     if "toolRequests" in data and not isinstance(data["toolRequests"], list):
         raise Refusal(INVALID)
     has_index, has_count = "chunkIndex" in data, "chunkCount" in data
@@ -217,7 +226,7 @@ def require_result(event):
     changes = usage["codeChanges"]
     if not isinstance(changes, dict) or set(changes) != CHANGE_KEYS:
         raise Refusal(INVALID)
-    if not all(whole_number(changes[key]) and changes[key] >= 0 for key in CHANGE_KEYS):
+    if not all(whole_number(changes[key]) and changes[key] >= 0 and finite_number(changes[key]) for key in CHANGE_KEYS):
         raise Refusal(INVALID)
     if event["exitCode"] != 0:
         raise Refusal(INVALID)
@@ -238,6 +247,16 @@ def completion_text(messages):
         count = messages[0]["data"]["chunkCount"]
         if any(event["data"]["chunkCount"] != count for event in messages) or len(messages) != count:
             raise Refusal(INVALID)
+        for key in GROUP_KEYS:
+            values = set()
+            for event in messages:
+                if key in event["data"]:
+                    val = event["data"][key]
+                    if not identifier(val):
+                        raise Refusal(INVALID)
+                    values.add(val)
+            if len(values) > 1:
+                raise Refusal(INVALID)
         ordered = sorted(messages, key=lambda event: event["data"]["chunkIndex"])
         if [event["data"]["chunkIndex"] for event in ordered] != list(range(count)):
             raise Refusal(INVALID)

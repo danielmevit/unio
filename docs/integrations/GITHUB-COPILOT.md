@@ -113,23 +113,24 @@ events, `system.message` and skill events. After a prompt-mode session,
 `assistant.message` `data.content` is the full assistant text in the
 session-event schema. `assistant.message_delta` is incremental and is not
 the completion. User messages, tool results, and subagent events (an
-`agentId` or a non-empty `parentToolCallId`) are not the proposal. When a
-response is split, `chunkIndex` and `chunkCount` identify the parts; the
-adapter concatenates one complete group in index order and inserts nothing
-between parts. One other root text message, or more than one such group,
-is ambiguous and fails closed.
+`agentId` or a non-empty `parentToolCallId`) are not the proposal. When a response is split, `chunkIndex` and `chunkCount` identify the parts; the
+adapter validates group identifiers (`turnId`, `originatingMessageId`) for valid
+shape and consistency across chunks, concatenates one demonstrably coherent complete
+group in index order and inserts nothing between parts. Conflicting or malformed group
+identifiers, one other root text message, or more than one such group, is ambiguous
+and fails closed.
 
 The raw JSONL stays in the private `native-stdout.jsonl`. `proposal.md` is
 written only after the native process exits 0 and the stream proves one
 final `result` with `exitCode` 0 plus one unambiguous root completion.
 Decoded JSON strings are kept as the model wrote them: escaped newlines,
 quotes, backslashes and Unicode become the original characters, with no
-rich wrap, markdown strip or JSON repair. Duplicate keys, duplicate event
-ids, nonfinite numbers, truncated or CRLF frames, a missing or repeated
-result, and a result that is not last all fail as an empty or invalid
-response. A nonzero native exit stays `native_failed` and does not become
-a proposal. Effective model, AI lab, effort and remaining allowance stay
-Unknown; a model name inside an event is not treated as proof.
+rich wrap, markdown strip or JSON repair. Duplicate keys, duplicate or
+wrong-typed event ids, nonfinite or out-of-range usage numbers, truncated or
+CRLF frames, a missing or repeated result, and a result that is not last all
+fail as an empty or invalid response. A nonzero native exit stays `native_failed`
+and does not become a proposal. Effective model, AI lab, effort and remaining
+allowance stay Unknown; a model name inside an event is not treated as proof.
 
 Native secret redaction still runs inside the CLI before a line is written.
 The adapter does not undo it. Visible `parentId` values can point at events
