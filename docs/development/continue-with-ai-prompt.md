@@ -1,3 +1,36 @@
+# Current candidate — Unio 0.5.18 worker reliability
+
+Prepared2026-10-14. This candidate combines accepted Vibe live progress,
+Antigravity structured outcomes and corrected Copilot JSONL proposal delivery.
+All implementation/fixes used other subscription workers through Unio;
+Codex stayed lead-only. No extra AI review fleet or UI/site/brand edits.
+
+Antigravity e52dfea passed seven native checks and three independent cases.
+The corrected Copilot4516d51 passed six native checks and four independent
+cases. A real task through the frozen new AGY connector returned native0,
+terminalSUCCESS and adapter0. The changed Vibe connector delivered safe live
+labels and a heartbeat during real Mistral/Vibe GLM5.3 high work. Copilot's
+changed JSONL route has offline/native-source evidence only; no live call is
+claimed. Effective identities/efforts and remaining allowances stay Unknown.
+
+Grok subscription/Build1.0.52/Grok4.7high prepared version labels, documentation
+and private delivery scripts; its four native preparation checks passed.
+Original source outcomes, quality findings, failures, commits/saves and
+replacements are preserved. Separate save diagnosis did not deliver a report:
+Mistral/Vibe2.26.1/GLM5.3high ended native2/infrastructure_failure; OpenCode Go/
+CLI1.18.35/GLM5.3high ended timeout124. This does not prove quota exhaustion,
+provider-wide unavailability or a performance improvement.
+
+Public/installed release remains0.5.17 until final delivery. One frozen full
+quality gate, exact artifacts,0.5.17 upgrade/restore, installation acceptance
+and publication/download verification remain. Do not add runtime features or
+replay provider tasks. Preserve real accounts/Codex lead, YOLO/low and STOP.
+All native workers are idle. Read private coord/AGENT-LOG.md and
+../tmp/unio-next/manifest.json/receipts for exact local state. Candidate notes
+in this section supersede earlier current-state paragraphs; history follows.
+
+---
+
 # Current development checkpoint — live Vibe observations, not yet released
 
 Updated 2026-10-14T10:13:38+02:00. Accepted implementation `e7fa71a` is on official main.
