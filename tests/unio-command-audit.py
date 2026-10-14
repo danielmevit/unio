@@ -42,7 +42,11 @@ class CommandAudit(unittest.TestCase):
         # than accidentally discovering the owner's parent coord directory.
         cls.env['AUDIT_FIXTURE_ROOT'] = str(cls.root)
         parent = cls.bin / 'dirname'
-        parent.write_text('#!/usr/bin/env bash\nif [ "$1" = "$AUDIT_FIXTURE_ROOT" ]; then printf "/\\n"; else exec /usr/bin/dirname "$@"; fi\n')
+        parent.write_text('#!/usr/bin/env bash\n'
+                          'operand="$1"\n'
+                          'if [ "$operand" = "--" ]; then operand="$2"; fi\n'
+                          'if [ "$operand" = "$AUDIT_FIXTURE_ROOT" ]; then printf "/\\n"; '
+                          'else exec /usr/bin/dirname "$@"; fi\n')
         parent.chmod(0o755)
         cls.env['PATH'] = str(cls.bin) + os.pathsep + os.environ['PATH']
         cls.defaults = (cls.conf / 'agents.conf').read_bytes()
@@ -76,6 +80,31 @@ class CommandAudit(unittest.TestCase):
     def audit(self, text):
         (self.conf / 'agents.conf').write_text(text)
         return json.loads(self.run_audit('--commands', '--json').stdout)
+
+    def test_dirname_fixture_boundary_and_forwarding(self):
+        shim = str(self.bin / 'dirname')
+        literal = self.root / 'spaces \' " $() `literal` ; *' / 'child'
+        for prefix in ([], ['--']):
+            with self.subTest(prefix=prefix):
+                boundary = subprocess.run([shim, *prefix, str(self.root)], env=self.env,
+                                          capture_output=True, check=True, timeout=10)
+                self.assertEqual(boundary.stdout, b'/\n')
+                self.assertEqual(boundary.stderr, b'')
+                # Parent walking must hit the fixture boundary before it can
+                # discover the caller's enclosing real workspace.
+                parent = subprocess.run([shim, *prefix, str(self.outside)], env=self.env,
+                                        capture_output=True, check=True, timeout=10)
+                self.assertEqual(parent.stdout, os.fsencode(self.root) + b'\n')
+        for args in ([str(literal)], ['--', str(literal)],
+                     ['-z', '--', str(literal), str(self.outside)]):
+            with self.subTest(args=args):
+                expected = subprocess.run(['/usr/bin/dirname', *args], env=self.env,
+                                          capture_output=True, timeout=10)
+                actual = subprocess.run([shim, *args], env=self.env,
+                                        capture_output=True, timeout=10)
+                self.assertEqual((actual.returncode, actual.stdout, actual.stderr),
+                                 (expected.returncode, expected.stdout, expected.stderr))
+        self.assertFalse(self.calls.exists(), 'configured command was executed')
 
     def test_defaults_installed_smoke(self):
         p = self.run_audit('--commands', '--json')
