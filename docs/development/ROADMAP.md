@@ -15,7 +15,8 @@ distinct liveness heartbeat, the fourth packaged Antigravity adapter, and
 Copilot native JSONL proposal text. The public release and global install
 remain v0.5.17 until one frozen full gate and the shipping checks pass.
 A separate Copilot input/group correction is not part of this candidate
-and is not accepted. UI, site and brand work stay owner-reserved.
+and is not accepted. Its frozen-adapter call finished native 0 with
+terminal SUCCESS. UI, site and brand work stay owner-reserved.
 
 The functional core includes recovery saving, shared-account policy and capacity
 observations, managed daily startup, read-only planning, explicit single-attempt

@@ -15,7 +15,8 @@ The published and installed release remains 0.5.17.
   checked correction.
 - Package the Antigravity adapter as the fourth optional helper. It
   refuses tasks above 64 KiB and separates process exit from the
-  structured verdict. A later live use of that frozen adapter is pending.
+  structured verdict. One later live call on the frozen adapter finished
+  native 0 with terminal SUCCESS. That correction is not accepted.
 - Keep Copilot proposal files as exact native JSONL content. Evidence for
   this transport is offline only. A separate input/group correction is
   not accepted.

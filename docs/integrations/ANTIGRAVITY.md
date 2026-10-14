@@ -138,7 +138,9 @@ process-0/terminal-`ERROR` run with a nonempty response and one clean
 process-0/terminal-`SUCCESS` probe on agy 1.3.5 with
 `gemini-3.8-flash-high`; both stay private. The adapter is in the
 unreleased 0.5.18 candidate. Tags, the public download and the global
-installation remain 0.5.17. A bounded Copilot correction was still running
-on frozen adapter `fa9b964` when this candidate was prepared, so that live
-outcome is pending. The earlier process-0/terminal-ERROR observation stays
-a failure, not a completed provider call.
+installation remain 0.5.17. On 2026-10-14 frozen adapter `fa9b964` finished
+COPILOT-JSONL-GEMINI-CORRECTION-1 with native exit 0, structured terminal
+SUCCESS and adapter exit 0. Effective model, effort and allowance stay
+Unknown. That call does not accept the correction, which stays outside
+this candidate. The earlier process-0/terminal-ERROR observation remains
+a recorded failure.

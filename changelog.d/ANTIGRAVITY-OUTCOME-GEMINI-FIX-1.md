@@ -9,5 +9,5 @@ restore proven print-mode flags `--mode accept-edits` and
 regressions for sentinel exclusion and invocation flags; regenerate
 standalone installer. Included in the unreleased 0.5.18 candidate. The
 published installer remains 0.5.17. Lead accepted this checked source
-component. A later live use of the frozen adapter was still running and
-is not an accepted outcome of that correction.
+component. A later live use of the frozen adapter finished native 0 with
+structured terminal SUCCESS. That separate correction is not accepted.

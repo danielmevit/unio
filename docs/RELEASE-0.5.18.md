@@ -39,9 +39,12 @@ review authority stay as they are.
 
 The checked correction `e52dfea` is the accepted source component. Frozen
 adapter `fa9b964a678d0b2fd8a3e336535ad80432476f13db6ca807718af48702cee31e`
-is in use for a bounded Copilot correction. That run was still going when
-this candidate was prepared, so its live outcome is pending. The earlier
-process 0 / terminal ERROR observation stays preserved.
+then ran COPILOT-JSONL-GEMINI-CORRECTION-1. Its operational receipt
+finished at 13:47:58 +02:00 with native exit 0, structured terminal
+SUCCESS and adapter exit 0. Effective model, effort and allowance stay
+Unknown. That result does not accept the correction, and the correction
+is outside this candidate. The earlier process 0 / terminal ERROR
+observation stays preserved.
 
 ## Copilot JSONL proposals
 
