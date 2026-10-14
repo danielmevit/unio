@@ -4,8 +4,12 @@ Your AIs, in sync.
 
 Current update, 2026-10-14: **[v0.5.16](https://github.com/danielmevit/unio/releases/tag/v0.5.16)** is released,
 installed and pushed. Recovery performance and static worker diagnostics passed
-the combined gate and actual installed acceptance. Managed effort control is
-next; its separate refusal prototype remains excluded.
+the combined gate and actual installed acceptance. The next bundle now has an
+opt-in [managed Codex Source and effort channel](../WORKER-EFFORT.md), plus
+explicit startup permissions, in development source. Focused native checks and
+a genuine writable-task/commit acceptance passed. Effort requests acknowledge
+future-turn configuration; changing current inference remains unverified.
+The first refusal-only prototype stays excluded. No 0.5.17 release is published.
 See the [Sol low field trial](SOL-LOW-FIELD-TRIAL-2026-10-13.md) for actual
 worker outcomes and the limits of the subscription-efficiency observations.
 
@@ -22,14 +26,23 @@ per-worker effort control. Preserve owner dashboard,
 website and brand work; further visual redesign remains lower priority.
 Earlier dated sections below preserve their historical context.
 
-The 0.5.16 candidate completes the first bounded save optimization: fewer
+The released 0.5.16 completes the first bounded save optimization: fewer
 stored-file pathname checks with full byte validation. See the
 [measurement limitations](SAVE-PERFORMANCE.md#descriptor-bound-deep-reading--2026-10-13-source-candidate).
-The candidate also includes static worker-command diagnostics. Combined release
-checks and installation are pending. Managed effort control remains unfinished;
-its separate refusal prototype is excluded.
+It also includes static worker-command diagnostics; combined release checks and
+installation passed. Further release work should freeze a useful bundle and run
+one combined gate, rather than publish each corrective slice separately.
 
 ## Current focus: finish the functional core
+
+Next bounded improvement: prevent mutating settings commands in a new nested,
+uninitialized Git repository from silently selecting an enclosing Unio project.
+The field trial exposed this through a fixture policy call. Preserve legitimate
+nested-directory use and explicit project targeting; refuse ambiguity before
+writing. Estimate 1–2 hours for implementation and focused checks. This is a
+planned guardrail, not implemented runtime. Bundle it with the new managed-worker
+source before a future release, rather than releasing each small correction.
+
 
 The owner requested a milestone review on 2026-10-08. The
 [functionality-first plan](FUNCTIONALITY-FIRST-PLAN.md) compares the original
@@ -50,8 +63,9 @@ Codex exec with a separate structured quota probe, durable ownership and
 explicit launch controls. The [source runtime](../LEAD-COOLDOWN.md) now passes
 offline acceptance and actual read-only quota/configuration checks. Combined
 release checks passed; genuine subscription-limit restart remains unobserved,
-as disclosed above. No second Codex workflow is started alongside this active
-low-tier lead.
+as disclosed above. The lead reservation counts toward native tier limits. The
+owner's dated Sol-low experiment permits one recorded temporary-medium admission
+beside it; ordinary low-tier limits apply outside that scoped exception.
 
 | Priority | Functional milestone | Current state |
 | --- | --- | --- |

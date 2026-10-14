@@ -1,6 +1,7 @@
 # Change a worker's reasoning effort during work
 
-Status: opt-in managed Codex Source implemented on 2026-10-14. Native
+Status: development source preview implemented on 2026-10-14; stable is 0.5.16.
+Full bundle release checks and publication remain pending. Native
 `unio worker-effort WORKER [low|medium|high|xhigh] [--json]` controls only that
 owned Source. See [usage and boundary](../WORKER-EFFORT.md). Legacy exec and
 other adapters remain unsupported; dashboard controls remain future work.
@@ -13,6 +14,14 @@ pending for subsequent turns and never change an already running turn.
 Effective inference effort remains Unknown. No automatic next turn is started.
 The installed offline suites exercise native admission/task binding, RPC,
 streaming, failed exits, timeout/cancellation and bounded channel ownership.
+
+Independent long-path tmpfs verification passed, including the repeated-signal
+cleanup regression and startup-setting confinement. A genuine Codex CLI 0.162.1
+task through Unio wrote and committed its fixture file with explicitly selected
+startup permissions, passed native verification and acknowledged a same-level
+low request. An earlier inherited-read-only task declined the write and remains
+recorded as unaccepted. Cross-level requests were tested offline only. Neither
+result establishes changed in-flight reasoning or subscription savings.
 
 ## Wider intended experience
 

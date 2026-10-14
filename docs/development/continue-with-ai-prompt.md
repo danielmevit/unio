@@ -1,3 +1,51 @@
+# Current development — 2026-10-14: stable 0.5.16, next bundle source checked
+
+Official/latest and installed stable remain [v0.5.16](https://github.com/danielmevit/unio/releases/tag/v0.5.16).
+Its combined gate, installation, official assets and Pages deployment passed.
+The live managed dashboard is http://127.0.0.1:41271. Website/dashboard/brand
+files were left intact.
+
+Main now contains the reviewed managed Codex Source, worker-effort channel,
+idempotent cancellation cleanup and explicit startup sandbox/approval choices
+from 87a0ef7. These are development source for the next bundled release,
+marked 0.5.17 unreleased; no 0.5.17 tag/publication/global update occurred.
+
+Implementation route: existing ChatGPT subscription / Codex CLI 0.162.1 /
+requested GPT-6.1 Sol LOW under the owner's scoped experiment. Configured lead
+GPT-6.1 Sol xhigh; effective model/effort Unknown. Each task had one invocation;
+original failures and early commits remain preserved. Native long-TMPDIR tmpfs
+verification passed at 87a0ef7. A genuine explicitly configured writable task
+created and committed its exact fixture file, passed native verification and
+acknowledged a same-level low request; global engine/config remained unchanged.
+The earlier inherited-read-only write acceptance remains unaccepted, not replayed.
+Effort requests target future-turn configuration; current inference changes and
+quota savings are not established. Cross-level requests were tested offline only.
+
+Read [the guide](../WORKER-EFFORT.md) and [field-trial continuation](SOL-LOW-FIELD-TRIAL-2026-10-13.md).
+No extra AI review fleet was used under YOLO. The first unsupported-only prototype
+0776d80 remains unaccepted on its preserved branch and is not the new backend.
+Two test-added dummy budget aliases were restored while idle; real account maps
+and the Codex lead stayed intact. Canonical receipts and new log timestamps use
+`date`; private worker fixture failures remain separate from final acceptance.
+
+Next: implement the nested/uninitialized project-root mutation guardrail (roughly
+1–2 hours), then freeze a useful bundle and run one full release gate. Keep UI
+polish later. Before a new assignment verify official latest/installed versions,
+actual routing policy and worker idleness. The low experiment was scoped; do not
+silently make it the default for unrelated future work. Owner's ordinary fix rule
+is one dedicated Sol high worker through Unio, with genuine shared-account/lead
+reservation and a recorded temporary medium admission only when needed.
+Preserve STOP between tasks and restore low when idle. No blind retries, paid API
+fallback, max/ultra or direct inline product fixes. Do not replay completed tasks
+or claim source preview is already an installed stable feature.
+
+From this checkout, private coordination is in ../coord/AGENT-LOG.md and
+../tmp/unio-next/manifest.json, with receipts/ under that run folder, including
+managed-writable-startup-live-20261014.json. Public source
+notes below are historical.
+
+---
+
 # Current delivery — 2026-10-14: v0.5.16
 
 [Unio 0.5.16](https://github.com/danielmevit/unio/releases/tag/v0.5.16) is published, installed and pushed from 9ee2a206a81faf65c6bd47058efca4fa385837bb.

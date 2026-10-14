@@ -61,3 +61,52 @@ failed outcomes instead of promoting green checks into completed milestones.
 Private original tasks, dated receipts, intermediate fixture failures and
 metadata-probe harness errors stay in the operator workspace. No raw logs,
 authentication material or account identifiers are published here.
+
+## Continuation — 2026-10-14
+
+Four further implementation Sources used the same ChatGPT subscription /
+Codex CLI 0.162.1 / requested GPT-6.1 Sol low route. The original four-call
+report above remains historical. Effective identities and per-worker allowance
+attribution remain Unknown. No additional AI review fleet was used.
+
+| Work | Provider elapsed | Outcome |
+| --- | ---: | --- |
+| Owned managed backend | 19m 5s | Needed fixture/setup corrections |
+| Long-path and opt-in setup | 6m 37s | Fixed setup; faster verification exposed cancellation defect |
+| Idempotent cancellation cleanup | 7m 8s | Accepted; five native checks pass |
+| Explicit startup permissions | 5m 42s | Accepted; five native checks pass |
+
+The original backend and setup verification failures stay recorded separately.
+The final installed tests pass under a long caller TMPDIR on private tmpfs.
+Repeated forwarded cancellation signals were raising again before cleanup
+installed its signal handlers; the fix preserves the first cancellation code
+and makes later signals harmless. The deterministic regression fails on the
+old helper. Existing ownership, replacement and exit-status checks remain.
+
+A pre-initialization fixture policy call selected the enclosing workspace and
+added two dummy aliases. They were removed while idle under the native policy
+lock, preserving all original mappings and the registered lead. Final fixtures
+initialize locally before policy calls. This was not an initialization reset.
+A disposable mock fixture briefly used external temporary storage; it cleaned
+itself up. Canonical independent verification stayed inside project storage.
+
+Two distinct genuine managed-Source tasks followed. The first acknowledged a
+same-level low request and preserved read-only startup settings, declining the
+requested file write; its complete acceptance remains unaccepted. After the
+new explicit startup feature, a separately frozen writable task created and
+committed its exact fixture file, passed native verification, acknowledged low
+and cleaned its owned channel. Each made one Source invocation and one assigned
+turn. Neither changed the global engine/configuration or replayed the original
+failed task. Actual writable acceptance selected the existing trusted-host
+coding settings explicitly; inherited defaults remain unchanged.
+
+The [managed Source guide](../WORKER-EFFORT.md) describes the development
+preview. Cross-level effort requests were tested offline only. Real control
+acknowledgement establishes future-turn configuration, not changed in-flight
+reasoning; pending settings may never be used by a one-turn Source. The toy
+write/commit acceptance proves that route, not a general coding benchmark.
+
+Official and installed stable remain v0.5.16. The new source foundation and
+startup controls await a useful bundled release and its one full gate. The
+[next root-discovery guardrail](ROADMAP.md) follows directly from the fixture
+finding. No new low-versus-high comparison or subscription-saving claim follows.

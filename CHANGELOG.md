@@ -4,6 +4,20 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.17 (unreleased) — managed Codex worker controls
+
+- Add an opt-in managed Codex Source and `unio worker-effort` over an owned
+  private channel, retaining native task, account and cancellation boundaries.
+- Separate requested, configured, pending-next-turn and effective Unknown.
+  A settings acknowledgement does not establish changed in-flight reasoning.
+- Add explicit startup sandbox and approval choices; omitted settings remain
+  inherited, and effort requests cannot grant permissions.
+- Fix repeated-signal cleanup and long-path fixtures; test the documented
+  shared-account setup through the installed backend.
+- Pass focused native checks and a genuine writable-task/commit acceptance
+  with an acknowledged same-level low request. Cross-level requests are
+  covered offline. Full bundle release checks and publication remain pending.
+
 ## 0.5.16 — recovery performance and worker diagnostics — 2026-10-14
 
 See [measured results and limits](docs/RELEASE-0.5.16.md).
