@@ -1,3 +1,64 @@
+# Current development checkpoint — live Vibe observations, not yet released
+
+Updated 2026-10-14T10:13:38+02:00. Accepted implementation `e7fa71a` is on official main.
+The installed and latest public release remains **v0.5.17**. No new release or
+global installation was performed for this slice; include it in the next useful
+0.5.x bundle, with one full frozen-tree gate and normal shipping checks.
+
+The optional Vibe adapter now consumes the supported 2.26.1 streaming route,
+prints only fixed operational labels and a distinct roughly 30-second liveness
+heartbeat, and retains raw output privately. It safely handles malformed typed
+fields and supervises a child after its stdout closes. No raw reasoning, tool
+payloads, command strings or paths are exposed. Completed-history events do not
+certify that a tool is running at that instant. Bounds are decoded characters
+per record and a separate native-output byte limit; see MISTRAL-VIBE.md.
+
+The coherent final source passed all six focused native checks under the
+verification-only contract VIBE-PROGRESS-BATCH-VERIFY-1, including Vibe fixtures,
+embedded adapter identity, standalone packaging, progress observation and docs.
+Personal probes fail on the earlier implementation and pass on the correction.
+The final fixture explicitly closes descriptor1. No live provider call through
+the newly changed adapter has been made; use the next normal eligible Vibe task
+for honest field observation rather than claiming a completed live trial.
+No dashboard, website or brand source changed.
+
+Work provenance:
+
+- Mistral subscription / Vibe2.26.1 / requested GLM5.3 high produced9cbef05 and
+  partial docs, then Source/native3 at its local4M cumulative token cap. This is
+  not evidence that the monthly subscription is exhausted. Original work remains.
+- Antigravity / agy1.3.5 / requested gemini-3.8-flash-high preserved86ad359 and
+  corrected a76089c. Process/Source/native0 but structured terminal ERROR remains
+  recorded; do not turn it into a clean provider success. Code acceptance rests
+  on the later checks and personal review.
+- Copilot Free / CLI1.0.95 / Auto Balance / effort not exposed supplied routine
+  test/docs edits. Source/native/adapter0; underlying model/lab Unknown. CLI
+  presentation wrapping required normalization; exact source matches and original
+  proposal are preserved. Lead applied the reviewed proposal and clarified public
+  release wording; it is not a native Copilot implementation commit.
+
+Effective identities/efforts and remaining allowances stay Unknown. No Codex
+worker ran: the owner reserved Codex for this lead during this milestone.
+Preserve that restriction for its follow-up corrections and check current owner
+instructions before future assignments. Real accounts/lead, YOLO/low and STOP
+remain. The lead made no inline product fix and launched no extra AI reviewers.
+
+The first Gemini-task verification was INCOMPLETE because this lead used the
+wrong Markdown headings. The original frozen task and receipt remain unchanged;
+separate correctly headed verification contracts bind the exact code and scopes.
+They made no provider call and are not Source retries.
+
+Next bounded reliability work to assess: Antigravity returned process0 with a
+structured ERROR; Copilot's rendered output hard-wrapped machine-readable JSON.
+Preserve actual exits, framing and originals when designing better adapters.
+Do not replay these tasks or expand into UI/CodeGraph work. Save performance,
+allowance-aware routing, controlled scheduling, lead/phone continuity and native
+macOS/Windows remain the larger functional roadmap. Read the dated private log,
+manifest and receipts before assigning anything. Earlier delivery notes below
+are preserved history.
+
+---
+
 # Current delivery — 2026-10-14: Unio 0.5.17
 
 [Unio 0.5.17](https://github.com/danielmevit/unio/releases/tag/v0.5.17) is published, installed and pushed from a5539eee161d9c6c65c0adcd59b117806058bb21.
