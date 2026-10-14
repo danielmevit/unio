@@ -18,8 +18,8 @@ policy or provider activity.
 The main clone (non-default name, path with spaces), registered worker
 worktrees (.git files, with and without the marker), the workspace root,
 non-Git scratch directories, genuine Bash logical symlink paths, an
-initialized inner workspace using its own state, and an explicitly targeted read-only
-command keep working. No live provider is called; the configured agent
+initialized inner workspace using its own state, and an explicitly targeted
+read-only command keep working. No live provider is called; the configured agent
 command writes a canary file that must stay absent.
 """
 import os
@@ -215,17 +215,6 @@ with tempfile.TemporaryDirectory(prefix='project-root-') as directory:
         check('%s reads outer accounts' % name,
               out.returncode == 0 and 'mockagent=codex' in out.stdout, out)
 
-    # Links under scratch would appear unrelated when walking logical PWD.
-    # Spaces, apostrophes and shell syntax also exercise positional passing.
-    for name, target in (('main', clone), ('worker', worker)):
-        logical_link = scratch / (name + " alias ' $(literal)")
-        logical_link.symlink_to(target)
-        out = logical_unio('tier', 'high', cwd=logical_link / 'src')
-        check('Bash logical cd through scratch %s symlink sets outer tier' % name,
-              out.returncode == 0, out)
-        check('logical %s symlink preserves exact outer policy/STOP and locks' % name,
-              snapshot() == state[:3])
-
     # stop/resume keep working from valid locations; bytes return to frozen.
     out = unio('resume', cwd=worker / 'src')
     check('resume from worker subdirectory clears STOP',
@@ -283,6 +272,21 @@ with tempfile.TemporaryDirectory(prefix='project-root-') as directory:
           and str(inner_root) in out.stderr, out)
 
     check('outer policy, STOP and lock tree still frozen', snapshot() == state[:3])
+
+    # Links under scratch would appear unrelated when walking logical PWD.
+    # Spaces, apostrophes and shell syntax also exercise positional passing.
+    # Successful setters refresh policy updated_at, so run after byte checks.
+    for name, target in (('main', clone), ('worker', worker)):
+        logical_link = scratch / (name + " alias ' $(literal)")
+        logical_link.symlink_to(target)
+        out = logical_unio('tier', 'high', cwd=logical_link / 'src')
+        check('Bash logical cd through scratch %s symlink sets outer tier' % name,
+              out.returncode == 0, out)
+        out = unio('tier', cwd=clone)
+        check('logical %s symlink targets outer tier and preserves STOP/locks' % name,
+              out.returncode == 0 and out.stdout.strip() == 'tier: high'
+              and snapshot()[1:] == state[1:3], out)
+
     check('no provider canary at the end', not canary.exists())
 
 print('project-root: %d checks passed' % passed[0])
