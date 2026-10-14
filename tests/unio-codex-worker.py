@@ -154,8 +154,9 @@ def repeated_cancellation(h):
     check = r'''
 import json, os, runpy, signal, socket, sys
 from pathlib import Path
+from types import SimpleNamespace
 backend = runpy.run_path(sys.argv[1])
-server = backend['Server'](None)
+server = backend['Server'](SimpleNamespace(effort='low'))
 server.directory = Path(sys.argv[2]) / 'duplicate-cancel'
 server.directory.mkdir(mode=0o700)
 server.listener = socket.socket(socket.AF_UNIX)
