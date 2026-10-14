@@ -11,10 +11,14 @@ One bounded slice is implemented at the adapter level: the optional
 [Vibe worker](integrations/MISTRAL-VIBE.md#live-progress-during-a-run) now
 prints fixed allowlisted operational labels and a liveness-only heartbeat to
 its own stdout before the native process exits, derived from the CLI's
-documented streaming route. It emits no message excerpts, paths, commands or
-raw output, invents no completion state, and drives no policy decision. The
-browser console contract below remains the fuller design; its observation
-layers can consume these labels as already-public worker output.
+documented streaming route. Because the underlying stream delivers completed
+history entries, records may be emitted after an action completes; labels
+describe observed history, not certified currently-running tool state. It
+emits no raw assistant or reasoning text, prompts, commands, file paths, tool
+payloads (arguments or results), authentication or provider error text, invents
+no completion state, and drives no policy decision. The browser console contract
+below remains the fuller design; its observation layers can consume these labels
+as already-public worker output.
 
 ## What the owner sees
 

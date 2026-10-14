@@ -160,11 +160,13 @@ observed label and time; requested and effective model/effort and remaining
 allowance stay Unknown, and progress output drives no policy or admission
 decision.
 
-Limitations: the stream carries only completed entries, so a tool call and its
-result arrive as one settled record — `running shell command` means such an event
-was observed, not that a command is executing right now. Silence between records
-is normal while the CLI works; the heartbeat is the only signal during it. The
-first slice shows operational labels only, not message excerpts or a console.
+Limitations: the stream carries only completed entries, so history entries
+may be emitted after an action completes; labels describe observed history, not
+certified currently-running tool state. For example, `running shell command`
+means such an event was observed in completed history, not that a command is
+executing right now. Silence between records is normal while the CLI works; the
+heartbeat is the only signal during it. The first slice shows operational
+labels only, not message excerpts or a console.
 
 ## References
 

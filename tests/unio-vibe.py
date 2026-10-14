@@ -81,6 +81,16 @@ if os.environ.get('FAKE_STREAM'):
  b.write(b'{"pad":"'+b'A'*300000+b'"}\n')
  b.write(b'['*50000+b']'*50000+b'\n')
  b.flush()
+ if os.environ.get('FAKE_HOSTILE'):
+  for h in [{'type':'effect','detail':{'kind':[]},'state':{'status':'running'}},
+            {'type':'effect','detail':{'kind':{}},'state':{'status':'running'}},
+            {'type':'effect','detail':{'kind':'shell'},'state':{'status':[]}},
+            {'type':'effect','detail':{'kind':'shell'},'state':{'status':{}}},
+            {'type':[]},
+            {'type':'message','role':[]},
+            {'type':'message','role':'assistant','content':[{'type':'text','text':'POST-HOSTILE'}],'generationStatus':'completed'}]:
+   b.write((json.dumps(h)+'\n').encode())
+  b.flush()
  wait=os.environ.get('FAKE_STREAM_WAIT')
  if wait:
   for _ in range(400):
@@ -285,6 +295,22 @@ class VibeTests(unittest.TestCase):
         progress.feed(b'{"pad":"'+b'A'*300000+b'"}\n')
         self.assertEqual(progress.malformed,3)
         self.assertEqual(progress.unlabeled,2)
+        for hostile in [
+            b'{"type":"effect","detail":{"kind":[]},"state":{"status":"running"}}\n',
+            b'{"type":"effect","detail":{"kind":{}},"state":{"status":"running"}}\n',
+            b'{"type":"effect","detail":{"kind":"shell"},"state":{"status":[]}}\n',
+            b'{"type":"effect","detail":{"kind":"shell"},"state":{"status":{}}}\n',
+            b'{"type":"effect","detail":{"kind":123},"state":{"status":"completed"}}\n',
+            b'{"type":"effect","detail":{"kind":"shell"},"state":{"status":123}}\n',
+            b'{"type":[]}\n',
+            b'{"type":"message","role":[]}\n',
+        ]:
+            progress.feed(hostile)
+        self.assertEqual(progress.unlabeled,10)
+        self.assertEqual(progress.events,3)
+        progress.feed(b'{"type":"message","role":"assistant","content":[{"type":"text","text":"ok"}]}\n')
+        self.assertEqual(progress.events,4)
+        self.assertEqual(progress.last_label,'assistant response observed')
         self.assertLessEqual(len(progress.buffer),worker.PROGRESS_RECORD_BYTES+65536)
         for line in out.getvalue().splitlines():
             self.assertTrue(line.startswith('Vibe progress: '),line)
@@ -308,6 +334,59 @@ class VibeTests(unittest.TestCase):
         self.assertEqual(r['export']['outcome'],'token_limit')
         self.assertEqual(r['progress']['events'],10)
         self.assertNotIn('SECRET',json.dumps(r)+p.stdout+p.stderr)
+
+    def test_hostile_valid_json_through_fake_cli_cannot_terminate_task(self):
+        p=self.invoke(FAKE_STREAM='1',FAKE_HOSTILE='1')
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['process_exit'],0)
+        self.assertEqual(r['export_state'],'valid')
+        prog=r['progress']
+        self.assertEqual(prog['events'],11)
+        self.assertEqual(prog['malformed_records'],4)
+        self.assertEqual(prog['unlabeled_records'],10)
+        self.assertEqual(prog['last_label'],'assistant response observed')
+        self.assertIn('Vibe progress: assistant response observed',p.stdout)
+        final=json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual(final['progress_events'],11)
+        self.assertEqual(final['progress_last_label'],'assistant response observed')
+        self.assertEqual(final['adapter_exit'],0)
+        self.assertEqual(final['process_exit'],0)
+        self.assertEqual(final['export_state'],'valid')
+
+    def test_hostile_valid_json_through_fake_cli_preserves_native_limit_exit(self):
+        p=self.invoke(FAKE_STREAM='1',FAKE_HOSTILE='1',FAKE_EXIT='3')
+        self.assertEqual(p.returncode,3,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['process_exit'],3)
+        self.assertEqual(r['export_state'],'valid')
+        self.assertEqual(r['export']['outcome'],'token_limit')
+        self.assertEqual(r['progress']['events'],11)
+        self.assertEqual(r['progress']['last_label'],'assistant response observed')
+
+    def test_heartbeat_survives_child_closing_stdout_early_while_remaining_alive(self):
+        out=io.StringIO()
+        progress=worker.Progress(stream=out)
+        original=worker.HEARTBEAT_SECONDS
+        worker.HEARTBEAT_SECONDS=.2
+        try:
+            cmd='import sys, time; sys.stdout.close(); time.sleep(.8)'
+            code,_=worker.owned_call([sys.executable,'-c',cmd],dict(os.environ),5,progress=progress)
+        finally:
+            worker.HEARTBEAT_SECONDS=original
+        self.assertEqual(code,0)
+        self.assertGreaterEqual(progress.heartbeats,2)
+        self.assertEqual(progress.events,0)
+        lines=out.getvalue().splitlines()
+        self.assertTrue(lines)
+        for line in lines:
+            self.assertTrue(line.startswith('Vibe heartbeat: '),line)
+        self.assertNotIn('Vibe progress:',out.getvalue())
+
+    def test_deadline_supervision_survives_child_closing_stdout_early(self):
+        cmd='import sys, time; sys.stdout.close(); time.sleep(10)'
+        with self.assertRaises(worker.Refusal):
+            worker.owned_call([sys.executable,'-c',cmd],dict(os.environ),.2)
 
 
 if __name__=='__main__':

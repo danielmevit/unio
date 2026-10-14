@@ -164,6 +164,8 @@ class Progress:
         if not isinstance(value, dict):
             return None
         kind = value.get("type")
+        if not isinstance(kind, str):
+            return None
         if kind == "message":
             return "assistant response observed" if value.get("role") == "assistant" else None
         if kind == "reasoning":
@@ -173,9 +175,13 @@ class Progress:
             state = value.get("state")
             if not isinstance(detail, dict) or not isinstance(state, dict):
                 return None
-            if state.get("status") == "failed":
+            status = state.get("status")
+            effect_kind = detail.get("kind")
+            if not isinstance(status, str) or not isinstance(effect_kind, str):
+                return None
+            if status == "failed":
                 return "tool failure observed"
-            return EFFECT_LABELS.get(detail.get("kind"), "tool call observed")
+            return EFFECT_LABELS.get(effect_kind, "tool call observed")
         return None
 
     def _print(self, line):
@@ -238,11 +244,17 @@ def owned_call(argv, env, seconds, log=None, output_limit=OUTPUT_BYTES, progress
                     log.write(chunk)
                 if progress is not None:
                     progress.feed(chunk)
-        try:
-            code = child.wait(timeout=max(.001, deadline - time.monotonic()))
-        except subprocess.TimeoutExpired:
-            raise Refusal("timeout") from None
-        return code, bytes(capture)
+        while child.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Refusal("timeout")
+            if progress is not None and progress.silent_for() >= HEARTBEAT_SECONDS:
+                progress.heartbeat()
+            try:
+                child.wait(timeout=min(max(.001, remaining), .2))
+            except subprocess.TimeoutExpired:
+                pass
+        return child.returncode, bytes(capture)
     finally:
         poll.close()
         child.stdout.close()

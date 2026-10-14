@@ -1,0 +1,4 @@
+- Harden the Vibe streaming progress parser against hostile non-string kind/status fields (e.g. lists or dicts), safely counting them as unlabeled without throwing TypeError, inventing events, or leaking public payloads.
+- Maintain bounded liveness and deadline supervision in `owned_call` when a child process closes stdout early while remaining alive, continuing 30s heartbeats until actual child exit.
+- Clarify in documentation that streaming history records describe observed past events rather than certified currently-running tool states, with all raw payloads strictly excluded.
+- Add offline parser and fake-CLI regression tests covering hostile valid JSON payloads, subsequent valid event emission, faithful native export retention, and early-closed stdout heartbeat survival.
