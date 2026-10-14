@@ -1,3 +1,49 @@
+# Current delivery — 2026-10-14: Unio 0.5.17
+
+[Unio 0.5.17](https://github.com/danielmevit/unio/releases/tag/v0.5.17) is published, installed and pushed from a5539eee161d9c6c65c0adcd59b117806058bb21.
+The final combined full gate passed on a420479dab05a1dfeff415bd62bad8ed5ee37251 in 1234.185
+seconds. The earlier gate stopped on an audit-test dirname shim mismatch; its
+failed receipt and test-only correction remain preserved. Only README/changelog
+release labels changed after the final passing gate. Exact artifacts,
+40 offline selftests,0.5.16 upgrade/restore, actual installed root/audit/helper
+checks, dashboard byte identity and six official download hashes passed.
+
+The release combines a physical project-root layout safeguard with opt-in
+experimental managed Codex workers. Future-turn effort configuration is supported;
+current-inference changes and use of pending settings by a one-turn Source remain
+unproven. Select starting effort explicitly. Read WORKER-EFFORT.md and
+RELEASE-0.5.17.md. Legacy direct clone/wt allowance is documented.
+
+Mistral subscription/Vibe2.26.1/GLM5.3 high built the guard, then dedicated ChatGPT/
+Codex0.162.1/GPT-6.1 Sol high corrected two lead-found cases. CopilotFree/CLI1.0.95/
+AutoBalance drafted the recovery note. Earlier managed-worker work used scoped
+Sol low. Effective identities/efforts and current remaining allowances Unknown.
+All original failures and the interrupted original Sol attempt are preserved.
+No extra AI review fleet. Real account maps/Codex lead remain; low tier and STOP.
+
+The local store audit validated34snapshots; only an empty duplicate archive
+reservation was reversibly quarantined. Subsequent300s-budget native baselines
+passed. No automatic recovery feature or default30s success is claimed.
+Current managed dashboard: http://127.0.0.1:38771
+
+Next: assess remaining functionality priorities before a new bundle; provider
+progress visibility needs attention because Vibe returned no live stdout while
+actually editing/committing. Do not misclassify silence as model failure.
+Perplexity Pro/GLM5.3 orKimi3/Thinking is owner-available for research/proposals;
+current readiness/allowance Unknown. Full Cloudflare security audits were only
+assessed, not installed/launched. Focused guidance looks useful; full workflows
+need explicit budget and proper sandboxing, not mere worktree isolation.
+
+Use native background Sources and dated receipts. Default new code fixes use
+dedicated Sol high, one at a time, genuine shared Codex budget/lead and recorded
+temporary medium restored after idle. No blind retries, paid fallback,
+max/ultra or inline product fixes. Preserve owner's UI/site/brand work.
+
+Read private coord/AGENT-LOG.md and tmp/unio-next/manifest.json for exact state.
+Candidate notes below are historical.
+
+---
+
 # Current candidate — 2026-10-14: 0.5.17 bundle
 
 Accepted runtime9f62865 combines managed Codex Source/control-channel foundation

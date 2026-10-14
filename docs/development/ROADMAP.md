@@ -2,16 +2,13 @@
 
 Your AIs, in sync.
 
-Current update, 2026-10-14: **[v0.5.16](https://github.com/danielmevit/unio/releases/tag/v0.5.16)** is released,
-installed and pushed. Recovery performance and static worker diagnostics passed
-the combined gate and actual installed acceptance. The next bundle now has an
-opt-in [managed Codex Source and effort channel](../WORKER-EFFORT.md), plus
-explicit startup permissions, in development source. Focused native checks and
-a genuine writable-task/commit acceptance passed. Effort requests acknowledge
-future-turn configuration; changing current inference remains unverified.
-The first refusal-only prototype stays excluded. No 0.5.17 release is published.
-See the [Sol low field trial](SOL-LOW-FIELD-TRIAL-2026-10-13.md) for actual
-worker outcomes and the limits of the subscription-efficiency observations.
+Current update,2026-10-14: **[v0.5.17](https://github.com/danielmevit/unio/releases/tag/v0.5.17)** is released,
+installed and pushed. It combines the corrected physical project-root guard
+with opt-in experimental managed Codex workers and owned control channels.
+One full frozen gate and artifact/upgrade/install/download checks passed.
+Effort requests target future-turn configuration; current-inference changes
+and consumption of pending choices by a one-turn Source remain unproven.
+Local save recovery is complete with the original evidence preserved.
 
 The functional core includes recovery saving, shared-account policy and capacity
 observations, managed daily startup, read-only planning, explicit single-attempt
@@ -44,9 +41,9 @@ and subsequent explicit-budget baseline captures succeeded. See the
 The nested-project guard is accepted from9f62865 after Mistral/Vibe GLM high
 implementation and a dedicated Sol high correction. Native and personal checks
 cover the original mutation, copied markers and genuine Bash symlinks. See the
-[dated findings](PROJECT-ROOT-GUARD-2026-10-14.md). The next0.5.17 bundle combines
-this with experimental managed Codex workers; one frozen release gate and
-shipping checks remain. Current-inference effort changes remain unfinished.
+[dated findings](PROJECT-ROOT-GUARD-2026-10-14.md). The released0.5.17 combines
+this with experimental managed Codex workers; combined gate and shipping checks
+passed. Current-inference effort changes remain unfinished.
 
 
 The owner requested a milestone review on 2026-10-08. The

@@ -17,7 +17,7 @@ remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The comp
 
 | Version | Included work | State |
 | --- | --- | --- |
-| 0.5.17 | Safer project selection and experimental managed Codex workers | Candidate accepted after native checks and personal review; original failures retained. Combined release gate, upgrade/install and publication pending. Stable remains0.5.16. |
+| 0.5.17 | Safer project selection and experimental managed Codex workers | [Released and installed2026-10-14](https://github.com/danielmevit/unio/releases/tag/v0.5.17); full gate, exact artifacts, upgrade/restore, installed acceptance, dashboard identity and six official download hashes passed. Current-inference effort changes remain unproven. |
 | 0.5.16 | Recovery performance and static worker diagnostics | [Released and installed 2026-10-14](https://github.com/danielmevit/unio/releases/tag/v0.5.16); source9ee2a20, combined gate9b4dfc4, artifacts, upgrade/restore, installed saving/audit acceptance and six official download hashes passed |
 | 0.5.15 | Local structured review findings, protocol-aware compatibility and dated worker readiness | [Released and installed 2026-10-13](https://github.com/danielmevit/unio/releases/tag/v0.5.15); source 6894b20, full gate on af19d35, exact artifacts, 0.5.14 upgrade/restore, installed findings acceptance and six official download hashes passed |
 | 0.5.13 | Matching YOLO/Balanced/Thorough commands and explicit interchangeable Low/Medium/Max reasoning instructions | [Released and installed 2026-10-12](https://github.com/danielmevit/unio/releases/tag/v0.5.13); source f9997dc, full gate, copied-guide packaging, exact artifacts, upgrade/restore, installed command acceptance and six official download hashes passed |
