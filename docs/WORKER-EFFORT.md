@@ -3,11 +3,22 @@
 Opt in with a separate agents.conf entry (keep existing codex exec unchanged):
 
 ```ini
-codex-managed=python3 -I -S -B "$UNIO_CONF_DIR/lib/codex-worker.py" run --model gpt-6.1-sol --effort low
+codex-managed=python3 -I -S -B "${UNIO_CONF_DIR:-$HOME/.config/unio}/lib/codex-worker.py" run --model gpt-6.1-sol --effort low
 ```
 
 Map this alias to the same existing Codex account budget group using the native
-work policy. Run `unio run WORKER TASK` normally. The Source launches
+work policy. For an existing group named `codex`, use:
+
+```sh
+unio account codex-managed codex
+unio init codex-managed
+unio run codex-managed TASK
+```
+
+Use the owner's actual existing group if it has a different name. The registered
+lead still consumes its slot; select the owner's authorized native concurrency
+tier before admission. No allowance is inferred from the slot count.
+Run `unio run WORKER TASK` normally. The Source launches
 `codex app-server --listen stdio://` under the existing CLI subscription login.
 It inherits the CLI's existing permission/sandbox settings; configure those
 before choosing this noninteractive Source. Provider approval requests are

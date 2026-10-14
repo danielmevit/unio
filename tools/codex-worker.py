@@ -12,6 +12,7 @@ import select
 import signal
 import socket
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,10 @@ BOUND = 16384
 LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
 
 class Refusal(Exception):
+    pass
+
+
+class Cancelled(Exception):
     pass
 
 
@@ -116,7 +121,7 @@ class Server:
 
     def stop(self, number, frame):
         self.stop_code = 128 + number
-        raise Refusal('interrupted')
+        raise Cancelled('interrupted')
 
     def send(self, data):
         self.child.stdin.write((json.dumps(data) + '\n').encode())
@@ -159,7 +164,9 @@ class Server:
                 raise Refusal('provider message bound exceeded')
         line, self.buffer = self.buffer.split(b'\n', 1)
         msg = json.loads(line)
-        if not isinstance(msg, dict):
+        if (not isinstance(msg, dict)
+                or ('method' in msg and (not isinstance(msg['method'], str)
+                                        or not isinstance(msg.get('params', {}), dict)))):
             raise Refusal('invalid provider message')
         return msg
 
@@ -211,24 +218,36 @@ class Server:
                     if self.done is not None:
                         raise Refusal('turn already finished')
                     self.requested = effort
-                    self.pending = True
                     self.rpc('thread/settings/update', {'threadId': self.thread, 'effort': effort})
+                    self.pending = True
                     # Empty response is only RPC success; readback establishes configuration.
+                    state = 'unverified'
+                try:
                     thread = self.rpc('thread/read', {'threadId': self.thread, 'includeTurns': False}).get('thread', {})
                     if thread.get('reasoningEffort') in LEVELS:
                         self.configured = thread['reasoningEffort']
-                    state = 'acknowledged' if self.configured == effort else 'unverified'
+                except Refusal:
+                    if self.done is not None:
+                        raise
+                if 'effort' in req and self.configured == req['effort']:
+                    state = 'acknowledged'
                 result = self.view(state)
-            except (Refusal, OSError, ValueError, KeyError, TypeError):
+            except (Refusal, OSError, ValueError, KeyError, TypeError, RecursionError):
                 result = self.view('rejected')
-            conn.sendall((json.dumps(result) + '\n').encode())
+            receipt = dict(result, recorded_at=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                           cli='Codex app-server', cli_version='Unknown', effective_model='Unknown')
+            print('unio worker-effort receipt: ' + json.dumps(receipt), file=sys.stderr, flush=True)
+            try:
+                conn.sendall((json.dumps(result) + '\n').encode())
+            except OSError:
+                pass  # Client disappearance cannot cancel the assigned provider turn.
 
     def run(self):
         env = os.environ
         root, worker, task, slot, holder = [env.get('UNIO_CODEX_' + k) for k in ('PROJECT', 'WORKER', 'TASK', 'SLOT', 'HOLDER')]
         if not all((root, worker, task, slot, holder)):
             raise Refusal('managed native run required')
-        meta, inode = read_private(slot)
+        _, inode = read_private(slot)
         self.doc = {'project': root, 'worker': worker, 'task': task, 'slot': slot,
                     'slot_inode': list(inode), 'holder': int(holder), 'holder_stamp': process_stamp(int(holder)),
                     'pid': os.getpid(), 'pid_stamp': process_stamp(os.getpid()), 'nonce': uuid.uuid4().hex}
@@ -246,37 +265,19 @@ class Server:
             prompt = f.read(2 * 1024 * 1024 + 1)
         if len(prompt) > 2 * 1024 * 1024:
             raise Refusal('task too large')
+        if env.get('OPENAI_API_KEY') or env.get('CODEX_API_KEY'):
+            raise Refusal('subscription Source refuses API-key environment')
         signal.signal(signal.SIGTERM, self.stop)
         signal.signal(signal.SIGINT, self.stop)
-        self.child = subprocess.Popen([self.args.binary, 'app-server', '--listen', 'stdio://'],
-                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                      start_new_session=True)
-        self.rpc('initialize', {'clientInfo': {'name': 'unio-managed-source', 'version': '1'},
-                                'capabilities': {'experimentalApi': True}})
-        self.send({'method': 'initialized', 'params': {}})
-        cursor = None
-        for _ in range(16):
-            catalog = self.rpc('model/list', {'cursor': cursor, 'limit': 100})
-            for model in catalog.get('data', []):
-                if model.get('model') == self.args.model or model.get('id') == self.args.model:
-                    self.supported = [x['reasoningEffort'] for x in model.get('supportedReasoningEfforts', [])
-                                      if x.get('reasoningEffort') in LEVELS]
-            cursor = catalog.get('nextCursor')
-            if self.supported or not cursor:
-                break
-        if self.args.effort not in self.supported:
-            raise Refusal('initial effort unsupported by model catalog')
-        started = self.rpc('thread/start', {'model': self.args.model, 'cwd': str(Path.cwd()),
-                           'allowProviderModelFallback': False, 'experimentalRawEvents': False})
-        self.thread = started['thread']['id']
-        self.configured = started['thread'].get('reasoningEffort')
-        turn = self.rpc('turn/start', {'threadId': self.thread, 'effort': self.args.effort,
-                                     'input': [{'type': 'text', 'text': prompt.decode('utf-8')}]})
-        self.turn = turn['turn']['id']
         self.directory = Path(tempfile.mkdtemp(prefix='unio-codex-'))
         self.listener = socket.socket(socket.AF_UNIX)
         socket_path = self.directory / 'control.sock'
-        self.listener.bind(str(socket_path))
+        directory_fd = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            # Resolve through our own directory fd to honor even a long TMPDIR.
+            self.listener.bind(f'/proc/self/fd/{directory_fd}/control.sock')
+        finally:
+            os.close(directory_fd)
         os.chmod(socket_path, 0o600)
         self.listener.listen(4)
         self.doc['socket'] = str(socket_path)
@@ -285,6 +286,35 @@ class Server:
         with os.fdopen(fd, 'w') as f:
             json.dump(self.doc, f)
         _, self.manifest_inode = read_private(self.manifest)
+        self.child = subprocess.Popen([self.args.binary, 'app-server', '--listen', 'stdio://'],
+                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                      start_new_session=True)
+        self.rpc('initialize', {'clientInfo': {'name': 'unio-managed-source', 'version': '1'},
+                                'capabilities': {'experimentalApi': True}})
+        self.send({'method': 'initialized', 'params': {}})
+        account = self.rpc('account/read', {'refreshToken': False}).get('account')
+        if not isinstance(account, dict) or account.get('type') != 'chatgpt':
+            raise Refusal('ChatGPT subscription login required')
+        cursor = None
+        for _ in range(16):
+            catalog = self.rpc('model/list', {'cursor': cursor, 'limit': 100})
+            for model in catalog.get('data', []):
+                if model.get('model') == self.args.model or model.get('id') == self.args.model:
+                    self.supported = list(dict.fromkeys(x['reasoningEffort'] for x in model.get('supportedReasoningEfforts', [])
+                                      if x.get('reasoningEffort') in LEVELS))
+            cursor = catalog.get('nextCursor')
+            if self.supported or not cursor:
+                break
+        if self.args.effort not in self.supported:
+            raise Refusal('initial effort unsupported by model catalog')
+        started = self.rpc('thread/start', {'model': self.args.model, 'modelProvider': 'openai', 'cwd': str(Path.cwd()),
+                           'allowProviderModelFallback': False, 'experimentalRawEvents': False})
+        self.thread = started['thread']['id']
+        configured = started['thread'].get('reasoningEffort')
+        self.configured = configured if configured in LEVELS else None
+        turn = self.rpc('turn/start', {'threadId': self.thread, 'effort': self.args.effort,
+                                     'input': [{'type': 'text', 'text': prompt.decode('utf-8')}]})
+        self.turn = turn['turn']['id']
         while self.done is None:
             if b'\n' in self.buffer:
                 self.event(self.message(time.monotonic() + 8))
@@ -308,6 +338,12 @@ class Server:
                 self.child.wait()
             except ProcessLookupError:
                 pass
+            finally:
+                # Reap owned descendants even when the app-server exits first.
+                try:
+                    os.killpg(self.child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
         if self.listener:
             self.listener.close()
         if self.manifest_inode:
@@ -326,7 +362,7 @@ class Server:
 
 def client(args):
     manifest = endpoint(args.project, args.worker)
-    if not manifest.exists():
+    if not os.path.lexists(manifest):
         return {'state': 'unsupported', 'effective': 'Unknown', 'worker': args.worker}
     doc, inode = read_private(manifest)
     if doc['project'] != str(Path(args.project).absolute()) or doc['worker'] != args.worker:
@@ -344,7 +380,16 @@ def client(args):
         request['effort'] = args.effort
     with socket.socket(socket.AF_UNIX) as connection:
         connection.settimeout(20)
-        connection.connect(str(path))
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            if (os.fstat(directory_fd).st_dev, os.fstat(directory_fd).st_ino) != (parent.st_dev, parent.st_ino):
+                raise Refusal('replaced socket directory')
+            connection.connect(f'/proc/self/fd/{directory_fd}/control.sock')
+        finally:
+            os.close(directory_fd)
+        peer_pid, peer_uid, _ = struct.unpack('3i', connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        if peer_pid != doc['pid'] or peer_uid != os.getuid():
+            raise Refusal('replaced socket peer')
         if read_private(manifest) != (doc, inode):
             raise Refusal('replaced channel')
         connection.sendall((json.dumps(request) + '\n').encode())
@@ -358,6 +403,14 @@ def client(args):
     allowed = {'worker', 'task', 'route', 'model', 'requested', 'configured', 'pending_next_turn', 'effective', 'supported', 'state'}
     if not isinstance(result, dict) or set(result) != allowed or result['worker'] != args.worker or result['task'] != doc['task']:
         raise Refusal('invalid response')
+    if (result['state'] not in ('observed', 'acknowledged', 'unverified', 'rejected')
+            or result['route'] != 'codex-app-server' or result['effective'] != 'Unknown'
+            or result['requested'] not in LEVELS or result['configured'] not in (*LEVELS, None)
+            or type(result['pending_next_turn']) is not bool
+            or not isinstance(result['supported'], list) or any(v not in LEVELS for v in result['supported'])
+            or not isinstance(result['model'], str)
+            or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,127}', result['model'])):
+        raise Refusal('invalid response settings')
     return result
 
 
@@ -374,18 +427,21 @@ def main():
     get.add_argument('--project', required=True)
     get.add_argument('--json', action='store_true')
     args = parser.parse_args()
+    if args.action == 'run' and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,127}', args.model):
+        parser.error('invalid model label')
     if args.action == 'run':
         server = Server(args)
         try:
             return server.run()
-        except (Refusal, OSError, ValueError, KeyError, TypeError):
-            print('unio codex Source: failed (no replay)', file=sys.stderr)
+        except (Cancelled, Refusal, OSError, ValueError, KeyError, TypeError, RecursionError) as error:
+            reason = str(error) if isinstance(error, (Cancelled, Refusal)) else 'invalid or unavailable provider transport'
+            print('unio codex Source: failed (no replay): ' + reason, file=sys.stderr)
             return server.stop_code or server.done or 2
         finally:
             server.close()
     try:
         result = client(args)
-    except (Refusal, OSError, ValueError, KeyError, TypeError):
+    except (Refusal, OSError, ValueError, KeyError, TypeError, RecursionError):
         result = {'worker': args.worker, 'state': 'stale-or-invalid', 'effective': 'Unknown'}
     print(json.dumps(result) if args.json else ' '.join(f'{k}={v}' for k, v in result.items()))
     return 0 if result['state'] in ('observed', 'acknowledged', 'unverified') else 2

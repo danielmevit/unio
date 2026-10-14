@@ -1,10 +1,20 @@
 # Change a worker's reasoning effort during work
 
-Status: planned near-term functionality, requested by the owner on 2026-10-13.
-Part of the next worker-reliability milestone, after review-findings delivery.
-No native Unio effort-switch command is implemented by this document.
+Status: opt-in managed Codex Source implemented on 2026-10-14. Native
+`unio worker-effort WORKER [low|medium|high|xhigh] [--json]` controls only that
+owned Source. See [usage and boundary](../WORKER-EFFORT.md). Legacy exec and
+other adapters remain unsupported; dashboard controls remain future work.
 
-## Intended experience
+The backend owns a private stdio app-server, validates ChatGPT subscription
+authentication and model catalog support, and starts exactly one assigned turn.
+`thread/settings/update` returns an empty acknowledgement; configured effort
+comes from `thread/settings/updated` or `thread/read`. Requested changes are
+pending for subsequent turns and never change an already running turn.
+Effective inference effort remains Unknown. No automatic next turn is started.
+The installed offline suites exercise native admission/task binding, RPC,
+streaming, failed exits, timeout/cancellation and bounded channel ownership.
+
+## Wider intended experience
 
 An owner or authorized lead can inspect a particular worker's reasoning setting
 and request a different supported level while its task is running. The worker's
@@ -21,7 +31,7 @@ happened. Requested effort and effective effort remain separate facts.
 
 Interactive Codex offers reasoning controls, but Unio currently launches its
 worker through a headless `codex exec` invocation with a startup configuration.
-Unio does not currently provide a live control channel to that invocation.
+Legacy exec has no Unio live control channel. The opt-in managed Source is a separate route.
 Start the implementation with a capability audit of the installed Codex CLI's
 supported session/control interfaces. Determine the actual application boundary
 (next request, next turn, or another supported boundary) rather than assuming

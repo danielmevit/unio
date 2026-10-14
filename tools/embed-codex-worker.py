@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
-"""Embed explicit model-codex worker script byte-identically."""
+"""Embed managed Codex Source and usage guide byte-identically."""
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-FILES = (('tools', 'codex-worker.py', 'UNIO_CODEX_WORKER_PY'),)
+FILES = (('tools', 'codex-worker.py', 'UNIO_CODEX_WORKER_PY'),
+         ('docs', 'WORKER-EFFORT.md', 'UNIO_WORKER_EFFORT_MD'))
 BEGIN = '# BEGIN EMBEDDED CODEX WORKER\n'
 END = '# END EMBEDDED CODEX WORKER\n'
 DIRS = ('"$CONF_DIR/lib"',)
@@ -21,7 +22,7 @@ def embedded_block():
   fi
 done
 '''
-    block += 'for worker_name in codex-worker.py; do\n'
+    block += 'for worker_name in codex-worker.py WORKER-EFFORT.md; do\n'
     block += '''  worker_file="$CONF_DIR/lib/$worker_name"
   if [ -L "$worker_file" ] || { [ -e "$worker_file" ] && { [ ! -f "$worker_file" ] || [ "$(stat -c '%h' -- "$worker_file")" != 1 ]; }; }; then
     echo "unio: refusing unsafe codex worker file: $worker_file" >&2

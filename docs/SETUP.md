@@ -415,3 +415,9 @@ approval flags (§2).
 - OpenCode Go plan: https://opencode.ai/go
 - Grok Build (`grok -p`, `--always-approve`): https://x.ai/news/grok-build-cli and https://mer.vin/2026/05/grok-build-cli-xai-terminal-coding-agent-with-plan-mode-subagents-and-headless-ci/
 - Antigravity official docs: https://antigravity.google/docs/cli-using
+
+## Optional managed Codex Source
+
+For one-turn app-server execution and truthful future-turn effort requests, see
+[managed Codex Source](WORKER-EFFORT.md). Existing Codex exec defaults stay unchanged.
+The standalone installer packages the helper and guide in its lib directory.
