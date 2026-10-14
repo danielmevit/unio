@@ -4,7 +4,7 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.17 (unreleased) — managed workers and safer project selection
+## 0.5.17 — managed workers and safer project selection — 2026-10-14
 
 - Add an opt-in managed Codex Source and `unio worker-effort` over an owned
   private channel, retaining native task, account and cancellation boundaries.
