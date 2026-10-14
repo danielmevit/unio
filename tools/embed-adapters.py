@@ -16,6 +16,7 @@ ADAPTERS = (
     (ROOT / 'tools' / 'vibe-worker.py', 'UNIO_VIBE_WORKER_PY', 'vibe-worker.py'),
     (ROOT / 'tools' / 'perplexity-worker.py', 'UNIO_PERPLEXITY_WORKER_PY', 'perplexity-worker.py'),
     (ROOT / 'tools' / 'copilot-worker.py', 'UNIO_COPILOT_WORKER_PY', 'copilot-worker.py'),
+    (ROOT / 'tools' / 'antigravity-worker.py', 'UNIO_ANTIGRAVITY_WORKER_PY', 'antigravity-worker.py'),
 )
 BEGIN = '# BEGIN EMBEDDED ADAPTERS\n'
 END = '# END EMBEDDED ADAPTERS\n'
@@ -28,7 +29,7 @@ for adapters_dir in "$CONF_DIR/lib" "$CONF_DIR/lib/adapters"; do
     exit 1
   fi
 done
-for adapters_file in "$CONF_DIR/lib/adapters/vibe-worker.py" "$CONF_DIR/lib/adapters/perplexity-worker.py" "$CONF_DIR/lib/adapters/copilot-worker.py"; do
+for adapters_file in "$CONF_DIR/lib/adapters/vibe-worker.py" "$CONF_DIR/lib/adapters/perplexity-worker.py" "$CONF_DIR/lib/adapters/copilot-worker.py" "$CONF_DIR/lib/adapters/antigravity-worker.py"; do
   if [ -L "$adapters_file" ] || { [ -e "$adapters_file" ] && { [ ! -f "$adapters_file" ] || [ "$(stat -c '%h' -- "$adapters_file")" != 1 ]; }; }; then
     echo "unio: refusing unsafe adapter file: $adapters_file" >&2
     exit 1

@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 SOURCE = Path(__file__).resolve().parent.parent
-ADAPTERS = ('vibe-worker.py', 'perplexity-worker.py', 'copilot-worker.py')
+ADAPTERS = ('vibe-worker.py', 'perplexity-worker.py', 'copilot-worker.py', 'antigravity-worker.py')
 # Executables a careless discovery/installer could reach; none may run.
 SENTINELS = ('vibe', 'pwm', 'perplexity-web-mcp', 'pip', 'pip3', 'uv', 'curl', 'wget',
              'copilot', 'codex', 'claude', 'gemini', 'agy', 'opencode', 'grok', 'kimi')
@@ -139,7 +139,8 @@ class AdapterInstallTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             value = json.loads(result.stdout)
             self.assertEqual(value['schema_version'], 1)
-            self.assertEqual([a['name'] for a in value['adapters']], ['vibe-worker', 'perplexity-worker', 'copilot-worker'])
+            self.assertEqual([a['name'] for a in value['adapters']],
+                             ['vibe-worker', 'perplexity-worker', 'copilot-worker', 'antigravity-worker'])
             for adapter, name in zip(value['adapters'], ADAPTERS):
                 self.assertEqual(adapter['path'], str(conf / 'lib' / 'adapters' / name))
                 self.assertIs(adapter['installed'], True)
@@ -154,7 +155,7 @@ class AdapterInstallTests(unittest.TestCase):
         result = self.integrations(missing, '--json', cwd=outside)
         self.assertEqual(result.returncode, 0, result.stderr)
         value = json.loads(result.stdout)
-        self.assertEqual([a['installed'] for a in value['adapters']], [False, False, False])
+        self.assertEqual([a['installed'] for a in value['adapters']], [False, False, False, False])
         self.assertFalse(missing.exists())
 
         for bad in (['--jsn'], ['--json', 'extra'], ['vibe-worker']):
@@ -192,6 +193,25 @@ class AdapterInstallTests(unittest.TestCase):
         (adapters / 'copilot-worker.py').symlink_to(outside)
         assert_refused(conf, adapters)
         self.assertEqual(outside.read_text(), 'outside bytes\n')
+
+        conf, adapters = prepare('antigravity last target symlink')
+        (adapters / 'antigravity-worker.py').unlink()
+        (adapters / 'antigravity-worker.py').symlink_to(outside)
+        assert_refused(conf, adapters)
+        self.assertEqual(outside.read_text(), 'outside bytes\n')
+
+        conf, adapters = prepare('antigravity hardlink')
+        partner = self.base / 'antigravity hardlink partner.py'
+        partner.write_text('partner bytes\n')
+        (adapters / 'antigravity-worker.py').unlink()
+        os.link(partner, adapters / 'antigravity-worker.py')
+        assert_refused(conf, adapters)
+        self.assertEqual(partner.read_text(), 'partner bytes\n')
+
+        conf, adapters = prepare('antigravity fifo')
+        (adapters / 'antigravity-worker.py').unlink()
+        os.mkfifo(adapters / 'antigravity-worker.py')
+        assert_refused(conf, adapters)
 
         conf, adapters = prepare('hardlink')
         partner = self.base / 'hardlink partner.py'
