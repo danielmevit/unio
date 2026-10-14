@@ -15874,8 +15874,14 @@ class Server:
                 break
         if self.args.effort not in self.supported:
             raise Refusal('initial effort unsupported by model catalog')
-        started = self.rpc('thread/start', {'model': self.args.model, 'modelProvider': 'openai', 'cwd': str(Path.cwd()),
-                           'allowProviderModelFallback': False, 'experimentalRawEvents': False})
+        startup = {'model': self.args.model, 'modelProvider': 'openai', 'cwd': str(Path.cwd()),
+                   'allowProviderModelFallback': False, 'experimentalRawEvents': False}
+        # Omission inherits CLI permissions; only explicit startup choices override them.
+        if self.args.sandbox is not None:
+            startup['sandbox'] = self.args.sandbox
+        if self.args.approval_policy is not None:
+            startup['approvalPolicy'] = self.args.approval_policy
+        started = self.rpc('thread/start', startup)
         self.thread = started['thread']['id']
         configured = started['thread'].get('reasoningEffort')
         self.configured = configured if configured in LEVELS else None
@@ -15987,6 +15993,11 @@ def main():
     run = sub.add_parser('run')
     run.add_argument('--model', required=True)
     run.add_argument('--effort', required=True, choices=LEVELS)
+    # Fixed string variants from Codex CLI 0.162.1 ThreadStartParams.
+    run.add_argument('--sandbox', choices=('read-only', 'workspace-write', 'danger-full-access'),
+                     help='explicit startup sandbox; omitted inherits CLI settings')
+    run.add_argument('--approval-policy', choices=('untrusted', 'on-request', 'never'),
+                     help='explicit startup approval policy; omitted inherits CLI settings')
     run.add_argument('--binary', default='codex')
     get = sub.add_parser('effort')
     get.add_argument('worker')
@@ -16047,9 +16058,34 @@ worker beside a lead in the same group); restore any temporary tier after the
 worker is idle. No allowance is inferred from the slot count.
 Run `unio run WORKER TASK` normally. The Source launches
 `codex app-server --listen stdio://` under the existing CLI subscription login.
-It inherits the CLI's existing permission/sandbox settings; configure those
-before choosing this noninteractive Source. Provider approval requests are
+By default it inherits the CLI's existing permission/sandbox and approval
+settings: omitted startup options are absent from `thread/start`. Provider approval requests are
 refused, never automatically approved. No API fallback or model substitution.
+
+For an appropriate local task, explicitly opt in by choosing this alias entry
+instead of the inherited-default entry above:
+
+```sh
+codexmanaged=python3 -I -S -B "${UNIO_CONF_DIR:-$HOME/.config/unio}/lib/codex-worker.py" run --model gpt-6.1-sol --effort low --sandbox workspace-write
+```
+
+For the owner's existing trusted-host coding workflow, when authorized, choose
+both settings explicitly:
+
+```sh
+codexmanaged=python3 -I -S -B "${UNIO_CONF_DIR:-$HOME/.config/unio}/lib/codex-worker.py" run --model gpt-6.1-sol --effort low --sandbox danger-full-access --approval-policy never
+```
+
+`--sandbox` accepts only `read-only`, `workspace-write`, `danger-full-access`.
+`--approval-policy` accepts only the schema's fixed string choices `untrusted`,
+`on-request`, `never`; granular objects and arbitrary config are not accepted.
+Each chosen value is sent only on the single `thread/start` RPC as `sandbox`
+or `approvalPolicy`. Either option may be omitted independently. These are
+requested startup choices, not proof of effective isolation or permissions.
+They do not update the owner's live CLI/profile. Worktrees are not OS sandboxes;
+inherited read-only settings cannot write or commit files. An effort update
+never selects or grants startup permissions. Keep the same local initialization,
+real shared-group mapping and lead reservation procedure for either example.
 
 `unio worker-effort WORKER --json` inspects the owned running Source.
 `unio worker-effort WORKER high --json` requests a supported setting.

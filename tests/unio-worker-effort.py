@@ -22,6 +22,9 @@ def main():
             for effort in ('max','ultra'):
                 h.call('worker-effort','mock',effort,'--json',code=2)
             print('ok legacy/forbidden efforts refuse without launch',flush=True)
+            for option in ('--sandbox','--approval-policy','--model','--permissions','--service-tier'):
+                h.call('worker-effort','mock','high',option,'never','--json',code=2)
+            assert not h.receipt.exists()
             h.start(extra={'FAKE_READ_ONLY':'1'})
             original=h.manifest.read_bytes()
             doc=json.loads(original)
@@ -38,6 +41,9 @@ def main():
                             json.dumps({'nonce':doc['nonce'],'threadId':'foreign','effort':'high'}).encode()+b'\n',
                             json.dumps({'nonce':'wrong','effort':'high'}).encode()+b'\n',b'x'*16385+b'\n']:
                 assert raw(request)['state']=='rejected'
+            for key in ('sandbox','approvalPolicy','approval_policy','permissions','serviceTier'):
+                request=json.dumps({'nonce':doc['nonce'],'effort':'high',key:'never'}).encode()+b'\n'
+                assert raw(request)['state']=='rejected'
             assert len(h.messages())==before,'invalid control emitted provider RPC'
             result=h.effort('high')
             assert result['configured']=='high' and result['state']=='acknowledged' and result['pending_next_turn']
@@ -51,6 +57,7 @@ def main():
                 assert p.returncode==0,(out,err)
                 assert json.loads(out)['state']=='acknowledged'
             updates=[m for m in h.messages() if m.get('method')=='thread/settings/update']
+            assert all(set(m['params'])=={'threadId','effort'} for m in updates)
             assert len(updates)==3 and updates[0]['params']['effort']=='high'
             assert sorted(m['params']['effort'] for m in updates[1:])==['low','xhigh']
             assert len([m for m in h.messages() if m.get('method')=='turn/start'])==1

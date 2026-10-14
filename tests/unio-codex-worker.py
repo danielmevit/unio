@@ -64,7 +64,7 @@ for line in sys.stdin:
 '''
 
 class Harness:
-    def __init__(self, directory, documented=False):
+    def __init__(self, directory, documented=False, startup=()):
         self.worker = 'codexmanaged' if documented else 'mock'
         self.base = Path(directory)
         self.root = self.base / 'project with spaces'
@@ -94,6 +94,11 @@ class Harness:
             with (self.base/'conf/agents.conf').open('a') as config:
                 config.write(entry+'\n')
             self.env['FAKE_MODEL']='gpt-6.1-sol'
+        if startup:
+            config = self.base/'conf/agents.conf'
+            text = config.read_text()
+            text = text.replace('--effort low', '--effort low ' + ' '.join(startup))
+            config.write_text(text)
         for args in [('init','-q','-b','main'),('config','user.name','mock'),('config','user.email','mock@example.invalid')]:
             subprocess.run(['git',*args],cwd=self.repo,env=self.env,check=True,capture_output=True)
         (self.repo/'seed').write_text('seed')
@@ -210,6 +215,7 @@ def main():
             turn=next(m for m in messages if m.get('method')=='turn/start')
             thread=next(m for m in messages if m.get('method')=='thread/start')
             assert thread['params']['model']=='gpt-6.1-sol' and turn['params']['effort']=='low'
+            assert 'sandbox' not in thread['params'] and 'approvalPolicy' not in thread['params']
             # The real shared group retains its lead reservation: a second worker refuses.
             (h.root/'coord/tasks/OTHER.md').write_text('NATIVE-TASK-SENTINEL')
             h.call('run','legacy','OTHER',code=2)
@@ -225,6 +231,12 @@ def main():
             denied=subprocess.run(['python3','-I','-S','-B',str(h.helper),'run','--model','test-sol','--effort','low'],env=h.env,capture_output=True)
             assert denied.returncode == 2 and not h.receipt.exists()
             print('ok unmanaged start rejected without provider',flush=True)
+            for option, value in [('--sandbox','invalid'), ('--approval-policy','on-failure'),
+                                  ('--approval-policy','{"granular":{}}')]:
+                denied=subprocess.run(['python3','-I','-S','-B',str(h.helper),'run',
+                    '--model','test-sol','--effort','low',option,value],env=h.env,capture_output=True)
+                assert denied.returncode == 2 and not h.receipt.exists()
+            print('ok invalid startup choices refuse before provider invocation',flush=True)
             custom_tmp=h.base/('caller TMPDIR '+ 'x'*90);custom_tmp.mkdir()
             name=h.start(extra={'TMPDIR':str(custom_tmp)})
             doc=json.loads(h.manifest.read_text()); provider=h.messages()[0]['launch']
@@ -234,6 +246,8 @@ def main():
             alternate=h.root/'coord/tasks/OTHER.md';alternate.write_text('NATIVE-TASK-SENTINEL')
             h.call('run','legacy','OTHER',code=2)
             assert len([m for m in h.messages() if 'launch' in m])==1
+            thread=next(m for m in h.messages() if m.get('method')=='thread/start')
+            assert 'sandbox' not in thread['params'] and 'approvalPolicy' not in thread['params']
             result=h.effort()
             assert result['supported']==['low','high','xhigh'] and result['effective']=='Unknown'
             result=h.effort('high')
@@ -278,5 +292,30 @@ def main():
             if h.process is not None and h.process.poll() is None:
                 h.process.terminate()
                 h.process.communicate(timeout=25)
+
+    for sandbox, approval in [('read-only','untrusted'), ('workspace-write','on-request'),
+                              ('danger-full-access','never'), ('workspace-write',None), (None,'never')]:
+        options = (['--sandbox',sandbox] if sandbox else []) + (['--approval-policy',approval] if approval else [])
+        with tempfile.TemporaryDirectory(prefix='unio-startup-') as directory:
+            h=Harness(directory,startup=options)
+            try:
+                h.start()
+                h.effort('high')
+                messages=h.messages()
+                threads=[m for m in messages if m.get('method')=='thread/start']
+                assert len(threads)==1
+                params=threads[0]['params']
+                for key,value in [('sandbox',sandbox),('approvalPolicy',approval)]:
+                    if value is None:
+                        assert key not in params
+                    else:
+                        assert params[key]==value
+                    assert not any(key in m.get('params',{}) for m in messages if m not in threads)
+                assert len([m for m in messages if m.get('method')=='turn/start'])==1
+                h.terminate()
+                print('ok explicit startup choices confined to one thread/start:',sandbox,approval,flush=True)
+            finally:
+                if h.process is not None and h.process.poll() is None:
+                    h.process.terminate();h.process.communicate(timeout=25)
 
 if __name__=='__main__': main()
