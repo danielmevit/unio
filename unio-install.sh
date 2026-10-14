@@ -16026,12 +16026,13 @@ UNIO_MANAGED_AGENT
 ```
 
 From the initialized project repository, map the alias to the real existing
-Codex subscription group, initialize its worker, then run an existing task file
-`coord/tasks/TASK.md`:
+Codex subscription group after initializing its worker, then run an existing task file
+`coord/tasks/TASK.md`. Initialization resets account mappings, so set the shared
+group after `init`:
 
 ```sh
-unio account codexmanaged codex
 unio init codexmanaged
+unio account codexmanaged codex
 unio run codexmanaged TASK
 ```
 

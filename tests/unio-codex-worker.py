@@ -99,7 +99,6 @@ class Harness:
         (self.repo/'seed').write_text('seed')
         for args in [('add','seed'),('commit','-qm','seed')]:
             subprocess.run(['git',*args],cwd=self.repo,env=self.env,check=True,capture_output=True)
-        self.call('account',self.worker,'codex')
         self.call('init',self.worker,'legacy')
         self.call('account',self.worker,'codex')
         self.call('account','legacy','codex')
