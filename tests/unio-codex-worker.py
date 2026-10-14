@@ -159,7 +159,11 @@ server = backend['Server'](None)
 server.directory = Path(sys.argv[2]) / 'duplicate-cancel'
 server.directory.mkdir(mode=0o700)
 server.listener = socket.socket(socket.AF_UNIX)
-server.listener.bind(str(server.directory / 'control.sock'))
+directory_fd = os.open(server.directory, os.O_RDONLY | os.O_DIRECTORY)
+try:
+    server.listener.bind(f'/proc/self/fd/{directory_fd}/control.sock')
+finally:
+    os.close(directory_fd)
 server.manifest = server.directory / 'manifest.json'
 server.manifest.write_text('{}')
 server.manifest.chmod(0o600)
