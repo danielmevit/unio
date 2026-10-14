@@ -1,8 +1,9 @@
 # Optional subscription adapters
 
 Vibe and Perplexity ship with Unio 0.5.8 and later. Copilot Free / Auto Balance
-joins them in 0.5.9. The Antigravity worker is a source-checkout helper pending
-the next bundle. All four also run from a source checkout.
+joins them in 0.5.9. The Antigravity worker is the fourth optional adapter in
+the unreleased 0.5.18 candidate. The published installer remains 0.5.17 and
+does not yet install that fourth helper. All four run from a source checkout.
 Install and sign in to the
 external tool manually; the adapter does not purchase credits, change billing or
 fall back to another paid service.
@@ -14,7 +15,7 @@ fall back to another paid service.
 | Vibe worker | `tools/vibe-worker.py` | `~/.config/unio/lib/adapters/vibe-worker.py` |
 | Perplexity worker | `tools/perplexity-worker.py` | `~/.config/unio/lib/adapters/perplexity-worker.py` |
 | Copilot worker (0.5.9+) | `tools/copilot-worker.py` | `~/.config/unio/lib/adapters/copilot-worker.py` |
-| Antigravity worker (source checkout) | `tools/antigravity-worker.py` | `~/.config/unio/lib/adapters/antigravity-worker.py` |
+| Antigravity worker (0.5.18 candidate) | `tools/antigravity-worker.py` | `~/.config/unio/lib/adapters/antigravity-worker.py` |
 
 The standalone installer copies the exact reviewed adapter bytes to
 the installed path above (or under `$UNIO_CONF_DIR/lib/adapters`). With 0.5.7 or

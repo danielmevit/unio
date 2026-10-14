@@ -7,4 +7,7 @@ restore proven print-mode flags `--mode accept-edits` and
 3.8 Flash selectors, skip-permissions, output-format and deadline; wire
 `tests/unio-antigravity.py` into quality checks with end-to-end fake-CLI
 regressions for sentinel exclusion and invocation flags; regenerate
-standalone installer. Source-only, version remains 0.5.17 pending release.
+standalone installer. Included in the unreleased 0.5.18 candidate. The
+published installer remains 0.5.17. Lead accepted this checked source
+component. A later live use of the frozen adapter was still running and
+is not an accepted outcome of that correction.

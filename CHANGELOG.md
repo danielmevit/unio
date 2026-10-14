@@ -4,6 +4,25 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.18 — worker reliability — unreleased
+
+See [candidate scope and trial limits](docs/RELEASE-0.5.18.md).
+The published and installed release remains 0.5.17.
+
+- Report fixed Vibe progress labels and a distinct liveness heartbeat.
+  One live GLM 5.3 high run showed a safe event at 12:09:17 and a
+  heartbeat at 12:12:18, then Source 0. Lead acceptance is the later
+  checked correction.
+- Package the Antigravity adapter as the fourth optional helper. It
+  refuses tasks above 64 KiB and separates process exit from the
+  structured verdict. A later live use of that frozen adapter is pending.
+- Keep Copilot proposal files as exact native JSONL content. Evidence for
+  this transport is offline only. A separate input/group correction is
+  not accepted.
+- Preserve earlier native 3 at a local 4M cap, process 0 with terminal
+  ERROR, native 2 with infrastructure_failure, and the unknown Go
+  diagnosis. None of them proves remaining allowance or a model ranking.
+
 ## 0.5.17 — managed workers and safer project selection — 2026-10-14
 
 - Add an opt-in managed Codex Source and `unio worker-effort` over an owned

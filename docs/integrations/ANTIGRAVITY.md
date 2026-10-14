@@ -136,6 +136,9 @@ demonstrates provider behavior, code security acceptance or remaining
 allowance. Owned logs that motivated the verdict logic recorded one
 process-0/terminal-`ERROR` run with a nonempty response and one clean
 process-0/terminal-`SUCCESS` probe on agy 1.3.5 with
-`gemini-3.8-flash-high`; both stay private. This slice is source-only and
-pending bundle: the standalone installer version, tags and global
-installation are unchanged.
+`gemini-3.8-flash-high`; both stay private. The adapter is in the
+unreleased 0.5.18 candidate. Tags, the public download and the global
+installation remain 0.5.17. A bounded Copilot correction was still running
+on frozen adapter `fa9b964` when this candidate was prepared, so that live
+outcome is pending. The earlier process-0/terminal-ERROR observation stays
+a failure, not a completed provider call.

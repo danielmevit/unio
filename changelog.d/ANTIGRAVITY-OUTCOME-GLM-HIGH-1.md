@@ -7,5 +7,6 @@ result — even with a nonempty response body — can no longer look like a
 successful completed agent call. Real native exits are preserved, raw
 streams stay private, and the helper ships as the fourth packaged adapter
 with a read-only `unio integrations` entry. Legacy raw agents.conf command
-lines are untouched; source-only pending bundle, no live AGY validation
-claimed.
+lines are untouched. This is an unreleased 0.5.18 candidate; the published
+installer remains 0.5.17. No live AGY validation is claimed for this first
+draft. The lead accepted only the later checked correction.

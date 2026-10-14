@@ -166,9 +166,18 @@ certified currently-running tool state. For example, `running shell command`
 means such an event was observed in completed history, not that a command is
 executing right now. Silence between records is normal while the CLI works; the
 heartbeat is the only signal during it. The first slice shows operational
-labels only, not message excerpts or a console. This source addition follows
-v0.5.17 and is not yet released or installed in the stable standalone adapter;
-no new release number has been assigned.
+labels only, not message excerpts or a console. This behavior is in the
+unreleased 0.5.18 candidate. The stable standalone adapter and public
+install remain 0.5.17.
+
+On 2026-10-14, Mistral / Vibe 2.26.1 / requested GLM 5.3 high used frozen
+adapter `4dd45a0e4d50190b15332b04c772afa12af7c4febb186d8b2f8e6f32cef2a85b`
+on ANTIGRAVITY-OUTCOME-GLM-HIGH-1. The first safe event was at 12:09:17
++02:00 while the adapter was alive. The first liveness heartbeat was at
+12:12:18 +02:00. Source exit was 0 and the export finished. The lead
+accepted only the later checked correction. Effective model, effort and
+remaining allowance stay Unknown. The earlier native exit 3 at the local
+4M cumulative cap remains preserved and does not show subscription allowance.
 
 ## References
 

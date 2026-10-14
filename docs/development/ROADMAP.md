@@ -10,6 +10,13 @@ Effort requests target future-turn configuration; current-inference changes
 and consumption of pending choices by a one-turn Source remain unproven.
 Local save recovery is complete with the original evidence preserved.
 
+Candidate 0.5.18 is unreleased. It gathers Vibe safe live progress and a
+distinct liveness heartbeat, the fourth packaged Antigravity adapter, and
+Copilot native JSONL proposal text. The public release and global install
+remain v0.5.17 until one frozen full gate and the shipping checks pass.
+A separate Copilot input/group correction is not part of this candidate
+and is not accepted. UI, site and brand work stay owner-reserved.
+
 The functional core includes recovery saving, shared-account policy and capacity
 observations, managed daily startup, read-only planning, explicit single-attempt
 dispatch, separate review receipts, concurrent collection and task-specific worker
@@ -79,9 +86,9 @@ beside it; ordinary low-tier limits apply outside that scoped exception.
 | 6 — CLI slice shipped | Evidence-based routing and context efficiency | 0.5.12 ships explicit revision assessments, task-specific profiles and conditional local advice. Automatic capture and routing remain planned. |
 | 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
-The source-only Vibe worker-progress slice now emits safe fixed labels and a
-liveness-only heartbeat; code verification is complete. It is pending the next
-release bundle; the installed and publicly released version remains v0.5.17.
+The Vibe worker-progress slice emits safe fixed labels and a distinct
+liveness-only heartbeat. It is in the unreleased 0.5.18 candidate. The
+installed and publicly released version remains v0.5.17.
 
 ### Next useful slices
 

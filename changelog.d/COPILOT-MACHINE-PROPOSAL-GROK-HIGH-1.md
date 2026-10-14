@@ -11,4 +11,6 @@
   nonfinite, missing or wrong-typed terminal records fail closed.
   Nonzero native exits stay native failures. Auto Balance, stdin prompts,
   provider isolation and Unknown model, effort and allowance are unchanged.
-  Source remains 0.5.17 pending the combined bundle.
+  This transport is in the unreleased 0.5.18 candidate. Evidence here is
+  offline only. Three lead-found input/group defects are a separate
+  correction and are not accepted.
