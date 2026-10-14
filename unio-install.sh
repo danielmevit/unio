@@ -14516,8 +14516,9 @@ cat > "$CONF_DIR/lib/adapters/copilot-worker.py" <<'UNIO_COPILOT_WORKER_PY'
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
 """Optional GitHub Copilot CLI 1.0.95 Balanced (Auto) routine-proposal worker.
 
-Text proposals only: no model tools, patch execution or retry. The parent shell
-and the native credential store stay trusted_host; this is not a sandbox.
+Text proposals only: no model tools, patch execution or retry. Delivery is the
+installed CLI's JSONL transport, not rendered text. The parent shell and the
+native credential store stay trusted_host; this is not a sandbox.
 """
 import argparse
 import hashlib
@@ -14541,6 +14542,33 @@ OUTPUT_BYTES = 8388608
 META_BYTES = 1048576
 KEEP_ENV = ("COPILOT_HOME", "COPILOT_GITHUB_TOKEN")
 MCP_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+UUID = re.compile(r"\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
+INVALID = "empty_or_invalid_response"
+# Installed Copilot CLI 1.0.95 --help: --output-format json is JSONL.
+# Package @github/copilot 1.0.95 (build f5ba5057) cli-main.js Han writes
+# JSON.stringify(sessionEvent)+"\n", skipping IM() model-log events and the
+# qZr set (session.idle, assistant.streaming_delta, assistant.usage, permission.*,
+# system.message, skill.*, and the other listed UI/session events). Prompt mode
+# then appends Gan's terminal result: type, timestamp, sessionId, exitCode, usage
+# {premiumRequests, totalApiDurationMs, sessionDurationMs, codeChanges{linesAdded,
+# linesRemoved, filesModified}}. assistant.message data.content is the full root
+# text (session-events schema). Deltas, tool output, user echoes and subagents
+# are not that completion. No second render or JSON repair.
+MAX_JSON_DEPTH = 64
+MAX_JSON_EVENTS = 10000
+MAX_JSON_NODES = 200000
+ID_LIMIT = 512
+ASSISTANT_EVENT_KEYS = {"id", "timestamp", "parentId", "ephemeral", "agentId", "type", "data"}
+ASSISTANT_DATA_KEYS = {
+    "messageId", "originatingMessageId", "model", "providerId", "content", "toolRequests",
+    "reasoningOpaque", "reasoningText", "reasoningWireField", "encryptedContent", "phase",
+    "chunkIndex", "chunkCount", "outputTokens", "interactionId", "requestId", "clientRequestId",
+    "serviceRequestId", "rte", "apiCallId", "serverTools", "reasoningBlocks", "turnId",
+    "parentToolCallId", "citations", "fusion",
+}
+RESULT_KEYS = {"type", "timestamp", "sessionId", "exitCode", "usage"}
+USAGE_KEYS = {"premiumRequests", "totalApiDurationMs", "sessionDurationMs", "codeChanges"}
+CHANGE_KEYS = {"linesAdded", "linesRemoved", "filesModified"}
 # The proposal role needs no model tool; view is the smallest non-empty allowlist.
 AVAILABLE = ("view",)
 EXCLUDED = ("task", "list_agents", "read_agent", "write_agent", "skill", "ask_user")
@@ -14581,6 +14609,187 @@ def strict_json(data):
     def constant(_):
         raise ValueError("nonfinite JSON")
     return json.loads(data, object_pairs_hook=pairs, parse_constant=constant)
+
+
+def bounded_json(value):
+    """Reject nonfinite numbers and unbounded nesting without rewriting strings."""
+    stack, nodes = [(value, 0)], 0
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        if depth > MAX_JSON_DEPTH or nodes > MAX_JSON_NODES:
+            raise Refusal(INVALID)
+        if isinstance(item, float):
+            if not math.isfinite(item):
+                raise Refusal(INVALID)
+        elif isinstance(item, dict):
+            stack.extend((child, depth + 1) for child in item.values())
+        elif isinstance(item, list):
+            stack.extend((child, depth + 1) for child in item)
+        elif not isinstance(item, (str, int, bool)) and item is not None:
+            raise Refusal(INVALID)
+
+
+def identifier(value):
+    return isinstance(value, str) and 0 < len(value) <= ID_LIMIT
+
+
+def whole_number(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def finite_number(value):
+    return (isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value))
+
+
+def subagent(event):
+    """Same root test as the CLI's Ra(): agentId or a non-empty parentToolCallId."""
+    agent = event.get("agentId")
+    if isinstance(agent, str) and agent:
+        return True
+    data = event.get("data")
+    if not isinstance(data, dict):
+        return False
+    for key in ("agentId", "parentToolCallId"):
+        value = data.get(key)
+        if isinstance(value, str) and value:
+            return True
+    return False
+
+
+def parse_jsonl(raw):
+    if (not raw or raw.startswith(b"\xef\xbb\xbf") or b"\0" in raw or b"\r" in raw
+            or raw[:1] in (b" ", b"\t", b"\n") or not raw.endswith(b"\n")):
+        raise Refusal(INVALID)
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeError as error:
+        raise Refusal(INVALID) from error
+    lines = text[:-1].split("\n")
+    if not lines or len(lines) > MAX_JSON_EVENTS:
+        raise Refusal(INVALID)
+    events = []
+    for line in lines:
+        if not line or line[0] != "{" or line[-1] != "}":
+            raise Refusal(INVALID)
+        try:
+            event = strict_json(line)
+        except (ValueError, UnicodeError, RecursionError) as error:
+            raise Refusal(INVALID) from error
+        bounded_json(event)
+        if not isinstance(event, dict) or not isinstance(event.get("type"), str) or not event["type"]:
+            raise Refusal(INVALID)
+        events.append(event)
+    return events
+
+
+def require_assistant(event):
+    if set(event) - ASSISTANT_EVENT_KEYS or not {"id", "timestamp", "parentId", "type", "data"} <= set(event):
+        raise Refusal(INVALID)
+    if event["type"] != "assistant.message" or not UUID.fullmatch(event["id"]):
+        raise Refusal(INVALID)
+    if not identifier(event["timestamp"]):
+        raise Refusal(INVALID)
+    parent = event["parentId"]
+    if parent is not None and not identifier(parent):
+        raise Refusal(INVALID)
+    if "ephemeral" in event and not isinstance(event["ephemeral"], bool):
+        raise Refusal(INVALID)
+    if "agentId" in event and not identifier(event["agentId"]):
+        raise Refusal(INVALID)
+    data = event["data"]
+    if not isinstance(data, dict) or set(data) - ASSISTANT_DATA_KEYS or not {"messageId", "content"} <= set(data):
+        raise Refusal(INVALID)
+    if not identifier(data["messageId"]) or not isinstance(data["content"], str):
+        raise Refusal(INVALID)
+    if "toolRequests" in data and not isinstance(data["toolRequests"], list):
+        raise Refusal(INVALID)
+    has_index, has_count = "chunkIndex" in data, "chunkCount" in data
+    if has_index != has_count:
+        raise Refusal(INVALID)
+    if has_index:
+        index, count = data["chunkIndex"], data["chunkCount"]
+        if not whole_number(index) or not whole_number(count) or count < 1 or index < 0 or index >= count:
+            raise Refusal(INVALID)
+    return event
+
+
+def require_result(event):
+    if set(event) != RESULT_KEYS or event["type"] != "result":
+        raise Refusal(INVALID)
+    if not identifier(event["timestamp"]) or not identifier(event["sessionId"]):
+        raise Refusal(INVALID)
+    if not whole_number(event["exitCode"]) or event["exitCode"] not in (0, 1):
+        raise Refusal(INVALID)
+    usage = event["usage"]
+    if not isinstance(usage, dict) or set(usage) != USAGE_KEYS:
+        raise Refusal(INVALID)
+    for key in ("premiumRequests", "totalApiDurationMs", "sessionDurationMs"):
+        if not finite_number(usage[key]):
+            raise Refusal(INVALID)
+    changes = usage["codeChanges"]
+    if not isinstance(changes, dict) or set(changes) != CHANGE_KEYS:
+        raise Refusal(INVALID)
+    if not all(whole_number(changes[key]) and changes[key] >= 0 for key in CHANGE_KEYS):
+        raise Refusal(INVALID)
+    if event["exitCode"] != 0:
+        raise Refusal(INVALID)
+    return event
+
+
+def completion_text(messages):
+    if not messages:
+        raise Refusal(INVALID)
+    if len({event["data"]["messageId"] for event in messages}) != len(messages):
+        raise Refusal(INVALID)
+    chunked = [event for event in messages if "chunkIndex" in event["data"]]
+    if chunked and len(chunked) != len(messages):
+        raise Refusal(INVALID)
+    if chunked and any(event["data"].get("toolRequests") for event in messages):
+        raise Refusal(INVALID)
+    if chunked:
+        count = messages[0]["data"]["chunkCount"]
+        if any(event["data"]["chunkCount"] != count for event in messages) or len(messages) != count:
+            raise Refusal(INVALID)
+        ordered = sorted(messages, key=lambda event: event["data"]["chunkIndex"])
+        if [event["data"]["chunkIndex"] for event in ordered] != list(range(count)):
+            raise Refusal(INVALID)
+        return "".join(event["data"]["content"] for event in ordered)
+    plain = [event for event in messages
+             if not event["data"].get("toolRequests") and event["data"]["content"].strip()]
+    if len(plain) != 1:
+        raise Refusal(INVALID)
+    return plain[0]["data"]["content"]
+
+
+def proposal_from_jsonl(raw):
+    """Exact root assistant text, or Refusal. Bytes are not repaired or rewrapped."""
+    events = parse_jsonl(raw)
+    results = [event for event in events if event["type"] == "result"]
+    if len(results) != 1 or events[-1] is not results[0]:
+        raise Refusal(INVALID)
+    require_result(results[0])
+    seen, messages = set(), []
+    for event in events[:-1]:
+        if event["type"] == "assistant.message":
+            require_assistant(event)
+            if not subagent(event):
+                messages.append(event)
+        elif event["type"] == "result":
+            raise Refusal(INVALID)
+        identity = event.get("id")
+        if "id" in event:
+            if not identifier(identity) or identity in seen:
+                raise Refusal(INVALID)
+            seen.add(identity)
+    text = completion_text(messages)
+    try:
+        text.encode("utf-8")
+    except UnicodeError as error:
+        raise Refusal(INVALID) from error
+    if not text.strip() or "\0" in text:
+        raise Refusal(INVALID)
+    return text
 
 
 def route_environment(providers, inherited=None):
@@ -14776,11 +14985,13 @@ def main():
         directory = Path(tempfile.mkdtemp(prefix="copilot-run-", dir=parent))
         receipt = directory / "receipt.json"
         proposal = directory / "proposal.md"
+        raw_stdout = directory / "native-stdout.jsonl"
         usage = directory / "usage.json"
         stderr_path = directory / "native-stderr.log"
         record = dict(schema_version=1, started_at=date(), role="routine_proposal",
                       transport="GitHub Copilot CLI", cli_version=VERSION, cli_sha256=file_sha256(cli),
                       task_sha256=hashlib.sha256(data).hexdigest(), task_bytes=len(data), prompt_transport="stdin",
+                      output_transport="copilot_jsonl_1.0.95",
                       budget_group="copilot", subscription="owner_reported_free", remaining_allowance="unknown",
                       requested_route=dict(name="Balanced", model="auto", auto_tier="balance"),
                       requested_effort="not_configurable_auto", effective_model="unknown", effective_ai_lab="unknown",
@@ -14789,8 +15000,8 @@ def main():
                                          time_limit=args.time_limit),
                       trust=dict(parent_shell="trusted_host", native_credentials="trusted_host", sandbox=False),
                       invocations=0, invocation_retries=0, fallback_route="none", native_exit=None,
-                      outcome="preflight", proposal_path=str(proposal), usage_path=str(usage),
-                      stderr_path=str(stderr_path))
+                      outcome="preflight", proposal_path=str(proposal), raw_stdout_path=str(raw_stdout),
+                      usage_path=str(usage), stderr_path=str(stderr_path))
         receipt.write_text(json.dumps(record, indent=2) + "\n")
         work = directory / "work"
         template = directory / "git-template"
@@ -14815,7 +15026,8 @@ def main():
                       model_tools=dict(available=list(AVAILABLE), excluded=list(EXCLUDED), denied=list(DENIED)))
         argv = [cli, "--no-auto-update", "--model", "auto", "--auto-tier", "balance",
                 "--max-ai-credits", str(args.max_ai_credits), "--usage-output-file", str(usage),
-                "--log-dir", str(directory / "native-logs"), "--log-level", "none", "--stream", "off", "--silent",
+                "--log-dir", str(directory / "native-logs"), "--log-level", "none",
+                "--stream", "off", "--output-format", "json", "--silent",
                 "--no-custom-instructions", "--no-ask-user", "--no-experimental", "--no-bash-env",
                 "--no-remote", "--no-remote-export", "--disable-builtin-mcps",
                 "--secret-env-vars=" + ",".join(KEEP_ENV + ("GH_TOKEN", "GITHUB_TOKEN"))]
@@ -14828,8 +15040,8 @@ def main():
         argv.append("--allow-all-tools")
         record.update(invocations=1, outcome="starting")
         receipt.write_text(json.dumps(record, indent=2) + "\n")
-        with open(proposal, "xb") as out, open(stderr_path, "xb") as err:
-            os.chmod(proposal, 0o600)
+        with open(raw_stdout, "xb") as out, open(stderr_path, "xb") as err:
+            os.chmod(raw_stdout, 0o600)
             os.chmod(stderr_path, 0o600)
             code, _, _ = owned_call(argv, env, args.time_limit, work, data, (out, err))
         record["native_exit"] = code
@@ -14839,18 +15051,23 @@ def main():
             record["usage_state"] = "recorded_not_remaining_allowance"
         except (OSError, ValueError, UnicodeError, Refusal, RecursionError):
             record["usage_state"] = "invalid_or_missing"
-        record["proposal_bytes"] = proposal.stat().st_size
+        record["raw_stdout_bytes"] = raw_stdout.stat().st_size
+        record["proposal_bytes"] = 0
         if code:
             record["outcome"], exit_code = "native_failed", 1
         else:
             try:
-                text = read_regular(proposal, OUTPUT_BYTES).decode("utf-8")
-            except (OSError, UnicodeError, Refusal):
-                text = ""
-            if text.strip():
+                text = proposal_from_jsonl(raw_stdout.read_bytes())
+                blob = text.encode("utf-8")
+            except (Refusal, OSError, UnicodeError, RecursionError):
+                blob = b""
+            if blob.strip():
+                private_file(proposal, blob)
+                record["proposal_bytes"] = len(blob)
+                record["proposal_source"] = "assistant.message"
                 record["outcome"], exit_code = "proposal_recorded", 0
             else:
-                record["outcome"], exit_code = "empty_or_invalid_response", 2
+                record["outcome"], exit_code = INVALID, 2
     except KeyboardInterrupt:
         exit_code = 130
         if record is not None:
