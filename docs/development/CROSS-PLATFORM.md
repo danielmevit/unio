@@ -11,6 +11,8 @@ remain unassigned; continue the existing 0.5.x sequence.
 | macOS | Not supported yet | Native runtime on Apple Silicon and Intel, with actual host checks. |
 | Windows without WSL | Not supported yet | Native installation and execution from PowerShell, after a backend feasibility checkpoint. |
 
+Owner ordering update, 2026-10-14: prioritize native Windows before native macOS. The proposed releases are 0.5.23 for Windows and 0.5.24 for macOS, subject to feasibility and actual host checks.
+
 One engine should serve the CLI and the existing dashboard. A desktop window
 can eventually host the same interface. Native platform support does not
 require replacing the dashboard or building a second orchestration system.
@@ -74,18 +76,7 @@ Finish when the documented setup can initialize a project, run an offline
 mock task, stop its owned children, and save/restore its work. Record browser
 startup and any filesystem limitations from the actual machine.
 
-## 3. Port and verify native macOS
-
-Implement the audited host operations on macOS. Decide and document actual
-shell/tool prerequisites; installing one missing Linux utility alone does
-not establish compatibility. Exercise both Apple Silicon and Intel using
-actual hosts or suitable CI runners.
-
-Finish when installation, shared-account admission, interrupted runs, child
-cleanup, saves/restores and local dashboard startup pass on each declared
-architecture. Unverified architectures and versions stay explicitly unverified.
-
-## 4. Implement native Windows after the feasibility checkpoint
+## 3. Implement native Windows after the feasibility checkpoint
 
 The user should be able to install Unio, open PowerShell and launch workers
 using their Windows-installed AI CLIs without WSL. Preserve the same task,
@@ -100,6 +91,17 @@ must identify any required engine refactor and deliverable sub-slices.
 
 Finish with actual Windows installation and execution evidence. A browser
 opening successfully or a Linux test suite passing is not native support.
+
+## 4. Port and verify native macOS
+
+Implement the audited host operations on macOS. Decide and document actual
+shell/tool prerequisites; installing one missing Linux utility alone does
+not establish compatibility. Exercise both Apple Silicon and Intel using
+actual hosts or suitable CI runners.
+
+Finish when installation, shared-account admission, interrupted runs, child
+cleanup, saves/restores and local dashboard startup pass on each declared
+architecture. Unverified architectures and versions stay explicitly unverified.
 
 ## Acceptance shared by supported hosts
 

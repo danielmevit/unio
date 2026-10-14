@@ -2,21 +2,20 @@
 
 Your AIs, in sync.
 
-Current update,2026-10-14: **[v0.5.17](https://github.com/danielmevit/unio/releases/tag/v0.5.17)** is released,
-installed and pushed. It combines the corrected physical project-root guard
-with opt-in experimental managed Codex workers and owned control channels.
-One full frozen gate and artifact/upgrade/install/download checks passed.
-Effort requests target future-turn configuration; current-inference changes
-and consumption of pending choices by a one-turn Source remain unproven.
-Local save recovery is complete with the original evidence preserved.
+Current update,2026-10-14: **[v0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18)** is released,
+installed and pushed. It combines safe Vibe progress and a separate liveness
+heartbeat, a fourth packaged Antigravity connector with honest structured
+outcomes, and exact Copilot native JSONL proposal text. One frozen full gate,
+artifact/upgrade/install checks, dashboard identity and six official download
+hashes passed. UI, site and brand work were preserved.
 
-Candidate 0.5.18 is unreleased. It gathers Vibe safe live progress and a
-distinct liveness heartbeat, the fourth packaged Antigravity adapter, and
-Copilot native JSONL proposal text. The public release and global install
-remain v0.5.17 until one frozen full gate and the shipping checks pass.
-The Copilot input/group correction4516d51 is included and accepted after
-six native checks and four independent cases. Its frozen-adapter call finished
-native0 with terminalSUCCESS. UI, site and brand work stay owner-reserved.
+The proposed v0.5.19 milestone is measured saving and recovery performance on
+populated stores. Start with a bounded profile, optimize one proven bottleneck,
+then compare equivalent histories and verify exact restoration. Estimate
+2–4 hours for a focused slice or 4–8 hours if deeper changes are needed.
+The two latest provider profiling attempts returned no report; diagnosis is
+still unfinished and no new speedup is claimed. Lead-session continuity,
+handoffs and scoped phone access follow this functional priority.
 
 The functional core includes recovery saving, shared-account policy and capacity
 observations, managed daily startup, read-only planning, explicit single-attempt
@@ -37,6 +36,8 @@ stored-file pathname checks with full byte validation. See the
 It also includes static worker-command diagnostics; combined release checks and
 installation passed. Further release work should freeze a useful bundle and run
 one combined gate, rather than publish each corrective slice separately.
+
+The [proposed six-release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md) explains the scopes, implementation approach and estimates through 0.5.24.
 
 ## Current focus: finish the functional core
 
@@ -87,9 +88,8 @@ beside it; ordinary low-tier limits apply outside that scoped exception.
 | 6 — CLI slice shipped | Evidence-based routing and context efficiency | 0.5.12 ships explicit revision assessments, task-specific profiles and conditional local advice. Automatic capture and routing remain planned. |
 | 7 — newly requested | macOS and Windows host support | Linux/WSL is the current baseline. Native macOS and Windows need an audited host backend and actual platform acceptance; see the [cross-platform stages](CROSS-PLATFORM.md). |
 
-The Vibe worker-progress slice emits safe fixed labels and a distinct
-liveness-only heartbeat. It is in the unreleased 0.5.18 candidate. The
-installed and publicly released version remains v0.5.17.
+The Vibe worker-progress slice shipped in v0.5.18: safe fixed labels
+and a separate liveness heartbeat, with a genuine live field observation.
 
 ### Next useful slices
 
@@ -123,8 +123,8 @@ requested break and a new owner continuation, use the
    after a handoff, then scoped pairing and message delivery. These need session
    ownership and transport work; a local dashboard is not remote control.
 4. **macOS and Windows:** finish the platform audit, make the existing WSL2 route
-   reproducible, port native macOS, then implement native Windows after a backend
-   feasibility checkpoint. Use actual host CI and save/restore checks before
+   reproducible, implement native Windows after a backend feasibility checkpoint,
+   then port native macOS. Use actual host CI and save/restore checks before
    declaring support. The [interactive session workspace](SESSION-WORKSPACE.md)
    reuses the existing dashboard and engine.
 

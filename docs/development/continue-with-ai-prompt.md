@@ -1,3 +1,53 @@
+# Current delivery — Unio 0.5.18, 2026-10-14T14:45:44+02:00
+
+[Unio 0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18) is published and installed from `52e097a0104dd45c935e85fa8ea6937e72b4e159`.
+The complete quality gate passed on `a34159529fd9c76c98bb010e031f1844177c0b4c` in 1331.118 seconds.
+Only README/changelog release labels changed after that gate. Exact artifacts,
+40 offline selftests, 0.5.17 upgrade/restore, installation before publication,
+installed helper identity, dashboard byte identity and all six official
+download hashes passed. Prior release tags are unchanged.
+
+This bundle adds Vibe safe live progress and a distinct liveness heartbeat,
+the fourth packaged Antigravity connector with process/structured-outcome
+reconciliation, and exact Copilot native JSONL proposal extraction. See
+[release notes](../RELEASE-0.5.18.md). Live Vibe progress was observed during
+normal Mistral work; a normal Gemini correction through the frozen new
+Antigravity adapter finished native0/terminalSUCCESS/adapter0. Changed Copilot
+framing has offline/native-source evidence, without a new live Copilot call.
+
+Implementation provenance: Mistral subscription / Vibe2.26.1 / requested
+GLM5.3 high supplied initial progress and Antigravity work. Antigravity
+subscription / agy1.3.5 / requested Gemini3.8Flash high corrected both
+connectors. Grok subscription / Build1.0.52 / requested Grok4.7 high supplied
+Copilot extraction and release preparation. Copilot Free / CLI1.0.95 /
+Auto Balance / effort not exposed supplied an earlier routine progress
+proposal; its underlying model/lab is Unknown. All code corrections were
+delegated; Codex stayed lead-only. Native checks and personal review accepted
+the final code; no extra AI review fleet was launched. Effective identities,
+efforts and remaining allowances remain Unknown.
+
+Separate save profiling is unfinished: Mistral/Vibe2.26.1/GLM5.3 high ended
+native2/infrastructure_failure without a report; its one other-route
+replacement, OpenCode Go/CLI1.18.35/opencode-go/glm-5.3 high, ended timeout124
+without a report. These are preserved operational failures, not proof of
+quota exhaustion or performance improvement. Do not replay frozen tasks.
+
+Recommended v0.5.19 scope: measured saving and recovery performance on a
+populated store. First isolate the slow phase, then optimize one demonstrated
+bottleneck and verify exact restore/last-good behavior. Estimate 2–4 hours
+for a focused slice or 4–8 hours for deeper work and delivery. This is a
+proposal, not a started implementation or promised speedup. Lead-session
+continuity and scoped phone access follow; CodeGraph remains deferred.
+
+All native workers are idle. Keep YOLO/low, the real shared accounts,
+registered Codex lead and STOP; no extra Codex worker under the current owner
+override. Preserve owner UI/site/brand work. The managed local dashboard is
+http://127.0.0.1:36141; use dashboard ensure for its current URL later.
+Read private coord/AGENT-LOG.md and tmp/unio-next/manifest.json/receipts for
+local state. Earlier candidate paragraphs below preserve their dated context.
+
+---
+
 # Current candidate — Unio 0.5.18 worker reliability
 
 Prepared2026-10-14. This candidate combines accepted Vibe live progress,

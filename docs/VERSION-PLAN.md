@@ -17,7 +17,13 @@ remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The comp
 
 | Version | Included work | State |
 | --- | --- | --- |
-| 0.5.18 | Worker reliability: Vibe live progress and liveness heartbeat, fourth packaged Antigravity adapter with process exit separated from structured outcome, Copilot exact JSONL proposal text | Candidate, unreleased. Public and installed release remains [0.5.17](https://github.com/danielmevit/unio/releases/tag/v0.5.17). Full gate, artifacts, upgrade, install and publication are prepared and not run. The included Copilot input/group correction is accepted after six native checks and personal review. |
+| 0.5.19 | Measured saving and recovery performance | Proposed next bundle; not started. 2–4h focused or 4–8h deeper work. |
+| 0.5.20 | Optional continuous delegation within owner-approved bounds | Proposed; 1–3 working days. |
+| 0.5.21 | Managed live CLI sessions and lead continuity | Proposed; 2–4 working days for the first supported route. |
+| 0.5.22 | Session-scoped phone access | Proposed; 2–4 working days after managed session ownership. |
+| 0.5.23 | Native Windows | Proposed; 1–3 working weeks after feasibility assessment; split if required. |
+| 0.5.24 | Native macOS | Proposed; 3–6 working days, subject to actual host checks. |
+| 0.5.18 | Worker reliability: Vibe live progress, Antigravity structured outcomes and exact Copilot JSONL proposals | [Released and installed 2026-10-14](https://github.com/danielmevit/unio/releases/tag/v0.5.18); full gate, artifacts, upgrade/restore, installation, dashboard identity and six official download hashes passed. |
 | 0.5.17 | Safer project selection and experimental managed Codex workers | [Released and installed2026-10-14](https://github.com/danielmevit/unio/releases/tag/v0.5.17); full gate, exact artifacts, upgrade/restore, installed acceptance, dashboard identity and six official download hashes passed. Current-inference effort changes remain unproven. |
 | 0.5.16 | Recovery performance and static worker diagnostics | [Released and installed 2026-10-14](https://github.com/danielmevit/unio/releases/tag/v0.5.16); source9ee2a20, combined gate9b4dfc4, artifacts, upgrade/restore, installed saving/audit acceptance and six official download hashes passed |
 | 0.5.15 | Local structured review findings, protocol-aware compatibility and dated worker readiness | [Released and installed 2026-10-13](https://github.com/danielmevit/unio/releases/tag/v0.5.15); source 6894b20, full gate on af19d35, exact artifacts, 0.5.14 upgrade/restore, installed findings acceptance and six official download hashes passed |
@@ -36,6 +42,8 @@ remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The comp
 | 0.5.6 | Installed manual capacity readings with age, optional reset and Unknown handling; supporting readiness inventory and local documentation-link audit | [Release and downloads](https://github.com/danielmevit/unio/releases/tag/v0.5.6); automatic readings, browser meters and dispatch integration remain planned |
 | 0.5.7 | Managed background dashboard, shared task filters, visible AI agents and allowance windows, explicit Codex metadata refresh and cached observations | [Released and installed 2026-10-09](https://github.com/danielmevit/unio/releases/tag/v0.5.7); exact source30842abea68c, complete gate and official asset/install checks passed |
 | 0.5.8 | Packaged Vibe implementation and Perplexity research/code-proposal adapters; local integration discovery and documented setup | [Released and installed 2026-10-10](https://github.com/danielmevit/unio/releases/tag/v0.5.8); source bc8625837ae8, complete gate passed in 710.043 seconds; artifact, upgrade/restore, official download and installed-command checks passed |
+
+See the [six-release outlook](development/RELEASE-OUTLOOK-0.5.19-0.5.24.md) for proposed scope, dependencies, implementation and estimates. These are planning estimates, not release commitments.
 
 The owner approved the [delivery priorities](development/ROADMAP.md#approved-delivery-priorities)
 on 2026-10-06: finish 0.5.3, deliver 0.5.4, then allowance monitoring, agent
