@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
 """Offline real-schema-shaped CLI fixtures; no Vibe inference or network."""
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -24,6 +25,7 @@ pathlib.Path(os.environ['MARKER']).open('a').write('call\n')
 assert '-p' not in a and '--auto-approve' not in a
 get=lambda k:a[a.index(k)+1]
 assert get('--agent')=='auto-approve' and '--trust' in a
+assert get('--output')=='streaming'
 label=os.environ['VIBE_ACTIVE_MODEL'];model=json.loads(os.environ['VIBE_MODELS'])[label]
 wire='zai-glm-5-3' if label=='glm-5-3' else 'mistral-medium-3-5'
 assert model['name']==wire and model['alias']==label and model['provider']=='mistral'
@@ -53,6 +55,37 @@ if mode=='none':x['usage']=None;x['cost_usd']=None
 if mode=='unsafe_reason':x['stop_reason']='NEVER-IN-RECEIPT'
 text=json.dumps(x)
 if mode=='duplicate':text=text.replace('"schema_version": 1','"schema_version": 1, "schema_version": 1')
+if os.environ.get('FAKE_STREAM'):
+ e=[{'type':'message','role':'user','content':[{'type':'text','text':'SECRET-PROMPT'}],'generationStatus':'completed'},
+    {'type':'reasoning','text':'SECRET-REASONING','summary':[],'generationStatus':'completed'},
+    {'type':'message','role':'assistant','content':[{'type':'text','text':'SECRET-ANSWER'}],'generationStatus':'completed'},
+    {'type':'effect','title':'bash','detail':{'kind':'shell','toolName':'bash','input':{'command':'SECRET-CMD'}},'state':{'status':'completed','outputText':'SECRET-OUT'}},
+    {'type':'effect','title':'read','detail':{'kind':'file_read','toolName':'read_file','input':{'filePath':'/SECRET-PATH'}},'state':{'status':'completed'}},
+    {'type':'effect','title':'edit','detail':{'kind':'file_edit','toolName':'edit','input':{'filePath':'/SECRET-PATH','oldString':'SECRET-OLD'}},'state':{'status':'completed'}},
+    {'type':'effect','title':'write','detail':{'kind':'file_write','toolName':'write_file','input':{'filePath':'/SECRET-PATH','note':'héllo'}},'state':{'status':'completed'}},
+    {'type':'effect','title':'search','detail':{'kind':'file_search','toolName':'grep','input':{'pattern':'SECRET-PATTERN'}},'state':{'status':'completed'}},
+    {'type':'effect','title':'todo','detail':{'kind':'todo','toolName':'todo_write','input':{}},'state':{'status':'completed'}},
+    {'type':'effect','title':'skill','detail':{'kind':'skill','toolName':'skill','input':{'name':'SECRET-SKILL'}},'state':{'status':'completed'}},
+    {'type':'effect','title':'web','detail':{'kind':'web_search','toolName':'web_search','input':{'query':'SECRET-QUERY'}},'state':{'status':'failed','error':{'message':'SECRET-ERROR'}}},
+    {'type':'notice','level':'error','message':'SECRET-NOTICE','detail':{'kind':'agent_changed','agentName':'SECRET-AGENT'}}]
+ b=sys.stdout.buffer
+ for v in e[:3]:b.write((json.dumps(v)+'\n').encode())
+ b.write((json.dumps(e[3])+'\n'+json.dumps(e[4])+'\n').encode())
+ blob=json.dumps(e[5]).encode();b.write(blob[:15]);b.flush();time.sleep(.05);b.write(blob[15:]+b'\n')
+ raw=json.dumps(e[6],ensure_ascii=False).encode();cut=raw.index('é'.encode())+1
+ b.write(raw[:cut]);b.flush();time.sleep(.05);b.write(raw[cut:]+b'\n')
+ b.write(('\n'.join(json.dumps(v) for v in e[7:])+'\n').encode())
+ b.write(b'this is not json\n')
+ b.write(b'["not","an","object"]\n')
+ b.write(b'{"type":"mystery","payload":"SECRET-UNKNOWN"}\n')
+ b.write(b'{"pad":"'+b'A'*300000+b'"}\n')
+ b.write(b'['*50000+b']'*50000+b'\n')
+ b.flush()
+ wait=os.environ.get('FAKE_STREAM_WAIT')
+ if wait:
+  for _ in range(400):
+   if pathlib.Path(wait).exists():break
+   time.sleep(.05)
 pathlib.Path(get('--output-dir'),'export.json').write_text(text)
 print('NEVER-IN-RECEIPT')
 print('NEVER-IN-RECEIPT',file=sys.stderr)
@@ -161,6 +194,120 @@ class VibeTests(unittest.TestCase):
             worker.owned_call([sys.executable,'-c','print("x"*10000)'],dict(os.environ),2,output_limit=20)
         self.assertIsNone(other.poll())
         other.terminate();other.wait(timeout=3)
+
+    def test_streaming_progress_labels_counts_and_privacy(self):
+        p=self.invoke(FAKE_STREAM='1')
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        prog=r['progress']
+        self.assertEqual(prog['events'],10)
+        self.assertEqual(prog['malformed_records'],4)
+        self.assertEqual(prog['unlabeled_records'],4)
+        self.assertEqual(prog['heartbeats'],0)
+        self.assertEqual(prog['last_label'],'tool failure observed')
+        self.assertIsInstance(prog['last_observed_at'],str)
+        lines=[l for l in p.stdout.splitlines() if l.startswith('Vibe ')]
+        self.assertEqual(len(lines),10)
+        for label in ['assistant reasoning observed','assistant response observed',
+                      'running shell command','reading file','editing file','writing file',
+                      'searching files','updating task list','tool call observed',
+                      'tool failure observed']:
+            self.assertIn('Vibe progress: '+label,p.stdout)
+        final=json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual(final['progress_events'],10)
+        self.assertEqual(final['progress_last_label'],'tool failure observed')
+        self.assertNotIn('SECRET',p.stdout+p.stderr+json.dumps(r))
+        raw=next(self.receipts.glob('vibe-run-*/native-stdout.log')).read_text()
+        for secret in ['SECRET-PROMPT','SECRET-REASONING','SECRET-ANSWER','SECRET-CMD',
+                       'SECRET-PATH','SECRET-ERROR']:
+            self.assertIn(secret,raw)
+
+    def test_public_progress_arrives_before_child_exit(self):
+        sentinel=self.root/'child may exit'
+        command=[sys.executable,'-B',str(SCRIPT),'--model','glm-5-3','--prompt-file',str(self.prompt),
+                 '--receipt-dir',str(self.receipts)]
+        proc=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,
+                              env=dict(self.env,FAKE_STREAM='1',FAKE_STREAM_WAIT=str(sentinel)))
+        try:
+            seen=[]
+            for line in proc.stdout:
+                seen.append(line)
+                if 'Vibe progress: assistant response observed' in line:
+                    break
+            self.assertTrue(any(l.startswith('Vibe progress: ') for l in seen))
+            self.assertIsNone(proc.poll())
+            sentinel.write_text('go\n')
+            for line in proc.stdout:
+                seen.append(line)
+            proc.wait(timeout=30)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+        self.assertEqual(proc.returncode,0)
+        text=''.join(seen)
+        self.assertIn('Vibe progress: running shell command',text)
+        self.assertIn('"progress_events": 10',text)
+
+    def test_heartbeat_is_liveness_only_and_distinct_from_events(self):
+        out=io.StringIO()
+        progress=worker.Progress(stream=out)
+        original=worker.HEARTBEAT_SECONDS
+        worker.HEARTBEAT_SECONDS=.2
+        try:
+            code,_=worker.owned_call([sys.executable,'-c','import time;time.sleep(1)'],
+                                     dict(os.environ),5,progress=progress)
+        finally:
+            worker.HEARTBEAT_SECONDS=original
+        self.assertEqual(code,0)
+        self.assertGreaterEqual(progress.heartbeats,2)
+        self.assertEqual(progress.events,0)
+        lines=out.getvalue().splitlines()
+        self.assertTrue(lines)
+        for line in lines:
+            self.assertTrue(line.startswith('Vibe heartbeat: '),line)
+        self.assertNotIn('Vibe progress:',out.getvalue())
+
+    def test_progress_parser_handles_split_records_and_hostile_streams(self):
+        out=io.StringIO()
+        progress=worker.Progress(stream=out)
+        record='{"type":"message","role":"assistant","content":[{"type":"text","text":"héllo"}]}'.encode()
+        cut=record.index('é'.encode())+1
+        progress.feed(record[:cut]);progress.feed(record[cut:]+b'\n')
+        self.assertEqual(progress.events,1)
+        progress.feed(b'{"type":"effect","detail":{"kind":"shell"},"state":{"status":"completed"}}\n')
+        self.assertEqual(progress.last_label,'running shell command')
+        progress.feed(b'{"type":"effect","detail":{"kind":"shell"},"state":{"status":"failed"}}\n')
+        self.assertEqual(progress.last_label,'tool failure observed')
+        progress.feed(b'{"type":"effect","detail":null,"state":{"status":"completed"}}\n')
+        progress.feed(b'{"type":"message","role":"user"}\n')
+        progress.feed(b'not json\n')
+        progress.feed(b'['*60000+b']'*60000+b'\n')
+        progress.feed(b'{"pad":"'+b'A'*300000+b'"}\n')
+        self.assertEqual(progress.malformed,3)
+        self.assertEqual(progress.unlabeled,2)
+        self.assertLessEqual(len(progress.buffer),worker.PROGRESS_RECORD_BYTES+65536)
+        for line in out.getvalue().splitlines():
+            self.assertTrue(line.startswith('Vibe progress: '),line)
+        self.assertNotIn('héllo',out.getvalue())
+
+    def test_progress_public_lines_are_bounded(self):
+        out=io.StringIO()
+        progress=worker.Progress(stream=out)
+        line=b'{"type":"reasoning","text":"x"}\n'
+        for _ in range(worker.PROGRESS_LINES+500):
+            progress.feed(line)
+        self.assertEqual(progress.events,worker.PROGRESS_LINES+500)
+        self.assertEqual(len(out.getvalue().splitlines()),worker.PROGRESS_LINES)
+
+    def test_streaming_noise_does_not_break_failure_export_validation(self):
+        p=self.invoke(FAKE_STREAM='1',FAKE_EXIT='3')
+        self.assertEqual(p.returncode,3,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['process_exit'],3)
+        self.assertEqual(r['export_state'],'valid')
+        self.assertEqual(r['export']['outcome'],'token_limit')
+        self.assertEqual(r['progress']['events'],10)
+        self.assertNotIn('SECRET',json.dumps(r)+p.stdout+p.stderr)
 
 
 if __name__=='__main__':
