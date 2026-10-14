@@ -49,3 +49,11 @@ AI reviewer fleet was invoked under the owner's YOLO policy.
 The final bundle requires one full frozen-source gate, exact artifact smoke,
 0.5.16 upgrade/restore, installation checks and official download hashes.
 Completed delivery is recorded separately in the [handoff](development/continue-with-ai-prompt.md).
+
+The first combined gate stopped on the command-audit test's dirname shim: it
+missed an optional -- before the operand, escaped fixture traversal, and called
+MOCK Git. One separation assertion caused eleven subsequent canary failures.
+Source and global installation stayed unchanged. A dedicated ChatGPT/Codex
+GPT-6.1 Sol high correction60489a9 fixed only that fixture and its regression;
+all18audit tests and native verification3/3 passed. The failed gate is retained
+beside the fresh final-source release gate. No runtime check was weakened.

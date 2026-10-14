@@ -28,3 +28,11 @@ These are dated task outcomes, not general model rankings. Effective identity,
 effort and remaining allowance remain Unknown. The root correction is independent
 of the previously accepted managed-worker runtime; release validation combines
 both in a frozen bundle.
+
+The first combined gate stopped on the command-audit test's dirname shim: it
+missed an optional -- before the operand, escaped fixture traversal, and called
+MOCK Git. One separation assertion caused eleven subsequent canary failures.
+Source and global installation stayed unchanged. A dedicated ChatGPT/Codex
+GPT-6.1 Sol high correction60489a9 fixed only that fixture and its regression;
+all18audit tests and native verification3/3 passed. The failed gate is retained
+beside the fresh final-source release gate. No runtime check was weakened.
