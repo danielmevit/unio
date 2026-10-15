@@ -129,6 +129,26 @@ elif mode=='malformed_group_id_int':raw=dump([assistant(5,'A',chunkIndex=0,chunk
 elif mode=='malformed_group_id_empty':raw=dump([assistant(5,'A',chunkIndex=0,chunkCount=2,turnId=''),assistant(6,'B',chunkIndex=1,chunkCount=2,turnId='turn-a'),result()])
 elif mode=='coherent_group_ids':raw=dump([assistant(6,'second part €\n',chunkIndex=1,chunkCount=2,turnId='turn-1',originatingMessageId='orig-1'),assistant(5,'first part: ',chunkIndex=0,chunkCount=2,turnId='turn-1',originatingMessageId='orig-1'),result()])
 elif mode=='preamble':raw=dump([assistant(5,'I will view',toolRequests=[{'name':'view'}]),assistant(6,content),result()])
+elif mode=='sanitized_empty_collection':
+    r={'type':'result','timestamp':'2026-10-15T13:03:25Z','sessionId':'fixture-session','exitCode':0,'usage':{'premiumRequests':1,'totalApiDurationMs':31994,'sessionDurationMs':37936,'codeChanges':{'linesAdded':0,'linesRemoved':0,'filesModified':[]}}}
+    msgs=[assistant(1,'',turnId='t1'),assistant(2,'',turnId='t1'),assistant(3,'',turnId='t1'),assistant(4,'',turnId='t1'),assistant(5,content,phase='final_answer',turnId='t1'),r]
+    raw=dump(msgs)
+elif mode=='populated_collection':
+    r={'type':'result','timestamp':'2026-10-15T13:03:25Z','sessionId':'fixture-session','exitCode':0,'usage':{'premiumRequests':1,'totalApiDurationMs':31994,'sessionDurationMs':37936,'codeChanges':{'linesAdded':2,'linesRemoved':1,'filesModified':['src/a.py','docs/b.md']}}}
+    raw=dump(framed(content)[:-1]+[r])
+elif mode=='files_modified_wrong_type':
+    r=result();r['usage']['codeChanges']['filesModified']='not-a-list'
+    raw=dump(framed(content)[:-1]+[r])
+elif mode=='files_modified_invalid_entry':
+    r=result();r['usage']['codeChanges']['filesModified']=[123]
+    raw=dump(framed(content)[:-1]+[r])
+elif mode=='files_modified_negative':
+    r=result();r['usage']['codeChanges']['filesModified']=-1
+    raw=dump(framed(content)[:-1]+[r])
+elif mode=='files_modified_empty_assistant':
+    r={'type':'result','timestamp':'2026-10-15T13:03:25Z','sessionId':'fixture-session','exitCode':0,'usage':{'premiumRequests':1,'totalApiDurationMs':31994,'sessionDurationMs':37936,'codeChanges':{'linesAdded':0,'linesRemoved':0,'filesModified':[]}}}
+    msgs=[assistant(1,'',turnId='t1'),assistant(2,'',turnId='t1'),assistant(3,'',turnId='t1'),assistant(4,'',turnId='t1'),r]
+    raw=dump(msgs)
 else:raw=dump(framed(content))
 out=sys.stdout.buffer
 step=1 if mode=='fragmented' else 1000 if mode=='large' else len(raw) or 1
@@ -342,7 +362,9 @@ class CopilotTests(unittest.TestCase):
                  "ambiguous", "bad_id_null", "bad_id_int", "bad_id_list", "bad_id_object",
                  "huge_usage_number", "conflicting_turn_id", "conflicting_origin_id",
                  "conflicting_both_ids", "malformed_group_id_null", "malformed_group_id_int",
-                 "malformed_group_id_empty"]
+                 "malformed_group_id_empty", "files_modified_wrong_type",
+                 "files_modified_invalid_entry", "files_modified_negative",
+                 "files_modified_empty_assistant"]
         for mode in modes:
             with self.subTest(mode=mode):
                 p = self.invoke(FAKE_MODE=mode)
@@ -462,6 +484,89 @@ class CopilotTests(unittest.TestCase):
         c0 = make_chunk(0, 2, 'Foo ', turn_id=None, origin_id=None)
         c1 = make_chunk(1, 2, 'Bar', turn_id=None, origin_id=None)
         self.assertEqual(worker.completion_text([c0, c1]), 'Foo Bar')
+
+    def test_sanitized_empty_and_populated_files_modified_collection(self):
+        content = "Proposal: verified empty collection accepted."
+        p = self.invoke(FAKE_MODE="sanitized_empty_collection", FAKE_CONTENT=content)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        r = self.receipt()
+        self.assertEqual(r["outcome"], "proposal_recorded")
+        self.assertEqual(Path(r["proposal_path"]).read_text(encoding="utf-8"), content)
+        public = self.public_text() + p.stdout + p.stderr
+        self.assertNotIn(SECRET, public)
+        self.assertNotIn("RAW-SECRET-SENTINEL", public)
+        self.receipts.joinpath(r["proposal_path"]).parent.rename(self.root / "done-sanitized-empty")
+
+        p = self.invoke(FAKE_MODE="populated_collection", FAKE_CONTENT=content)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        r = self.receipt()
+        self.assertEqual(r["outcome"], "proposal_recorded")
+        self.assertEqual(Path(r["proposal_path"]).read_text(encoding="utf-8"), content)
+        self.receipts.joinpath(r["proposal_path"]).parent.rename(self.root / "done-populated")
+
+    def test_unit_files_modified_validation_and_offline_regression(self):
+        sanitized_res = {
+            "type": "result", "timestamp": "2026-10-15T13:03:25Z", "sessionId": "fixture-session",
+            "exitCode": 0, "usage": {
+                "premiumRequests": 1, "totalApiDurationMs": 31994, "sessionDurationMs": 37936,
+                "codeChanges": {"linesAdded": 0, "linesRemoved": 0, "filesModified": []}
+            }
+        }
+        self.assertEqual(worker.require_result(json.loads(json.dumps(sanitized_res))), sanitized_res)
+
+        stream_events = [
+            {'id': '00000000-0000-4000-8000-000000000001', 'timestamp': '2026-10-15T13:03:20Z', 'parentId': None,
+             'type': 'assistant.message', 'data': {'messageId': 'm1', 'content': '', 'turnId': 't1'}},
+            {'id': '00000000-0000-4000-8000-000000000002', 'timestamp': '2026-10-15T13:03:21Z', 'parentId': None,
+             'type': 'assistant.message', 'data': {'messageId': 'm2', 'content': '', 'turnId': 't1'}},
+            {'id': '00000000-0000-4000-8000-000000000003', 'timestamp': '2026-10-15T13:03:22Z', 'parentId': None,
+             'type': 'assistant.message', 'data': {'messageId': 'm3', 'content': '', 'turnId': 't1'}},
+            {'id': '00000000-0000-4000-8000-000000000004', 'timestamp': '2026-10-15T13:03:23Z', 'parentId': None,
+             'type': 'assistant.message', 'data': {'messageId': 'm4', 'content': '', 'turnId': 't1'}},
+            {'id': '00000000-0000-4000-8000-000000000005', 'timestamp': '2026-10-15T13:03:24Z', 'parentId': None,
+             'type': 'assistant.message', 'data': {'messageId': 'm5', 'content': 'Valid offline proposal\n',
+                                                   'phase': 'final_answer', 'turnId': 't1'}},
+            sanitized_res
+        ]
+        raw = b'\n'.join(json.dumps(e).encode() for e in stream_events) + b'\n'
+        self.assertEqual(worker.proposal_from_jsonl(raw), 'Valid offline proposal\n')
+
+        def old_require_result(event):
+            changes = event["usage"]["codeChanges"]
+            if not all(worker.whole_number(changes[k]) and changes[k] >= 0 and worker.finite_number(changes[k])
+                       for k in worker.CHANGE_KEYS):
+                raise worker.Refusal(worker.INVALID)
+        with self.assertRaises(worker.Refusal) as ctx:
+            old_require_result(sanitized_res)
+        self.assertEqual(str(ctx.exception), worker.INVALID)
+
+        for populated in (['file.py'], ['src/a.py', 'docs/b.md'], 0, 42):
+            with self.subTest(populated=populated):
+                r = json.loads(json.dumps(sanitized_res))
+                r['usage']['codeChanges']['filesModified'] = populated
+                self.assertEqual(worker.require_result(r), r)
+
+        for bad in (None, True, False, 'str', [1], [None], [''], ['a' * 513], -1, 10**400, {'a': 1}):
+            with self.subTest(bad_files_modified=bad):
+                r = json.loads(json.dumps(sanitized_res))
+                r['usage']['codeChanges']['filesModified'] = bad
+                with self.assertRaises(worker.Refusal) as ctx:
+                    worker.require_result(r)
+                self.assertEqual(str(ctx.exception), worker.INVALID)
+
+        meta_only = b'\n'.join(json.dumps(e).encode() for e in [
+            {'id': '00000000-0000-4000-8000-000000000001', 'timestamp': '2026-10-15T13:03:20Z', 'parentId': None,
+             'type': 'session.start', 'data': {'info': 'boot'}},
+            sanitized_res
+        ]) + b'\n'
+        with self.assertRaises(worker.Refusal) as ctx:
+            worker.proposal_from_jsonl(meta_only)
+        self.assertEqual(str(ctx.exception), worker.INVALID)
+
+        empty_only = b'\n'.join(json.dumps(e).encode() for e in stream_events[:4] + [sanitized_res]) + b'\n'
+        with self.assertRaises(worker.Refusal) as ctx:
+            worker.proposal_from_jsonl(empty_only)
+        self.assertEqual(str(ctx.exception), worker.INVALID)
 
 
 if __name__ == "__main__":
