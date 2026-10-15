@@ -22637,8 +22637,13 @@ def lenient_worker(path):
         return None
 
 
-def scan_store(store, archived=False, budget=None):
-    """Bounded metadata validation; corrupt evidence is counted and kept."""
+def scan_store(store, archived=False, budget=None, deep=False):
+    """Bounded metadata validation; corrupt evidence is counted and kept.
+
+    A deep load already performs every metadata check this scan performs, so
+    deep=True classifies, orders and byte-validates each save from the same
+    single load. Metadata-only inspection and usage keep deep=False.
+    """
     saves, corrupt = [], []
     for name in bounded_names(store):
         if budget is not None:
@@ -22650,7 +22655,7 @@ def scan_store(store, archived=False, budget=None):
             try:
                 if archived:
                     path = archived_path(store, name)
-                loaded = load_save(path, name, False)
+                loaded = load_save(path, name, deep)
                 doc = loaded['manifest']
                 saves.append(dict(id=name, worker=doc['worker'], task=doc['task'],
                                   published=when(doc['published_at']), manifest=doc,
@@ -22720,7 +22725,11 @@ def same(a, b):
 
 
 def retention_plan(store, worker, budget):
-    active, corrupt = scan_store(store)
+    # One deep load per active save: a deep load performs every metadata
+    # check the former separate scan performed, so classification, ordering
+    # and byte validation come from the same single traversal. Deep failures
+    # become protected corrupt evidence with the same accounting.
+    active, corrupt = scan_store(store, deep=True, budget=budget)
     if len(active) + len(corrupt) > CAP_PROJECT:
         raise Refuse('excessive', 'active store already exceeds the project cap; existing evidence was preserved')
     archive = archive_for_store(store)
@@ -22733,20 +22742,15 @@ def retention_plan(store, worker, budget):
     if {item['id'] for item in active + corrupt} & {item['id'] for item in historical}:
         raise Refuse('invalid_save', 'duplicate active/archive save ID')
     pins = {claim['save_id'] for claim in claims}
-    # Protect each worker's newest fully valid active save. Failed deep
-    # validation converts that item to protected corrupt evidence.
-    newest, valid = set(), []
+    # Protect each worker's newest valid active save. Every active item was
+    # deep-validated exactly once above; failed loads are corrupt evidence.
+    newest = set()
     for item in active:  # newest first
         budget.remaining()
-        try:
-            load_save(os.path.join(store, item['id']), item['id'], True)
-        except Refuse:
-            corrupt.append(dict(id=item['id'], worker=item['worker']))
-            continue
         if item['worker'] not in newest:
             newest.add(item['worker'])
             pins.add(item['id'])
-        valid.append(item)
+    valid = active
     mine = [item for item in valid if item['worker'] == worker]
     claim_pins = {claim['save_id'] for claim in claims}
     ordinary = [item for item in mine if item['id'] not in claim_pins]
