@@ -19065,6 +19065,8 @@ def valid_document(d, worker, task):
         fail('malformed result identity/schema')
     if not isinstance(d.get('updated_at'), str) or not revision(d.get('revision')):
         fail('malformed result revision/date')
+    if 'dispatch_revision' in d and not revision(d['dispatch_revision']):
+        fail('malformed dispatch revision')
     for name, states in [('process', ('not_run','running','succeeded','failed')), ('validation', ('not_run','passed','failed','incomplete')), ('review', ('not_run','approved','changes_requested','unknown','failed'))]:
         s = d.get(name)
         if not isinstance(s, dict) or s.get('state') not in states or (s.get('revision') is not None and not revision(s['revision'])):
@@ -19205,6 +19207,10 @@ def update(root, worker, task, operation, encoded, *args):
     if operation == 'start':
         retry(root, task, 'start', worker)
         d = fresh(worker, task)
+        # Keep engine-owned pre-provider evidence when end replaces revision.
+        # Optional in schema 1 so legacy results remain readable; they cannot
+        # establish a dispatch binding for verification.
+        d['dispatch_revision'] = rev
         d['process'] = dict(state='running', exit_code=None, revision=rev)
     elif operation in ('end', 'end-unbound'):
         code = int(args[0])
@@ -20471,6 +20477,11 @@ try:
     cmd,*a=sys.argv[1:]
     if cmd=='preflight': pass
     elif cmd=='snapshot': print(json.dumps(snapshot(*a),sort_keys=True,separators=(',',':')))
+    elif cmd=='dispatch-sha':
+        d = load(*a)
+        if d['process']['state'] == 'not_run' or not revision(d.get('dispatch_revision')):
+            fail('dispatch binding unavailable; legacy reports are not dispatch evidence')
+        print(d['dispatch_revision']['task_sha256'])
     elif cmd=='update': update(*a)
     elif cmd=='retry': retry(*a)
     elif cmd=='gate': gate(*a)
@@ -23026,8 +23037,71 @@ def tick_ok(value):
     return type(value) is int and 0 <= value <= 2**63
 
 
-def owner_path(root, task):
+def owner_path(root, task, worker=''):
+    # Runtime ownership is per worker, just like the native worker lock.
+    # The task-addressed background control is a public selection only.
+    if worker:
+        return under(root, 'coord', 'reports', '.owners', worker, task + '.own')
     return under(root, 'coord', 'reports', task + '.own')
+
+
+def public_owner_lock(root, task):
+    directory = under(root, 'coord', '.locks', '.owners')
+    private_dir(directory, True)
+    path = under(root, 'coord', '.locks', '.owners', task + '.lock')
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    lock = os.fdopen(fd, 'r+')
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        lock.close()
+        raise Refuse('unknown', 'public ownership lock is not regular')
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return lock
+
+
+def same_owner(a, b):
+    return all(a[k] == b[k] for k in ('boot_id', 'worker', 'task', 'shell_pid', 'shell_start', 'shell_sid'))
+
+
+def owner_release(root, worker, task):
+    record = load_owner(owner_path(root, task, worker))
+    if (record['worker'] != worker or record['task'] != task or record['shell_pid'] != os.getppid()
+            or not parent_matches(record) or session_members(record)[0] != 'clear'):
+        raise Refuse('unknown', 'refusing foreign or unproved ownership cleanup')
+    with public_owner_lock(root, task):
+        public = _load_kill_record(root, task)
+        if public is not None and same_owner(public, record):
+            pidfile = under(root, 'coord', 'reports', task + '.pid')
+            if read_path(pidfile, 32)[1].strip() != str(record['shell_pid']).encode():
+                raise Refuse('unknown', 'public pidfile does not match ownership')
+            os.unlink(pidfile)
+            os.unlink(owner_path(root, task))
+        os.unlink(owner_path(root, task, worker))
+
+
+def owner_forget(root, task, pid, start=None):
+    """Remove completed public controls only if still bound to this shell."""
+    with public_owner_lock(root, task):
+        try:
+            record = load_owner(owner_path(root, task))
+        except FileNotFoundError:
+            record = None
+        if record is not None:
+            info = proc_stat(record['shell_pid'])
+            if (record['shell_pid'] != pid or (start is not None and record['shell_start'] != start)
+                    or info == 'unproved' or (isinstance(info, dict) and info['start'] == record['shell_start']
+                                             and info['state'] not in DEAD_STATES)
+                    or session_members(record)[0] != 'clear'):
+                return False
+        path = under(root, 'coord', 'reports', task + '.pid')
+        try:
+            if read_path(path, 32)[1].strip() != str(pid).encode():
+                return False
+        except FileNotFoundError:
+            return record is None
+        os.unlink(path)
+        if record is not None:
+            os.unlink(owner_path(root, task))
+        return True
 
 
 def current_boot():
@@ -23152,11 +23226,19 @@ def owner_bind(root, worker, task):
         raise Refuse('unknown', 'owned identity was not established before the provider')
     if not shell_is_runner(proc_argv(ppid), worker, task):
         raise Refuse('unknown', 'owned identity was not established before the provider')
-    write_owner(owner_path(root, task), {
+    path = owner_path(root, task, worker)
+    private_dir(under(root, 'coord', 'reports', '.owners'), True)
+    private_dir(under(root, 'coord', 'reports', '.owners', worker), True)
+    record = {
         'schema_version': 1, 'boot_id': current_boot(), 'worker': worker, 'task': task,
         'shell_pid': ppid, 'shell_start': info['start'], 'shell_sid': info['sid'],
         'provider_pid': None, 'provider_sid': None, 'provider_start': None,
-    })
+    }
+    write_owner(path, record)
+    if os.environ.get('UNIO_BG') == '1':
+        with public_owner_lock(root, task):
+            write_owner(owner_path(root, task), record)
+            atomic_private(under(root, 'coord', 'reports', task + '.pid'), ('%d\n' % ppid).encode())
 
 
 def child_pids(pid):
@@ -23265,13 +23347,21 @@ def wait_clear(record, grace):
         time.sleep(0.05)
 
 
-def finish_owned(root, worker, task, grace):
+def finish_owned(root, worker, task, grace, expected_pid=None, expected_start=None):
     try:
-        record = load_owner(owner_path(root, task))
+        record = load_owner(owner_path(root, task, worker))
     except (Refuse, OSError):
         return 'unknown'
     if record['task'] != task or (worker and record['worker'] != worker):
         return 'unknown'
+    if ((expected_pid is not None and record['shell_pid'] != expected_pid)
+            or (expected_start is not None and record['shell_start'] != expected_start)):
+        return 'unknown'
+    if not worker and expected_pid is not None and expected_start is None:
+        info = proc_stat(record['shell_pid'])
+        if info == 'unproved' or (isinstance(info, dict) and info['start'] == record['shell_start']
+                                  and info['state'] not in DEAD_STATES):
+            return 'unknown'
     status, members = session_members(record)
     if status == 'clear':
         return 'clear'
@@ -23360,7 +23450,11 @@ def _publish_provider(root, task, record, pid):
     record['provider_start'] = info['start']
     if not valid_owner(record):
         return False
-    write_owner(owner_path(root, task), record)
+    write_owner(owner_path(root, task, record['worker']), record)
+    with public_owner_lock(root, task):
+        public = _load_kill_record(root, task)
+        if public is not None and same_owner(public, record):
+            write_owner(owner_path(root, task), record)
     again = proc_stat(pid)
     return isinstance(again, dict) and again['start'] == info['start'] and again['sid'] == pid and again['state'] not in DEAD_STATES
 
@@ -23401,7 +23495,7 @@ class OwnedCommand:
 
 def spawn_owned_provider(root, worker, task, timeout, command, log_fd):
     try:
-        record = load_owner(owner_path(root, task))
+        record = load_owner(owner_path(root, task, worker))
         if record['worker'] != worker or record['task'] != task or record['provider_pid'] is not None:
             raise OSError('ownership record does not match this run')
         if record['shell_pid'] != os.getppid() or not parent_matches(record):
@@ -23531,7 +23625,7 @@ def owner_signal(root, task, pid):
             if background_run_argv(argv, record['worker'], task):
                 print('refuse')
                 return 2
-            if finish_owned(root, record['worker'], task, 0) == 'clear':
+            if finish_owned(root, '', task, 0, pid, record['shell_start']) == 'clear':
                 print('stale')
                 return 0
             print('refuse')
@@ -23558,7 +23652,7 @@ def owner_force(root, task, pid, start):
     info = proc_stat(pid)
     record = _load_kill_record(root, task)
     if not isinstance(info, dict) or info['start'] != start:
-        if record is not None and finish_owned(root, record['worker'], task, 0) == 'clear':
+        if record is not None and finish_owned(root, '', task, 0, pid, start) == 'clear':
             print('done')
             return 0
         print('unknown')
@@ -23568,7 +23662,7 @@ def owner_force(root, task, pid, start):
             or not background_run_argv(proc_argv(pid), record['worker'], task)):
         print('refuse')
         return 2
-    if finish_owned(root, record['worker'], task, 0) != 'clear':
+    if finish_owned(root, '', task, 0, pid, start) != 'clear':
         print('unknown')
         return 2
     info = proc_stat(pid)
@@ -24513,6 +24607,18 @@ def main(argv):
         if command == '_owner-bind' and len(args) == 2 and ident(args[0]) and ident(args[1]):
             owner_bind(root, args[0], args[1])
             return 0
+        if command == '_owner-release' and len(args) == 2 and ident(args[0]) and ident(args[1]):
+            owner_release(root, args[0], args[1])
+            return 0
+        if (command == '_owner-forget' and len(args) in (2, 3) and ident(args[0])
+                and re.fullmatch(r'[1-9][0-9]{0,8}', args[1])
+                and (len(args) == 2 or re.fullmatch(r'[0-9]{1,20}', args[2]))):
+            return 0 if owner_forget(root, args[0], int(args[1]), int(args[2]) if len(args) == 3 else None) else 2
+        if command == '_reap-public' and args and args[-1] == 'confirm':
+            if (len(args) in (3, 4) and ident(args[0]) and re.fullmatch(r'[1-9][0-9]{0,8}', args[1])
+                    and (len(args) == 3 or re.fullmatch(r'[0-9]{1,20}', args[2]))):
+                return 0 if finish_owned(root, '', args[0], 0, int(args[1]),
+                                        int(args[2]) if len(args) == 4 else None) == 'clear' else 2
         if command == '_reap-owned' and args and args[-1] == 'confirm':
             if len(args) == 3 and ident(args[0]) and ident(args[1]):
                 worker, task = args[0], args[1]
@@ -25524,30 +25630,12 @@ cmd_run() {
     flock -n 9 || die "worker '$worker' is already running a task (unio status)"
   fi
 
-  local pidfile=""
-  # Ownership is recorded with the pidfile, before any provider call. The EXIT
-  # trap runs after cmd_run returns, so its locals are gone. Keep paths in
-  # globals. A root or pidfile with spaces or quotes must stay data.
+  # The EXIT trap must also cover preparation/admission failures, without
+  # claiming another run's task-addressed background controls.
   POLICY_CLEANUP_ROOT="$root"
-  POLICY_CLEANUP_OWNER="$root/coord/reports/$task.own"
-  if [ "${UNIO_BG:-0}" = "1" ]; then
-    pidfile="$root/coord/reports/$task.pid"
-    echo "$$" > "$pidfile"
-    POLICY_CLEANUP_PIDFILE="$pidfile"
-    trap 'rm -f -- "$POLICY_CLEANUP_PIDFILE" "$POLICY_CLEANUP_OWNER"; policy_release_slot "$POLICY_CLEANUP_ROOT"' EXIT
-    trap 'exit 143' TERM
-    trap 'exit 130' INT
-  else
-    # Foreground Source must release the holder on signal and exit, not only
-    # a background pidfile trap. The local root does not survive until EXIT.
-    POLICY_CLEANUP_PIDFILE=""
-    trap 'rm -f -- "$POLICY_CLEANUP_OWNER"; policy_release_slot "$POLICY_CLEANUP_ROOT"' EXIT
-    trap 'exit 143' TERM
-    trap 'exit 130' INT
-  fi
-  if ! saves "$root" _owner-bind "$worker" "$task"; then
-    return 2
-  fi
+  trap 'policy_release_slot "$POLICY_CLEANUP_ROOT"' EXIT
+  trap 'exit 143' TERM
+  trap 'exit 130' INT
 
   # a run killed mid-commit can leave git's index.lock behind — clear it
   local gd
@@ -25594,6 +25682,12 @@ cmd_run() {
     policy_release_slot "$root" || true
     return "$start_rc"
   fi
+  # Publish only after account and retry admission. Runtime ownership follows
+  # the worker lock; public background controls select the latest admitted run.
+  POLICY_CLEANUP_WORKER="$worker"
+  POLICY_CLEANUP_TASK="$task"
+  trap 'saves "$POLICY_CLEANUP_ROOT" _owner-release "$POLICY_CLEANUP_WORKER" "$POLICY_CLEANUP_TASK" || true; policy_release_slot "$POLICY_CLEANUP_ROOT"' EXIT
+  saves "$root" _owner-bind "$worker" "$task" || return 2
   echo "[$worker <- $agent] running task '$task' (timeout ${TIMEOUT}s), log: $log"
   ledger_add "$root" "$(printf '{"event":"run_start","ts":"%s","task":"%s","worker":"%s","agent":"%s"}' "$(date -Is)" "$task" "$worker" "$agent")"
   export TASKFILE="$POLICY_EFFECTIVE"
@@ -25798,9 +25892,9 @@ cmd_verify() {
   # recorded when it was dispatched: if the yardstick moved, the verdict is
   # meaningless, so fail closed.
   local tampered=0 run_sha cur_sha
-  run_sha=$(grep -o 'task_sha=[0-9a-f]*' "$root/coord/reports/$task.md" 2>/dev/null | tail -1 | cut -d= -f2 || true)
-  cur_sha=$(task_sha "$tf")
-  [ -n "$run_sha" ] && [ "$run_sha" != "$cur_sha" ] && tampered=1
+  run_sha=$(quality dispatch-sha "$root" "$worker" "$task") || return $?
+  cur_sha=$(sha256sum "$tf" | cut -d' ' -f1)
+  [ "$run_sha" = "$cur_sha" ] || tampered=1
 
   local changed commits changed_file
   # --no-renames so a rename is seen as delete+add and BOTH paths get scoped:
@@ -26751,13 +26845,13 @@ cmd_kill() {
   token=$(saves "$root" _owner-signal "$task" "$pid") || token="refuse"
   case "$token" in
     gone)
-      if saves "$root" _reap-owned "$task" confirm; then
-        rm -f -- "$pf" "$own"
+      if saves "$root" _reap-public "$task" "$pid" confirm; then
+        saves "$root" _owner-forget "$task" "$pid" || return 2
         echo "'$task' already finished — cleaning up its pidfile"
         return 0
       fi
       if [ ! -f "$own" ]; then
-        rm -f -- "$pf"
+        saves "$root" _owner-forget "$task" "$pid" || return 2
         echo "'$task' already finished — cleaning up its pidfile"
         return 0
       fi
@@ -26765,7 +26859,7 @@ cmd_kill() {
       return 2
       ;;
     stale)
-      rm -f -- "$pf"
+      saves "$root" _owner-forget "$task" "$pid" || return 2
       die "pid $pid is not a Unio run (stale pidfile removed) — refusing to signal it"
       ;;
     signaled\ [0-9]*)
@@ -26779,9 +26873,9 @@ cmd_kill() {
         sleep 0.1
       done
       if [ "$now" != "$start" ] || [ "$state" = "Z" ]; then
-        if saves "$root" _reap-owned "$task" confirm \
+        if saves "$root" _reap-public "$task" "$pid" "$start" confirm \
             || saves "$root" _owner-completed "$task" "$pid" "$start"; then
-          rm -f -- "$pf" "$own"
+          saves "$root" _owner-forget "$task" "$pid" "$start" || return 2
           echo "killed '$task' (session $pid) — final capture attempted; inspect: unio save inspect --worker <worker>"
           return 0
         fi
@@ -26790,7 +26884,7 @@ cmd_kill() {
       fi
       force=$(saves "$root" _owner-force "$task" "$pid" "$start") || force="refuse"
       if [ "$force" = "done" ]; then
-        rm -f -- "$pf" "$own"
+        saves "$root" _owner-forget "$task" "$pid" "$start" || return 2
         echo "force-killed '$task' (pid $pid) after cleanup deadline — inspect the last good save and partial work"
         return 0
       fi

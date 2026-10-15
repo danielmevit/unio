@@ -42,7 +42,8 @@ p=Path(__file__).parent
 with (p/'calls').open('a') as f: f.write('called\\n')
 mode=os.environ.get('BRAKE_MOCK_MODE','fail')
 if mode=='hold':
- (p/'mock-process.json').write_text(json.dumps({'pid':os.getpid(),'pgid':os.getpgrp()}))
+ raw=Path('/proc/self/stat').read_text(); fields=raw[raw.rfind(')')+2:].split()
+ (p/'mock-process.json').write_text(json.dumps({'pid':os.getpid(),'pgid':os.getpgrp(),'sid':os.getsid(0),'start':int(fields[19])}))
  while True: time.sleep(.1)
 if mode=='work':
  with Path('canary.txt').open('a') as f: f.write('ready\\n')
@@ -59,7 +60,7 @@ raise SystemExit(7 if mode=='fail' else 0)
         print('  brake: '+label,flush=True)
     def calls(): return len(mark.read_text().splitlines()) if mark.exists() else 0
     def call(*args, code=0, mode='fail'):
-        p = subprocess.run([at,*args],cwd=repo,env=dict(env,BRAKE_MOCK_MODE=mode),capture_output=True,text=True)
+        p = subprocess.run([at,*args],cwd=repo,env=dict(env,BRAKE_MOCK_MODE=mode),capture_output=True,text=True,timeout=45)
         assert p.returncode==code,(args,p.returncode,code,p.stdout,p.stderr)
         return p
     def task(name, checks='$ true'):
@@ -69,6 +70,116 @@ raise SystemExit(7 if mode=='fail' else 0)
         n=calls(); p=call('run',worker,name,code=2)
         assert 'loop brake:' in p.stderr and calls()==n
         return p
+
+    def identity(pid):
+        try:
+            raw=Path(f'/proc/{pid}/stat').read_text(); fields=raw[raw.rfind(')')+2:].split()
+            return dict(pid=pid, start=int(fields[19]), sid=int(fields[3]), state=fields[0])
+        except (OSError, ValueError, IndexError): return None
+    def live(record):
+        now=identity(record['pid'])
+        return now is not None and now['start']==record['start'] and now['sid']==record['sid'] and now['state'] not in ('Z','X','x')
+    def signal_exact(record, sig):
+        if not live(record): return
+        try:
+            fd=os.pidfd_open(record['pid'])
+            try:
+                if live(record): signal.pidfd_send_signal(fd,sig)
+            finally: os.close(fd)
+        except ProcessLookupError: pass
+
+    def kill_fixture(shell, provider=None):
+        owned=[]; frontier=[shell['pid']] if live(shell) else []
+        while frontier:
+            pid=frontier.pop()
+            try: children=Path(f'/proc/{pid}/task/{pid}/children').read_text().split()
+            except OSError: children=[]
+            for child in children:
+                row=identity(int(child))
+                if row: owned.append(row); frontier.append(row['pid'])
+        if provider is not None:
+            leader=identity(provider['pid'])
+            if leader is None or (leader['start']==provider['start'] and leader['sid']==provider['sid']):
+                for entry in Path('/proc').iterdir():
+                    row=identity(int(entry.name)) if entry.name.isdigit() else None
+                    if row and row['sid']==provider['sid']: owned.append(row)
+        for row in reversed(owned): signal_exact(row,signal.SIGKILL)
+        signal_exact(shell,signal.SIGKILL)
+
+    # A refused run must never publish over, remove, or reap an active run's
+    # controls, including when two workers share a task and retry history.
+    def ownership_collision(owner_mode):
+        name='collision-'+owner_mode
+        saved_mode=env.get('UNIO_BG')
+        env['UNIO_BG']=owner_mode
+        task(name)
+        info.unlink(missing_ok=True)
+        with (base/(name+'.stdout')).open('w') as output, (base/(name+'.stderr')).open('w') as errors:
+            proc=subprocess.Popen([at,'run','mock',name],cwd=repo,
+                                  env=dict(env,BRAKE_MOCK_MODE='hold',UNIO_TIMEOUT='120',UNIO_BG=owner_mode),
+                                  stdout=output,stderr=errors,start_new_session=True)
+            shell=identity(proc.pid); provider=None
+            try:
+                deadline=time.monotonic()+40
+                while not info.exists() and time.monotonic()<deadline and proc.poll() is None: time.sleep(.05)
+                assert info.exists(), 'collision provider failed to start'
+                provider=json.loads(info.read_text())
+                own=root/'coord/reports/.owners/mock'/f'{name}.own'
+                if not own.exists(): own=root/'coord/reports'/f'{name}.own'  # baseline proof
+                original=own.read_bytes(); n=calls()
+                public={suffix:(root/'coord/reports'/f'{name}{suffix}').read_bytes() for suffix in ('.own','.pid')} if owner_mode=='1' else {}
+                call('run','mock-2',name,code=2)
+                check('account-refused same-task run preserves active ownership',own.exists() and own.read_bytes()==original and live(provider) and calls()==n)
+                check('account refusal preserves public selection',all((root/'coord/reports'/f'{name}{suffix}').read_bytes()==raw for suffix,raw in public.items()))
+                call('tier','medium')
+                retry_path=root/'coord/retries'/name/'state.json'
+                retry_state=state(name); retry_state['failed_attempts']=2
+                retry_path.write_text(json.dumps(retry_state))
+                refuse(name,'mock-2')
+                check('retry-refused same-task run preserves active ownership',own.read_bytes()==original and live(provider))
+                check('retry refusal preserves public selection',all((root/'coord/reports'/f'{name}{suffix}').read_bytes()==raw for suffix,raw in public.items()))
+                task('parallel-other-'+owner_mode); call('run','mock-2','parallel-other-'+owner_mode,code=7)
+                check('independent admitted task cannot reap active provider',own.read_bytes()==original and live(provider))
+                call('allow-retry',name); call('run','mock-2',name,code=7)
+                check('admitted same-task run cleans only its own provider',own.read_bytes()==original and live(provider))
+                if owner_mode=='1':
+                    # With two admitted background runs on one task, completion
+                    # of the first must leave the second's selection untouched.
+                    call('allow-retry',name); info.unlink()
+                    with (base/'second.stdout').open('w') as out2, (base/'second.stderr').open('w') as err2:
+                        second=subprocess.Popen([at,'run','mock-2',name],cwd=repo,
+                                                env=dict(env,BRAKE_MOCK_MODE='hold',UNIO_TIMEOUT='120'),
+                                                stdout=out2,stderr=err2,start_new_session=True)
+                        second_shell=identity(second.pid); second_provider=None
+                        try:
+                            deadline=time.monotonic()+40
+                            while not info.exists() and time.monotonic()<deadline and second.poll() is None: time.sleep(.05)
+                            assert info.exists(), 'second collision provider failed to start'
+                            second_provider=json.loads(info.read_text())
+                            selected={suffix:(root/'coord/reports'/f'{name}{suffix}').read_bytes() for suffix in ('.own','.pid')}
+                            signal_exact(shell,signal.SIGTERM); proc.wait(timeout=35)
+                            check('first completion cannot remove or signal second background owner',
+                                  live(second_provider) and all((root/'coord/reports'/f'{name}{suffix}').read_bytes()==raw for suffix,raw in selected.items()))
+                            call('kill',name); second.wait(timeout=35)
+                            check('public kill cancels only the selected background owner',second.returncode==143 and not live(second_provider))
+                        finally:
+                            if second.poll() is None: kill_fixture(second_shell,second_provider)
+                            second.wait(timeout=5)
+                else:
+                    signal_exact(shell,signal.SIGTERM); proc.wait(timeout=35)
+                check('active owner completes its own cancellation',proc.returncode==143 and not live(provider) and not own.exists())
+            finally:
+                signal_exact(shell,signal.SIGTERM)
+                try: proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    kill_fixture(shell,provider); proc.wait(timeout=5)
+                if provider is not None: signal_exact(provider,signal.SIGKILL)
+            call('tier','low')
+            if saved_mode is None: env.pop('UNIO_BG',None)
+            else: env['UNIO_BG']=saved_mode
+
+    ownership_collision('0')
+    ownership_collision('1')
 
     task('process')
     call('run','mock','process',code=7); check('first real process exit preserved',state('process')['failed_attempts']==1)
@@ -114,7 +225,9 @@ raise SystemExit(7 if mode=='fail' else 0)
     call('run','mock','concurrent',code=7); call('run','mock-2','concurrent',code=7)
     call('allow-retry','concurrent'); n=calls()
     def compete(worker):
-        return subprocess.run([at,'run',worker,'concurrent'],cwd=repo,env=env,capture_output=True).returncode
+        p=subprocess.run([at,'run',worker,'concurrent'],cwd=repo,env=env,capture_output=True,timeout=45)
+        assert p.returncode in (2,7),(worker,p.returncode,p.stdout,p.stderr)
+        return p.returncode
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         codes=list(pool.map(compete,['mock','mock-2']))
     check('concurrent workers share a single retry grant',sorted(codes)==[2,7] and calls()==n+1)
@@ -124,7 +237,7 @@ raise SystemExit(7 if mode=='fail' else 0)
         started=time.monotonic()
         proc=subprocess.Popen([at,'run',worker,name],cwd=repo,
                               env=dict(env,BRAKE_MOCK_MODE='hold',UNIO_TIMEOUT='120'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
-        worker_group=None
+        shell=identity(proc.pid); provider=None
         output=errors=b''
         try:
             # Native startup includes a baseline save with its own 30s budget.
@@ -133,22 +246,17 @@ raise SystemExit(7 if mode=='fail' else 0)
             while not info.exists() and time.monotonic()<deadline and proc.poll() is None: time.sleep(.05)
             assert info.exists(),f'mock did not start after {time.monotonic()-started:.3f}s; runner exit={proc.poll()}'
             print(f'  brake startup: {worker}/{name} ready in {time.monotonic()-started:.3f}s',flush=True)
-            worker_group=json.loads(info.read_text())['pgid']
-            assert worker_group!=os.getpgrp()
+            provider=json.loads(info.read_text())
+            assert provider['sid']!=os.getsid(0)
             if during: during()
-            os.killpg(proc.pid,signal.SIGKILL)
-            if worker_group!=proc.pid:
-                try: os.killpg(worker_group,signal.SIGKILL)
-                except ProcessLookupError: pass
+            kill_fixture(shell,provider)
             output,errors=proc.communicate(timeout=5)
         finally:
             if proc.poll() is None:
-                os.killpg(proc.pid,signal.SIGKILL); output,errors=proc.communicate(timeout=5)
+                kill_fixture(shell,provider); output,errors=proc.communicate(timeout=5)
             elif sys.exc_info()[0] is not None:
                 output,errors=proc.communicate(timeout=5)
-            if worker_group is not None:
-                try: os.killpg(worker_group,signal.SIGKILL)
-                except ProcessLookupError: pass
+            if provider is not None: kill_fixture(shell,provider)
             if sys.exc_info()[0] is not None:
                 print(f'  brake startup failure: {worker}/{name}; runner exit={proc.returncode}',file=sys.stderr,flush=True)
                 for label,data in [('runner stdout',output),('runner stderr',errors)]:

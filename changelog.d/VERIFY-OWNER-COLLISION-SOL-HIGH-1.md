@@ -1,0 +1,2 @@
+- Bind verification to the full engine-recorded dispatch revision; provider diagnostic hashes cannot reject unchanged tasks or conceal mutations, and missing bindings fail closed.
+- Isolate runtime ownership per worker and guard background control publication/cleanup so refused or concurrent same-task runs cannot overwrite, reap, or remove another run's ownership.
