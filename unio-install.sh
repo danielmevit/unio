@@ -22994,7 +22994,10 @@ def current_boot():
 
 
 def valid_owner(doc):
-    if not isinstance(doc, dict) or set(doc) != OWNER_KEYS or doc.get('schema_version') != 1:
+    # schema_version must be the exact supported integer: Python True == 1,
+    # so a boolean here would otherwise pass as schema 1.
+    if (not isinstance(doc, dict) or set(doc) != OWNER_KEYS
+            or type(doc.get('schema_version')) is not int or doc.get('schema_version') != 1):
         return False
     if not isinstance(doc.get('boot_id'), str) or not BOOT_ID.fullmatch(doc['boot_id']):
         return False
@@ -24426,6 +24429,14 @@ def main(argv):
         if (command == '_owner-force' and len(args) == 3 and ident(args[0])
                 and re.fullmatch(r'[1-9][0-9]{0,8}', args[1]) and re.fullmatch(r'[0-9]{1,20}', args[2])):
             return owner_force(root, args[0], int(args[1]), int(args[2]))
+        if (command == '_pidfd-signal' and len(args) == 4
+                and re.fullmatch(r'[1-9][0-9]{0,8}', args[0]) and re.fullmatch(r'[0-9]{1,20}', args[1])
+                and re.fullmatch(r'[1-9][0-9]{0,8}', args[2]) and args[3] in ('TERM', 'KILL')):
+            # Internal: the shell signals the supervisor it spawned, through
+            # the pidfd helper only. Unproved identity signals nothing.
+            print('ok' if pidfd_signal(int(args[0]), int(args[1]), int(args[2]),
+                  getattr(signal, 'SIG' + args[3])) else 'refuse')
+            return 0
         if (command == '_continue-check' and len(args) == 3 and ident(args[0])
                 and ident(args[1]) and HEX32.fullmatch(args[2])):
             inherited_worker(root, args[0])
@@ -24527,21 +24538,29 @@ policy_pgid() {
 policy_stat_field() { # $1=pid $2=1-based field after comm
   case "$1" in ''|*[!0-9]*|0|1) return 0;; esac
   [ -r "/proc/$1/stat" ] || return 0
+  # comm may itself contain ')'. Strip through the LAST ')' (greedy .*), the
+  # same robust split the Python /proc parser uses, so a parenthesised comm
+  # cannot shift every field and forge a start or session match.
   awk -v n="$2" '{
     rest = $0
-    sub(/^[^)]*\) /, "", rest)
+    sub(/^.*\)/, "", rest)
     split(rest, f, " ")
     print f[n]
   }' "/proc/$1/stat" 2>/dev/null || true
 }
 
-policy_signal_if_same() { # $1=pid $2=start $3=signal — refuse a reused pid
-  local pid="$1" start="$2" sig="$3" now=""
+policy_pidfd_signal() { # $1=root $2=pid $3=start $4=sid $5=TERM|KILL — pidfd only
+  # A /proc check followed by a numeric kill is not atomic: the pid can be
+  # reused between the two. The dispatcher opens the pidfd, revalidates the
+  # recorded start and session, and signals through that exact handle. When
+  # identity cannot be established it refuses; there is no numeric fallback.
+  local root="$1" pid="$2" start="$3" sid="$4" sig="$5" token=""
   case "$pid" in ''|*[!0-9]*|0|1) return 1;; esac
   case "$start" in ''|*[!0-9]*) return 1;; esac
-  now=$(policy_stat_field "$pid" 20)
-  [ -n "$now" ] && [ "$now" = "$start" ] || return 1
-  kill -s "$sig" -- "$pid" 2>/dev/null || true
+  case "$sid" in ''|*[!0-9]*|0|1) return 1;; esac
+  case "$sig" in TERM|KILL) ;; *) return 1;; esac
+  token=$(saves "$root" _pidfd-signal "$pid" "$start" "$sid" "$sig") || return 1
+  [ "$token" = "ok" ]
 }
 
 policy_hold_until_clear() { # $1=root $2=worker $3=task $4=report
@@ -25492,6 +25511,7 @@ cmd_run() {
   # still allow a final save and the normal structured failure receipts.
   POLICY_PROVIDER_PID=""
   POLICY_PROVIDER_START=""
+  POLICY_PROVIDER_SID=""
   POLICY_SOURCE_SUPERVISOR=1
   local run_signal=0
   trap 'run_signal=143' TERM
@@ -25500,12 +25520,14 @@ cmd_run() {
     {POLICY_IN}>&- {POLICY_RD}>&- {POLICY_WR}>&- &
   POLICY_PROVIDER_PID=$!
   POLICY_PROVIDER_START=$(policy_stat_field "$POLICY_PROVIDER_PID" 20)
-  if [ -z "$POLICY_PROVIDER_START" ]; then
+  POLICY_PROVIDER_SID=$(policy_stat_field "$POLICY_PROVIDER_PID" 4)
+  if [ -z "$POLICY_PROVIDER_START" ] || [ -z "$POLICY_PROVIDER_SID" ]; then
     # Not yet waited on, so this pid cannot have been reused.
     kill -TERM -- "$POLICY_PROVIDER_PID" 2>/dev/null || true
     wait "$POLICY_PROVIDER_PID" 2>/dev/null || true
     POLICY_PROVIDER_PID=""
     POLICY_PROVIDER_START=""
+    POLICY_PROVIDER_SID=""
     echo "unio: provider supervisor identity was not established" >&2
     policy_hold_until_clear "$root" "$worker" "$task" "$report"
     POLICY_SOURCE_SUPERVISOR=0
@@ -25517,7 +25539,7 @@ cmd_run() {
     rc=0
     wait "$POLICY_PROVIDER_PID" || rc=$?
     if [ "$run_signal" != 0 ]; then
-      policy_signal_if_same "$POLICY_PROVIDER_PID" "$POLICY_PROVIDER_START" TERM || true
+      policy_pidfd_signal "$root" "$POLICY_PROVIDER_PID" "$POLICY_PROVIDER_START" "$POLICY_PROVIDER_SID" TERM || true
     fi
     now=$(policy_stat_field "$POLICY_PROVIDER_PID" 20)
     [ "$now" = "$POLICY_PROVIDER_START" ] || break
@@ -25525,6 +25547,7 @@ cmd_run() {
   [ "$run_signal" = 0 ] || rc="$run_signal"
   POLICY_PROVIDER_PID=""
   POLICY_PROVIDER_START=""
+  POLICY_PROVIDER_SID=""
   policy_hold_until_clear "$root" "$worker" "$task" "$report"
   POLICY_SOURCE_SUPERVISOR=0
   trap 'exit 143' TERM
