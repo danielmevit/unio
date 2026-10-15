@@ -43,14 +43,14 @@ shape for this terminal record is:
 - `timestamp` and `sessionId` must be non-empty identifiers up to 512 characters.
 - `exitCode` must be integer `0` for success (`1` indicates native failure and fails closed).
 - `usage` must contain exactly `{"premiumRequests", "totalApiDurationMs", "sessionDurationMs", "codeChanges"}`.
-- Numeric usage metrics (`premiumRequests`, `totalApiDurationMs`, `sessionDurationMs`) must be finite non-negative numbers.
+- Numeric usage metrics (`premiumRequests`, `totalApiDurationMs`, `sessionDurationMs`) must be finite numbers; these checks do not impose a non-negative range on those three fields.
 - `codeChanges` must contain exactly `{"linesAdded", "linesRemoved", "filesModified"}`.
 - `linesAdded` and `linesRemoved` must be finite whole numbers (integers `>= 0`).
 - `filesModified` must be either:
-  1. A verified collection: a JSON array (list) where every entry is a valid identifier string (file path `0 < len(entry) <= 512`), including the empty collection `[]` when no files are modified.
+  1. A JSON array (list) of non-empty path strings (`0 < len(entry) <= 512`), including the empty collection `[]` when no files are modified. This validates their shape, not filesystem existence or authenticity.
   2. A whole number count (`integer >= 0` and finite), retained for backwards compatibility with earlier fixtures and integer count metrics.
 
-Any malformed, wrong-typed (e.g. `None`, boolean, dictionary, nested non-string array entries, empty string paths), non-finite (`NaN`, `Infinity`, or exponent overflow), or negative values fail closed as an `empty_or_invalid_response` (adapter exit 2).
+Malformed or wrong-typed values (e.g. `None`, boolean, dictionary, nested non-string array entries or empty string paths), non-finite numbers (`NaN`, `Infinity` or exponent overflow), and negative line/count fields fail closed as an `empty_or_invalid_response` (adapter exit 2).
 
 ## Inspected native source anchors
 
