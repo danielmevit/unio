@@ -80,6 +80,7 @@ python3 -B tests/unio-work-saving-auto.py
 python3 -B tests/unio-save-capture-budget.py
 python3 -B tests/unio-work-saving-continue.py
 python3 -B tests/unio-kill-pid.py
+python3 -B tests/unio-native-stop.py
 python3 -B tests/unio-lead-cooldown.py
 python3 -B bridge/tests/plan_store_test.py
 python3 -B bridge/tests/plan_api_test.py

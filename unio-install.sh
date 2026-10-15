@@ -21434,7 +21434,7 @@ saves() {
   local -a saves_runner=(python3)
   if [ "${1:-}" = __exec ]; then saves_runner=(exec python3); shift; fi
   "${saves_runner[@]}" - "$@" <<'SAVES_PY'
-import datetime, fcntl, hashlib, json, os, re, selectors, shutil, signal, stat, struct, subprocess, sys, tempfile, time
+import datetime, fcntl, hashlib, json, os, re, select, selectors, shutil, signal, stat, struct, subprocess, sys, tempfile, time
 
 # Work saving (contract: docs/development/WORK-SAVING-CONTRACT.md).
 # Stored data is only ever compared, hashed and copied; it never
@@ -22961,6 +22961,537 @@ def inherited_run(root, worker, task):
     return attempt['id']
 
 
+# Owned provider session (contract: docs/development/NATIVE-STOP-CONTRACT.md).
+# The shell records its boot and start identity before the provider execs.
+# Descendants may change process group or lose their parent; they stay in the
+# session created here. A setsid() outside that session is not owned.
+OWNER_KEYS = {'schema_version', 'boot_id', 'worker', 'task', 'shell_pid', 'shell_start', 'shell_sid',
+              'provider_pid', 'provider_sid', 'provider_start'}
+BOOT_ID = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
+DEAD_STATES = ('Z', 'X', 'x')
+
+
+def pid_ok(value):
+    return type(value) is int and 1 < value <= 999999999
+
+
+def tick_ok(value):
+    return type(value) is int and 0 <= value <= 2**63
+
+
+def owner_path(root, task):
+    return under(root, 'coord', 'reports', task + '.own')
+
+
+def current_boot():
+    try:
+        text = read_path('/proc/sys/kernel/random/boot_id', 128)[1].decode('ascii').strip()
+    except (Refuse, OSError, UnicodeError):
+        raise Refuse('unknown', 'boot id is unavailable')
+    if not BOOT_ID.fullmatch(text):
+        raise Refuse('unknown', 'boot id is unavailable')
+    return text
+
+
+def valid_owner(doc):
+    if not isinstance(doc, dict) or set(doc) != OWNER_KEYS or doc.get('schema_version') != 1:
+        return False
+    if not isinstance(doc.get('boot_id'), str) or not BOOT_ID.fullmatch(doc['boot_id']):
+        return False
+    if not ident(doc.get('worker')) or not ident(doc.get('task')):
+        return False
+    if not pid_ok(doc.get('shell_pid')) or not pid_ok(doc.get('shell_sid')) or not tick_ok(doc.get('shell_start')):
+        return False
+    provider = (doc.get('provider_pid'), doc.get('provider_sid'), doc.get('provider_start'))
+    if provider == (None, None, None):
+        return True
+    return pid_ok(provider[0]) and provider[0] == provider[1] and tick_ok(provider[2]) and provider[1] != doc['shell_sid']
+
+
+def load_owner(path):
+    st, data = read_path(path, 4096)
+    if st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) & 0o077:
+        raise Refuse('unknown', 'ownership record is not private')
+    doc = strict_json(data, 4096, 'ownership')
+    if not valid_owner(doc) or doc['boot_id'] != current_boot():
+        raise Refuse('unknown', 'ownership record is malformed')
+    return doc
+
+
+def write_owner(path, doc):
+    if not valid_owner(doc):
+        raise Refuse('unknown', 'ownership record is malformed')
+    atomic_private(path, canon(doc) + b'\n')
+
+
+def proc_stat(pid):
+    if type(pid) is not int or not pid_ok(pid):
+        return None
+    try:
+        raw = read_path('/proc/%d/stat' % pid, 4096)[1]
+    except (Refuse, OSError):
+        return None
+    end = raw.rfind(b')')
+    if end < 0:
+        return None
+    fields = raw[end + 2:].split()
+    if len(fields) < 20:
+        return None
+    try:
+        return {'pid': pid, 'state': fields[0].decode('ascii', 'replace'), 'ppid': int(fields[1]),
+                'pgid': int(fields[2]), 'sid': int(fields[3]), 'start': int(fields[19])}
+    except (ValueError, IndexError, UnicodeError):
+        return None
+
+
+def proc_argv(pid):
+    try:
+        raw = read_path('/proc/%d/cmdline' % pid, 65536)[1]
+    except (Refuse, OSError):
+        return []
+    if not raw:
+        return []
+    parts = raw.split(b'\0')
+    if parts and parts[-1] == b'':
+        parts.pop()
+    return [part.decode('utf-8', 'surrogateescape') for part in parts]
+
+
+def proc_uid(pid):
+    try:
+        return os.stat('/proc/%d' % pid).st_uid
+    except OSError:
+        return None
+
+
+def shell_is_runner(argv, worker, task):
+    if len(argv) < 5 or os.path.basename(argv[0]) != 'bash' or os.path.basename(argv[1]) != 'unio':
+        return False
+    if argv[2] == 'run':
+        return len(argv) == 5 and argv[3] == worker and argv[4] == task
+    if argv[2] == '_continue-run':
+        return len(argv) >= 6 and argv[3] == worker and argv[4] == task
+    return False
+
+
+def background_run_argv(argv, worker, task):
+    return (len(argv) == 5 and os.path.basename(argv[0]) == 'bash' and os.path.basename(argv[1]) == 'unio'
+            and argv[2] == 'run' and argv[3] == worker and argv[4] == task)
+
+
+def parent_matches(record):
+    info = proc_stat(record['shell_pid'])
+    if info is None or info['state'] in DEAD_STATES:
+        return False
+    if info['start'] != record['shell_start'] or info['sid'] != record['shell_sid']:
+        return False
+    if proc_uid(record['shell_pid']) != os.getuid():
+        return False
+    return shell_is_runner(proc_argv(record['shell_pid']), record['worker'], record['task'])
+
+
+def owner_bind(root, worker, task):
+    ppid = os.getppid()
+    info = proc_stat(ppid)
+    if info is None or info['state'] in DEAD_STATES or proc_uid(ppid) != os.getuid():
+        raise Refuse('unknown', 'owned identity was not established before the provider')
+    if not shell_is_runner(proc_argv(ppid), worker, task):
+        raise Refuse('unknown', 'owned identity was not established before the provider')
+    write_owner(owner_path(root, task), {
+        'schema_version': 1, 'boot_id': current_boot(), 'worker': worker, 'task': task,
+        'shell_pid': ppid, 'shell_start': info['start'], 'shell_sid': info['sid'],
+        'provider_pid': None, 'provider_sid': None, 'provider_start': None,
+    })
+
+
+def child_pids(pid):
+    try:
+        raw = read_path('/proc/%d/task/%d/children' % (pid, pid), 65536)[1]
+    except (Refuse, OSError):
+        return []
+    found = []
+    for tok in raw.split():
+        if tok.isdigit():
+            child = int(tok)
+            if pid_ok(child):
+                found.append(child)
+    return found
+
+
+def pidfd_signal(pid, start, sid, sig):
+    """Signal only when pidfd still names the recorded start and session."""
+    if not hasattr(os, 'pidfd_open') or not hasattr(signal, 'pidfd_send_signal'):
+        return False
+    info = proc_stat(pid)
+    if info is None or info['state'] in DEAD_STATES:
+        return True
+    if info['start'] != start or info['sid'] != sid:
+        return False
+    try:
+        handle = os.pidfd_open(pid)
+    except OSError:
+        return proc_stat(pid) is None
+    try:
+        info = proc_stat(pid)
+        if info is None or info['state'] in DEAD_STATES:
+            return True
+        if info['start'] != start or info['sid'] != sid:
+            return False
+        signal.pidfd_send_signal(handle, sig)
+        return True
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    finally:
+        os.close(handle)
+
+
+def session_members(record):
+    """Live same-uid members of the recorded provider session.
+
+    A reused leader identity or a protected pid inside that session is Unknown.
+    Processes that called setsid() are in another session and are not members.
+    """
+    if record['provider_pid'] is None:
+        return 'clear', []
+    if record['provider_sid'] != record['provider_pid'] or record['provider_sid'] == record['shell_sid']:
+        return 'unknown', []
+    leader = proc_stat(record['provider_pid'])
+    if leader is not None and (leader['start'] != record['provider_start'] or leader['sid'] != record['provider_sid']):
+        return 'unknown', []
+    protected = {record['shell_pid'], os.getpid(), os.getppid()}
+    found = []
+    try:
+        names = os.listdir('/proc')
+    except OSError:
+        return 'unknown', []
+    for name in names:
+        if not name.isdigit():
+            continue
+        pid = int(name)
+        if not pid_ok(pid):
+            continue
+        info = proc_stat(pid)
+        if info is None or info['sid'] != record['provider_sid'] or info['state'] in DEAD_STATES:
+            continue
+        uid = proc_uid(pid)
+        if uid is None:
+            continue
+        if uid != os.getuid() or pid in protected:
+            return 'unknown', []
+        found.append(info)
+    if not found:
+        return 'clear', []
+    return 'ok', found
+
+
+def wait_clear(record, grace):
+    deadline = time.monotonic() + max(0, grace)
+    while True:
+        status, _members = session_members(record)
+        if status == 'unknown':
+            return False
+        if status == 'clear':
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+
+
+def finish_owned(root, worker, task, grace):
+    try:
+        record = load_owner(owner_path(root, task))
+    except (Refuse, OSError):
+        return 'unknown'
+    if record['task'] != task or (worker and record['worker'] != worker):
+        return 'unknown'
+    status, members = session_members(record)
+    if status == 'clear':
+        return 'clear'
+    if status != 'ok':
+        return 'unknown'
+    if not all(pidfd_signal(info['pid'], info['start'], record['provider_sid'], signal.SIGTERM) for info in members):
+        return 'unknown'
+    if wait_clear(record, grace):
+        return 'clear'
+    status, members = session_members(record)
+    if status == 'clear':
+        return 'clear'
+    if status != 'ok':
+        return 'unknown'
+    if not all(pidfd_signal(info['pid'], info['start'], record['provider_sid'], signal.SIGKILL) for info in members):
+        return 'unknown'
+    return 'clear' if wait_clear(record, 1) else 'unknown'
+
+
+def _await_byte(fd, seconds):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        readable, _, _ = select.select([fd], [], [], min(0.1, max(0.0, deadline - time.monotonic())))
+        if not readable:
+            continue
+        try:
+            got = os.read(fd, 1)
+        except OSError:
+            return False
+        return got == b'S'
+    return False
+
+
+def _close_extra_fds():
+    try:
+        names = os.listdir('/proc/self/fd')
+    except OSError:
+        return
+    for name in names:
+        try:
+            fd = int(name)
+        except ValueError:
+            continue
+        if fd > 2:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def _exec_owned_provider(ack_read, status_write, log_fd, workdir, timeout, command):
+    try:
+        os.setsid()
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        signal.signal(signal.SIGALRM, lambda _signum, _frame: os._exit(127))
+        os.write(status_write, b'S')
+        os.close(status_write)
+        signal.alarm(15)
+        ready = os.read(ack_read, 1)
+        signal.alarm(0)
+        os.close(ack_read)
+        if ready != b'Y':
+            os._exit(127)
+        os.chdir(workdir)
+        devnull = os.open('/dev/null', os.O_RDONLY)
+        os.dup2(devnull, 0)
+        os.dup2(log_fd, 1)
+        os.dup2(log_fd, 2)
+        os.close(devnull)
+        if log_fd > 2:
+            os.close(log_fd)
+        _close_extra_fds()
+        os.execvp('timeout', ['timeout', '--kill-after=5s', str(timeout), 'bash', '-c', command])
+    except Exception:
+        os._exit(127)
+
+
+def _publish_provider(root, task, record, pid):
+    info = proc_stat(pid)
+    if (info is None or info['state'] in DEAD_STATES or info['sid'] != pid or info['pid'] != pid
+            or info['sid'] == record['shell_sid'] or proc_uid(pid) != os.getuid()):
+        return False
+    record['provider_pid'] = pid
+    record['provider_sid'] = info['sid']
+    record['provider_start'] = info['start']
+    if not valid_owner(record):
+        return False
+    write_owner(owner_path(root, task), record)
+    again = proc_stat(pid)
+    return again is not None and again['start'] == info['start'] and again['sid'] == pid and again['state'] not in DEAD_STATES
+
+
+class OwnedCommand:
+    """waitpid wrapper so a setsid child can block in the handshake before exec."""
+
+    def __init__(self, pid):
+        self.pid = pid
+        self.returncode = None
+
+    def poll(self):
+        if self.returncode is None:
+            try:
+                found, status = os.waitpid(self.pid, os.WNOHANG)
+            except InterruptedError:
+                return None
+            except ChildProcessError:
+                self.returncode = 127
+                return self.returncode
+            if found:
+                self.returncode = os.waitstatus_to_exitcode(status)
+        return self.returncode
+
+    def wait(self):
+        while self.poll() is None:
+            try:
+                found, status = os.waitpid(self.pid, 0)
+            except InterruptedError:
+                continue
+            except ChildProcessError:
+                self.returncode = 127
+                break
+            if found:
+                self.returncode = os.waitstatus_to_exitcode(status)
+        return self.returncode
+
+
+def spawn_owned_provider(root, worker, task, timeout, command, log_fd):
+    try:
+        record = load_owner(owner_path(root, task))
+        if record['worker'] != worker or record['task'] != task or record['provider_pid'] is not None:
+            raise OSError('ownership record does not match this run')
+        if record['shell_pid'] != os.getppid() or not parent_matches(record):
+            raise OSError('ownership parent does not match this supervisor')
+        workdir = under(root, 'wt', worker)
+    except Refuse as refused:
+        raise OSError(refused.message)
+    status_r, status_w = os.pipe()
+    ack_r, ack_w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(status_r)
+        os.close(ack_w)
+        _exec_owned_provider(ack_r, status_w, log_fd, workdir, timeout, command)
+        os._exit(127)
+    os.close(status_w)
+    os.close(ack_r)
+    try:
+        if not _await_byte(status_r, 2):
+            raise OSError('provider session did not become ready')
+        if not _publish_provider(root, task, record, pid):
+            raise OSError('provider session identity was rejected')
+        try:
+            os.write(ack_w, b'Y')
+        except OSError:
+            raise OSError('provider did not accept ownership')
+        return OwnedCommand(pid)
+    except Exception as exc:
+        info = proc_stat(pid)
+        if info is not None:
+            pidfd_signal(pid, info['start'], info['sid'], signal.SIGKILL)
+        try:
+            os.waitpid(pid, 0)
+        except (ChildProcessError, InterruptedError):
+            pass
+        if isinstance(exc, Refuse):
+            raise OSError(exc.message)
+        raise
+    finally:
+        for fd in (status_r, ack_w):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def kill_shell_tree(pid, start, sid):
+    """Pidfd-kill the recorded shell and its current children. Fail closed past the caps."""
+    info = proc_stat(pid)
+    if info is None or info['state'] in DEAD_STATES:
+        return True
+    if info['start'] != start or info['sid'] != sid:
+        return False
+    nodes, seen, frontier = [], {pid}, [(pid, 0)]
+    while frontier:
+        parent, depth = frontier.pop()
+        if depth >= 32:
+            return False
+        for child in child_pids(parent):
+            if child in seen:
+                continue
+            if len(nodes) >= 256:
+                return False
+            current = proc_stat(child)
+            if current is None or current['ppid'] != parent or current['state'] in DEAD_STATES:
+                continue
+            seen.add(child)
+            nodes.append(current)
+            frontier.append((child, depth + 1))
+    for current in reversed(nodes):
+        if not pidfd_signal(current['pid'], current['start'], current['sid'], signal.SIGKILL):
+            return False
+    info = proc_stat(pid)
+    if info is None or info['state'] in DEAD_STATES:
+        return True
+    if info['start'] != start or info['sid'] != sid:
+        return False
+    return pidfd_signal(pid, start, sid, signal.SIGKILL)
+
+
+def _load_kill_record(root, task):
+    try:
+        return load_owner(owner_path(root, task))
+    except (Refuse, OSError):
+        return None
+
+
+def owner_signal(root, task, pid):
+    info = proc_stat(pid)
+    if info is None:
+        print('gone')
+        return 0
+    record = _load_kill_record(root, task)
+    argv = proc_argv(pid)
+    if (record is not None and record['task'] == task and record['shell_pid'] == pid
+            and record['shell_sid'] == info['sid'] and proc_uid(pid) == os.getuid()):
+        if record['shell_start'] != info['start']:
+            # A live matching run with a tampered start is not signaled at all.
+            # A reused pid is not signaled either; its provider session may be reaped.
+            if background_run_argv(argv, record['worker'], task):
+                print('refuse')
+                return 2
+            if finish_owned(root, record['worker'], task, 0) == 'clear':
+                print('stale')
+                return 0
+            print('refuse')
+            return 2
+        if info['start'] == record['shell_start'] and info['state'] in DEAD_STATES:
+            print('gone')
+            return 0
+        if not background_run_argv(argv, record['worker'], task):
+            print('refuse')
+            return 2
+        if not pidfd_signal(pid, info['start'], info['sid'], signal.SIGTERM):
+            print('refuse')
+            return 2
+        print('signaled %d' % info['start'])
+        return 0
+    if len(argv) < 3 or os.path.basename(argv[0]) != 'bash' or os.path.basename(argv[1]) != 'unio' or argv[2] != 'run':
+        print('stale')
+        return 0
+    print('refuse')
+    return 2
+
+
+def owner_force(root, task, pid, start):
+    info = proc_stat(pid)
+    record = _load_kill_record(root, task)
+    if info is None or info['start'] != start:
+        if record is not None and finish_owned(root, record['worker'], task, 0) == 'clear':
+            print('done')
+            return 0
+        print('unknown')
+        return 2
+    if (record is None or record['task'] != task or record['shell_pid'] != pid or record['shell_start'] != start
+            or record['shell_sid'] != info['sid'] or proc_uid(pid) != os.getuid()
+            or not background_run_argv(proc_argv(pid), record['worker'], task)):
+        print('refuse')
+        return 2
+    if finish_owned(root, record['worker'], task, 0) != 'clear':
+        print('unknown')
+        return 2
+    info = proc_stat(pid)
+    if info is None or info['state'] in DEAD_STATES:
+        print('done')
+        return 0
+    if info['start'] != start or info['sid'] != record['shell_sid']:
+        print('refuse')
+        return 2
+    if not kill_shell_tree(pid, start, info['sid']):
+        print('unknown')
+        return 2
+    print('done')
+    return 0
+
+
 def signal_group(pid, sig):
     try:
         os.killpg(pid, sig)
@@ -23092,10 +23623,8 @@ def supervise_run(root, worker, task, timeout, command, claim_id=''):
             os.environ['UNIO_CODEX_SUPERVISOR'] = str(os.getpid())
             log = under(root, 'coord', 'reports', task + '.log')
             with open(log, 'wb') as output:
-                provider = subprocess.Popen(['timeout', '--kill-after=5s', timeout, 'bash', '-c', command],
-                                            cwd=under(root, 'wt', worker), stdin=subprocess.DEVNULL,
-                                            stdout=output, stderr=subprocess.STDOUT,
-                                            close_fds=True, preexec_fn=os.setpgrp)
+                # Identity is published only after setsid and before timeout execs.
+                provider = spawn_owned_provider(root, worker, task, timeout, command, output.fileno())
             next_capture, stopping = time.monotonic() + 60, None
             while provider.poll() is None:
                 now = time.monotonic()
@@ -23120,9 +23649,12 @@ def supervise_run(root, worker, task, timeout, command, claim_id=''):
         print('unio: provider launch failed: %s' % e, file=sys.stderr)
         rc = 127
     finally:
+        # Other groups in the provider session survive killpg. Sweep them before
+        # the final save, which has its own session and its own capture budget.
+        grace = 5 if interrupted[0] else 1
+        if finish_owned(root, worker, task, grace) != 'clear':
+            print('unio: owned cleanup Unknown; worker ownership stays held', file=sys.stderr)
         if provider is not None:
-            # timeout's group is ours, including descendants left at shell exit.
-            signal_group(provider.pid, signal.SIGKILL)
             provider.wait()
     if continuation is not None and provider is not None:
         try:
@@ -23877,6 +24409,23 @@ def main(argv):
         if (command == '_supervise' and len(args) in (4, 5) and ident(args[0]) and ident(args[1])
                 and (len(args) == 4 or not args[4] or HEX32.fullmatch(args[4]))):
             return supervise_run(root, *args)
+        if command == '_owner-bind' and len(args) == 2 and ident(args[0]) and ident(args[1]):
+            owner_bind(root, args[0], args[1])
+            return 0
+        if command == '_reap-owned' and args and args[-1] == 'confirm':
+            if len(args) == 3 and ident(args[0]) and ident(args[1]):
+                worker, task = args[0], args[1]
+            elif len(args) == 2 and ident(args[0]):
+                worker, task = '', args[0]
+            else:
+                worker = task = None
+            if task is not None:
+                return 0 if finish_owned(root, worker, task, 0) == 'clear' else 2
+        if command == '_owner-signal' and len(args) == 2 and ident(args[0]) and re.fullmatch(r'[1-9][0-9]{0,8}', args[1]):
+            return owner_signal(root, args[0], int(args[1]))
+        if (command == '_owner-force' and len(args) == 3 and ident(args[0])
+                and re.fullmatch(r'[1-9][0-9]{0,8}', args[1]) and re.fullmatch(r'[0-9]{1,20}', args[2])):
+            return owner_force(root, args[0], int(args[1]), int(args[2]))
         if (command == '_continue-check' and len(args) == 3 and ident(args[0])
                 and ident(args[1]) and HEX32.fullmatch(args[2])):
             inherited_worker(root, args[0])
@@ -23973,6 +24522,47 @@ policy_pgid() {
     split(rest, f, " ")
     print f[3]
   }' "/proc/$1/stat" 2>/dev/null || true
+}
+
+policy_stat_field() { # $1=pid $2=1-based field after comm
+  case "$1" in ''|*[!0-9]*|0|1) return 0;; esac
+  [ -r "/proc/$1/stat" ] || return 0
+  awk -v n="$2" '{
+    rest = $0
+    sub(/^[^)]*\) /, "", rest)
+    split(rest, f, " ")
+    print f[n]
+  }' "/proc/$1/stat" 2>/dev/null || true
+}
+
+policy_signal_if_same() { # $1=pid $2=start $3=signal — refuse a reused pid
+  local pid="$1" start="$2" sig="$3" now=""
+  case "$pid" in ''|*[!0-9]*|0|1) return 1;; esac
+  case "$start" in ''|*[!0-9]*) return 1;; esac
+  now=$(policy_stat_field "$pid" 20)
+  [ -n "$now" ] && [ "$now" = "$start" ] || return 1
+  kill -s "$sig" -- "$pid" 2>/dev/null || true
+}
+
+policy_hold_until_clear() { # $1=root $2=worker $3=task $4=report
+  local root="$1" worker="$2" task="$3" report="${4:-}" noted=0
+  while true; do
+    if saves "$root" _reap-owned "$worker" "$task" confirm; then
+      return 0
+    fi
+    if [ "$noted" = 0 ]; then
+      echo "unio: owned cleanup Unknown; worker ownership stays held" >&2
+      if [ -n "$report" ]; then
+        {
+          echo
+          echo "## owned-cleanup-unknown $(date -Is) — worker=$worker task=$task"
+          echo "  Owned provider descendants were not proven gone. The worker lock and account slot stay held."
+        } >> "$report"
+      fi
+      noted=1
+    fi
+    sleep 0.2
+  done
 }
 
 policy_holder_owns_slot() { # $1=pid $2=slot path; exact child fd, not a process scan
@@ -24815,24 +25405,28 @@ cmd_run() {
   fi
 
   local pidfile=""
+  # Ownership is recorded with the pidfile, before any provider call. The EXIT
+  # trap runs after cmd_run returns, so its locals are gone. Keep paths in
+  # globals. A root or pidfile with spaces or quotes must stay data.
+  POLICY_CLEANUP_ROOT="$root"
+  POLICY_CLEANUP_OWNER="$root/coord/reports/$task.own"
   if [ "${UNIO_BG:-0}" = "1" ]; then
     pidfile="$root/coord/reports/$task.pid"
     echo "$$" > "$pidfile"
-    # The EXIT trap runs after cmd_run returns, so its locals are gone.
-    # Keep both paths in globals. A root or pidfile with spaces or quotes
-    # must stay data, not text inside the handler.
-    POLICY_CLEANUP_ROOT="$root"
     POLICY_CLEANUP_PIDFILE="$pidfile"
-    trap 'rm -f -- "$POLICY_CLEANUP_PIDFILE"; policy_release_slot "$POLICY_CLEANUP_ROOT"' EXIT
+    trap 'rm -f -- "$POLICY_CLEANUP_PIDFILE" "$POLICY_CLEANUP_OWNER"; policy_release_slot "$POLICY_CLEANUP_ROOT"' EXIT
     trap 'exit 143' TERM
     trap 'exit 130' INT
   else
     # Foreground Source must release the holder on signal and exit, not only
     # a background pidfile trap. The local root does not survive until EXIT.
-    POLICY_CLEANUP_ROOT="$root"
-    trap 'policy_release_slot "$POLICY_CLEANUP_ROOT"' EXIT
+    POLICY_CLEANUP_PIDFILE=""
+    trap 'rm -f -- "$POLICY_CLEANUP_OWNER"; policy_release_slot "$POLICY_CLEANUP_ROOT"' EXIT
     trap 'exit 143' TERM
     trap 'exit 130' INT
+  fi
+  if ! saves "$root" _owner-bind "$worker" "$task"; then
+    return 2
   fi
 
   # a run killed mid-commit can leave git's index.lock behind — clear it
@@ -24897,27 +25491,46 @@ cmd_run() {
   # Wait asynchronously so TERM/INT can reach the supervisor immediately and
   # still allow a final save and the normal structured failure receipts.
   POLICY_PROVIDER_PID=""
+  POLICY_PROVIDER_START=""
   POLICY_SOURCE_SUPERVISOR=1
   local run_signal=0
-  trap 'run_signal=143; [ -z "$POLICY_PROVIDER_PID" ] || kill -TERM -- "$POLICY_PROVIDER_PID" 2>/dev/null || true' TERM
-  trap 'run_signal=130; [ -z "$POLICY_PROVIDER_PID" ] || kill -INT -- "$POLICY_PROVIDER_PID" 2>/dev/null || true' INT
+  trap 'run_signal=143' TERM
+  trap 'run_signal=130' INT
   saves __exec "$root" _supervise "$worker" "$task" "$TIMEOUT" "$cmdline" "$RUN_CONTINUATION_CLAIM" \
     {POLICY_IN}>&- {POLICY_RD}>&- {POLICY_WR}>&- &
   POLICY_PROVIDER_PID=$!
-  # An interrupted wait is not proof that the child finished. Reap it before
-  # releasing account ownership or observing the final worktree.
+  POLICY_PROVIDER_START=$(policy_stat_field "$POLICY_PROVIDER_PID" 20)
+  if [ -z "$POLICY_PROVIDER_START" ]; then
+    # Not yet waited on, so this pid cannot have been reused.
+    kill -TERM -- "$POLICY_PROVIDER_PID" 2>/dev/null || true
+    wait "$POLICY_PROVIDER_PID" 2>/dev/null || true
+    POLICY_PROVIDER_PID=""
+    POLICY_PROVIDER_START=""
+    echo "unio: provider supervisor identity was not established" >&2
+    policy_hold_until_clear "$root" "$worker" "$task" "$report"
+    POLICY_SOURCE_SUPERVISOR=0
+    return 2
+  fi
+  # An interrupted wait is not proof that the child finished. Reap it, then
+  # confirm the provider session, before releasing account ownership.
   while true; do
     rc=0
     wait "$POLICY_PROVIDER_PID" || rc=$?
-    kill -0 -- "$POLICY_PROVIDER_PID" 2>/dev/null || break
+    if [ "$run_signal" != 0 ]; then
+      policy_signal_if_same "$POLICY_PROVIDER_PID" "$POLICY_PROVIDER_START" TERM || true
+    fi
+    now=$(policy_stat_field "$POLICY_PROVIDER_PID" 20)
+    [ "$now" = "$POLICY_PROVIDER_START" ] || break
   done
   [ "$run_signal" = 0 ] || rc="$run_signal"
   POLICY_PROVIDER_PID=""
+  POLICY_PROVIDER_START=""
+  policy_hold_until_clear "$root" "$worker" "$task" "$report"
   POLICY_SOURCE_SUPERVISOR=0
   trap 'exit 143' TERM
   trap 'exit 130' INT
-  # The reservation ends with the provider invocation: release before the
-  # post-run receipts so the next admission can reuse the group.
+  # The reservation ends with owned cleanup: release before the post-run
+  # receipts so the next admission can reuse the group.
   policy_release_slot "$root"
   dur=$(( $(mono_now) - t0 ))          # real working time (excludes suspend)
   wallsec=$(( $(date +%s) - t0w ))     # elapsed on the wall clock
@@ -26007,44 +26620,63 @@ cmd_kill() {
   # to Bash kill. Invalid evidence must never reach even its signal-zero probe.
   [[ "$pid" =~ ^[1-9][0-9]{0,8}$ ]] && [ "$pid" -gt 1 ] \
     || die "invalid background pid — refusing to signal it (pidfile retained)"
-  # Background runs are session leaders. Signal the identified parent so its
-  # supervisor can reap the provider, save final state and finish receipts.
-  # A recorded pid is not proof of identity: after a SIGKILLed run the OS can
-  # reuse it, and `kill` would then take out an innocent process. Confirm the
-  # session really is a Unio run before signalling it.
-  if [ -r "/proc/$pid/cmdline" ]; then
-    local -a run_argv=()
-    local interpreter script
-    mapfile -d '' -t run_argv < "/proc/$pid/cmdline" 2>/dev/null || true
-    interpreter="${run_argv[0]:-}"; script="${run_argv[1]:-}"
-    # Background re-exec uses the Bash shebang: bash <path>/unio run ... .
-    # Keep NUL argument boundaries, accepting any parent path (and spaces)
-    # without mistaking shell command text or later arguments for a script.
-    if [ "${interpreter##*/}" != bash ] || [ "${script##*/}" != unio ] \
-      || [ "${run_argv[2]:-}" != run ]; then
-      rm -f "$pf"
+  # Signal only the recorded shell after boot, start and cmdline match.
+  # Descendants that left its process group are reaped from the provider
+  # session. A reused pid is not signaled. Malformed evidence is not signaled.
+  local token="" own="$root/coord/reports/$task.own"
+  token=$(saves "$root" _owner-signal "$task" "$pid") || token="refuse"
+  case "$token" in
+    gone)
+      if saves "$root" _reap-owned "$task" confirm; then
+        rm -f -- "$pf" "$own"
+        echo "'$task' already finished — cleaning up its pidfile"
+        return 0
+      fi
+      if [ ! -f "$own" ]; then
+        rm -f -- "$pf"
+        echo "'$task' already finished — cleaning up its pidfile"
+        return 0
+      fi
+      echo "unio: owned cleanup Unknown; '$task' stays recorded" >&2
+      return 2
+      ;;
+    stale)
+      rm -f -- "$pf"
       die "pid $pid is not a Unio run (stale pidfile removed) — refusing to signal it"
-    fi
-  fi
-  if kill -0 -- "$pid" 2>/dev/null; then
-    kill -TERM -- "$pid" 2>/dev/null || true
-    local n=0 state=""
-    while [ "$n" -lt 600 ] && kill -0 -- "$pid" 2>/dev/null; do
-      state=$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null || true)
-      [ "$state" != Z ] || break
-      n=$((n + 1))
-      sleep 0.1
-    done
-    if [ "$n" -ge 600 ]; then
-      policy_signal_descendants "$pid" KILL
-      echo "force-killed '$task' (pid $pid) after cleanup deadline — inspect the last good save and partial work"
-    else
-      echo "killed '$task' (session $pid) — final capture attempted; inspect: unio save inspect --worker <worker>"
-    fi
-  else
-    echo "'$task' already finished — cleaning up its pidfile"
-  fi
-  rm -f "$pf"
+      ;;
+    signaled\ [0-9]*)
+      local start="${token#signaled }" now="" state="" n=0 force=""
+      while [ "$n" -lt 600 ]; do
+        now=$(policy_stat_field "$pid" 20)
+        [ "$now" = "$start" ] || break
+        state=$(policy_stat_field "$pid" 1)
+        [ "$state" != "Z" ] || break
+        n=$((n + 1))
+        sleep 0.1
+      done
+      if [ "$now" != "$start" ] || [ "$state" = "Z" ]; then
+        if saves "$root" _reap-owned "$task" confirm; then
+          rm -f -- "$pf" "$own"
+          echo "killed '$task' (session $pid) — final capture attempted; inspect: unio save inspect --worker <worker>"
+          return 0
+        fi
+        echo "unio: owned cleanup Unknown; '$task' stays recorded" >&2
+        return 2
+      fi
+      force=$(saves "$root" _owner-force "$task" "$pid" "$start") || force="refuse"
+      if [ "$force" = "done" ]; then
+        rm -f -- "$pf" "$own"
+        echo "force-killed '$task' (pid $pid) after cleanup deadline — inspect the last good save and partial work"
+        return 0
+      fi
+      echo "unio: owned cleanup Unknown; '$task' stays recorded" >&2
+      return 2
+      ;;
+    *)
+      echo "unio: refusing to signal '$task' (ownership did not match this process)" >&2
+      return 2
+      ;;
+  esac
 }
 
 # ---------------------------------------------------------- report/version

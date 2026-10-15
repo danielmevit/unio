@@ -545,14 +545,21 @@ with tempfile.TemporaryDirectory(prefix='work-policy-guard-') as directory:
             # our session, even after the Popen session leader has exited.
             cleanup_deadline = time.monotonic() + 3
             groups = {proc.pid}
-            # Include owned groups even if startup never published identity.
+            sessions = {proc.pid}
+            # The provider runs in its own session. Include that session's
+            # groups so a failed observation cannot leave the fixture behind.
+            if ident and ident.get('sid'):
+                sessions.add(ident['sid'])
+            for record in recorded_children:
+                if record.get('sid'):
+                    sessions.add(record['sid'])
             for entry in Path('/proc').iterdir():
                 if time.monotonic() >= cleanup_deadline:
                     break
                 if not entry.name.isdigit():
                     continue
                 current = read_proc_identity(int(entry.name))
-                if current and current['sid'] == proc.pid:
+                if current and current['sid'] in sessions:
                     groups.add(current['pgid'])
             for group in groups:
                 try:
@@ -587,13 +594,14 @@ with tempfile.TemporaryDirectory(prefix='work-policy-guard-') as directory:
             for record in [ident, *recorded_children]:
                 remaining()
                 current = read_proc_identity(record['pid'])
-                check('mock identity observed live in owned session',
-                      bool(record['starttime']) and record['sid'] == proc.pid
+                check('mock identity observed live in provider session',
+                      bool(record['starttime']) and record['sid'] != proc.pid
                       and current is not None
                       and current['starttime'] == record['starttime']
-                      and current['sid'] == proc.pid
+                      and current['sid'] == record['sid']
                       and current['state'] not in ('Z', 'X', 'x')
-                      and (record is ident or current['ppid'] == ident['pid']),
+                      and (record is ident or (current['ppid'] == ident['pid']
+                                               and current['sid'] == ident['sid'])),
                       timing_output() + f"\nobserved: {current}")
                 remaining()
 
