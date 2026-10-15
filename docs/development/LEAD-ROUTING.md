@@ -63,6 +63,21 @@ scope and release checked work before continually expanding it. These are
 mandatory instructions for an active lead; they do not create a background
 notification service while the lead session is stopped.
 
+## Report the whole fleet when asked for status
+
+An owner-requested status report covers every configured or approved route,
+including active, queued, idle, benched, unavailable and owner-reserved agents.
+Give the subscription route, CLI/adapter, current or latest requested model
+and effort, task/state and the reason an idle route is unused. Separate
+Mistral/Vibe GLM, OpenCode Go GLM and Perplexity GLM explicitly. Show options
+sharing one account as one shared budget, not extra independent capacity.
+
+An installed binary or enabled alias does not establish provider readiness.
+Keep unverified model identity, effort, free pricing and allowance Unknown;
+do not make inference calls or read authentication stores just to fill a
+status table. Owner holds take priority over an alias's enabled flag. Preserve
+those holds in the project's instructions and handoff until explicitly revoked.
+
 ## Name the model route in every work summary
 
 Owner rule, recorded 2026-10-12: a model name alone does not identify the

@@ -33,6 +33,14 @@ infers quota savings.
   missing receipt-parent setup before any Vibe CLI call, not a model
   capability failure.
 
+### Owner availability for Unio development — 2026-10-15
+
+Claude Opus is reserved indefinitely for the owner's separate projects.
+Do not assign it Unio development or review work until the owner explicitly
+reintroduces it. This is a project-specific owner hold, not a provider outage
+or a change to another project's permissions. Owner-requested status reports
+must include the full fleet, including idle, benched and reserved routes.
+
 ## Readiness and findings implementation — 2026-10-13
 
 Read the [dated route checks](https://github.com/danielmevit/unio/blob/main/docs/development/WORKER-READINESS-2026-10-13.md)
