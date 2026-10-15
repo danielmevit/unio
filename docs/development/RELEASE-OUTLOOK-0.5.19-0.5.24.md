@@ -3,7 +3,8 @@
 Planning checkpoint, 2026-10-14. These are recommended scopes and rough active
 engineering estimates, not shipped capabilities or fixed release commitments.
 Owner update, 2026-10-14: native Windows precedes native macOS.
-Finish the frozen v0.5.18 delivery first. No new provider assignment is authorized
+v0.5.18 is delivered. The v0.5.19 candidate is being completed; see its
+[release evidence and limits](../RELEASE-0.5.19.md). No new provider assignment is authorized
 merely by a row here; use existing owner authorization, current availability and
 the selected work policy when freezing each implementation task.
 
@@ -13,25 +14,28 @@ can add elapsed time. Re-estimate after each bounded technical assessment.
 
 | Proposed release | Outcome | Rough effort |
 | --- | --- | --- |
-| 0.5.19 | Faster saving and recovery on a populated project | 2–4 hours for a focused slice; 4–8 hours if deeper changes are needed |
+| 0.5.19 | Owned stopping, measured save validation and Copilot compatibility | 2–4 hours for a focused slice; 4–8 hours if deeper changes are needed |
 | 0.5.20 | Optional continuous delegation within explicit owner-approved bounds | 1–3 working days |
 | 0.5.21 | Managed live CLI sessions and reliable lead continuity | 2–4 working days for the first supported route |
 | 0.5.22 | Phone access paired to a selected Unio session | 2–4 working days after session ownership works |
 | 0.5.23 | Native Windows execution and a Microsoft Store desktop-app track | Runtime estimate: 1–3 working weeks after feasibility; desktop onboarding, packaging and certification estimated separately |
 | 0.5.24 | Native macOS support | 3–6 working days, subject to host checks |
 
-## 0.5.19 — Faster saving and recovery
+## 0.5.19 — Owned stopping and measured saving
 
-Measure the populated-store path first. Earlier work reduced repeated file
-metadata checks, but full history reads can still take minutes. The latest
-Mistral/Vibe and OpenCode Go profiling attempts returned no report, so they did
-not establish a new bottleneck or speedup.
+Update, 2026-10-15: populated-store profiling isolated duplicate metadata and
+deep validation passes. The checked implementation folds these into one deep
+retention traversal without skipping stored-content validation. On one host,
+the isolated retention phase averaged16.14 seconds before and9.91 seconds after;
+two complete captures per engine did not establish an overall wall-time gain.
+See the [measurement method and limits](SAVE-PERFORMANCE.md). The earlier
+failed profiling attempts remain failures rather than successful measurements.
 
-Use equivalent store contents and worktree bytes for before/after comparisons.
-Optimize one demonstrated expensive phase, then check complete captures, exact
-restoration, interrupted attempts and preservation of the last good save.
-Do not skip content validation to obtain a faster timing. Finish with a measured
-improvement and documented limits; a higher timeout alone is not the milestone.
+Bundle this with native stopping of explicitly recorded Linux provider sessions
+and the real Copilot filename-array compatibility fix. Stopping must prove owned
+cleanup before final saving; processes that leave that session remain unmanaged.
+The final stopping proof and combined release checks are still pending at this
+planning update. A higher timeout alone is not a performance improvement.
 
 ## 0.5.20 — Continuous delegation within a clear work plan
 
