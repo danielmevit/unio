@@ -5,6 +5,8 @@ usage validation for the optional Copilot routine-proposal adapter
 (`tools/copilot-worker.py`), updated for the verified native `filesModified`
 collection in GitHub Copilot CLI 1.0.95.
 
+For setup and operating limits, see the [Copilot integration guide](GITHUB-COPILOT.md).
+
 ## Delivery contract and terminal usage shape
 
 The adapter invokes GitHub Copilot CLI 1.0.95 in non-interactive prompt mode with
@@ -41,16 +43,16 @@ shape for this terminal record is:
 - Top-level keys must equal `{"type", "timestamp", "sessionId", "exitCode", "usage"}`.
 - `type` must be `"result"`.
 - `timestamp` and `sessionId` must be non-empty identifiers up to 512 characters.
-- `exitCode` must be integer `0` for success (`1` indicates native failure and fails closed).
+- `exitCode` must be integer `0` for success (a result-level `1` is refused as `empty_or_invalid_response`, adapter exit 2; a nonzero CLI process exit is recorded separately as `native_failed`).
 - `usage` must contain exactly `{"premiumRequests", "totalApiDurationMs", "sessionDurationMs", "codeChanges"}`.
 - Numeric usage metrics (`premiumRequests`, `totalApiDurationMs`, `sessionDurationMs`) must be finite numbers; these checks do not impose a non-negative range on those three fields.
 - `codeChanges` must contain exactly `{"linesAdded", "linesRemoved", "filesModified"}`.
 - `linesAdded` and `linesRemoved` must be finite whole numbers (integers `>= 0`).
 - `filesModified` must be either:
-  1. A JSON array (list) of non-empty path strings (`0 < len(entry) <= 512`), including the empty collection `[]` when no files are modified. This validates their shape, not filesystem existence or authenticity.
-  2. A whole number count (`integer >= 0` and finite), retained for backwards compatibility with earlier fixtures and integer count metrics.
+  1. A JSON array (list) of non-empty strings (`0 < len(entry) <= 512`), including the empty collection `[]` when no files are modified. Only type and length are checked; whitespace and control characters are not path-validated. Values are discarded rather than used as paths. Filesystem existence and authenticity are not checked.
+  2. A whole number count (`integer >= 0` and finite), retained for compatibility with earlier adapter fixtures. The inspected native schema uses an array; its separate `filesModifiedCount` key is not accepted by this exact-key contract.
 
-Malformed or wrong-typed values (e.g. `None`, boolean, dictionary, nested non-string array entries or empty string paths), non-finite numbers (`NaN`, `Infinity` or exponent overflow), and negative line/count fields fail closed as an `empty_or_invalid_response` (adapter exit 2).
+Malformed or wrong-typed values (e.g. `None`, boolean, dictionary, nested non-string array entries or empty strings), non-finite numbers (`NaN`, `Infinity` or exponent overflow), and negative line/count fields fail closed as an `empty_or_invalid_response` (adapter exit 2).
 
 ## Inspected native source anchors
 
@@ -76,10 +78,10 @@ Copilot CLI package (`@github/copilot` 1.0.95, build `f5ba5057`):
 
 Root assistant proposals are extracted strictly from `assistant.message` events:
 - Intermediate root assistant events with empty content (such as preliminary thinking or turnaround notices) are skipped.
-- Exactly one non-empty root completion (e.g. phase `final_answer`) must be present in a single turn. Multiple non-empty completions without chunking are rejected as ambiguous.
+- Exactly one non-empty root completion without `toolRequests` must be present on the plain-message path. This path does not enforce a shared `turnId` across other empty messages. Multiple eligible non-empty completions without chunking are rejected as ambiguous; messages carrying tool requests are excluded.
 - Chunked messages must have matching group identifiers (`turnId`, `originatingMessageId`) and contiguous chunk indexes (`0..chunkCount-1`).
 - Subagent messages (`agentId` or non-empty `parentToolCallId`), user message echoes, deltas (`assistant.message_delta`), and tool outputs are not proposals and are never used as fallbacks.
-- Reasoning text and private tokens are never exposed or written into `proposal.md`.
+- Reasoning fields are excluded from `proposal.md` and public adapter output. The verbatim native stream may contain them and remains in the private raw capture (mode 0600); do not publish that capture or credentials.
 
 ## Truthful trial status and field evidence
 
@@ -87,4 +89,4 @@ Root assistant proposals are extracted strictly from `assistant.message` events:
 - **No live re-execution or quota claims**: The original failed run was not claimed successful and was not replayed against the live provider. No quota failure is established.
 - **Offline verification**: The fix was validated offline against the sanitized actual terminal stream, verified populated collection shapes (`["file.py"]`), invalid entries and types, metadata-only streams, and existing test fixtures.
 - **Base commit**: `e66b4844b69374b3ff19078fc72a7c89320b99dd` (Unio 0.5.18 delivery, pending 0.5.19).
-- **Execution bounds**: Text proposals only under Balanced routing (`--model auto --auto-tier balance`); no tool execution, no sandbox bypass, no automatic paid fallback.
+- **Execution bounds**: Text proposals only under Balanced routing (`--model auto --auto-tier balance`); the native `view` tool may read local files, while read/write/shell/url/memory tools are denied. The adapter does not execute proposed commands or apply patches. This is trusted-host execution, not an OS sandbox; no automatic paid fallback.

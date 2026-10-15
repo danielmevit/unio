@@ -92,11 +92,12 @@ upstream GitHub behavior. Review any update before widening compatibility.
 
 Installed Copilot CLI 1.0.95 help describes `--output-format json` as JSONL,
 one JSON object per line. The wrapper keeps `--stream off` and `--silent`,
-and adds that format. It does not use rendered text. This transport is in
-the unreleased 0.5.18 candidate. The published installer remains 0.5.17.
-Evidence for the transport is offline native-source and fake-CLI only.
-Three lead-found input/group defects are a separate correction and are
-not accepted in this candidate.
+and adds that format. It does not use rendered text. This transport shipped in 0.5.18. The 0.5.19 candidate additionally accepts
+the native `codeChanges.filesModified` array, including `[]`, while retaining
+the non-negative integer shape used by earlier fixtures. See the
+[terminal-result contract](COPILOT.md) for exact accepted shapes and limits.
+The compatibility fix has native-source, saved actual-stream replay and
+fake-CLI evidence; no fresh live Copilot call is claimed.
 
 The contract was read from the installed 1.0.95 executable
 (`@github/copilot` 1.0.95, build `f5ba5057`), not from a live model call.
