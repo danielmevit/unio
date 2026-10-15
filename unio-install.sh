@@ -21507,11 +21507,12 @@ class Budget:
 
 def fault(name):
     # Test-only failure injection: it can only make an operation fail or pause.
-    fault_dir = os.environ.get('UNIO_TEST_FAULT_DIR')
-    if (name not in os.environ.get('UNIO_SAVE_TEST_FAULT', '').split(',')
-            and not (fault_dir and (os.path.exists(os.path.join(fault_dir, name))
-                                   or os.path.exists(os.path.join(fault_dir, 'proc-stat-unreadable'))))):
-        return
+    if name not in os.environ.get('UNIO_SAVE_TEST_FAULT', '').split(','):
+        # The directory hook is scoped to proc-stat identity faults only, so a
+        # marker for one unreadable pid can never fire unrelated faults.
+        fault_dir = os.environ.get('UNIO_TEST_FAULT_DIR') if name.startswith('proc-stat-') else None
+        if not (fault_dir and os.path.exists(os.path.join(fault_dir, name))):
+            return
     if name == 'between-passes':
         os.kill(os.getpid(), signal.SIGSTOP)
     elif name.startswith(('publish-', 'archive-')):
