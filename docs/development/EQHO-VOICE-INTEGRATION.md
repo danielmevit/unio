@@ -7,6 +7,13 @@ The assessment used Eqho revision
 `e81c4af29efe179b85692b4510cc90ca574a0f78`; selected modules were read
 statically. No Eqho code, model or dependency was installed or executed.
 
+The owner is improving Eqho in a separate session. This snapshot is an
+assessment reference, not the version selected for integration. Before the
+Windows implementation, inspect the owner's latest approved Eqho revision,
+reassess its module boundaries and pin the version actually used. Refresh
+the source references and compatibility checks then; preserve that session's
+independent work.
+
 ## Useful building blocks
 
 | Eqho source | Useful logic | Unio adaptation |
