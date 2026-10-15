@@ -33,17 +33,30 @@ result is Unknown and nothing is signaled.
 
 `/proc/PID/stat` is split at the last `)`, not the first one, on both the
 shell and the Python side. A comm that itself contains `)` therefore cannot
-shift the stat fields and forge a start-tick or session match.
+shift the stat fields and forge a start-tick or session match. Observation
+preserves normal process disappearance (ENOENT/ESRCH) as gone, but distinguishes
+unproved identity (unreadable stat, malformed fields) from gone. A same-user
+member whose identity cannot be verified keeps cleanup Unknown rather than
+silently assuming it disappeared, while restricted /proc entries of unrelated
+other-user processes are ignored and do not fail the run.
 
-A recorded identity cannot redirect a signal to another run. Before anything
-is signaled, the live target must match the ownership record's boot id, shell
-pid, start ticks and session, must run as the same user, and must have the
-exact `bash unio run WORKER TASK` command line of that record. Another run has
-a different shell pid, start and session; a reused pid has different start
-ticks; a helper or Source identity from one run never matches another run's
+A recorded identity cannot redirect a signal to another run under supported
+operation. Before anything is signaled, the live target must match the ownership
+record's boot id, shell pid, start ticks and session, must run as the same user,
+and must have the exact `bash unio run WORKER TASK` command line of that record.
+Another run has a different shell pid, start and session; a reused pid has different
+start ticks; a helper or Source identity from one run never matches another run's
 record. The provider session must additionally be led by the recorded pid
-with the recorded start ticks and must differ from the shell session, so a
-foreign session cannot be swept by presenting this run's identity.
+with the recorded start ticks and must differ from the shell session.
+
+This foreign-session validation relies on a private same-user ownership record
+as trusted local state; it is not cryptographic proof against arbitrary same-user
+record rewriting. The mechanism does not provide container containment or
+authentication against a hostile process running as the same UID. Supported
+validation strictly requires private file permissions, exact schema version 1
+integer typing, boot id match, matching ancestry and start ticks, and session
+separation, preserving meaningful refusal for malformed or cross-task identity
+evidence.
 
 These cases are outside the boundary. Cleanup is not claimed for them:
 
@@ -57,9 +70,13 @@ These cases are outside the boundary. Cleanup is not claimed for them:
 
 On cancellation and on a normal provider exit, the supervisor reaps the
 provider session before it starts the final save. Cooperative children receive
-`SIGTERM`. Children that ignore `SIGTERM` are then `SIGKILL`ed. The shell waits
-until that reap reports the session clear, and only then releases the worker
-lock and the native account slot.
+`SIGTERM`. Children that ignore `SIGTERM` are then `SIGKILL`ed. Owned provider
+cleanup must be proved clear before any final capture is attempted. If cleanup
+returns Unknown, worker and account reservations stay held, and no final
+checkpoint or Source success is invented. If cleanup later becomes provably
+clear, the real provider exit or cancellation code is preserved and the existing
+bounded final capture proceeds. The shell waits until that reap reports the
+session clear, and only then releases the worker lock and the native account slot.
 
 When the shell itself receives `TERM` or `INT` while the supervisor runs, it
 forwards that signal to the supervisor through `pidfd` only. The shell records
@@ -108,6 +125,8 @@ policy change, or credential change is part of this cleanup.
 | Ownership file has a boolean, string or otherwise non-integer identity field | No signal. Pidfile retained. Exit 2. |
 | Recorded shell start ticks do not match the live pid | No signal. Pidfile retained. Exit 2. |
 | Provider session still live, reused, or unproved after the deadline | Shell is not killed. Pidfile retained. Unknown. Exit 2. |
+| Unproved same-user member identity in `/proc` | Treated as unproved rather than gone; session cleanup stays Unknown. |
+| Owned provider cleanup returns Unknown at run termination | Final capture withheld; worker and account reservations stay held without Source success. |
 | Supervisor identity cannot be revalidated at the `pidfd` | No signal to the supervisor. Cleanup stays Unknown. |
 | `pidfd` is unavailable, or a protected pid shares the provider session | No `kill` fallback. Unknown. Ownership stays held. |
 

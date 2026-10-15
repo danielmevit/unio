@@ -242,6 +242,10 @@ temporary.write_text(json.dumps(ready))
 os.replace(temporary, fixture / 'ready.json')
 if case == 'exit':
     raise SystemExit(7)
+if case == 'unknown':
+    fault_file = fixture / ('proc-stat-%d' % ready['resist']['pid'])
+    fault_file.write_text('1\n')
+    raise SystemExit(0)
 while True:
     time.sleep(0.2)
 ''')
@@ -253,7 +257,7 @@ while True:
                GIT_AUTHOR_EMAIL='mock@example.invalid', GIT_COMMITTER_EMAIL='mock@example.invalid',
                NATIVE_STOP_FIXTURE=str(fixture), NATIVE_STOP_SHIM=str(shim_dir),
                NATIVE_STOP_GIT=real_git, PATH=str(shim_dir) + os.pathsep + env.get('PATH', ''))
-    for key in ('UNIO_SAVE_CAPTURE_TIMEOUT', 'UNIO_SAVE_TEST_FAULT', 'BASH_ENV', 'NATIVE_STOP_CASE'):
+    for key in ('UNIO_SAVE_CAPTURE_TIMEOUT', 'UNIO_SAVE_TEST_FAULT', 'UNIO_TEST_FAULT_DIR', 'BASH_ENV', 'NATIVE_STOP_CASE'):
         env.pop(key, None)
     subprocess.run(['bash', str(SOURCE / 'unio-install.sh')], env=env, check=True, capture_output=True)
     at = str(base / 'bin' / 'unio')
@@ -269,7 +273,7 @@ while True:
     subprocess.run([at, 'tier', 'low'], cwd=repo, env=env, check=True, capture_output=True)
     subprocess.run([at, 'lead', 'none'], cwd=repo, env=env, check=True, capture_output=True)
     tasks = root / 'coord' / 'tasks'
-    for name in ('kill-task', 'exit-task', 'save-task', 'term-task', 'refuse-task'):
+    for name in ('kill-task', 'exit-task', 'save-task', 'term-task', 'refuse-task', 'unknown-task'):
         (tasks / (name + '.md')).write_text('# Offline fixture ' + name + '\n')
 
     exact = []
@@ -484,6 +488,67 @@ while True:
         check('direct TERM releases the worker only after owned cleanup',
               not worker_held() and not account_held()
               and not (root / 'coord' / 'reports' / 'term-task.pid').exists(), detail)
+
+        # Cleanup Unknown before final capture: final capture must not run while
+        # owned descendants are unproved or live, worker and account stay held,
+        # and cleanup recovery allows the bounded final capture.
+        env['NATIVE_STOP_CASE'] = 'unknown'
+        env['UNIO_TEST_FAULT_DIR'] = str(fixture)
+        for stale in ('ready.json', 'coop-term'):
+            (fixture / stale).unlink(missing_ok=True)
+        started = subprocess.run([at, 'run', '-b', 'mock', 'unknown-task'], cwd=repo, env=env,
+                                 capture_output=True, text=True, timeout=30)
+        check('unknown-case background run starts', started.returncode == 0 and 'started in background' in started.stdout,
+              started.stdout + started.stderr)
+        ready = wait_ready()
+        note_ready(ready)
+        resist, coop, detached = ready['resist'], ready['coop'], ready['detached']
+        pidfile = root / 'coord' / 'reports' / 'unknown-task.pid'
+        shell_pid = int(pidfile.read_text().strip())
+        shell = proc_stat(shell_pid)
+        shells.append({'pid': shell_pid, 'start': shell['start']})
+        fault_marker = fixture / ('proc-stat-%d' % resist['pid'])
+
+        # Wait to observe the held Unknown state while the unproved descendant is live.
+        # The supervisor must not attempt final capture while owned cleanup is Unknown.
+        attempt_file = root / 'coord' / 'saves' / 'attempts' / 'mock.json'
+        held_observed = False
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if worker_held() and account_held() and same_process(shell_pid, shell['start']) and same_process(resist['pid'], resist['start']):
+                held_observed = True
+                break
+            time.sleep(0.05)
+        attempt_doc = json.loads(attempt_file.read_text()) if attempt_file.exists() else {}
+        detail = 'held=%s shell=%s resist=%s attempt=%s' % (
+            held_observed, same_process(shell_pid, shell['start']),
+            same_process(resist['pid'], resist['start']), attempt_doc.get('reason'))
+        check('unproved owned descendant keeps cleanup Unknown and holds slots',
+              held_observed and same_process(resist['pid'], resist['start']), detail)
+        check('final save not attempted while owned cleanup is Unknown',
+              attempt_doc.get('reason') != 'final', detail)
+
+        # Recovery: remove the fault injection so cleanup can be proved clear.
+        fault_marker.unlink(missing_ok=True)
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline and same_process(shell_pid, shell['start']):
+            time.sleep(0.05)
+        final_attempt = json.loads(attempt_file.read_text()) if attempt_file.exists() else {}
+        recovery_detail = 'shell_gone=%s resist_gone=%s worker_held=%s account_held=%s reason=%s' % (
+            not same_process(shell_pid, shell['start']),
+            not same_process(resist['pid'], resist['start']),
+            worker_held(), account_held(), final_attempt.get('reason'))
+        check('recovery establishes clear cleanup and completes run',
+              not same_process(shell_pid, shell['start']), recovery_detail)
+        check('recovery reaps the owned descendant',
+              not same_process(resist['pid'], resist['start']), recovery_detail)
+        check('recovery releases worker and account only after clear cleanup',
+              not worker_held() and not account_held() and not pidfile.exists(), recovery_detail)
+        check('final save captured after proved cleanup with provider status',
+              final_attempt.get('reason') == 'final' and final_attempt.get('provider_exit') == 0, recovery_detail)
+        check('unrelated processes survived recovery',
+              same_process(sibling.pid, sibling_start) and same_process(outsider.pid, outsider_start), recovery_detail)
+        env.pop('UNIO_TEST_FAULT_DIR', None)
 
         # A live run with corrupted ownership must not be signaled.
         env['NATIVE_STOP_CASE'] = 'kill'
