@@ -6,8 +6,8 @@ offline fixtures are generic local processes.
 
 ## Ownership boundary
 
-Before the provider command is executed, the native shell writes
-`coord/reports/TASK.own`. The file is private JSON. It records schema version
+After account and retry admission, before the provider command is executed,
+the native shell writes `coord/reports/.owners/WORKER/TASK.own`. The file is private JSON. It records schema version
 1, the current boot id, the worker, the task, and the shell pid, start ticks,
 and session. Provider fields stay null until the supervisor has created the
 provider session. `schema_version` must be the exact integer 1; a JSON `true`
@@ -18,6 +18,19 @@ The supervisor starts that session with `setsid`, reads the new process from
 `/proc`, and requires its session id to be its own pid and to differ from the
 shell session. It stores the provider pid, session, and start ticks, and only
 then lets `timeout` exec. Ownership therefore exists before the provider runs.
+
+Runtime cleanup reads only that worker's record. Parallel workers may share a
+task and its retry grant without sharing runtime ownership. Refused admissions
+publish no ownership controls. Background runs also publish the compatible
+`coord/reports/TASK.own` and `TASK.pid` public controls; when the same task has
+several admitted background runs, these select the latest published run.
+Short task-control locks serialize publication and removal, never provider
+execution. Provider publication and EXIT cleanup change those public controls
+only while they still name that exact shell. Cleanup cannot remove another
+worker's selection. Public kill reaping is bound to the selected shell pid and,
+after validated signaling, its start ticks, so replacement controls cannot
+redirect cleanup to another run. Missing or foreign runtime evidence remains
+Unknown and retains the existing cleanup holds.
 
 An owned process is a live process in that recorded session, running as the
 same user, and not a zombie. It may leave the original process group. It may

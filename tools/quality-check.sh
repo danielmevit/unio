@@ -35,6 +35,7 @@ bash tests/unio-quality.sh
 python3 -B tests/unio-review-receipts.py
 python3 -B tests/unio-review-collection.py
 python3 -B tests/unio-review-findings.py
+python3 -B tests/unio-run-identity.py
 python3 tests/unio-loop-brake.py
 python3 tests/unio-limit-wall.py
 python3 tests/unio-watch.py
