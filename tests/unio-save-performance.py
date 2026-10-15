@@ -130,7 +130,30 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     mode_id, mode = clone(14, 'unsafe-worker')
     mode_file = next((mode/'pool').iterdir()); mode_file.chmod(0o644)
     check('stored mode refused', refused(mode, mode_id))
-    protected = [bad, bad_manifest, unsafe, hard, mode]
+    bundle_id, bundle_bad = clone(16, 'bundle-worker')
+    bundle_file = bundle_bad/'bundle'; bundle_bytes = bundle_file.read_bytes()
+    bundle_file.write_bytes(b'z'*len(bundle_bytes))
+    check('corrupted carried bundle refused', refused(bundle_bad, bundle_id))
+    fifo_id, fifo_bad = clone(17, 'fifo-worker')
+    fifo_file = next((fifo_bad/'pool').iterdir()); fifo_file.unlink(); os.mkfifo(fifo_file, 0o600)
+    check('stored FIFO refused without blocking', refused(fifo_bad, fifo_id))
+    protected = [bad, bad_manifest, unsafe, hard, mode, bundle_bad, fifo_bad]
+    # Folded retention traversal: every active save, valid or corrupt, is
+    # loaded exactly once and deep; no active save takes a separate
+    # metadata-only pass before the deep validation.
+    real_load_save, loads = module.load_save, collections.Counter()
+
+    def counting_load(path, save_id, deep):
+        loads[(save_id, deep)] += 1
+        return real_load_save(path, save_id, deep)
+
+    active_ids = {p.name for p in store.iterdir() if re.fullmatch('[0-9a-f]{32}', p.name)}
+    with patch.object(module, 'load_save', counting_load):
+        module.retention_plan(str(store), 'mock-source', module.Budget(60))
+    check('retention deep-loads every active save exactly once',
+          bool(active_ids) and all(loads[(sid, True)] == 1 for sid in active_ids))
+    check('retention performs no duplicate metadata-only pass over active saves',
+          all(loads[(sid, False)] == 0 for sid in active_ids))
     before = {str(p): hashlib.sha256((p/'manifest.json').read_bytes()).hexdigest() for p in protected}
     (wt/'new.bin').write_bytes(b'after corrupt history')
     result = unio('save', 'create', 'mock-source', 'T')
@@ -154,13 +177,6 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     with patch.object(module.os, 'open', racing_open):
         check('privacy change at open refused on actual descriptor', refused(race, race_id))
     race_file.chmod(0o600)
-    bundle_id, bundle_bad = clone(16, 'bundle-worker')
-    bundle_file = bundle_bad/'bundle'; bundle_bytes = bundle_file.read_bytes()
-    bundle_file.write_bytes(b'z'*len(bundle_bytes))
-    check('corrupted carried bundle refused', refused(bundle_bad, bundle_id))
-    fifo_id, fifo_bad = clone(17, 'fifo-worker')
-    fifo_file = next((fifo_bad/'pool').iterdir()); fifo_file.unlink(); os.mkfifo(fifo_file, 0o600)
-    check('stored FIFO refused without blocking', refused(fifo_bad, fifo_id))
     owner_file = base/'owner-check'; owner_file.write_bytes(b'private'); owner_file.chmod(0o600)
     real_fstat = os.fstat
 
