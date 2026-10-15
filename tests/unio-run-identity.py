@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# Unio — Copyright (C) 2026 Daniel Mitev
+# Public attribution: Daniel Mevit (@danielmevit)
+# Original project: https://github.com/danielmevit/unio
+# SPDX-License-Identifier: AGPL-3.0-only
+# Additional attribution/origin terms: NOTICE (AGPLv3 sections 7(b), 7(c)).
+# See LICENSE and NOTICE; distributed without warranty.
 """Offline dispatch binding regressions; provider prose is never engine identity."""
 import hashlib
 import json
@@ -62,10 +68,9 @@ Path('canary.txt').write_text('work\\n')
         print(f'  identity evidence: {name} expected={expected} actual={p.returncode}\n{p.stdout}{p.stderr}', flush=True)
         if name == 'conflicting': conflicting_ok = p.returncode == expected
         else: matching_ok = p.returncode == expected and 'task_tampered' in p.stdout
-        if os.environ.get('UNIO_IDENTITY_BASELINE') != '1':
-            d = json.loads(result_path('mock', name).read_text())
-            check(name+' keeps full dispatch hash across end and validation', d['dispatch_revision']['task_sha256'] == frozen)
-            check(name+' provider prose cannot replace dispatch identity', p.returncode == expected)
+        d = json.loads(result_path('mock', name).read_text())
+        check(name+' keeps full dispatch hash across end and validation', d['dispatch_revision']['task_sha256'] == frozen)
+        check(name+' provider prose cannot replace dispatch identity', p.returncode == expected)
     check('conflicting prose cannot falsely reject unchanged task', conflicting_ok)
     check('matching prose cannot conceal actual task mutation', matching_ok)
 
@@ -73,11 +78,16 @@ Path('canary.txt').write_text('work\\n')
     for label, change in [('missing', lambda d: d.pop('dispatch_revision')),
                           ('malformed', lambda d: d.update(dispatch_revision={'task_sha256':'0'*64}))]:
         d = json.loads(json.dumps(original)); change(d); path.write_text(json.dumps(d))
+        before = path.read_bytes()
+        if label == 'missing': call('result', 'mock', 'conflicting')  # legacy schema stays readable
         p = call('verify', 'mock', 'conflicting', code=2)
+        check(label+' refusal preserves old result evidence', path.read_bytes() == before)
         check(label+' dispatch binding refuses without report fallback', 'dispatch' in p.stderr or 'revision' in p.stderr)
     path.write_text(json.dumps(original))
     # Another worker's structured result is not a substitute for this dispatch.
-    path.unlink()
     call('verify', 'mock-2', 'conflicting', code=2)
-    check('foreign or absent dispatch evidence fails closed')
+    check('another worker cannot borrow dispatch evidence')
+    path.unlink()
+    call('verify', 'mock', 'conflicting', code=2)
+    check('absent dispatch evidence fails closed')
     print(f'run-identity regressions: {count} passed')
