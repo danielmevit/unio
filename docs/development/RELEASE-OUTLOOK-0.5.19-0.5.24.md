@@ -139,6 +139,17 @@ Checked official sources on 2026-10-14:
 - [Store policy 7.19](https://learn.microsoft.com/en-us/windows/apps/publish/store-policy-archive/store-policy-7-19): current effective policy at this checkpoint; disclose non-integrated dependencies and provide a testable, responsive product.
 - [Published policy 7.20](https://learn.microsoft.com/en-us/windows/apps/publish/store-policies): effective 2026-10-22, so recheck the version in force when submitting.
 
+### Optional Eqho transcription and history logic
+
+Owner direction, 2026-10-15: adapt selected logic from the owner's Eqho
+project for the Windows app. Start with editable transcript drafts and local
+searchable history, then optional dictation with partial/final updates.
+Use the existing Unio interface, task authority and Windows process ownership;
+the first flow is app-scoped voice input with an explicit send action.
+See the [source assessment, adaptation work and estimates](EQHO-VOICE-INTEGRATION.md).
+This is planned work after the native desktop foundation; a bounded 0.5.x
+follow-up can carry it without delaying that foundation.
+
 ## 0.5.24 — Native macOS
 
 Complete the host-operation inventory and implement macOS equivalents for
