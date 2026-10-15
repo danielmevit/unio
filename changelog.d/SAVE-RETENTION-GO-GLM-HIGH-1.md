@@ -1,0 +1,1 @@
+Fold the retention metadata-only store scan into its deep-validation traversal so each active save is loaded exactly once per publish; keep full byte validation, corrupt-evidence protection, pins, newest protection, caps, atomic publication and metadata-only usage/inspect semantics, and add installed-helper coverage that fails on the pre-change duplicate-pass source.

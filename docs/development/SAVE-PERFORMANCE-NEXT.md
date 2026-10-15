@@ -58,13 +58,13 @@ worker's newest valid save and roughly doubled from baseline to populated.
 
 These are synthetic-fixture timings on one filesystem with two repeats per
 case and uncontrolled host I/O. They are not real-workspace latency, not a
-general model, and not a filesystem ranking. On `v9fs`, per-file metadata
-operations are typically far more expensive than on ext4 or tmpfs; the
-cause is recorded as observed, not assumed. Extrapolating the roughly
-linear per-save cost on this fixture shape, a manual create would cross the
-default 30-second automatic capture deadline somewhere around 18–22 active
-saves; that extrapolation is a hypothesis for a future measurement, not a
-claim about any real workspace.
+general model, and not a filesystem ranking. No ext4 or tmpfs comparison was
+run, so no claim is made about how `v9fs` per-file metadata costs compare
+with other filesystems; only this filesystem's timings are recorded.
+Extrapolating the roughly linear per-save cost on this fixture shape, a
+manual create would cross the default 30-second automatic capture deadline
+somewhere around 18–22 active saves; that extrapolation is a hypothesis for
+a future measurement, not a claim about any real workspace.
 
 ## Function attribution
 
@@ -128,6 +128,11 @@ The third traversal (`write_attempt` re-scanning the store for the last
 good ID) is a separate, smaller measured cost and is deliberately outside
 this recommendation; folding it in would need its own correctness argument
 about post-publication state.
+
+The single recommended fold above was implemented as
+`SAVE-RETENTION-GO-GLM-HIGH-1` (see the "Folded retention validation"
+section in `SAVE-PERFORMANCE.md` for the regression coverage and its A/B
+measurements). This document preserves the original diagnosis unchanged.
 
 ## Limitations
 

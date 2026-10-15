@@ -264,3 +264,88 @@ owner checks, FIFO refusal, privacy changes at open and fresh changing-worktree
 observations. Its repeated-pathname-I/O assertion fails against the frozen
 installed baseline. The suite is registered once in the quality gate; full
 release validation and acceptance remain with the lead.
+
+## Folded retention validation — 2026-10-15 source candidate
+
+`SAVE-RETENTION-GO-GLM-HIGH-1` implements the single follow-up recommended by
+the populated-store measurement in `SAVE-PERFORMANCE-NEXT.md`. The embedded
+save helper's `retention_plan` previously ran a metadata-only `scan_store`
+pass over every active save and then deep-loaded every active save again, so
+each publish opened each existing save twice: once for manifest, directory
+and size checks, and once more to read and hash every stored body.
+`scan_store` gained an optional deep mode, and the retention path now
+classifies, orders and byte-validates each active save from one deep load. A
+deep load already performs every metadata check the separate pass performed,
+so no validation is weakened: every stored body is still opened, read and
+hashed once per publish. Deep failures become protected corrupt evidence with
+the same worker attribution, caps, claim pins, per-worker newest protection,
+duplicate-ID refusal, archive count/byte caps and atomic publication.
+Metadata-only `save usage`, `save inspect` and `last_good` keep their existing
+separate metadata semantics, and the smaller third traversal (`write_attempt`
+re-scanning the store) is deliberately unchanged. No timeout, retention policy
+or store layout changed.
+
+`tests/unio-save-performance.py` now instruments the installed helper's
+`load_save` during a real `retention_plan` call and proves the folded
+property: every active save, valid or corrupt, is loaded exactly once and
+deep, and no active save receives a separate metadata-only pass. That check
+fails on the pre-change source, which metadata-loads every active save and
+deep-loads only the metadata-valid ones. Corrupt bundle and FIFO evidence
+joined the preserved-evidence capture check, and the unchanged
+`tests/unio-save-retention.py` suite keeps covering archive caps, measured
+bytes, claim pins, duplicate IDs, newest protection and interruption
+behavior. No timing assertion is tied to host speed.
+
+The A/B comparison installed the frozen pre-change source (commit
+`e66b4844b69374b3ff19078fc72a7c89320b99dd`) and the folded candidate into
+separate fresh scratch directories — never the global installed Unio — and
+measured, twice per engine, one manual `save create` after seeding the same
+populated fixture: four workers, 305 tracked paths, 307 worktree files,
+12 distinct seeded saves and a 300-second capture budget. Every measured
+create exited 0 with a matching published manifest, 13 active saves, 3,978
+stored body files, about 1.98 MiB, no provider call, and STOP intact:
+
+| Engine observation | Create seconds | Seed seconds range |
+| --- | ---: | --- |
+| Pre-change rep 1 | 19.94 | 7.9–19.6 |
+| Pre-change rep 2 | 20.60 | 8.8–19.3 |
+| Folded rep 1 | 21.49 | 9.5–19.3 |
+| Folded rep 2 | 19.76 | 7.8–18.9 |
+
+On this host the full-pipeline wall-clock difference is within repeat noise:
+no clear create-latency reduction is claimed. A focused timing of
+`retention_plan` alone, on identical fresh copies of the same frozen
+13-active-save store, alternating engines over five repetitions each with a
+300-second budget and no store mutation (zero saves planned), isolated the
+changed code path:
+
+| Engine observation | `retention_plan` seconds, 5 reps | Mean |
+| --- | --- | ---: |
+| Pre-change | 17.94, 15.61, 14.62, 19.64, 12.88 | 16.14 |
+| Folded | 10.50, 10.20, 8.40, 8.76, 11.71 | 9.91 |
+
+So the removed duplicate metadata pass costs about 6 seconds of the isolated
+retention path on this fixture, consistent with the original profile's
+`scan_store` attribution, while the full create pipeline on this host is
+dominated by observation, staging and publication costs plus uncontrolled
+cache and I/O state: the seeded store is freshly written when the measured
+create runs, which the fresh-copy focused timing does not reproduce.
+
+| Installed input | SHA-256 |
+| --- | --- |
+| Pre-change installer source | `e66b4844b69374b3ff19078fc72a7c89320b99dd` commit |
+| Pre-change installed engine | `180c5e09ac74c51c92a1322546b2625783832cb21f25e6673ba8b46128c5a7e2` |
+| Folded installer source | working tree of this change |
+| Folded installed engine | `261247a4000384816d27bd636ee58b0cfc41d75d32b7708add81cb9e5d1622b4` |
+
+The pre-change installed engine is byte-identical to the globally installed
+0.5.18 engine measured in `SAVE-PERFORMANCE-NEXT.md`; both installed engines'
+embedded save helpers matched their respective sources byte for byte. These
+are two full-pipeline repetitions per engine and five focused repetitions per
+engine on one host with uncontrolled storage and cache state; they support
+the recorded observations for these fixtures only, not a universal speed
+percentage, and they do not prove that any automatic capture now fits the
+default 30-second deadline. No restore was performed; manifest confirmation
+does not prove one. No ext4 or tmpfs comparison was run. Raw receipts, the
+A/B harness, the focused timing and the failing pre-change regression run
+stay in task scratch outside the repository.
