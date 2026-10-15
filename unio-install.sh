@@ -21434,7 +21434,7 @@ saves() {
   local -a saves_runner=(python3)
   if [ "${1:-}" = __exec ]; then saves_runner=(exec python3); shift; fi
   "${saves_runner[@]}" - "$@" <<'SAVES_PY'
-import datetime, fcntl, hashlib, json, os, re, select, selectors, shutil, signal, stat, struct, subprocess, sys, tempfile, time
+import datetime, errno, fcntl, hashlib, json, os, re, select, selectors, shutil, signal, stat, struct, subprocess, sys, tempfile, time
 
 # Work saving (contract: docs/development/WORK-SAVING-CONTRACT.md).
 # Stored data is only ever compared, hashed and copied; it never
@@ -21507,7 +21507,10 @@ class Budget:
 
 def fault(name):
     # Test-only failure injection: it can only make an operation fail or pause.
-    if name not in os.environ.get('UNIO_SAVE_TEST_FAULT', '').split(','):
+    fault_dir = os.environ.get('UNIO_TEST_FAULT_DIR')
+    if (name not in os.environ.get('UNIO_SAVE_TEST_FAULT', '').split(',')
+            and not (fault_dir and (os.path.exists(os.path.join(fault_dir, name))
+                                   or os.path.exists(os.path.join(fault_dir, 'proc-stat-unreadable'))))):
         return
     if name == 'between-passes':
         os.kill(os.getpid(), signal.SIGSTOP)
@@ -23031,20 +23034,25 @@ def proc_stat(pid):
     if type(pid) is not int or not pid_ok(pid):
         return None
     try:
+        fault('proc-stat-%d' % pid)
         raw = read_path('/proc/%d/stat' % pid, 4096)[1]
-    except (Refuse, OSError):
-        return None
+    except OSError as e:
+        if e.errno in (errno.ENOENT, errno.ESRCH):
+            return None
+        return 'unproved'
+    except Refuse:
+        return 'unproved'
     end = raw.rfind(b')')
     if end < 0:
-        return None
+        return None if not os.path.exists('/proc/%d' % pid) else 'unproved'
     fields = raw[end + 2:].split()
     if len(fields) < 20:
-        return None
+        return None if not os.path.exists('/proc/%d' % pid) else 'unproved'
     try:
         return {'pid': pid, 'state': fields[0].decode('ascii', 'replace'), 'ppid': int(fields[1]),
                 'pgid': int(fields[2]), 'sid': int(fields[3]), 'start': int(fields[19])}
     except (ValueError, IndexError, UnicodeError):
-        return None
+        return None if not os.path.exists('/proc/%d' % pid) else 'unproved'
 
 
 def proc_argv(pid):
@@ -23084,7 +23092,7 @@ def background_run_argv(argv, worker, task):
 
 def parent_matches(record):
     info = proc_stat(record['shell_pid'])
-    if info is None or info['state'] in DEAD_STATES:
+    if not isinstance(info, dict) or info['state'] in DEAD_STATES:
         return False
     if info['start'] != record['shell_start'] or info['sid'] != record['shell_sid']:
         return False
@@ -23096,7 +23104,7 @@ def parent_matches(record):
 def owner_bind(root, worker, task):
     ppid = os.getppid()
     info = proc_stat(ppid)
-    if info is None or info['state'] in DEAD_STATES or proc_uid(ppid) != os.getuid():
+    if not isinstance(info, dict) or info['state'] in DEAD_STATES or proc_uid(ppid) != os.getuid():
         raise Refuse('unknown', 'owned identity was not established before the provider')
     if not shell_is_runner(proc_argv(ppid), worker, task):
         raise Refuse('unknown', 'owned identity was not established before the provider')
@@ -23126,9 +23134,9 @@ def pidfd_signal(pid, start, sid, sig):
     if not hasattr(os, 'pidfd_open') or not hasattr(signal, 'pidfd_send_signal'):
         return False
     info = proc_stat(pid)
-    if info is None or info['state'] in DEAD_STATES:
+    if info is None or (isinstance(info, dict) and info['state'] in DEAD_STATES):
         return True
-    if info['start'] != start or info['sid'] != sid:
+    if not isinstance(info, dict) or info['start'] != start or info['sid'] != sid:
         return False
     try:
         handle = os.pidfd_open(pid)
@@ -23136,9 +23144,9 @@ def pidfd_signal(pid, start, sid, sig):
         return proc_stat(pid) is None
     try:
         info = proc_stat(pid)
-        if info is None or info['state'] in DEAD_STATES:
+        if info is None or (isinstance(info, dict) and info['state'] in DEAD_STATES):
             return True
-        if info['start'] != start or info['sid'] != sid:
+        if not isinstance(info, dict) or info['start'] != start or info['sid'] != sid:
             return False
         signal.pidfd_send_signal(handle, sig)
         return True
@@ -23161,7 +23169,11 @@ def session_members(record):
     if record['provider_sid'] != record['provider_pid'] or record['provider_sid'] == record['shell_sid']:
         return 'unknown', []
     leader = proc_stat(record['provider_pid'])
-    if leader is not None and (leader['start'] != record['provider_start'] or leader['sid'] != record['provider_sid']):
+    if leader == 'unproved':
+        uid = proc_uid(record['provider_pid'])
+        if uid == os.getuid():
+            return 'unknown', []
+    elif isinstance(leader, dict) and (leader['start'] != record['provider_start'] or leader['sid'] != record['provider_sid']):
         return 'unknown', []
     protected = {record['shell_pid'], os.getpid(), os.getppid()}
     found = []
@@ -23176,7 +23188,14 @@ def session_members(record):
         if not pid_ok(pid):
             continue
         info = proc_stat(pid)
-        if info is None or info['sid'] != record['provider_sid'] or info['state'] in DEAD_STATES:
+        if info is None:
+            continue
+        if info == 'unproved':
+            uid = proc_uid(pid)
+            if uid == os.getuid():
+                return 'unknown', []
+            continue
+        if info['sid'] != record['provider_sid'] or info['state'] in DEAD_STATES:
             continue
         uid = proc_uid(pid)
         if uid is None:
@@ -23289,7 +23308,7 @@ def _exec_owned_provider(ack_read, status_write, log_fd, workdir, timeout, comma
 
 def _publish_provider(root, task, record, pid):
     info = proc_stat(pid)
-    if (info is None or info['state'] in DEAD_STATES or info['sid'] != pid or info['pid'] != pid
+    if (not isinstance(info, dict) or info['state'] in DEAD_STATES or info['sid'] != pid or info['pid'] != pid
             or info['sid'] == record['shell_sid'] or proc_uid(pid) != os.getuid()):
         return False
     record['provider_pid'] = pid
@@ -23299,7 +23318,7 @@ def _publish_provider(root, task, record, pid):
         return False
     write_owner(owner_path(root, task), record)
     again = proc_stat(pid)
-    return again is not None and again['start'] == info['start'] and again['sid'] == pid and again['state'] not in DEAD_STATES
+    return isinstance(again, dict) and again['start'] == info['start'] and again['sid'] == pid and again['state'] not in DEAD_STATES
 
 
 class OwnedCommand:
@@ -23368,7 +23387,7 @@ def spawn_owned_provider(root, worker, task, timeout, command, log_fd):
         return OwnedCommand(pid)
     except Exception as exc:
         info = proc_stat(pid)
-        if info is not None:
+        if isinstance(info, dict):
             pidfd_signal(pid, info['start'], info['sid'], signal.SIGKILL)
         try:
             os.waitpid(pid, 0)
@@ -23388,9 +23407,9 @@ def spawn_owned_provider(root, worker, task, timeout, command, log_fd):
 def kill_shell_tree(pid, start, sid):
     """Pidfd-kill the recorded shell and its current children. Fail closed past the caps."""
     info = proc_stat(pid)
-    if info is None or info['state'] in DEAD_STATES:
+    if info is None or (isinstance(info, dict) and info['state'] in DEAD_STATES):
         return True
-    if info['start'] != start or info['sid'] != sid:
+    if not isinstance(info, dict) or info['start'] != start or info['sid'] != sid:
         return False
     nodes, seen, frontier = [], {pid}, [(pid, 0)]
     while frontier:
@@ -23403,7 +23422,7 @@ def kill_shell_tree(pid, start, sid):
             if len(nodes) >= 256:
                 return False
             current = proc_stat(child)
-            if current is None or current['ppid'] != parent or current['state'] in DEAD_STATES:
+            if not isinstance(current, dict) or current['ppid'] != parent or current['state'] in DEAD_STATES:
                 continue
             seen.add(child)
             nodes.append(current)
@@ -23412,9 +23431,9 @@ def kill_shell_tree(pid, start, sid):
         if not pidfd_signal(current['pid'], current['start'], current['sid'], signal.SIGKILL):
             return False
     info = proc_stat(pid)
-    if info is None or info['state'] in DEAD_STATES:
+    if info is None or (isinstance(info, dict) and info['state'] in DEAD_STATES):
         return True
-    if info['start'] != start or info['sid'] != sid:
+    if not isinstance(info, dict) or info['start'] != start or info['sid'] != sid:
         return False
     return pidfd_signal(pid, start, sid, signal.SIGKILL)
 
@@ -23431,6 +23450,9 @@ def owner_signal(root, task, pid):
     if info is None:
         print('gone')
         return 0
+    if not isinstance(info, dict):
+        print('refuse')
+        return 2
     record = _load_kill_record(root, task)
     argv = proc_argv(pid)
     if (record is not None and record['task'] == task and record['shell_pid'] == pid
@@ -23467,7 +23489,7 @@ def owner_signal(root, task, pid):
 def owner_force(root, task, pid, start):
     info = proc_stat(pid)
     record = _load_kill_record(root, task)
-    if info is None or info['start'] != start:
+    if not isinstance(info, dict) or info['start'] != start:
         if record is not None and finish_owned(root, record['worker'], task, 0) == 'clear':
             print('done')
             return 0
@@ -23482,10 +23504,10 @@ def owner_force(root, task, pid, start):
         print('unknown')
         return 2
     info = proc_stat(pid)
-    if info is None or info['state'] in DEAD_STATES:
+    if info is None or (isinstance(info, dict) and info['state'] in DEAD_STATES):
         print('done')
         return 0
-    if info['start'] != start or info['sid'] != record['shell_sid']:
+    if not isinstance(info, dict) or info['start'] != start or info['sid'] != record['shell_sid']:
         print('refuse')
         return 2
     if not kill_shell_tree(pid, start, info['sid']):
@@ -23655,8 +23677,16 @@ def supervise_run(root, worker, task, timeout, command, claim_id=''):
         # Other groups in the provider session survive killpg. Sweep them before
         # the final save, which has its own session and its own capture budget.
         grace = 5 if interrupted[0] else 1
-        if finish_owned(root, worker, task, grace) != 'clear':
-            print('unio: owned cleanup Unknown; worker ownership stays held', file=sys.stderr)
+        cleaned = finish_owned(root, worker, task, grace)
+        noted = False
+        while cleaned != 'clear':
+            if not noted:
+                print('unio: owned cleanup Unknown; worker ownership stays held', file=sys.stderr)
+                noted = True
+            time.sleep(0.2)
+            if interrupted[0]:
+                rc = interrupted[0]
+            cleaned = finish_owned(root, worker, task, 0)
         if provider is not None:
             provider.wait()
     if continuation is not None and provider is not None:
