@@ -1,45 +1,63 @@
 # Model scoreboard and delegation guide
 
-Updated 2026-10-13 from real Unio work. Read this before delegation, alongside
+Updated 2026-10-15 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
 
-## Recovery release preparation — 2026-10-15
+## Recovery and compatibility observations — 2026-10-15
 
-Exact subscription, CLI, requested model/effort and actual outcome for the
-unreleased 0.5.19 preparation batch. Operational failures, proposals,
-checked code and acceptance stay separate; nothing here ranks models or
-infers quota savings.
+The 0.5.19 candidate preserves these distinct outcomes. Requested settings
+are not proof of effective identity/effort; remaining allowances are Unknown.
 
-- Grok subscription / Build 1.0.52 / `grok-4.7` / xhigh: the native stopping
-  task ended with reported usage exhaustion at Source 1; its exact saved
-  work is preserved as `8aa92bb` and inherited by later workers.
-- Mistral subscription / Vibe 2.26.1 / GLM 5.3 high: completed the inherited
-  stopping patch as `7588d8e` with seven native checks passing; a later
-  ordering fix is still needed, so this is checked code, not acceptance.
-- Antigravity / agy 1.3.5 / Gemini 3.8 Flash high: committed `721c56c`, the
-  verified Copilot `filesModified` array correction; native verification
-  passed and an offline replay of the saved native stream matches the exact
-  assistant text. Independent review remains pending.
-- A Gemini review returned APPROVE while its own concrete findings
-  contradicted that verdict; the lead withheld acceptance. A recorded
-  verdict is not evidence that the findings were resolved.
-- Copilot Free / CLI 1.0.95 / Auto Balance: a real run ended native 0 but
-  adapter Source 2 because `filesModified` was an array, not an integer;
-  the underlying lab and model remain Unknown. This is a schema mismatch,
-  not a model answer.
-- An earlier local Mistral ordering failure (Source 2) was the lead's
-  missing receipt-parent setup before any Vibe CLI call, not a model
-  capability failure.
+- **Grok subscription / Build 1.0.52 / Grok 4.7 / xhigh:** stopping ended
+  Source 1 with HTTP 402 reported usage exhaustion. Work produced before the
+  failure was saved as `8aa92bb`; the original failure remains, with no retry.
+- **Mistral subscription / Vibe 2.26.1 / GLM 5.3 / high:** completed the first
+  stop correction `7588d8e` with seven native checks. Later lead/Google review
+  found final-save ordering and identity-observation gaps. A local setup
+  failure on a separate task occurred before Vibe inference. The later proof
+  attempt ended Source 3 at its configured 2M cumulative-token cap, not an
+  observed monthly subscription limit; early `202a454` and exact unfinished
+  work `cc3ae1b` were preserved without lead code edits.
+- **Antigravity subscription / agy 1.3.5 / Gemini 3.8 Flash / high:** corrected
+  Copilot metadata in `721c56c`, with native checks and exact saved-stream
+  offline replay passing. Stopping runtime/test work `216a51e` was committed
+  before a stream-interrupted terminal ERROR (native 0, adapter/Source 2).
+  A bounded completion inherited the preserved Vibe proof and finished Source 0
+  as `3bb3f5e`; current native verification and Qwen review are pending.
+- **OpenCode Go / OpenCode 1.18.35 / GLM 5.3 / high:** saving `91b97bb` finished
+  Source 0, native verification passed and independent Google review approved;
+  the lead accepted the inspected change. Five isolated retention repetitions
+  per engine support a phase improvement on one host; two full captures per
+  engine do not establish overall save-speed improvement.
+- **OpenCode Go / OpenCode 1.18.35 / Qwen 3.8 Max / xhigh:** independent Copilot
+  review returned REQUEST-CHANGES for false numeric-validation documentation.
+  It also identified unclear turn/tool/privacy claims and a missing canonical
+  guide link. Candidate documentation resolves these findings without parser
+  changes; the original verdict is preserved. Final stopping review is queued.
+- **Antigravity subscription / agy 1.3.5 / Gemini 3.8 Flash / high review:**
+  approved saving with one informational corruption-attribution reread note.
+  An earlier stopping review approved despite reporting concrete ordering and
+  observation gaps; the lead withheld acceptance and delegated corrections.
+- **Copilot Free / CLI 1.0.95 / Auto Balance / effort not exposed:** native 0
+  with adapter/Source 2 on a real filename-array schema mismatch. Underlying
+  model/lab remain Unknown. This was not a quota or model-answer failure.
+- **Perplexity Pro / pinned adapter 0.16.1 / Kimi 3 / Thinking enabled:** returned
+  supporting stopping-test guidance, Source 0. The lead rejected incorrect
+  parser/containment suggestions; the proposal was not copied or treated as
+  independent security acceptance.
 
 ### Owner availability for Unio development — 2026-10-15
 
 Claude Opus is reserved indefinitely for the owner's separate projects.
-Do not assign it Unio development or review work until the owner explicitly
-reintroduces it. This is a project-specific owner hold, not a provider outage
-or a change to another project's permissions. Owner-requested status reports
-must include the full fleet, including idle, benched and reserved routes.
+Do not assign it Unio development or review until explicitly reintroduced.
+Status reports cover the entire configured/approved fleet, including idle,
+benched and owner-reserved routes, not only active workers. Shared routes do
+not create separate capacity. Preserve effective identity and allowance Unknowns.
+Codex is lead-only under the current owner override; all product fixes here
+were delegated. Failures, saved work, checks, reviews and acceptance remain
+separate rather than becoming a universal model ranking.
 
 ## Readiness and findings implementation — 2026-10-13
 

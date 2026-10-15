@@ -1,7 +1,7 @@
 # Native stop ownership contract
 
-Source note for the installed public native run and kill path. Product version
-stays 0.5.18. This note does not claim a live provider was validated; the
+Source contract for the 0.5.19 native run and kill path. This note does not
+claim a live provider was validated; the
 offline fixtures are generic local processes.
 
 ## Ownership boundary
@@ -25,8 +25,8 @@ be reparented when an intermediate launcher exits. It stays owned while its
 session id is the recorded provider session.
 
 The sweep does not use `pgrep` or `pkill`, and it does not match command text.
-A signal is sent with `pidfd` only after the open pid still has the recorded
-start ticks and session. The shell, the supervisor, and the supervisor's parent
+The owned-session sweep signals through `pidfd` only after the open pid still
+has the recorded start ticks and session. The shell, the supervisor, and the supervisor's parent
 are never treated as members of the provider session. If one of those protected
 pids is inside that session, or the leader pid is now a different process, the
 result is Unknown and nothing is signaled.
@@ -122,6 +122,12 @@ recovery must precede the final capture. Test-only fault injection through
 the fault directory is scoped to `proc-stat` identity faults, so a marker for
 one unreadable pid can never fail an unrelated save operation.
 
+The recorded before/after proof uses an isolated installed copy with only the
+supervisor's old if-and-log cleanup guard restored. The current proc-identity
+fault fixture is retained in both copies. The mutation attempts a final save
+while cleanup is Unknown and fails the regression; the corrected guard passes.
+This does not claim the entire old revision was tested with a later fault hook.
+
 ## Failures
 
 | Situation | Result |
@@ -140,7 +146,10 @@ one unreadable pid can never fail an unrelated save operation.
 ## Unverified boundaries
 
 The offline fixtures are generic local processes; no live provider was
-validated. Two defenses are structural rather than reproduced: a pid reused
+validated. The pidfd guarantee above applies to recorded identity dispatch and
+the owned-session sweep. Existing provider timeout and capture paths also use
+numeric process-group signals; this document does not claim that every signal
+in the engine uses a pidfd. Two defenses are structural rather than reproduced: a pid reused
 between observation and `pidfd` signaling is refused by the start-tick and
 session revalidation, but that race is not deterministically reproducible in
 the fixtures; and the early numeric `TERM` on a supervisor whose `/proc`

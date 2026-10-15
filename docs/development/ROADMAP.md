@@ -9,20 +9,19 @@ outcomes, and exact Copilot native JSONL proposal text. One frozen full gate,
 artifact/upgrade/install checks, dashboard identity and six official download
 hashes passed. UI, site and brand work were preserved.
 
-Update, 2026-10-15: the proposed v0.5.19 bundle combines three
-preparation tracks: owned native stopping for explicitly recorded Linux
-provider sessions, measured saving on populated stores, and exact Copilot
-result handling. None is accepted yet. The inherited stopping patch
-(`7588d8e`, seven native checks) still needs its active bounded correction
-for final-capture, unreadable-identity and foreign-record findings; the
-single-deep-traversal saving implementation (`33594e0`) still needs tests
-and matched measurements; the Copilot array correction (`721c56c`) passed
-native verification and an offline replay but awaits independent review and
-a live call. See the [unreleased release guide](../RELEASE-0.5.19.md).
-After acceptance, the next useful continuity work is finishing the saving
-measurements and the stopping correction, then lead-session continuity,
-handoffs and scoped phone access. Native Windows still precedes native
-macOS in the [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md).
+Update, 2026-10-15: the v0.5.19 candidate assembles owned native stopping,
+a single deep save-retention traversal, and Copilot filename-array compatibility.
+Saving passed native checks and independent Google review. Copilot passed checks;
+Qwen's documentation findings are resolved in the candidate. The stopping proof
+finished Source 0 at `3bb3f5e`, including an isolated old-ordering mutation that
+fails the new regression; native verification and Qwen's final review are pending.
+See the [release evidence and limits](../RELEASE-0.5.19.md).
+
+The measured retention phase improved on one fixture, while full captures showed
+no clear wall-time reduction. Do not advertise a general save-speed improvement.
+After this bounded release, prioritize optional continuous delegation, then owned
+live sessions, lead continuity and scoped phone access. Native Windows still
+precedes macOS in the [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md).
 
 The functional core includes recovery saving, shared-account policy and capacity
 observations, managed daily startup, read-only planning, explicit single-attempt

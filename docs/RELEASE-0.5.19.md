@@ -1,73 +1,56 @@
-# Unio 0.5.19 — recovery, saving and Copilot preparation (unreleased)
+# Unio 0.5.19 — safer stopping and measured saving
 
-Status: candidate in preparation, 2026-10-15. The published and installed
-release remains
-[0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18). Nothing
-in this bundle is accepted or shipped yet; separate workers are still
-finishing the code, and the lead will finalize the evidence after actual
-acceptance.
+A bounded recovery and compatibility release: stop the provider sessions Unio
+started, avoid duplicate save validation, and accept real Copilot result metadata.
 
-## Proposed benefits
+## What changes
 
-- **Owned native stopping.** Stop the exact provider process tree Unio
-  launched: nested process groups and reparented children within an
-  explicitly recorded Linux provider session, identity checks through
-  pidfds, account-ownership boundaries and a bounded final save. This
-  preserves the exact saved Grok stop work produced after its HTTP 402
-  usage stop.
-- **Measured saving on populated stores.** Fold the duplicate metadata and
-  deep passes, isolated by the diagnosis commit 02f316c, into a single
-  deep traversal during active classification (implementation 33594e0).
-  Full content validation, newest/corrupt/pin protection, capture bounds
-  and rollback remain required and unchanged.
-- **Exact Copilot result handling.** Accept the documented filename arrays
-  Copilot CLI 1.0.95 Auto Balance actually returns in filesModified, plus
-  the legacy bounded integer counts (correction 721c56c). A real run that
-  ended native 0 but adapter Source 2 on this schema mismatch is the
-  motivating case.
+- **Owned stopping:** cancellation and normal exit sweep nested process groups
+  and reparented children within the recorded Linux provider session. Cleanup
+  must be confirmed before the final save; unproved cleanup keeps the worker
+  and shared-account slot held. Identity-checked pidfds protect the session sweep.
+- **One retention validation pass:** existing save contents are deeply validated
+  once during classification, preserving corrupt evidence, newest saves, claim
+  pins and retention caps. The default capture deadline is unchanged.
+- **Copilot compatibility:** accept filename-string arrays, including `[]`, in
+  CLI 1.0.95 `filesModified` metadata, plus legacy integer fixture counts. Exact
+  root assistant text and strict malformed/ambiguous-result refusal remain.
+- **Clearer operating guidance:** status covers the full fleet, including idle,
+  benched and owner-reserved routes, with subscription/model/effort provenance.
+  The roadmap includes selected Eqho transcript/history logic after the Windows
+  desktop foundation; it will be reassessed against the owner's latest revision.
 
-## Supported session boundary
+## Evidence and limits
 
-The stopping work applies only to a provider session Unio explicitly
-records and owns on Linux: the launched process tree, its nested process
-groups and children that reparent within that recorded session, checked by
-pidfd identity and account ownership. Processes that detach from the
-recorded session, processes outside it, and processes not owned by the
-recorded account are unmanaged: Unio does not chase or claim them.
+Saving's isolated retention phase averaged 16.14 seconds before and 9.91 seconds
+with the folded traversal on one fixture/host. Two complete captures per engine
+showed no clear overall latency gain. See [the methods and limits](development/SAVE-PERFORMANCE.md).
 
-## Limits
+Stopping uses offline generic-process fixtures, not a live-provider certification.
+The recorded-session boundary is not an OS sandbox; processes that leave the
+session remain unmanaged. Same-user ownership files are trusted local state,
+not authentication against hostile same-user rewriting. See [the ownership contract](development/NATIVE-STOP-CONTRACT.md).
 
-- **Detached and unmanaged processes are not contained.** The boundary above
-  is a recorded-session boundary, not an OS sandbox; a process that escapes
-  the recorded session stays outside Unio's control.
-- **No genuine live test of the corrected code yet.** The Copilot
-  correction passed native verification and an offline replay of the saved
-  native stream matches the exact assistant text, but no new live Copilot
-  call has used the corrected code, and independent review is pending.
-- **No performance claim.** The saving work is a structural change with
-  tests and matched measurements still active. No wall-clock speedup,
-  filesystem causation or universal improvement is claimed, and the default
-  capture budget is unchanged.
-- **Stopping is not resolved.** The inherited patch 7588d8e passed seven
-  native checks, but lead and independent review found the final capture
-  reachable after cleanup Unknown, unreadable-identity handling and
-  overbroad foreign-record claims. A bounded correction is active and not
-  accepted; this guide does not promise resolution or full containment.
+Copilot evidence includes native schema inspection, an exact offline replay of
+an actual saved native stream and fake-CLI regressions. A fresh live call through
+the corrected parser was not run. See [the result contract](integrations/COPILOT.md).
 
-## Current acceptance state (2026-10-15)
+## Candidate evidence — 2026-10-15
 
-- **Owned native stopping:** inherited patch 7588d8e, seven native checks
-  passed; lead and independent Gemini review found the defects above; a
-  bounded correction is active and not accepted.
-- **Saving:** diagnosis 02f316c measured small populated stores and
-  isolated the duplicate passes; implementation 33594e0 folds active
-  classification into one deep traversal; tests and matched measurements
-  are still active. Not accepted.
-- **Copilot:** correction 721c56c passed native verification; the offline
-  replay of an actual saved native stream matches the exact assistant
-  text. Independent review and a live call with the corrected code remain
-  pending. Not accepted.
+Saving revision `91b97bb` passed native verification and independent
+Antigravity/agy 1.3.5 / Gemini 3.8 Flash high review; the lead accepted it.
+Copilot revision `721c56c` passed native verification. OpenCode Go /
+OpenCode 1.18.35 / Qwen 3.8 Max xhigh requested documentation corrections;
+the candidate resolves them without changing parser bytes. Its original
+REQUEST-CHANGES verdict remains preserved with the lead's resolution.
 
-A passing process, passing checks and a reviewer's approval are separate
-from acceptance. The lead will finalize the evidence, run the full frozen
-gate and publish only after actual acceptance.
+Stopping revision `3bb3f5e` finished Source 0 through Antigravity/agy 1.3.5 /
+Gemini 3.8 Flash high. Its focused fixtures passed, and an isolated mutation
+restoring only the old cleanup ordering failed at the expected final-save
+assertion. This is a mutation proof, not a full test of an old release.
+Native verification and the separate Qwen xhigh review are pending.
+
+The combined gate, installation and publication remain pending. Until they
+finish, the official and installed release remains 0.5.18.
+Original provider failures and saved partial work remain separate from later
+accepted revisions. Effective model/effort and remaining allowances are Unknown.

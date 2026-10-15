@@ -61,9 +61,9 @@ Copilot proposals preserve exact native JSONL text. Read the
 
 **In development, 0.5.19 (unreleased):** recovery preparation for owned
 native stopping in explicitly recorded Linux provider sessions, measured
-saving on populated stores, and exact Copilot result handling. The code and
-its acceptance evidence are still being finished by separate workers; nothing
-in that bundle is shipped or accepted yet. Read the
+saving on populated stores, and exact Copilot result handling. The three components are assembled; final stopping review and combined
+release checks are pending. Saving is accepted and Copilot review findings
+are resolved; this candidate is not published yet. Read the
 [candidate scope, limits and acceptance state](docs/RELEASE-0.5.19.md).
 
 **Added in 0.5.17:** safer project selection and an opt-in managed

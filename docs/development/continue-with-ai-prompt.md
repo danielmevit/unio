@@ -1,3 +1,54 @@
+# Current candidate — Unio 0.5.19, 2026-10-15
+
+The private candidate combines owned Linux-session stopping, one deep save
+retention pass and the real Copilot filename-array compatibility correction.
+See [scope and evidence](../RELEASE-0.5.19.md). The public/installed release
+remains 0.5.18 until combined delivery; check actual official release and
+installed version before starting a new worker. A version heading alone is
+not publication evidence.
+
+Saving `91b97bb` passed native checks, independent Google review and personal
+acceptance. Copilot `721c56c` passed checks; Qwen's REQUEST-CHANGES documentation
+findings are resolved in the candidate without changing parser bytes. Stopping
+`3bb3f5e` finished Source 0, with a meaningful old-ordering mutation failing the
+regression; native verification and independent Qwen review remain pending.
+Original Grok HTTP402, Vibe local setup/token-cap and Gemini stream-interruption
+failures remain preserved separately from inherited committed work.
+
+Use Unio for implementation and reviews. Codex is lead-only for this Unio
+workspace under the current owner direction; do not create an extra Codex
+worker. Claude Opus is reserved indefinitely for the owner's other projects.
+Other eligible subscription routes remain available subject to current facts:
+Mistral/Vibe, Antigravity/Gemini, OpenCode Go; Grok last reported balance
+exhaustion. Perplexity supplies research/proposals; Copilot/free Zen support
+routine work. Free Zen routes are worker-only and require a current free-price
+check. Name the subscription route, CLI/model/effort, task and actual state in
+all reports; owner-requested status covers the full fleet, including idle and
+unavailable routes. Effective settings and remaining allowance stay Unknown.
+
+Keep YOLO/low, the real shared-account groups, registered lead and STOP after
+admissions. High/supported-middle is the default; xhigh is the ceiling, max and
+ultra are forbidden here. One invocation per frozen task, no blind retry or paid
+fallback. Preserve active writers, early commits, failures and exact receipts.
+Give rough estimates before assignments and periodic progress without waiting
+for the owner to ask. Continue authorized work through delivery; a progress
+update is not a reason to end the session.
+
+Finish the current source/review evidence, finalize truthful notes, run one frozen
+combined quality gate, install/test before publication and verify official assets.
+Then the next priority is bounded optional continuous delegation in 0.5.20,
+followed by owned live sessions, scoped phone access, Windows and macOS. Read the
+[release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md). Keep CodeGraph follow-ups deferred,
+classified research local-only, and owner UI/site/brand and Eqho sessions intact.
+Eqho integration is planned after Windows foundations and must reassess its
+latest owner-approved revision. No Eqho runtime is added in this release.
+
+Local leads first read coord/AGENT-LOG.md and tmp/unio-next/manifest.json/receipts
+inside the enclosing workspace; fresh clones use this prompt and current public
+release evidence. Earlier dated sections below preserve their original context.
+
+---
+
 # Current delivery — Unio 0.5.18, 2026-10-14T14:45:44+02:00
 
 [Unio 0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18) is published and installed from `52e097a0104dd45c935e85fa8ea6937e72b4e159`.
