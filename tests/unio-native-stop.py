@@ -278,6 +278,7 @@ while True:
 
     exact = []
     shells = []
+    restore_ownership = {}
 
     def remember(pid, start, kind):
         exact.append({'pid': pid, 'start': start, 'kind': kind})
@@ -290,6 +291,12 @@ while True:
     remember(outsider.pid, outsider_start, 'outsider')
 
     def cleanup():
+        for path, content in list(restore_ownership.items()):
+            try:
+                if path.parent.exists():
+                    path.write_text(content)
+            except OSError:
+                pass
         for item in list(shells):
             kill_recorded_tree(item['pid'], item['start'])
         for item in list(exact):
@@ -298,6 +305,11 @@ while True:
             try:
                 proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
+                pass
+        for p in fixture.glob('proc-stat-*'):
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
                 pass
 
     def worker_held():
@@ -503,7 +515,16 @@ while True:
         with open(run_out, 'wb') as out_stream, open(run_err, 'wb') as err_stream:
             unknown_run = subprocess.Popen([at, 'run', 'mock', 'unknown-task'], cwd=repo, env=env,
                                            stdout=out_stream, stderr=err_stream)
-        shells.append({'pid': unknown_run.pid, 'start': proc_stat(unknown_run.pid)['start']})
+        run_stat = proc_stat(unknown_run.pid)
+        if run_stat is None:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                run_stat = proc_stat(unknown_run.pid)
+                if run_stat is not None:
+                    break
+                time.sleep(0.01)
+        if run_stat is not None:
+            shells.append({'pid': unknown_run.pid, 'start': run_stat['start']})
         ready = wait_ready()
         note_ready(ready)
         resist, coop, detached = ready['resist'], ready['coop'], ready['detached']
@@ -604,49 +625,55 @@ while True:
         shells.append({'pid': shell_pid, 'start': shell['start']})
         resist = ready['resist']
         original = own.read_text() if own.exists() else ''
-        own.write_text('{')
-        refused = subprocess.run([at, 'kill', 'refuse-task'], cwd=repo, env=env,
-                                 capture_output=True, text=True, timeout=15)
-        detail = 'exit %s\n%s\n%s' % (refused.returncode, refused.stdout, refused.stderr)
-        check('malformed ownership is not signaled',
-              refused.returncode != 0 and pidfile.read_text().strip() == str(shell_pid)
-              and same_process(shell_pid, shell['start'])
-              and same_process(resist['pid'], resist['start'])
-              and same_process(sibling.pid, sibling_start), detail)
         if original:
-            own.write_text(original)
-            doc = json.loads(original)
-            doc['shell_start'] = doc['shell_start'] + 1
-            own.write_text(json.dumps(doc))
+            restore_ownership[own] = original
+        try:
+            own.write_text('{')
             refused = subprocess.run([at, 'kill', 'refuse-task'], cwd=repo, env=env,
                                      capture_output=True, text=True, timeout=15)
             detail = 'exit %s\n%s\n%s' % (refused.returncode, refused.stdout, refused.stderr)
-            check('reused start identity is not signaled',
-                  refused.returncode != 0 and same_process(shell_pid, shell['start'])
+            check('malformed ownership is not signaled',
+                  refused.returncode != 0 and pidfile.read_text().strip() == str(shell_pid)
+                  and same_process(shell_pid, shell['start'])
                   and same_process(resist['pid'], resist['start'])
-                  and pidfile.exists(), detail)
-            # Each remaining identity defect keeps the exact supported shape
-            # except for one field, so only that field's validation can refuse.
-            tampering = (
-                ('boolean schema_version is refused as an identity record', 'schema_version', True),
-                ('stale boot identity is refused', 'boot_id', '00000000-0000-0000-0000-000000000000'),
-                ('string pid type is refused', 'shell_pid', str(shell_pid)),
-            )
-            for label, field, bad in tampering:
+                  and same_process(sibling.pid, sibling_start), detail)
+            if original:
                 own.write_text(original)
                 doc = json.loads(original)
-                doc[field] = bad
+                doc['shell_start'] = doc['shell_start'] + 1
                 own.write_text(json.dumps(doc))
                 refused = subprocess.run([at, 'kill', 'refuse-task'], cwd=repo, env=env,
                                          capture_output=True, text=True, timeout=15)
                 detail = 'exit %s\n%s\n%s' % (refused.returncode, refused.stdout, refused.stderr)
-                check(label,
+                check('reused start identity is not signaled',
                       refused.returncode != 0 and same_process(shell_pid, shell['start'])
                       and same_process(resist['pid'], resist['start'])
                       and pidfile.exists(), detail)
-            own.write_text(original)
-        else:
-            check('ownership file exists before the provider is killable', False, 'no .own file')
+                # Each remaining identity defect keeps the exact supported shape
+                # except for one field, so only that field's validation can refuse.
+                tampering = (
+                    ('boolean schema_version is refused as an identity record', 'schema_version', True),
+                    ('stale boot identity is refused', 'boot_id', '00000000-0000-0000-0000-000000000000'),
+                    ('string pid type is refused', 'shell_pid', str(shell_pid)),
+                )
+                for label, field, bad in tampering:
+                    own.write_text(original)
+                    doc = json.loads(original)
+                    doc[field] = bad
+                    own.write_text(json.dumps(doc))
+                    refused = subprocess.run([at, 'kill', 'refuse-task'], cwd=repo, env=env,
+                                             capture_output=True, text=True, timeout=15)
+                    detail = 'exit %s\n%s\n%s' % (refused.returncode, refused.stdout, refused.stderr)
+                    check(label,
+                          refused.returncode != 0 and same_process(shell_pid, shell['start'])
+                          and same_process(resist['pid'], resist['start'])
+                          and pidfile.exists(), detail)
+                own.write_text(original)
+            else:
+                check('ownership file exists before the provider is killable', False, 'no .own file')
+        finally:
+            if original:
+                own.write_text(original)
 
         # The shell helper that feeds identity checks must split /proc stat at
         # the last ')': a comm that itself contains ')' must not shift fields.
