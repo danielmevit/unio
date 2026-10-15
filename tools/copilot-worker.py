@@ -226,7 +226,16 @@ def require_result(event):
     changes = usage["codeChanges"]
     if not isinstance(changes, dict) or set(changes) != CHANGE_KEYS:
         raise Refusal(INVALID)
-    if not all(whole_number(changes[key]) and changes[key] >= 0 and finite_number(changes[key]) for key in CHANGE_KEYS):
+    for key in ("linesAdded", "linesRemoved"):
+        val = changes[key]
+        if not whole_number(val) or val < 0 or not finite_number(val):
+            raise Refusal(INVALID)
+    files = changes["filesModified"]
+    valid_files = (
+        (whole_number(files) and files >= 0 and finite_number(files))
+        or (isinstance(files, list) and all(identifier(item) for item in files))
+    )
+    if not valid_files:
         raise Refusal(INVALID)
     if event["exitCode"] != 0:
         raise Refusal(INVALID)
