@@ -29658,6 +29658,15 @@ cases, 12 PID checks and 40 installed selftests, with old-fail/new-pass evidence
 final native verification and a
 separate OpenCode Go / DeepSeek V4 Pro / high review remain pending.
 
+A subsequent dedicated ChatGPT / Codex 0.162.1 / Sol 6.1 high correction
+finished Source 0 in 22m18s (`53882eb`, `de336b0`). It addressed a demonstrated
+false verification hash match and a concurrent ownership-file collision. Its
+12 identity, 38 loop-brake and 52 stopping checks passed. A Windows-mounted
+loop-check timeout and the separate private-tmpfs pass remain distinct. Native
+verification and independent DeepSeek Go high review are pending. The owner
+requests low effort for NEW Sol assignments; this already running high Source
+kept its frozen settings. No new low call or savings claim is made here.
+
 ### Owner availability for Unio development — 2026-10-15
 
 Claude Opus is reserved indefinitely for the owner's separate projects.

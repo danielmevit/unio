@@ -10,6 +10,14 @@ started, avoid duplicate save validation, and accept real Copilot result metadat
   must be confirmed before the final save; unproved cleanup keeps the worker
   and shared-account slot held. Confirm completed cancellation after the runner
   removes its control files. Identity-checked pidfds protect the session sweep.
+- **Reliable verification identity:** compare the task with its full
+  engine-recorded dispatch revision, rather than hashes in provider output.
+  Legacy results remain readable, but missing dispatch evidence refuses
+  verification; old report prose is not a substitute for that evidence.
+- **Concurrent ownership:** per-worker runtime records keep a refused or
+  parallel same-task run from deleting another worker's controls. Public
+  background controls select the latest published run without serializing
+  provider execution.
 - **One retention validation pass:** existing save contents are deeply validated
   once during classification, preserving corrupt evidence, newest saves, claim
   pins and retention caps. The default capture deadline is unchanged.
@@ -55,7 +63,17 @@ selftest later exposed a cancellation-confirmation race; a dedicated ChatGPT /
 Codex 0.162.1 / Sol 6.1 high correction finished Source 0 with commits
 `14ee672` and `8a47af1`. Its offline checks passed 52 stopping cases, 12 PID
 safety cases and all 40 installed selftests, with old-fail/new-pass evidence.
-Final native verification and independent DeepSeek Go high review are pending.
+Its six validation commands passed, but legacy native verification incorrectly
+read a nested diagnostic hash and failed. The following full gate timed out
+near concurrent loop-brake runs; neither result is rewritten as a pass.
+
+A second dedicated ChatGPT / Codex 0.162.1 / Sol 6.1 high correction finished
+Source 0 in 22m18s with `53882eb` and `de336b0`. It preserves the full dispatch
+revision and isolates runtime ownership. Offline checks passed 12 identity,
+38 loop-brake and 52 stopping cases. The bounded loop check passed in about
+70 seconds in private tmpfs; a Windows-mounted-fixture timeout is preserved
+separately. Current native verification, DeepSeek Go high review and the
+corrected combined release gate remain pending.
 
 The combined gate, installation and publication remain pending. Until they
 finish, the official and installed release remains 0.5.18.

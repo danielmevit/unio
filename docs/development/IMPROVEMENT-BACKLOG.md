@@ -4,8 +4,8 @@ This backlog consolidates pending, accepted, and shipped functional improvements
 
 ## Current Delivery States
 
-- **Shipped**: Released globally and installed (latest: [v0.5.9](https://github.com/danielmevit/unio/releases/tag/v0.5.9)). The dashboard redesign and Copilot/fleet packaging passed the complete gate, six browser suites, artifact installation, upgrade/restore and official download checks. See [release scope](../RELEASE-0.5.9.md) and [adapter setup](../integrations/README.md).
-- **Release candidate**: No new candidate is designated. Next functional work addresses save retention, followed by supported readiness and scheduling.
+- **Shipped**: Latest official and installed release is [v0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18), with worker progress, structured adapter outcomes and Copilot proposal handling. See [release scope](../RELEASE-0.5.18.md). Older dated notes below retain their original context.
+- **Release candidate**: The private0.5.19 bundle combines owned stopping, folded save validation and Copilot metadata compatibility. A failed combined gate exposed verification and concurrent-ownership bugs; corrections are committed, with final checks/review/delivery pending. See [current evidence](../RELEASE-0.5.19.md). A candidate is not publication.
 - **Accepted Development**: Merged in `main`, passes focused checks and personal review, waiting for a release. This state alone does not mean a feature is published or installed.
 - **Partially Implemented**: Working pieces exist in `main`, but the full milestone is incomplete.
 - **Pending**: A prepared task or candidate awaiting completion or acceptance. Distinguish an active run from a queued task or a failed attempt.
@@ -38,7 +38,7 @@ This backlog consolidates pending, accepted, and shipped functional improvements
 
 ### 4. Review Aggregation and Security
 
-- **Planned**: Independent multi-lab review aggregation and security improvements. Native independent reviews are a product goal; however, the current owner delivery policy is personal lead review without spawning additional reviewer jobs.
+- **Shipped**: Native independent review collection and structured findings preserve each attempt and disagreement. The owner selects review depth through the active protocol; the lead assesses current evidence. Reviews never grant human acceptance or merge code. Further security improvements remain planned.
 
 ### 5. Context Efficiency and Measurement
 

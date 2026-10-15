@@ -15,6 +15,11 @@ remain pending. The published and installed release remains 0.5.18.
   when cleanup is Unknown. Detached sessions remain outside this boundary.
   Confirm completed cancellation after the runner removes its control files,
   preserving cancellation status and the final-save attempt.
+- Bind verification to the full engine-recorded dispatch revision, preserving
+  true task-mutation refusal even when provider diagnostics contain fake hashes.
+  Legacy results remain readable; verification needs trustworthy dispatch data.
+- Isolate runtime ownership per worker. Refused or concurrent same-task runs
+  cannot overwrite or remove another worker's active controls.
 - Fold duplicate active-save metadata/deep reads into one full validation pass,
   preserving corrupt evidence, newest saves, claim pins and caps. Isolated
   retention averaged 16.14 seconds before and 9.91 seconds after on one fixture;
