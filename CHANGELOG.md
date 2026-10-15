@@ -17,7 +17,9 @@ remain pending. The published and installed release remains 0.5.18.
   preserving cancellation status and the final-save attempt.
 - Bind verification to the full engine-recorded dispatch revision, preserving
   true task-mutation refusal even when provider diagnostics contain fake hashes.
-  Legacy results remain readable; verification needs trustworthy dispatch data.
+  Legacy results remain readable; native verification needs trustworthy dispatch
+  data. Preserve machine-only checks for never-run tasks, without fabricating
+  process success or readiness for human review.
 - Isolate runtime ownership per worker. Refused or concurrent same-task runs
   cannot overwrite or remove another worker's active controls.
 - Fold duplicate active-save metadata/deep reads into one full validation pass,

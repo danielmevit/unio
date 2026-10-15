@@ -1,6 +1,6 @@
 # Model scoreboard and delegation guide
 
-Updated 2026-10-15 from real Unio work. Read this before delegation, alongside
+Updated 2026-10-16 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
@@ -61,17 +61,27 @@ GPT-6.1 Sol / high correction finished Source 0 in 7m46s under the owner's
 explicit fix exception, committing `14ee672` and `8a47af1`. One earlier CLI configuration rejection happened before inference
 and is preserved separately. The first actual model run passed 52 stopping
 cases, 12 PID checks and 40 installed selftests, with old-fail/new-pass evidence;
-final native verification and a
-separate OpenCode Go / DeepSeek V4 Pro / high review remain pending.
+all six validation commands passed, but the old verifier incorrectly read a
+nested diagnostic hash. The following full gate timed out near concurrent
+loop-brake runs. Both original failures remain separate from the corrections.
 
 A subsequent dedicated ChatGPT / Codex 0.162.1 / Sol 6.1 high correction
 finished Source 0 in 22m18s (`53882eb`, `de336b0`). It addressed a demonstrated
 false verification hash match and a concurrent ownership-file collision. Its
 12 identity, 38 loop-brake and 52 stopping checks passed. A Windows-mounted
 loop-check timeout and the separate private-tmpfs pass remain distinct. Native
-verification and independent DeepSeek Go high review are pending. The owner
-requests low effort for NEW Sol assignments; this already running high Source
-kept its frozen settings. No new low call or savings claim is made here.
+verification passed five commands but timed out on the Windows-mounted loop
+fixture. The next combined gate passed all 40 selftests, then found that the
+strict dispatch requirement blocked legitimate checks for never-run tasks.
+
+A dedicated ChatGPT / Codex 0.162.1 / Sol 6.1 **low** correction finished
+Source 0 in 5m52s (`61c77dd`, `19848e9`). It reproduced the baseline failure
+and restored machine-only verification while retaining native dispatch binding
+and legacy/malformed-evidence refusal. Its quality checks passed 16 shell,
+80 contract and 26 coverage cases, identity checks passed 25, and the unchanged
+loop suite passed 38 cases in private tmpfs. Native checks and independent
+DeepSeek Go high review remain pending. This is one useful low-effort outcome;
+no per-worker subscription savings or general model-quality ranking is known.
 
 ### Owner availability for Unio development — 2026-10-15
 
@@ -81,8 +91,10 @@ Status reports cover the entire configured/approved fleet, including idle,
 benched and owner-reserved routes, not only active workers. Shared routes do
 not create separate capacity. Preserve effective identity and allowance Unknowns.
 Codex coordinates; the current owner-supplied correction instruction permits
-one dedicated Sol high fix beside the lead, with the real shared account and
-a temporary medium tier restored to low when idle. All product fixes here
+one dedicated Sol fix beside the lead, with the real shared account and
+a temporary medium tier restored to low when idle. The owner selected low
+effort for new Sol assignments during this workspace trial; earlier high calls
+kept their frozen settings. All product fixes here
 were delegated. Failures, saved work, checks, reviews and acceptance remain
 separate rather than becoming a universal model ranking.
 

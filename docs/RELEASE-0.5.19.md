@@ -12,8 +12,10 @@ started, avoid duplicate save validation, and accept real Copilot result metadat
   removes its control files. Identity-checked pidfds protect the session sweep.
 - **Reliable verification identity:** compare the task with its full
   engine-recorded dispatch revision, rather than hashes in provider output.
-  Legacy results remain readable, but missing dispatch evidence refuses
-  verification; old report prose is not a substitute for that evidence.
+  Legacy results remain readable, but missing native dispatch evidence refuses
+  verification; old report prose is not a substitute for that evidence. Tasks
+  with no native Source history can still receive machine-only checks, without
+  a fabricated process success or human acceptance.
 - **Concurrent ownership:** per-worker runtime records keep a refused or
   parallel same-task run from deleting another worker's controls. Public
   background controls select the latest published run without serializing
@@ -72,8 +74,18 @@ Source 0 in 22m18s with `53882eb` and `de336b0`. It preserves the full dispatch
 revision and isolates runtime ownership. Offline checks passed 12 identity,
 38 loop-brake and 52 stopping cases. The bounded loop check passed in about
 70 seconds in private tmpfs; a Windows-mounted-fixture timeout is preserved
-separately. Current native verification, DeepSeek Go high review and the
-corrected combined release gate remain pending.
+separately. Its native check run passed five commands and timed out on the
+Windows-mounted loop fixture; that failure remains preserved. A subsequent
+combined gate passed all 40 selftests but exposed a compatibility regression:
+verification rejected never-run tasks before checking their actual failures.
+
+ChatGPT / Codex 0.162.1 / Sol 6.1 **low** corrected that regression in
+`61c77dd` and `19848e9`, finishing Source 0 in 5m52s. The baseline failure was
+reproduced; the corrected quality suite passed 16 shell, 80 contract and 26
+coverage cases, plus 25 identity cases and the unchanged 38-case loop suite
+in private tmpfs. Actual native verification, independent OpenCode Go /
+OpenCode 1.18.35 / DeepSeek V4 Pro high review and the corrected combined
+release gate remain pending. Source success is not lead acceptance.
 
 The combined gate, installation and publication remain pending. Until they
 finish, the official and installed release remains 0.5.18.

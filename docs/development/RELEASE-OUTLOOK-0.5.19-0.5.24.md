@@ -37,7 +37,32 @@ cleanup before final saving; processes that leave that session remain unmanaged.
 The final stopping proof and combined release checks are still pending at this
 planning update. A higher timeout alone is not a performance improvement.
 
-## 0.5.20 — Continuous delegation within a clear work plan
+## Field-fix priority update — 2026-10-16
+
+The owner's cross-project field reports exposed four operational gaps that take
+priority over automatic delegation. Reserve the next coherent batch, proposed
+0.5.20, for explicit consent when workers share the lead's allowance, opt-in
+scoped WIP commits after proved cleanup, plain structured stop reasons, and
+owner-configured development/release push guards. Existing account slots, saves
+and worker guards are foundations; they do not fully solve these gaps.
+
+Freeze account/route and outcome contracts before parallel slices; keep one
+owner for CLI integration. Preserve Source exits and unaccepted WIP, normal Git
+hooks, real budget groups and Unknown allowance. Use local bare remotes for
+push tests. Initial useful budget-safety slice: 1–3 hours plus focused checks;
+minimal four-fix bundle: roughly 1–2 focused working days. These are estimates,
+not a promise of completion within one subscription allowance.
+
+Then implement owner-configurable/removable Vibe caps, proven pre-inference
+setup classification, proposal-only outcomes, declared validation outputs and
+opt-in route drift checks. Existing frozen caps and spending boundaries remain
+until explicitly changed; uncapped does not imply unlimited entitlement.
+
+The version table above records the earlier proposal. Shift continuous
+delegation and later assignments after the field-fix batch when their tasks
+are frozen; retain Windows before macOS. Do not expand the frozen0.5.19 release.
+
+## Continuous delegation within a clear work plan — after field fixes
 
 Build on the shipped task planner, explicit dispatch, shared-account slots and
 task-specific experience. An opt-in scheduler can advance ready dependencies

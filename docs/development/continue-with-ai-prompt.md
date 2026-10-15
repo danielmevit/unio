@@ -43,8 +43,10 @@ update is not a reason to end the session.
 
 Finish the current source/review evidence, finalize truthful notes, run one frozen
 combined quality gate, install/test before publication and verify official assets.
-Then the next priority is bounded optional continuous delegation in 0.5.20,
-followed by owned live sessions, scoped phone access, Windows and macOS. Read the
+Then complete the owner-authorized field fixes in one useful 0.5.20 batch:
+shared-lead allowance protection, safe opt-in WIP on cutoff, plain stop reasons
+and development/release push guards. Continuous delegation follows those
+protections, then owned live sessions, scoped phone access, Windows and macOS. Read the
 [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md). Keep CodeGraph follow-ups deferred,
 classified research local-only, and owner UI/site/brand and Eqho sessions intact.
 Eqho integration is planned after Windows foundations and must reassess its
@@ -61,7 +63,13 @@ dedicated ChatGPT/Codex0.162.1/Sol6.1 high Source finished 0 in22m18s with
 53882eb/de336b0: typed full dispatch revision and per-worker ownership. Its
 offline12identity/38loop/52stop checks pass; loop38 passed in~70s in private
 tmpfs, with a separate Windows-mounted timeout preserved. Current native
-verification and DeepSeek Go high review remain pending.
+verification passed five commands but timed out on a Windows-mounted fixture.
+The next combined gate passed all 40 selftests, then exposed standalone
+verification incompatibility. A new ChatGPT/Codex0.162.1/Sol6.1 LOW Source
+finished 0 in5m52s with61c77dd/19848e9: quality16+80+26, identity25 and
+unchangedloop38 passed inprivateTmpfs. Native checks, DeepSeek Go high review
+and the new integrated acceptance gate remain pending; original failures stay
+preserved. Never-run machine-only checks do not invent native Source success.
 
 The latest owner requests LOW for all NEW Sol workers, overriding this
 workspace's high correction default during the trial. Keep the real account

@@ -21,8 +21,11 @@ See the [release evidence and limits](../RELEASE-0.5.19.md).
 
 The measured retention phase improved on one fixture, while full captures showed
 no clear wall-time reduction. Do not advertise a general save-speed improvement.
-After this bounded release, prioritize optional continuous delegation, then owned
-live sessions, lead continuity and scoped phone access. Native Windows still
+Owner update, 2026-10-16: after this bounded release, prioritize the field
+fixes together: protect the lead's shared allowance, preserve interrupted work
+with opt-in WIP commits, explain stop reasons and guard push destinations.
+Then implement optional continuous delegation, owned live sessions, lead
+continuity and scoped phone access. Native Windows still
 precedes macOS in the [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md).
 
 The functional core includes recovery saving, shared-account policy and capacity
@@ -45,7 +48,7 @@ It also includes static worker-command diagnostics; combined release checks and
 installation passed. Further release work should freeze a useful bundle and run
 one combined gate, rather than publish each corrective slice separately.
 
-The [proposed six-release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md) explains the scopes, implementation approach and estimates through 0.5.24.
+The [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md) explains the proposed scopes, implementation approach and estimates. Its latest priority update inserts the field fixes before automatic delegation; later version assignments are provisional.
 
 ## Current focus: finish the functional core
 
