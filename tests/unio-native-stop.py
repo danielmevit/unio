@@ -402,6 +402,7 @@ while True:
             check('public kill returned', False, out + err + '\n' + survivors())
         detail = 'exit %s\n%s\n%s\nheld_while_alive=%s\n%s' % (
             killer.returncode, out, err, saw_held, survivors())
+        check('public kill confirms completed cancellation successfully', killer.returncode == 0, detail)
         check('worker stayed occupied while the owned descendant was alive', saw_held, detail)
         check('public kill stopped the reparented TERM-resistant descendant',
               not same_process(resist['pid'], resist['start']), detail)
@@ -415,6 +416,10 @@ while True:
               and same_process(outsider.pid, outsider_start), detail)
         check('worker and account are free only after owned descendants are gone',
               not worker_held() and not account_held() and not pidfile.exists(), detail)
+        attempt = json.loads((root / 'coord' / 'saves' / 'attempts' / 'mock.json').read_text())
+        check('successful kill preserves cancelled Source status and final save',
+              attempt.get('task') == 'kill-task' and attempt.get('reason') == 'final-failure'
+              and attempt.get('provider_exit') == 143, json.dumps(attempt))
 
         # Natural provider exit must reap the same owned descendants.
         env['NATIVE_STOP_CASE'] = 'exit'
@@ -460,6 +465,7 @@ while True:
             elapsed = float((shim_dir / 'delay-done').read_text())
         detail = 'exit %s elapsed %s\n%s\n%s\n%s' % (
             saved.returncode, elapsed, saved.stdout, saved.stderr, survivors())
+        check('public kill confirms cancellation after the final save', saved.returncode == 0, detail)
         check('final save finished its bounded attempt after cancellation',
               elapsed is not None and elapsed >= 1.5, detail)
         check('cancellation still stopped the owned descendant',
@@ -706,6 +712,48 @@ while True:
               and fields[0] == str(info['start']) and fields[1] == info['state'],
               'comm=%r out=%r expected start=%s state=%s' % (
                   comm, probe.stdout, info['start'], info['state']))
+
+        # Exercise the installed confirmation helper's terminal-state boundary.
+        # It is called publicly only after _owner-signal validated the runner;
+        # no missing-file shortcut is available before signaling.
+        embedded = script.split("<<'SAVES_PY'\n", 1)[1].split('\nSAVES_PY', 1)[0]
+        embedded = embedded.rsplit('\nsys.exit(main(sys.argv[1:]))', 1)[0]
+        native = {}
+        exec(compile(embedded, '<installed saves helper>', 'exec'), native)
+        probe_root = base / 'completed-state'
+        reports = probe_root / 'coord' / 'reports'
+        reports.mkdir(parents=True)
+
+        def completed():
+            try:
+                return native['owner_completed'](str(probe_root), 'done', shell_pid, shell['start'])
+            except (native['Refuse'], OSError):
+                return False
+
+        # The corrupted-ownership fixture is still live here. Even absent
+        # control files cannot confirm a recorded live parent's termination.
+        check('absent controls cannot confirm a live recorded parent', not completed())
+        observed_stat = native['proc_stat']
+        native['proc_stat'] = lambda pid: 'unproved'
+        check('unproved parent identity cannot confirm completion', not completed())
+        native['proc_stat'] = lambda pid: None
+        check('gone parent and genuinely absent controls confirm completion', completed())
+        for suffix in ('.pid', '.own'):
+            control = reports / ('done' + suffix)
+            for kind in ('malformed', 'dangling-symlink', 'directory', 'fifo'):
+                if kind == 'malformed':
+                    control.write_text('{')
+                elif kind == 'dangling-symlink':
+                    control.symlink_to(reports / 'missing-target')
+                elif kind == 'directory':
+                    control.mkdir()
+                else:
+                    os.mkfifo(control)
+                check('remaining %s %s is not terminal absence' % (suffix, kind), not completed())
+                control.rmdir() if kind == 'directory' else control.unlink()
+        reports.rmdir()
+        check('missing reports directory is not terminal cleanup evidence', not completed())
+        native['proc_stat'] = observed_stat
         print('native stop: %d checks passed' % passed)
     finally:
         cleanup()
