@@ -4,30 +4,26 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.19 — recovery, saving and Copilot preparation — unreleased
+## 0.5.19 — safer stopping and measured saving — unreleased
 
-See [candidate scope and acceptance state](docs/RELEASE-0.5.19.md).
-This bundle is still being prepared and nothing in it is accepted or
-shipped; the published and installed release remains 0.5.18.
+See [scope, evidence and limits](docs/RELEASE-0.5.19.md).
+The candidate is assembled; final stopping review and combined delivery checks
+remain pending. The published and installed release remains 0.5.18.
 
-- Owned native stopping: preserve the exact saved Grok stop work after its
-  HTTP 402 usage stop. The inherited patch 7588d8e passed seven native
-  checks, but lead and independent review found the final capture reachable
-  after cleanup Unknown, unreadable-identity handling and overbroad
-  foreign-record claims. A bounded correction is active and not accepted;
-  no resolution or full containment is claimed yet.
-- Saving: diagnosis 02f316c measured small populated stores and isolated
-  duplicate metadata/deep passes. The OpenCode Go GLM 5.3 high
-  implementation 33594e0 folds active classification into a single deep
-  traversal; its tests and matched measurements are still active. Full
-  content validation, newest/corrupt/pin protection, bounds and rollback
-  remain required. No wall-clock speedup or filesystem causation is claimed.
-- Copilot: a real Copilot Free CLI 1.0.95 Auto Balance run ended native 0
-  but adapter Source 2 because filesModified was an array, not an integer.
-  The Gemini correction 721c56c accepts documented filename arrays plus
-  legacy bounded counts; native verification passed and an offline replay
-  of the saved native stream matches the exact assistant text. Independent
-  review and a new live call with the corrected code remain pending.
+- Sweep owned Linux provider sessions across nested process groups and reparented
+  children. Confirm cleanup before the final save; keep worker/account ownership
+  when cleanup is Unknown. Detached sessions remain outside this boundary.
+- Fold duplicate active-save metadata/deep reads into one full validation pass,
+  preserving corrupt evidence, newest saves, claim pins and caps. Isolated
+  retention averaged 16.14 seconds before and 9.91 seconds after on one fixture;
+  full captures showed no clear wall-time reduction or default-budget guarantee.
+- Accept Copilot CLI 1.0.95 filename-string arrays, including `[]`, plus legacy
+  integer fixture counts. Preserve exact root proposal text and malformed-result
+  refusal. Evidence includes native schemas, saved-stream replay and offline
+  fixtures; a new live call through the corrected parser was not run.
+- Document full-fleet status, requested subscription/model/effort provenance and
+  owner holds. Add the selected Eqho transcript/history plan after Windows
+  foundations, with a fresh owner-approved source assessment before adoption.
 
 ## 0.5.18 — worker reliability — 2026-10-14
 
