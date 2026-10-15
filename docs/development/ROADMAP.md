@@ -9,13 +9,20 @@ outcomes, and exact Copilot native JSONL proposal text. One frozen full gate,
 artifact/upgrade/install checks, dashboard identity and six official download
 hashes passed. UI, site and brand work were preserved.
 
-The proposed v0.5.19 milestone is measured saving and recovery performance on
-populated stores. Start with a bounded profile, optimize one proven bottleneck,
-then compare equivalent histories and verify exact restoration. Estimate
-2–4 hours for a focused slice or 4–8 hours if deeper changes are needed.
-The two latest provider profiling attempts returned no report; diagnosis is
-still unfinished and no new speedup is claimed. Lead-session continuity,
-handoffs and scoped phone access follow this functional priority.
+Update, 2026-10-15: the proposed v0.5.19 bundle combines three
+preparation tracks: owned native stopping for explicitly recorded Linux
+provider sessions, measured saving on populated stores, and exact Copilot
+result handling. None is accepted yet. The inherited stopping patch
+(`7588d8e`, seven native checks) still needs its active bounded correction
+for final-capture, unreadable-identity and foreign-record findings; the
+single-deep-traversal saving implementation (`33594e0`) still needs tests
+and matched measurements; the Copilot array correction (`721c56c`) passed
+native verification and an offline replay but awaits independent review and
+a live call. See the [unreleased release guide](../RELEASE-0.5.19.md).
+After acceptance, the next useful continuity work is finishing the saving
+measurements and the stopping correction, then lead-session continuity,
+handoffs and scoped phone access. Native Windows still precedes native
+macOS in the [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md).
 
 The functional core includes recovery saving, shared-account policy and capacity
 observations, managed daily startup, read-only planning, explicit single-attempt

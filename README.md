@@ -59,6 +59,13 @@ Antigravity connector distinguishes process exit from its structured result.
 Copilot proposals preserve exact native JSONL text. Read the
 [release notes and limitations](docs/RELEASE-0.5.18.md).
 
+**In development, 0.5.19 (unreleased):** recovery preparation for owned
+native stopping in explicitly recorded Linux provider sessions, measured
+saving on populated stores, and exact Copilot result handling. The code and
+its acceptance evidence are still being finished by separate workers; nothing
+in that bundle is shipped or accepted yet. Read the
+[candidate scope, limits and acceptance state](docs/RELEASE-0.5.19.md).
+
 **Added in 0.5.17:** safer project selection and an opt-in managed
 Codex worker, with owned status/effort requests and explicit startup settings.
 Effort updates target future turns; they do not establish a change to current

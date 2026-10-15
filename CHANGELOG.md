@@ -4,10 +4,35 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.19 — recovery, saving and Copilot preparation — unreleased
+
+See [candidate scope and acceptance state](docs/RELEASE-0.5.19.md).
+This bundle is still being prepared and nothing in it is accepted or
+shipped; the published and installed release remains 0.5.18.
+
+- Owned native stopping: preserve the exact saved Grok stop work after its
+  HTTP 402 usage stop. The inherited patch 7588d8e passed seven native
+  checks, but lead and independent review found the final capture reachable
+  after cleanup Unknown, unreadable-identity handling and overbroad
+  foreign-record claims. A bounded correction is active and not accepted;
+  no resolution or full containment is claimed yet.
+- Saving: diagnosis 02f316c measured small populated stores and isolated
+  duplicate metadata/deep passes. The OpenCode Go GLM 5.3 high
+  implementation 33594e0 folds active classification into a single deep
+  traversal; its tests and matched measurements are still active. Full
+  content validation, newest/corrupt/pin protection, bounds and rollback
+  remain required. No wall-clock speedup or filesystem causation is claimed.
+- Copilot: a real Copilot Free CLI 1.0.95 Auto Balance run ended native 0
+  but adapter Source 2 because filesModified was an array, not an integer.
+  The Gemini correction 721c56c accepts documented filename arrays plus
+  legacy bounded counts; native verification passed and an offline replay
+  of the saved native stream matches the exact assistant text. Independent
+  review and a new live call with the corrected code remain pending.
+
 ## 0.5.18 — worker reliability — 2026-10-14
 
 See [candidate scope and trial limits](docs/RELEASE-0.5.18.md).
-The published and installed release remains 0.5.17.
+0.5.18 was published and installed on 2026-10-14.
 
 - Report fixed Vibe progress labels and a distinct liveness heartbeat.
   One live GLM 5.3 high run showed a safe event at 12:09:17 and a

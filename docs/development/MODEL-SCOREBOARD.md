@@ -5,6 +5,34 @@ the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start at high or the supported middle and keep GLM at high.
 
+## Recovery release preparation — 2026-10-15
+
+Exact subscription, CLI, requested model/effort and actual outcome for the
+unreleased 0.5.19 preparation batch. Operational failures, proposals,
+checked code and acceptance stay separate; nothing here ranks models or
+infers quota savings.
+
+- Grok subscription / Build 1.0.52 / `grok-4.7` / xhigh: the native stopping
+  task ended with reported usage exhaustion at Source 1; its exact saved
+  work is preserved as `8aa92bb` and inherited by later workers.
+- Mistral subscription / Vibe 2.26.1 / GLM 5.3 high: completed the inherited
+  stopping patch as `7588d8e` with seven native checks passing; a later
+  ordering fix is still needed, so this is checked code, not acceptance.
+- Antigravity / agy 1.3.5 / Gemini 3.8 Flash high: committed `721c56c`, the
+  verified Copilot `filesModified` array correction; native verification
+  passed and an offline replay of the saved native stream matches the exact
+  assistant text. Independent review remains pending.
+- A Gemini review returned APPROVE while its own concrete findings
+  contradicted that verdict; the lead withheld acceptance. A recorded
+  verdict is not evidence that the findings were resolved.
+- Copilot Free / CLI 1.0.95 / Auto Balance: a real run ended native 0 but
+  adapter Source 2 because `filesModified` was an array, not an integer;
+  the underlying lab and model remain Unknown. This is a schema mismatch,
+  not a model answer.
+- An earlier local Mistral ordering failure (Source 2) was the lead's
+  missing receipt-parent setup before any Vibe CLI call, not a model
+  capability failure.
+
 ## Readiness and findings implementation — 2026-10-13
 
 Read the [dated route checks](https://github.com/danielmevit/unio/blob/main/docs/development/WORKER-READINESS-2026-10-13.md)
