@@ -15730,6 +15730,21 @@ do not make inference calls or read authentication stores just to fill a
 status table. Owner holds take priority over an alias's enabled flag. Preserve
 those holds in the project's instructions and handoff until explicitly revoked.
 
+## Check the local launcher before admission
+
+For each newly prepared or changed Source/review launcher, check syntax without
+executing it: use `ast.parse` for a local Python wrapper or `bash -n` for a shell
+wrapper. Verify the pinned CLI version, adapter/config hashes and required private
+receipt directories before opening a native workflow. Transport prompts as files
+or safely encoded data rather than interpolating prose into source literals.
+These local checks make no model call and do not authorize command probes,
+credential inspection or changes to a frozen active run.
+
+Preserve a failed admission separately from any actual provider invocation.
+Correcting a demonstrated local setup defect does not prove a model failed or
+returned capacity. Reuse unchanged passing code validation only after confirming
+the exact revision and clean worktree; preserve the original failed evidence.
+
 ## Name the model route in every work summary
 
 Owner rule, recorded 2026-10-12: a model name alone does not identify the
