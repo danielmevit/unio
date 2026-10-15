@@ -489,65 +489,104 @@ while True:
               not worker_held() and not account_held()
               and not (root / 'coord' / 'reports' / 'term-task.pid').exists(), detail)
 
-        # Cleanup Unknown before final capture: final capture must not run while
-        # owned descendants are unproved or live, worker and account stay held,
-        # and cleanup recovery allows the bounded final capture.
+        # Cleanup Unknown before final capture: the supervisor must prove owned
+        # cleanup clear before any final capture. The regression synchronizes on
+        # the supervisor's own Unknown verdict, not on provider readiness, and
+        # proves no final save attempt can occur until recovery removes the
+        # unproved identity marker.
         env['NATIVE_STOP_CASE'] = 'unknown'
         env['UNIO_TEST_FAULT_DIR'] = str(fixture)
         for stale in ('ready.json', 'coop-term'):
             (fixture / stale).unlink(missing_ok=True)
-        started = subprocess.run([at, 'run', '-b', 'mock', 'unknown-task'], cwd=repo, env=env,
-                                 capture_output=True, text=True, timeout=30)
-        check('unknown-case background run starts', started.returncode == 0 and 'started in background' in started.stdout,
-              started.stdout + started.stderr)
+        run_out = base / 'unknown-run.out'
+        run_err = base / 'unknown-run.err'
+        with open(run_out, 'wb') as out_stream, open(run_err, 'wb') as err_stream:
+            unknown_run = subprocess.Popen([at, 'run', 'mock', 'unknown-task'], cwd=repo, env=env,
+                                           stdout=out_stream, stderr=err_stream)
+        shells.append({'pid': unknown_run.pid, 'start': proc_stat(unknown_run.pid)['start']})
         ready = wait_ready()
         note_ready(ready)
         resist, coop, detached = ready['resist'], ready['coop'], ready['detached']
-        pidfile = root / 'coord' / 'reports' / 'unknown-task.pid'
-        shell_pid = int(pidfile.read_text().strip())
-        shell = proc_stat(shell_pid)
-        shells.append({'pid': shell_pid, 'start': shell['start']})
         fault_marker = fixture / ('proc-stat-%d' % resist['pid'])
-
-        # Wait to observe the held Unknown state while the unproved descendant is live.
-        # The supervisor must not attempt final capture while owned cleanup is Unknown.
         attempt_file = root / 'coord' / 'saves' / 'attempts' / 'mock.json'
-        held_observed = False
-        deadline = time.monotonic() + 5
+
+        def unknown_attempt():
+            if not attempt_file.exists():
+                return {}
+            try:
+                doc = json.loads(attempt_file.read_text())
+            except (OSError, ValueError):
+                return {}
+            return doc if doc.get('task') == 'unknown-task' else {}
+
+        # Synchronize on the actual cleanup state: the supervisor must report
+        # owned cleanup Unknown while the owned descendant is still live.
+        deadline = time.monotonic() + 30
+        note = ''
         while time.monotonic() < deadline:
-            if worker_held() and account_held() and same_process(shell_pid, shell['start']) and same_process(resist['pid'], resist['start']):
-                held_observed = True
+            text = run_err.read_text(errors='replace')
+            lines = [line for line in text.splitlines() if 'owned cleanup Unknown' in line]
+            if lines:
+                note = lines[0]
+                break
+            if unknown_run.poll() is not None:
                 break
             time.sleep(0.05)
-        attempt_doc = json.loads(attempt_file.read_text()) if attempt_file.exists() else {}
-        detail = 'held=%s shell=%s resist=%s attempt=%s' % (
-            held_observed, same_process(shell_pid, shell['start']),
-            same_process(resist['pid'], resist['start']), attempt_doc.get('reason'))
+        detail = 'note=%r run_alive=%s resist=%s attempt=%s' % (
+            note, unknown_run.poll() is None, same_process(resist['pid'], resist['start']),
+            unknown_attempt().get('reason'))
         check('unproved owned descendant keeps cleanup Unknown and holds slots',
-              held_observed and same_process(resist['pid'], resist['start']), detail)
+              'owned cleanup Unknown' in note and unknown_run.poll() is None
+              and same_process(resist['pid'], resist['start'])
+              and worker_held() and account_held(), detail)
+
+        # The supervisor is provably in the Unknown cleanup loop now. Watch for
+        # a guard violation: any final save attempt for this task, or the run
+        # completing, while the owned descendant is still live and unproved.
+        violation = ''
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            attempt = unknown_attempt()
+            if attempt.get('reason') == 'final':
+                violation = 'final save attempted while owned cleanup was Unknown'
+                break
+            if unknown_run.poll() is not None:
+                violation = 'run completed while owned cleanup was Unknown'
+                break
+            time.sleep(0.05)
+        detail = 'violation=%r run_alive=%s resist=%s worker_held=%s account_held=%s attempt=%s' % (
+            violation, unknown_run.poll() is None, same_process(resist['pid'], resist['start']),
+            worker_held(), account_held(), unknown_attempt().get('reason'))
         check('final save not attempted while owned cleanup is Unknown',
-              attempt_doc.get('reason') != 'final', detail)
+              violation == '' and same_process(resist['pid'], resist['start']), detail)
 
         # Recovery: remove the fault injection so cleanup can be proved clear.
         fault_marker.unlink(missing_ok=True)
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline and same_process(shell_pid, shell['start']):
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and unknown_run.poll() is None:
             time.sleep(0.05)
-        final_attempt = json.loads(attempt_file.read_text()) if attempt_file.exists() else {}
-        recovery_detail = 'shell_gone=%s resist_gone=%s worker_held=%s account_held=%s reason=%s' % (
-            not same_process(shell_pid, shell['start']),
-            not same_process(resist['pid'], resist['start']),
-            worker_held(), account_held(), final_attempt.get('reason'))
+        final_attempt = unknown_attempt()
+        recovery_detail = ('exit=%s resist=%s coop=%s worker_held=%s account_held=%s own=%s reason=%s\n%s\n%s'
+                          % (unknown_run.returncode, same_process(resist['pid'], resist['start']),
+                             same_process(coop['pid'], coop['start']), worker_held(), account_held(),
+                             (root / 'coord' / 'reports' / 'unknown-task.own').exists(),
+                             final_attempt.get('reason'),
+                             run_out.read_text(errors='replace'), run_err.read_text(errors='replace')))
         check('recovery establishes clear cleanup and completes run',
-              not same_process(shell_pid, shell['start']), recovery_detail)
+              unknown_run.poll() is not None and unknown_run.returncode == 0, recovery_detail)
         check('recovery reaps the owned descendant',
-              not same_process(resist['pid'], resist['start']), recovery_detail)
+              not same_process(resist['pid'], resist['start'])
+              and not same_process(coop['pid'], coop['start'])
+              and (fixture / 'coop-term').is_file(), recovery_detail)
         check('recovery releases worker and account only after clear cleanup',
-              not worker_held() and not account_held() and not pidfile.exists(), recovery_detail)
+              not worker_held() and not account_held()
+              and not (root / 'coord' / 'reports' / 'unknown-task.own').exists(), recovery_detail)
         check('final save captured after proved cleanup with provider status',
               final_attempt.get('reason') == 'final' and final_attempt.get('provider_exit') == 0, recovery_detail)
         check('unrelated processes survived recovery',
-              same_process(sibling.pid, sibling_start) and same_process(outsider.pid, outsider_start), recovery_detail)
+              same_process(detached['pid'], detached['start'])
+              and same_process(sibling.pid, sibling_start)
+              and same_process(outsider.pid, outsider_start), recovery_detail)
         env.pop('UNIO_TEST_FAULT_DIR', None)
 
         # A live run with corrupted ownership must not be signaled.

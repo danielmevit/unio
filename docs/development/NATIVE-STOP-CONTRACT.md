@@ -115,6 +115,13 @@ is not cut short.
 No automatic worker retry, resubmission, quota inference, provider-output
 policy change, or credential change is part of this cleanup.
 
+The Unknown regression proof synchronizes on the supervisor's own cleanup
+verdict, not on provider readiness: while the owned session is unproved, no
+final save attempt for the task and no run completion may be observable, and
+recovery must precede the final capture. Test-only fault injection through
+the fault directory is scoped to `proc-stat` identity faults, so a marker for
+one unreadable pid can never fail an unrelated save operation.
+
 ## Failures
 
 | Situation | Result |
