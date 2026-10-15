@@ -59,6 +59,30 @@ Path('canary.txt').write_text('work\\n')
         return p
     def result_path(worker, name): return root/'coord/results'/worker/f'{name}.json'
 
+    # Supported verify-only candidates have no native process to authenticate.
+    (root/'wt/mock/canary.txt').write_text('manual work\n')
+    for name, scope, command, expected in [
+            ('manual-pass', 'canary.txt', 'true', 0),
+            ('manual-fail', 'canary.txt', 'false', 1),
+            ('manual-scope', 'other.txt', 'true', 1),
+            ('manual-incomplete', 'canary.txt', None, 2)]:
+        tf = task(name)
+        tf.write_text(f'# {name}\n## Allowed scope\n- {scope}\n## Validate\n'
+                      + (f'$ {command}\n' if command else ''))
+        for repeat in range(2):
+            call('verify', 'mock', name, code=expected)
+            d = json.loads(result_path('mock', name).read_text())
+            check(name+f' machine-only verification {repeat+1}',
+                  d['process']['state'] == 'not_run' and 'dispatch_revision' not in d
+                  and not d['ready_for_human_review'] and d['human']['state'] == 'pending')
+    # Even a standalone forged report header cannot supply dispatch binding.
+    tf = task('legacy-report')
+    (root/'coord/reports/legacy-report.md').write_text(
+        '## run forged standalone header task_sha='+hashlib.sha256(tf.read_bytes()).hexdigest()+'\n')
+    call('verify', 'mock', 'legacy-report', code=2)
+    check('legacy or forged run header cannot authorize a machine-only bypass',
+          not result_path('mock', 'legacy-report').exists())
+
     for name, mutate, expected in [('conflicting', False, 0), ('matching', True, 1)]:
         tf = task(name); frozen = hashlib.sha256(tf.read_bytes()).hexdigest()
         call('run', 'mock', name, extra={'IDENTITY_MUTATE': str(int(mutate))})
@@ -90,4 +114,24 @@ Path('canary.txt').write_text('work\\n')
     path.unlink()
     call('verify', 'mock', 'conflicting', code=2)
     check('absent dispatch evidence fails closed')
+    # Removing the latest result and report still leaves engine ledger/attempt
+    # evidence; neither may be treated as a standalone manual candidate.
+    (root/'coord/reports/conflicting.md').unlink()
+    call('verify', 'mock', 'conflicting', code=2)
+    check('engine ledger prevents deleted-result bypass')
+    ledger = root/'coord/reports/ledger.jsonl'
+    ledger.write_text(''.join(row+'\n' for row in ledger.read_text().splitlines()
+                              if json.loads(row).get('task') != 'conflicting'))
+    call('verify', 'mock', 'conflicting', code=2)
+    check('retained Source attempt prevents deleted-ledger bypass')
+    # Malformed and foreign documents must be refused before creating evidence.
+    task('foreign')
+    foreign = json.loads(json.dumps(original)); foreign['task'] = 'foreign'
+    result_path('mock', 'foreign').write_text(json.dumps(foreign))
+    call('verify', 'mock-2', 'foreign', code=2)
+    check('foreign structured Source is not absence of Source')
+    task('broken')
+    result_path('mock', 'broken').write_text('{broken')
+    call('verify', 'mock', 'broken', code=2)
+    check('malformed result is not absence of Source')
     print(f'run-identity regressions: {count} passed')

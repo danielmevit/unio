@@ -1,0 +1,1 @@
+Restore machine-only verify scope/check/commit validation for tasks with no Source, while requiring structured dispatch binding for retained native Source evidence and keeping manual results unaccepted.

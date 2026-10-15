@@ -20478,10 +20478,39 @@ try:
     if cmd=='preflight': pass
     elif cmd=='snapshot': print(json.dumps(snapshot(*a),sort_keys=True,separators=(',',':')))
     elif cmd=='dispatch-sha':
-        d = load(*a)
-        if d['process']['state'] == 'not_run' or not revision(d.get('dispatch_revision')):
-            fail('dispatch binding unavailable; legacy reports are not dispatch evidence')
-        print(d['dispatch_revision']['task_sha256'])
+        root, worker, task = a
+        d = load(*a, missing=True)
+        if d['process']['state'] != 'not_run':
+            if not revision(d.get('dispatch_revision')):
+                fail('dispatch binding unavailable; legacy reports are not dispatch evidence')
+            print(d['dispatch_revision']['task_sha256'])
+        else:
+            # Absence of a Source permits machine-only checks, never a native
+            # delivery claim. Retained history prevents a lost/legacy result
+            # from turning an actual Source into a verify-only candidate.
+            if 'dispatch_revision' in d:
+                fail('dispatch evidence conflicts with not_run process')
+            ledger = safe(root, 'coord', 'reports', 'ledger.jsonl')
+            if os.path.exists(ledger):
+                for row in regular(ledger).splitlines():
+                    event = json.loads(row)
+                    if not isinstance(event, dict): fail('malformed Source ledger')
+                    if event.get('task') == task and event.get('event') in ('run_start', 'run'):
+                        fail('dispatch binding unavailable for recorded Source')
+            retry_path = safe(root, 'coord', 'retries', task, 'state.json')
+            if os.path.exists(retry_path):
+                fail('dispatch binding unavailable for retained Source attempts')
+            results = safe(root, 'coord', 'results')
+            if os.path.isdir(results):
+                for entry in os.scandir(results):
+                    other = safe(root, 'coord', 'results', entry.name, task + '.json')
+                    if entry.name != worker and os.path.lexists(other):
+                        fail('foreign task result cannot establish absence of Source')
+            report = safe(root, 'coord', 'reports', task + '.md')
+            if os.path.exists(report) and re.search(rb'^## run ', regular(report), re.M):
+                fail('legacy run report requires structured dispatch evidence')
+            # Empty output is deliberately distinct from a full dispatch SHA.
+            # No task hash, Source identity or process success is fabricated.
     elif cmd=='update': update(*a)
     elif cmd=='retry': retry(*a)
     elif cmd=='gate': gate(*a)
@@ -25894,7 +25923,7 @@ cmd_verify() {
   local tampered=0 run_sha cur_sha
   run_sha=$(quality dispatch-sha "$root" "$worker" "$task") || return $?
   cur_sha=$(sha256sum "$tf" | cut -d' ' -f1)
-  [ "$run_sha" = "$cur_sha" ] || tampered=1
+  [ -z "$run_sha" ] || [ "$run_sha" = "$cur_sha" ] || tampered=1
 
   local changed commits changed_file
   # --no-renames so a rename is seen as delete+add and BOTH paths get scoped:
