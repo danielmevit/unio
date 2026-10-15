@@ -1,0 +1,2 @@
+### Fixed
+- Source-only correction of the preserved native-stop work (NATIVE-STOP-GROK-XHIGH-1): the supervisor is now signalled only through a pidfd with revalidated start/session identity (no numeric fallback), `schema_version` must be the exact integer 1 so a JSON boolean is refused, and `/proc` stat is split at the last `)` so a parenthesised comm cannot forge an identity match. Product version stays 0.5.18.

@@ -269,7 +269,7 @@ while True:
     subprocess.run([at, 'tier', 'low'], cwd=repo, env=env, check=True, capture_output=True)
     subprocess.run([at, 'lead', 'none'], cwd=repo, env=env, check=True, capture_output=True)
     tasks = root / 'coord' / 'tasks'
-    for name in ('kill-task', 'exit-task', 'save-task', 'refuse-task'):
+    for name in ('kill-task', 'exit-task', 'save-task', 'term-task', 'refuse-task'):
         (tasks / (name + '.md')).write_text('# Offline fixture ' + name + '\n')
 
     exact = []
@@ -451,6 +451,40 @@ while True:
               and not worker_held() and not account_held(), detail)
         (shim_dir / 'delay-save').unlink(missing_ok=True)
 
+        # A TERM delivered straight to the background shell must reach the
+        # supervisor through the pidfd route and reap the owned session
+        # before the worker and the account are released.
+        env['NATIVE_STOP_CASE'] = 'kill'
+        for stale in ('ready.json', 'coop-term'):
+            (fixture / stale).unlink(missing_ok=True)
+        started = subprocess.run([at, 'run', '-b', 'mock', 'term-task'], cwd=repo, env=env,
+                                 capture_output=True, text=True, timeout=30)
+        check('term-case background run starts', started.returncode == 0, started.stdout + started.stderr)
+        ready = wait_ready()
+        note_ready(ready)
+        shell_pid = int((root / 'coord' / 'reports' / 'term-task.pid').read_text().strip())
+        shell = proc_stat(shell_pid)
+        shells.append({'pid': shell_pid, 'start': shell['start']})
+        resist, coop, detached = ready['resist'], ready['coop'], ready['detached']
+        os.kill(shell_pid, signal.SIGTERM)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and same_process(shell_pid, shell['start']):
+            time.sleep(0.1)
+        detail = 'shell gone=%s\n%s' % (not same_process(shell_pid, shell['start']), survivors())
+        check('direct TERM stopped the background shell',
+              not same_process(shell_pid, shell['start']), detail)
+        check('direct TERM reaped the reparented descendant via the pidfd route',
+              not same_process(resist['pid'], resist['start']), detail)
+        check('direct TERM delivered TERM to the cooperative descendant',
+              (fixture / 'coop-term').is_file() and not same_process(coop['pid'], coop['start']), detail)
+        check('direct TERM leaves the detached helper and unrelated processes',
+              same_process(detached['pid'], detached['start'])
+              and same_process(sibling.pid, sibling_start)
+              and same_process(outsider.pid, outsider_start), detail)
+        check('direct TERM releases the worker only after owned cleanup',
+              not worker_held() and not account_held()
+              and not (root / 'coord' / 'reports' / 'term-task.pid').exists(), detail)
+
         # A live run with corrupted ownership must not be signaled.
         env['NATIVE_STOP_CASE'] = 'kill'
         (fixture / 'ready.json').unlink(missing_ok=True)
@@ -487,8 +521,60 @@ while True:
                   refused.returncode != 0 and same_process(shell_pid, shell['start'])
                   and same_process(resist['pid'], resist['start'])
                   and pidfile.exists(), detail)
+            # Each remaining identity defect keeps the exact supported shape
+            # except for one field, so only that field's validation can refuse.
+            tampering = (
+                ('boolean schema_version is refused as an identity record', 'schema_version', True),
+                ('stale boot identity is refused', 'boot_id', '00000000-0000-0000-0000-000000000000'),
+                ('string pid type is refused', 'shell_pid', str(shell_pid)),
+            )
+            for label, field, bad in tampering:
+                own.write_text(original)
+                doc = json.loads(original)
+                doc[field] = bad
+                own.write_text(json.dumps(doc))
+                refused = subprocess.run([at, 'kill', 'refuse-task'], cwd=repo, env=env,
+                                         capture_output=True, text=True, timeout=15)
+                detail = 'exit %s\n%s\n%s' % (refused.returncode, refused.stdout, refused.stderr)
+                check(label,
+                      refused.returncode != 0 and same_process(shell_pid, shell['start'])
+                      and same_process(resist['pid'], resist['start'])
+                      and pidfile.exists(), detail)
+            own.write_text(original)
         else:
             check('ownership file exists before the provider is killable', False, 'no .own file')
+
+        # The shell helper that feeds identity checks must split /proc stat at
+        # the last ')': a comm that itself contains ')' must not shift fields.
+        paren = subprocess.Popen(
+            [sys.executable, '-c',
+             'import ctypes, time\n'
+             'ctypes.CDLL(None).prctl(15, b"mock)comm")\n'
+             'time.sleep(300)\n'])
+        remember(paren.pid, proc_stat(paren.pid)['start'], 'paren-comm')
+        comm = ''
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                comm = Path('/proc/%d/comm' % paren.pid).read_text().strip()
+            except OSError:
+                comm = ''
+            if ')' in comm:
+                break
+            time.sleep(0.05)
+        info = proc_stat(paren.pid)
+        script = (base / 'bin' / 'unio').read_text()
+        begin = script.index('policy_stat_field() {')
+        end = script.index('\n}', begin) + 2
+        probe = subprocess.run(
+            ['bash', '-c', script[begin:end] + '\npolicy_stat_field "$1" 20\npolicy_stat_field "$1" 1\n',
+             'bash', str(paren.pid)], capture_output=True, text=True, timeout=10)
+        fields = probe.stdout.split()
+        check('parenthesised comm does not shift stat fields',
+              ')' in comm and len(fields) >= 2
+              and fields[0] == str(info['start']) and fields[1] == info['state'],
+              'comm=%r out=%r expected start=%s state=%s' % (
+                  comm, probe.stdout, info['start'], info['state']))
         print('native stop: %d checks passed' % passed)
     finally:
         cleanup()
