@@ -43,111 +43,53 @@ allows one workflow per shared account, while independent accounts work together
 The [agent fleet guide](docs/development/AGENT-FLEET.md) maps approved accounts
 to implementation, research and routine work, including Copilot Free / Balanced.
 The [model scoreboard](docs/development/MODEL-SCOREBOARD.md) helps it choose
-workers from actual project results. If a worker and one suitable replacement
-cannot finish, [the lead takes over](docs/ai/LEAD-ESCALATION.md) in its existing
-session, preserving their work and the agreed checks.
+workers from actual project results. The [bounded escalation guide](docs/ai/LEAD-ESCALATION.md)
+explains how to preserve unfinished work and choose a correction route when
+a worker cannot finish, following your project instructions.
 
 **Available today:** a command-line tool for Linux, including Windows
-through WSL, plus a [local browser workspace](bridge/README.md) in the source
-archive. Use it to prepare and run tasks, follow worker output and inspect files.
+through WSL, with a local browser dashboard for tasks, worker output and files.
+Install [the latest stable release, Unio 0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18).
+See [the changelog](CHANGELOG.md) for release history.
 
-*Install [Unio 0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18), the latest published release. Since v0.5.5 the installer includes `unio browser`, which starts the dashboard with the same CLI and configuration, read-only by default. [Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and explicitly enabled; its genuine subscription-limit cycle remains unverified.*
+### Tools for everyday work
 
-**Added in 0.5.18:** clearer worker progress and reliable result handling.
-Vibe reports safe live labels and a separate liveness heartbeat. The optional
-Antigravity connector distinguishes process exit from its structured result.
-Copilot proposals preserve exact native JSONL text. Read the
-[release notes and limitations](docs/RELEASE-0.5.18.md).
+- **Plan and delegate.** Explain dependencies and file conflicts with the
+  [task planner](docs/TASK-PLAN.md), then start an
+  [explicitly approved task](docs/TASK-DISPATCH.md).
+- **Follow the team.** The [browser dashboard](bridge/README.md) brings together
+  the work map, task filters, live worker output and activity history.
+  [Fleet status](docs/FLEET-STATUS.md) shows shared-account slots and recorded
+  allowance readings; missing or stale readings stay Unknown.
+- **Review changes independently.** Collect [reviews in parallel](docs/REVIEW-COLLECTION.md)
+  and inspect [structured findings](docs/REVIEW-FINDINGS.md), preserving each
+  reviewer's evidence and disagreement. Reviews leave acceptance with you.
+- **Preserve unfinished work.** [Recovery saves](docs/WORK-SAVING.md) keep local
+  snapshots before, during and after worker runs, with inspection, restore
+  and separately authorized continuation. Saves are not off-device backups.
+- **Choose your workflow.** Set YOLO, Balanced or Thorough review, choose
+  reasoning effort, and control concurrency per shared account. See
+  [the independent workflow choices](#choose-how-unio-works).
+- **Use the right worker.** [Packaged integrations](docs/development/AGENT-FLEET.md)
+  connect implementation agents and research/proposal tools. A
+  [local command audit](docs/WORKER-CONNECTIONS.md) helps catch setup problems;
+  [task experience](docs/MODEL-EXPERIENCE.md) records checked outcomes to guide
+  future assignments.
 
-**In development, 0.5.19 (unreleased):** recovery preparation for owned
-native stopping in explicitly recorded Linux provider sessions, measured
-saving on populated stores, and exact Copilot result handling. The three components are assembled; final stopping review and combined
-release checks are pending. Saving is accepted and Copilot review findings
-are resolved; this candidate is not published yet. Read the
-[candidate scope, limits and acceptance state](docs/RELEASE-0.5.19.md).
+Open the dashboard from your project:
 
-**Added in 0.5.17:** safer project selection and an opt-in managed
-Codex worker, with owned status/effort requests and explicit startup settings.
-Effort updates target future turns; they do not establish a change to current
-inference. Read the [scope and limits](docs/RELEASE-0.5.17.md).
-
-**Added in 0.5.16:** recovery saving avoids redundant stored-file lookups
-while retaining complete content validation. Read the
-[measured results and remaining limits](docs/RELEASE-0.5.16.md).
-The same release adds unio doctor --commands [--json] for a
-[local worker-command audit](docs/WORKER-CONNECTIONS.md), with useful transport
-and legacy-setting hints before spending a worker run.
-
-
-**Added in 0.5.14:** give slow recovery saves an optional bounded capture
-budget and see clear deadline failures. The default stays 30 seconds;
-[the saving guide](docs/WORK-SAVING.md#capture-time-budget) explains the
-1–300 second setting and its latency tradeoff.
-
-**Added in 0.5.13:** use matching YOLO, Balanced and Thorough commands, and
-choose Low / Medium / Max reasoning independently from review depth and
-coordination tier. Each [startup prompt](docs/ai/NEW-PROJECT-PROMPT.md) exposes
-these choices; the [release guide](docs/RELEASE-0.5.13.md) explains compatibility
-and the current manual effort controls.
-
-**Added in 0.5.12:** keep task-specific outcomes with
-[`unio experience`](docs/MODEL-EXPERIENCE.md) and inspect conditional worker
-advice. Accepted work, code issues, operational failures and unaccepted attempts
-stay separate. Advice explains sample size, age and local availability; it
-does not launch agents or turn sparse evidence into a model ranking.
-
-**Added in 0.5.11:** inspect shared-account slots and cached readings with
-[the fleet overview](docs/FLEET-STATUS.md), explain dependencies and file
-conflicts with [the task planner](docs/TASK-PLAN.md), and start one
-[explicitly approved task](docs/TASK-DISPATCH.md). Collect
-[independent reviews in parallel](docs/REVIEW-COLLECTION.md) while preserving
-each attempt's evidence; reviews never grant human acceptance or merge code.
-Recovery capture also batches Git ignore queries, with measured improvements
-and remaining timeout limits in the [release guide](docs/RELEASE-0.5.11.md).
-
-**Added in 0.5.15:** browse [structured review findings](docs/REVIEW-FINDINGS.md)
-with `unio reviews --findings`. This opt-in local view preserves evidence and
-recorded verdict disagreement, makes no provider calls and never grants human
-acceptance. Ordinary review summaries continue to exclude reviewer prose.
-
-**Added in 0.5.10:** remember task filters across dashboard reloads, archive
-older recovery saves without deleting their history, and inspect local storage
-with `unio save usage`. Explicit `unio readiness refresh claude` records sign-in
-for the dashboard; sign-in and remaining allowance stay separate.
-See the [release guide](docs/RELEASE-0.5.10.md) and [daily-use guide](docs/DAILY-USE.md).
-
-**Added in 0.5.9:** a clearer dashboard with readable task rows, agent allowance
-cards, an activity timeline and a remembered list/map view. The installer also
-packages [Copilot Auto Balance](docs/integrations/GITHUB-COPILOT.md) proposals and
-the [agent fleet guide](docs/development/AGENT-FLEET.md), routing and effort instructions.
-
-**Added in 0.5.8:** `unio integrations` shows the packaged Mistral Vibe and
-Perplexity adapters and their setup guides. Vibe handles implementation;
-Perplexity supplies research or code proposals for an implementation agent
-to check and apply. External tools and sign-in remain your choice.
-
-**Added in 0.5.7:** `unio dashboard` keeps that read-only
-dashboard running in the background and prints its link; repeated calls reuse
-it. The dashboard shows each task's lifecycle (only checks passed and review
-approved counts as Finished), shared filters for the work map and list
-(Current work by default, All states, Finished, worker, category, search),
-and a **Designated AI agents & limits** section. That section lists each
-configured AI, its shared budget group, the registered lead, and every
-recorded allowance window (5h, weekly) with remaining percent, reset
-countdown, age and source. Missing, stale or expired readings show as
-Unknown. The page never asks a provider; an automatic Codex reading comes
-only from an explicit `unio capacity refresh codex --group codex`
-(details below). New lead instructions ask the lead to start the dashboard
-and show you the link at the beginning of a session:
-
-```text
-At the start of this lead session, run `unio dashboard ensure --open-browser`
-and show me the link it prints. Reuse that dashboard while we work.
+```bash
+unio dashboard ensure --open-browser
 ```
 
-This is a startup rule for cooperating lead AIs, not detection of other AI
-tools; it does not attach Unio to a chat that is already running. The
-dashboard stays up until `unio dashboard stop`, which never stops workers.
+It prints the local link and reuses a running dashboard. The dashboard is
+read-only by default and stays up until `unio dashboard stop`; closing it
+does not stop workers. Ask your lead to run this command at session startup
+so you can follow the work. It does not attach or record an existing AI chat.
+
+[Lead cooldown restart](docs/LEAD-COOLDOWN.md) is experimental and must be
+explicitly enabled. Its genuine subscription-limit-to-restart cycle remains
+unverified.
 
 [Everyday use](docs/DAILY-USE.md) · [A look around](#a-look-around) · [Step by step](#a-task-step-by-step) · [Try it free](#try-it-free-no-ai-calls) ·
 [FAQ](#faq) · [Under the hood](#for-the-curious-and-the-nerdy) ·
@@ -341,8 +283,8 @@ effort** and **low coordination tier**, then change either when needed.
 | **Reasoning effort** | Low / Medium / Max | How the lead chooses supported reasoning settings for itself, workers and reviewers. |
 | **Coordination tier** | low / medium / high | 1 / 2 / 4 independent workflows per shared account, including the lead. |
 
-The matching protocol commands are part of 0.5.13. Older runners accept
-`medium` for Balanced and `safe` for Thorough; both aliases remain supported.
+Use `yolo`, `balanced` and `thorough` for the review protocol. The older
+`medium` and `safe` aliases remain supported.
 See the [work modes guide](docs/WORK-MODES.md).
 
 ```bash
@@ -379,9 +321,9 @@ must remember your choice, preserve the other settings and explain any route
 that cannot change effort. Higher effort or concurrency never adds quota or
 authorizes extra token charges.
 
-The native mode/tier controls first shipped in Unio 0.5.3, letting you choose
-the pace and protect shared subscription budgets. Unio counts its native worker and review workflows
-and the registered lead. Sessions launched outside Unio remain uncounted.
+Mode and tier let you choose the pace and protect shared subscription
+budgets. Unio counts its native worker and review workflows and the
+registered lead. Sessions launched outside Unio remain uncounted.
 
 New projects include instructions for the lead to read the active policy before
 delegating. Verified-free OpenCode models handle routine support; they never
@@ -389,9 +331,8 @@ become the lead, main feature owner or final approver.
 
 ### Manual allowance tracking
 
-Unio 0.5.6 adds `unio capacity`, a local record of the remaining
-allowance you saw for each shared budget group, with its age and optional
-reset time. You type the reading; Unio never asks a provider. Inside a
+`unio capacity` keeps a local record of the remaining allowance you saw for
+each shared budget group, with its age and optional reset time. You type the reading; Unio never asks a provider. Inside a
 workspace it uses that project; elsewhere pass `--project PATH`.
 
 ```bash
@@ -406,8 +347,8 @@ missing, stale, expired or invalid reading shows as Unknown, never as 100%.
 A passed reset is not proof of a refill: record a new reading. Other clients
 can spend the same budget. Details: [manual capacity readings](docs/development/CAPACITY-READINGS.md).
 
-Unio 0.5.7 adds one optional automatic source for Codex. You run it
-yourself; neither the browser nor `show` ever starts it:
+Codex has an optional automatic allowance source. You run it explicitly;
+neither the browser nor `show` ever starts it:
 
 ```bash
 unio capacity refresh codex --group codex   # one read-only metadata request
@@ -527,7 +468,7 @@ was done, what passed and what is left. The lead then gives the work to
 another AI with that note. The note is context only: unfinished, uncommitted
 changes stay in Codex's copy. [Handoff packets](docs/QUALITY-USAGE.md#handoff-packets)
 explain the details. Unio does not get around limits or share plans;
-each tool keeps its own. Unio v0.5.4 includes
+each tool keeps its own. Unio includes
 [automatic recovery saves](docs/WORK-SAVING.md) before, during and after native
 worker runs, plus manual restore. These preserve unfinished files without a
 final AI answer. It also supports one separately authorized task from an
@@ -640,25 +581,14 @@ needed to rebuild the Word manuals with `tools/make-docx.sh`.
 
 ## What's next
 
-- **Available, v0.5.4:** the browser workflow, worker output and files,
-  work modes, shared subscription-budget controls, recovery saves, authorized
-  continuation, dark themes and the live work map. See the
-  [release notes](CHANGELOG.md) and [browser guide](bridge/README.md).
-- **Experimental in v0.5.4:** restart an owner-enabled lead after its cooldown.
-  The genuine subscription-limit-to-restart cycle still needs live validation.
-- **Added in v0.5.6:** manual allowance readings with `unio capacity`
-  (see above), including age, optional reset time and explicit Unknown handling.
-- **Added in v0.5.7:** the background `unio dashboard`,
-  task lifecycle filters, the Designated AI agents & limits overview and an
-  explicit Codex allowance refresh.
-- **Next:** a [temporary acting lead](docs/development/LEAD-CAPACITY-HANDOVER.md)
-  while the lead's allowance cools down (documented and planned, not
-  implemented), then more automatic readings and reliable delegation.
-- **Later:** more reliable connections and smarter delegation, guided by
-  actual project outcomes.
+The [roadmap](docs/development/ROADMAP.md) tracks planned work and its order:
+more reliable recovery and lead-session continuity, scoped phone access,
+then native desktop support for Windows and macOS. Planned features are
+separate from the capabilities available today.
 
-The [UX proposal](docs/UX-DIRECTION.md) and [next steps](docs/development/ROADMAP.md) explain the
-scope and order; the [brand notes](docs/BRAND.md) explain the name.
+See [release history](CHANGELOG.md) for shipped changes, the
+[UX direction](docs/UX-DIRECTION.md) for interface plans, and
+[brand notes](docs/BRAND.md) for the visual identity.
 
 Continuing development of Unio itself with another AI? Paste the prompt from
 [continue-with-ai-prompt.md](docs/development/continue-with-ai-prompt.md) and follow the
