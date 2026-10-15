@@ -14,7 +14,9 @@ a single deep save-retention traversal, and Copilot filename-array compatibility
 Saving passed native checks and independent Google review. Copilot passed checks;
 Qwen's documentation findings are resolved in the candidate. The stopping proof
 finished Source 0 at `3bb3f5e`, including an isolated old-ordering mutation that
-fails the new regression; native verification and Qwen's final review are pending.
+fails the new regression; six native verification commands passed. Qwen's
+final review timed out without a verdict. A combined-selftest cancellation
+confirmation race is being corrected before final delivery.
 See the [release evidence and limits](../RELEASE-0.5.19.md).
 
 The measured retention phase improved on one fixture, while full captures showed

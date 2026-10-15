@@ -29491,13 +29491,17 @@ are not proof of effective identity/effort; remaining allowances are Unknown.
   failure on a separate task occurred before Vibe inference. The later proof
   attempt ended Source 3 at its configured 2M cumulative-token cap, not an
   observed monthly subscription limit; early `202a454` and exact unfinished
-  work `cc3ae1b` were preserved without lead code edits.
+  work `cc3ae1b` were preserved without lead code edits. A later cancellation
+  diagnosis returned Source 2 / infrastructure_failure below its 4M/$10
+  task bound, with no code edits; its concrete reproduction was retained.
 - **Antigravity subscription / agy 1.3.5 / Gemini 3.8 Flash / high:** corrected
   Copilot metadata in `721c56c`, with native checks and exact saved-stream
   offline replay passing. Stopping runtime/test work `216a51e` was committed
   before a stream-interrupted terminal ERROR (native 0, adapter/Source 2).
   A bounded completion inherited the preserved Vibe proof and finished Source 0
-  as `3bb3f5e`; current native verification and Qwen review are pending.
+  as `3bb3f5e`; all six native verification commands passed. A later prepared
+  replacement was not invoked because agy had updated to 1.3.6, differing
+  from its frozen version pin; this was local preparation, not model failure.
 - **OpenCode Go / OpenCode 1.18.35 / GLM 5.3 / high:** saving `91b97bb` finished
   Source 0, native verification passed and independent Google review approved;
   the lead accepted the inspected change. Five isolated retention repetitions
@@ -29507,7 +29511,9 @@ are not proof of effective identity/effort; remaining allowances are Unknown.
   review returned REQUEST-CHANGES for false numeric-validation documentation.
   It also identified unclear turn/tool/privacy claims and a missing canonical
   guide link. Candidate documentation resolves these findings without parser
-  changes; the original verdict is preserved. Final stopping review is queued.
+  changes; the original verdict is preserved. The separate stopping review
+  ended native timeout 124 without a verdict. This establishes neither
+  approval nor subscription exhaustion.
 - **Antigravity subscription / agy 1.3.5 / Gemini 3.8 Flash / high review:**
   approved saving with one informational corruption-attribution reread note.
   An earlier stopping review approved despite reporting concrete ordering and
@@ -29520,6 +29526,15 @@ are not proof of effective identity/effort; remaining allowances are Unknown.
   parser/containment suggestions; the proposal was not copied or treated as
   independent security acceptance.
 
+The combined candidate's installed selftest then exposed a cancellation
+confirmation race: stopping returned Unknown after the runner removed its
+control files. A dedicated ChatGPT subscription / Codex CLI 0.162.1 /
+GPT-6.1 Sol / high correction is in progress under the owner's explicit fix
+exception. One earlier CLI configuration rejection happened before inference
+and is preserved separately. The first actual model run produced focused
+commits and old-fail/new-pass evidence; final native verification and a
+separate OpenCode Go / DeepSeek V4 Pro / high review remain pending.
+
 ### Owner availability for Unio development — 2026-10-15
 
 Claude Opus is reserved indefinitely for the owner's separate projects.
@@ -29527,7 +29542,9 @@ Do not assign it Unio development or review until explicitly reintroduced.
 Status reports cover the entire configured/approved fleet, including idle,
 benched and owner-reserved routes, not only active workers. Shared routes do
 not create separate capacity. Preserve effective identity and allowance Unknowns.
-Codex is lead-only under the current owner override; all product fixes here
+Codex coordinates; the current owner-supplied correction instruction permits
+one dedicated Sol high fix beside the lead, with the real shared account and
+a temporary medium tier restored to low when idle. All product fixes here
 were delegated. Failures, saved work, checks, reviews and acceptance remain
 separate rather than becoming a universal model ranking.
 

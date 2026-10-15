@@ -48,7 +48,11 @@ Stopping revision `3bb3f5e` finished Source 0 through Antigravity/agy 1.3.5 /
 Gemini 3.8 Flash high. Its focused fixtures passed, and an isolated mutation
 restoring only the old cleanup ordering failed at the expected final-save
 assertion. This is a mutation proof, not a full test of an old release.
-Native verification and the separate Qwen xhigh review are pending.
+All six native verification commands passed. The separate Qwen xhigh review
+timed out without a verdict and supplies no approval. The combined installed
+selftest later exposed a cancellation-confirmation race; a dedicated ChatGPT /
+Codex 0.162.1 / Sol 6.1 high correction and independent DeepSeek Go high review
+are in progress. Their final results remain separate from these earlier checks.
 
 The combined gate, installation and publication remain pending. Until they
 finish, the official and installed release remains 0.5.18.

@@ -11,13 +11,17 @@ Saving `91b97bb` passed native checks, independent Google review and personal
 acceptance. Copilot `721c56c` passed checks; Qwen's REQUEST-CHANGES documentation
 findings are resolved in the candidate without changing parser bytes. Stopping
 `3bb3f5e` finished Source 0, with a meaningful old-ordering mutation failing the
-regression; native verification and independent Qwen review remain pending.
+regression; all six native verification commands passed. Qwen's separate review
+timed out without a verdict. The combined installed selftest failed background
+kill confirmation; dedicated Sol high commits preserve a minimal correction,
+with final native checks and DeepSeek Go high independent review pending.
 Original Grok HTTP402, Vibe local setup/token-cap and Gemini stream-interruption
 failures remain preserved separately from inherited committed work.
 
-Use Unio for implementation and reviews. Codex is lead-only for this Unio
-workspace under the current owner direction; do not create an extra Codex
-worker. Claude Opus is reserved indefinitely for the owner's other projects.
+Use Unio for implementation and reviews. The newest owner-supplied AGENTS
+instruction permits one dedicated Codex CLI / GPT-6.1 Sol / high correction
+beside the coordinating lead. Keep the real shared codex account and registered
+lead; temporary medium admits that one fix, then restore low when idle. Claude Opus is reserved indefinitely for the owner's other projects.
 Other eligible subscription routes remain available subject to current facts:
 Mistral/Vibe, Antigravity/Gemini, OpenCode Go; Grok last reported balance
 exhaustion. Perplexity supplies research/proposals; Copilot/free Zen support
