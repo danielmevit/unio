@@ -31,6 +31,18 @@ run/review/smoke" before any provider starts. Check with `python3 --version`.
 5. Acceptance and integration stay with the human owner. M1 has no accept
    or integrate command.
 
+`verify` also supports a candidate that has never had a native Source run:
+it checks scope, Validate commands and changes without inventing a process
+exit or dispatch revision. Actual check/scope failures exit 1; missing
+scope/checks exit 2. A passing machine-only check leaves `process.state`
+`not_run`, `human.state` `pending` and `ready_for_human_review` false.
+
+After a native Source, verification requires the engine-owned full
+`dispatch_revision`; provider output and report `task_sha` strings cannot
+supply it. Missing legacy bindings, malformed/foreign results, or retained
+run history without a structured binding remain incomplete (exit 2).
+Deleting a result does not turn retained Source history into a manual check.
+
 ## The stored result
 
 Each worker and task has one result file, `coord/results/WORKER/TASK.json`.
