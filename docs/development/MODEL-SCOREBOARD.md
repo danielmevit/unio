@@ -57,10 +57,11 @@ are not proof of effective identity/effort; remaining allowances are Unknown.
 The combined candidate's installed selftest then exposed a cancellation
 confirmation race: stopping returned Unknown after the runner removed its
 control files. A dedicated ChatGPT subscription / Codex CLI 0.162.1 /
-GPT-6.1 Sol / high correction is in progress under the owner's explicit fix
-exception. One earlier CLI configuration rejection happened before inference
-and is preserved separately. The first actual model run produced focused
-commits and old-fail/new-pass evidence; final native verification and a
+GPT-6.1 Sol / high correction finished Source 0 in 7m46s under the owner's
+explicit fix exception, committing `14ee672` and `8a47af1`. One earlier CLI configuration rejection happened before inference
+and is preserved separately. The first actual model run passed 52 stopping
+cases, 12 PID checks and 40 installed selftests, with old-fail/new-pass evidence;
+final native verification and a
 separate OpenCode Go / DeepSeek V4 Pro / high review remain pending.
 
 ### Owner availability for Unio development — 2026-10-15

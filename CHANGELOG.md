@@ -13,6 +13,8 @@ remain pending. The published and installed release remains 0.5.18.
 - Sweep owned Linux provider sessions across nested process groups and reparented
   children. Confirm cleanup before the final save; keep worker/account ownership
   when cleanup is Unknown. Detached sessions remain outside this boundary.
+  Confirm completed cancellation after the runner removes its control files,
+  preserving cancellation status and the final-save attempt.
 - Fold duplicate active-save metadata/deep reads into one full validation pass,
   preserving corrupt evidence, newest saves, claim pins and caps. Isolated
   retention averaged 16.14 seconds before and 9.91 seconds after on one fixture;

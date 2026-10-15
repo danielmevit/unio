@@ -13,8 +13,11 @@ findings are resolved in the candidate without changing parser bytes. Stopping
 `3bb3f5e` finished Source 0, with a meaningful old-ordering mutation failing the
 regression; all six native verification commands passed. Qwen's separate review
 timed out without a verdict. The combined installed selftest failed background
-kill confirmation; dedicated Sol high commits preserve a minimal correction,
-with final native checks and DeepSeek Go high independent review pending.
+kill confirmation; dedicated ChatGPT/Codex 0.162.1/Sol high finished Source 0
+in 7m46s with minimal correction `14ee672` and fragment `8a47af1`. Its
+offline stopping 52, PID 12 and installed selftest 40 checks passed, including
+old-fail/new-pass evidence. Final native verification and DeepSeek Go high
+independent review remain pending. The corrected combined gate is next.
 Original Grok HTTP402, Vibe local setup/token-cap and Gemini stream-interruption
 failures remain preserved separately from inherited committed work.
 

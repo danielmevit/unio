@@ -8,7 +8,8 @@ started, avoid duplicate save validation, and accept real Copilot result metadat
 - **Owned stopping:** cancellation and normal exit sweep nested process groups
   and reparented children within the recorded Linux provider session. Cleanup
   must be confirmed before the final save; unproved cleanup keeps the worker
-  and shared-account slot held. Identity-checked pidfds protect the session sweep.
+  and shared-account slot held. Confirm completed cancellation after the runner
+  removes its control files. Identity-checked pidfds protect the session sweep.
 - **One retention validation pass:** existing save contents are deeply validated
   once during classification, preserving corrupt evidence, newest saves, claim
   pins and retention caps. The default capture deadline is unchanged.
@@ -51,8 +52,10 @@ assertion. This is a mutation proof, not a full test of an old release.
 All six native verification commands passed. The separate Qwen xhigh review
 timed out without a verdict and supplies no approval. The combined installed
 selftest later exposed a cancellation-confirmation race; a dedicated ChatGPT /
-Codex 0.162.1 / Sol 6.1 high correction and independent DeepSeek Go high review
-are in progress. Their final results remain separate from these earlier checks.
+Codex 0.162.1 / Sol 6.1 high correction finished Source 0 with commits
+`14ee672` and `8a47af1`. Its offline checks passed 52 stopping cases, 12 PID
+safety cases and all 40 installed selftests, with old-fail/new-pass evidence.
+Final native verification and independent DeepSeek Go high review are pending.
 
 The combined gate, installation and publication remain pending. Until they
 finish, the official and installed release remains 0.5.18.
