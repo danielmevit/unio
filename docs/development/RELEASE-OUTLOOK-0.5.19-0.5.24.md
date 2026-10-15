@@ -26,7 +26,7 @@ can add elapsed time. Re-estimate after each bounded technical assessment.
 Update, 2026-10-15: populated-store profiling isolated duplicate metadata and
 deep validation passes. The checked implementation folds these into one deep
 retention traversal without skipping stored-content validation. On one host,
-the isolated retention phase averaged16.14 seconds before and9.91 seconds after;
+the isolated retention phase averaged 16.14 seconds before and 9.91 seconds after;
 two complete captures per engine did not establish an overall wall-time gain.
 See the [measurement method and limits](SAVE-PERFORMANCE.md). The earlier
 failed profiling attempts remain failures rather than successful measurements.
