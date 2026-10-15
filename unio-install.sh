@@ -23489,6 +23489,30 @@ def _load_kill_record(root, task):
         return None
 
 
+def owner_completed(root, task, pid, start):
+    """Confirm the runner's EXIT cleanup, only after validated signaling.
+
+    The runner removes both controls after owned cleanup and final capture.
+    Their absence is terminal evidence only once that exact shell is gone;
+    unreadable identity, any remaining entry, or a symlink stays Unknown.
+    """
+    info = proc_stat(pid)
+    if info == 'unproved' or (isinstance(info, dict) and info['start'] == start
+                              and info['state'] not in DEAD_STATES):
+        return False
+    reports = open_dir(under(root, 'coord', 'reports'))
+    try:
+        for suffix in ('.pid', '.own'):
+            try:
+                os.stat(task + suffix, dir_fd=reports, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            return False
+        return True
+    finally:
+        os.close(reports)
+
+
 def owner_signal(root, task, pid):
     info = proc_stat(pid)
     if info is None:
@@ -24500,6 +24524,9 @@ def main(argv):
                 return 0 if finish_owned(root, worker, task, 0) == 'clear' else 2
         if command == '_owner-signal' and len(args) == 2 and ident(args[0]) and re.fullmatch(r'[1-9][0-9]{0,8}', args[1]):
             return owner_signal(root, args[0], int(args[1]))
+        if (command == '_owner-completed' and len(args) == 3 and ident(args[0])
+                and re.fullmatch(r'[1-9][0-9]{0,8}', args[1]) and re.fullmatch(r'[0-9]{1,20}', args[2])):
+            return 0 if owner_completed(root, args[0], int(args[1]), int(args[2])) else 2
         if (command == '_owner-force' and len(args) == 3 and ident(args[0])
                 and re.fullmatch(r'[1-9][0-9]{0,8}', args[1]) and re.fullmatch(r'[0-9]{1,20}', args[2])):
             return owner_force(root, args[0], int(args[1]), int(args[2]))
@@ -26752,7 +26779,8 @@ cmd_kill() {
         sleep 0.1
       done
       if [ "$now" != "$start" ] || [ "$state" = "Z" ]; then
-        if saves "$root" _reap-owned "$task" confirm; then
+        if saves "$root" _reap-owned "$task" confirm \
+            || saves "$root" _owner-completed "$task" "$pid" "$start"; then
           rm -f -- "$pf" "$own"
           echo "killed '$task' (session $pid) — final capture attempted; inspect: unio save inspect --worker <worker>"
           return 0

@@ -95,6 +95,16 @@ shell is still the same process when the deadline expires, kill reaps the
 provider session first. Only a clear session may then pidfd-kill that shell's
 current child tree, which is capped at depth 32 and 256 processes.
 
+After validated signaling, the runner may complete its EXIT trap before kill
+can reload the ownership record. Kill also accepts that terminal cleanup state:
+the exact recorded shell is gone (or dead), and both the pidfile and ownership
+entry are genuinely absent from the existing reports directory. The runner
+removes these controls only on exit, after the normal owned-cleanup and final
+capture path. An unreadable parent identity, a remaining file of any type,
+including a dangling symlink, or an unavailable reports directory is not this
+terminal evidence. This check does not authorize signaling without ownership
+and does not change Source cancellation status or the cleanup deadline.
+
 The worker and the account do not become free while a known owned live
 provider remains. If the session cannot be proven clear, the command reports
 Unknown, keeps the pidfile and the ownership file, and does not exit
