@@ -16343,7 +16343,8 @@ No profile changes account concurrency, role restrictions or actual allowance.
 
 Owner update, 2026-10-16: when assigning a worker that uses the lead's model
 or shared subscription, start at its lowest supported reasoning effort.
-For Codex CLI / GPT-6.1 Sol, request `low`. Keep capable implementation models;
+For Codex CLI / GPT-6.1 Sol, request `low`. An explicit owner effort or profile
+choice overrides this default; record it and preserve frozen assignments. Keep capable implementation models;
 this is an effort choice, not permission to replace them with free chore agents.
 Other routes retain their owner-approved defaults and verified controls.
 
