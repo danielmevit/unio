@@ -9,6 +9,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import signal
+import tempfile
+import types
 import sys
 import time
 import unittest
@@ -25,6 +28,102 @@ def module(name, path):
 BASE = module('dispatch_fixtures', ROOT / 'tests/unio-task-dispatch.py')
 SCHED = module('schedule', ROOT / 'tools/continuous-delegation.py')
 HELPER = ROOT / 'tools/continuous-delegation.py'
+
+
+class CollectionOwnershipTests(unittest.TestCase):
+    def test_group_signals_precede_only_reap(self):
+        # EOF streams and a fake wait reproduce the original success-path
+        # defect without ever sending a signal to a numeric real PID.
+        for mode, code in (('exit', 0), ('exit', 7), ('exit', -signal.SIGTERM),
+                           ('timeout', 0), ('overflow', 0)):
+            with self.subTest(mode=mode, code=code):
+                events = []
+                pipes = []
+                for _ in range(2):
+                    read, write = os.pipe()
+                    os.close(write)
+                    pipes.append(os.fdopen(read, 'rb'))
+                def reap(timeout):
+                    events.append('reap')
+                    return code
+                process = types.SimpleNamespace(pid=12345, stdout=pipes[0],
+                                                stderr=pipes[1], wait=reap)
+                status = types.SimpleNamespace(
+                    si_code=os.CLD_EXITED if code >= 0 else os.CLD_KILLED,
+                    si_status=code if code >= 0 else -code)
+                def observe(kind, pid, flags):
+                    self.assertEqual((kind, pid), (os.P_PID, process.pid))
+                    self.assertTrue(flags & os.WNOWAIT)
+                    self.assertNotIn('reap', events)
+                    events.append('observe')
+                    return status
+                def group_signal(pid, sig):
+                    self.assertEqual(pid, process.pid)
+                    self.assertNotIn('reap', events)
+                    events.append(sig)
+                real_read = os.read
+                def read(descriptor, size):
+                    return b'x' * (1024 * 1024 + 1) if mode == 'overflow' else real_read(descriptor, size)
+                with mock.patch.object(os, 'waitid', side_effect=observe), mock.patch.object(
+                        os, 'killpg', side_effect=group_signal), mock.patch.object(
+                        os, 'read', side_effect=read):
+                    expected = (code, b'') if mode == 'exit' else (None, None)
+                    self.assertEqual(SCHED.collect(process, 0 if mode == 'timeout' else 1), expected)
+                self.assertEqual(events.count('reap'), 1)
+                self.assertLess(events.index(signal.SIGTERM), events.index(signal.SIGKILL))
+                self.assertLess(events.index(signal.SIGKILL), events.index('reap'))
+                self.assertTrue(all(pipe.closed for pipe in pipes))
+
+    def collect_program(self, program, timeout=1):
+        process = subprocess.Popen([sys.executable, '-c', program],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   start_new_session=True)
+        result = SCHED.collect(process, timeout)
+        self.assertIsNotNone(process.returncode)
+        self.assertTrue(process.stdout.closed and process.stderr.closed)
+        return result
+
+    def test_clean_exit_and_stderr_preserve_status_and_stdout(self):
+        for code in (0, 9):
+            with self.subTest(code=code):
+                self.assertEqual(self.collect_program(
+                    'import sys;print("result");print("diagnostic",file=sys.stderr);'
+                    f'sys.exit({code})'), (code, b'result\n'))
+
+    def test_eof_before_leader_exit_is_bounded(self):
+        start = time.monotonic()
+        self.assertEqual(self.collect_program(
+            'import os,time;os.close(1);os.close(2);time.sleep(5)', .15), (None, None))
+        self.assertLess(time.monotonic() - start, 2)
+
+    def test_pipe_holding_descendant_and_output_bounds(self):
+        for program in (
+                'import os,time;p=os.fork();time.sleep(5) if p==0 else None',
+                'import time;time.sleep(5)',
+                'import sys;sys.stdout.write("x"*1100000)',
+                'import sys;sys.stderr.write("x"*1100000)'):
+            with self.subTest(program=program):
+                start = time.monotonic()
+                self.assertEqual(self.collect_program(program, .15), (None, None))
+                self.assertLess(time.monotonic() - start, 2)
+
+    def test_detached_worker_survives_observer_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / 'survived'
+            gate = Path(directory) / 'observer-collected'
+            worker = ('import pathlib,time;'
+                      f'gate=pathlib.Path({str(gate)!r});end=time.monotonic()+3;'
+                      '\nwhile not gate.exists() and time.monotonic()<end: time.sleep(.01)'
+                      f'\nif gate.exists(): pathlib.Path({str(marker)!r}).write_text("done")')
+            observer = ('import subprocess,sys;subprocess.Popen([sys.executable,"-c",'
+                        f'{worker!r}],start_new_session=True,stdin=subprocess.DEVNULL,'
+                        'stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);print("launched")')
+            self.assertEqual(self.collect_program(observer), (0, b'launched\n'))
+            gate.touch()
+            deadline = time.monotonic() + 3
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(.02)
+            self.assertEqual(marker.read_text(), 'done')
 
 
 class SchedulerTests(unittest.TestCase):

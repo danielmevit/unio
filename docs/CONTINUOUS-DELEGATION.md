@@ -193,6 +193,8 @@ always cut to the remaining foreground duration. The existing service binding ch
 an aggregate deadline, because its original transport has multiple separate
 15-second Git deadlines. Short state-lock waits and subprocess cleanup can
 add a bounded tail; no new claim starts once the foreground deadline has passed.
+Observer cleanup retains the unreaped process-group leader through TERM and KILL,
+then reaps it; native workers detached into their own sessions are outside that group.
 
 ## Focused offline checks
 
