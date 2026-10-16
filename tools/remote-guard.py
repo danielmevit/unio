@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -592,19 +593,9 @@ STDIN_DATA=$(cat)
 if true; then
   root="$top"
   while [ ! -e "$root/coord" ] && [ ! -L "$root/coord" ] && [ "$root" != / ]; do root=$(dirname "$root"); done
-  guard_py=""
-  if [ -n "${UNIO_CONF_DIR:-}" ] && [ -f "$UNIO_CONF_DIR/lib/remote-guard.py" ]; then
-    guard_py="$UNIO_CONF_DIR/lib/remote-guard.py"
-  elif [ -n "${CONF_DIR:-}" ] && [ -f "$CONF_DIR/lib/remote-guard.py" ]; then
-    guard_py="$CONF_DIR/lib/remote-guard.py"
-  elif [ -f "$root/tools/remote-guard.py" ]; then
-    guard_py="$root/tools/remote-guard.py"
-  fi
-
-  if [ -n "$guard_py" ]; then
-    printf "%s\\n" "$STDIN_DATA" | python3 -B "$guard_py" check "$top" "$1" "$2" || exit $?
-  elif command -v unio >/dev/null 2>&1; then
-    printf "%s\\n" "$STDIN_DATA" | unio _remote-guard check "$top" "$1" "$2" || exit $?
+  # Pinned at installation: never search PATH, another profile or source tree.
+  if [ -x @GUARD_EXECUTABLE@ ]; then
+    printf "%s\\n" "$STDIN_DATA" | @GUARD_COMMAND@ check "$top" "$1" "$2" || exit $?
   elif [ -e "$root/coord/remote-policy.json" ] || [ -L "$root/coord/remote-policy.json" ] || [ -L "$root/coord" ]; then
     echo "unio guard: configured remote policy requires an executable helper" >&2
     exit 1
@@ -617,6 +608,14 @@ if [ -x "$hooks/pre-push.owner" ]; then
 fi
 exit 0
 """
+    # Embedded execution supplies the exact invoking engine; direct helper use
+    # pins this helper itself. Neither mode resolves an unrelated installation.
+    runner = globals().get("GUARD_RUNNER")
+    if runner is None:
+        runner = [sys.executable, "-B", str(Path(__file__).resolve())]
+    executable = runner[0] if runner[-1] == "_remote-guard" else runner[-1]
+    hook_script = hook_script.replace("@GUARD_EXECUTABLE@", shlex.quote(executable)).replace(
+        "@GUARD_COMMAND@", shlex.join(runner))
     guard_hook.write_text(hook_script, encoding="utf-8")
     os.chmod(str(guard_hook), 0o755)
 
