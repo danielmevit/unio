@@ -33,7 +33,7 @@ def check(label, condition, detail=""):
 def main():
     global passed
     # Installed fixtures use project-owned private tmpfs paths, never shared /dev/shm files.
-    with tempfile.TemporaryDirectory(prefix=".unio-remote-guard-", dir=SOURCE) as tmp:
+    with tempfile.TemporaryDirectory(prefix=".unio-remote-guard-", dir=os.environ.get("TMPDIR", str(SOURCE))) as tmp:
         base = Path(tmp)
         env = dict(
             os.environ,
@@ -385,7 +385,7 @@ def regressions():
             return True
         return False
 
-    with tempfile.TemporaryDirectory(prefix=".remote-regression-", dir=SOURCE) as tmp:
+    with tempfile.TemporaryDirectory(prefix=".remote-regression-", dir=os.environ.get("TMPDIR", str(SOURCE))) as tmp:
         base = Path(tmp)
         env = dict(os.environ, UNIO_BIN_DIR=str(base / "bin"), UNIO_CONF_DIR=str(base / "conf"),
                    UNIO_COMPLETION_DIR=str(base / "completion"), UNIO_AUTO_VERIFY="0", UNIO_AUTO_SYNC="0",
@@ -456,6 +456,9 @@ def regressions():
         urls = [f"https://{sentinel}@example.invalid/repo", f"https://u:{sentinel}@example.invalid/repo",
                 f"https://example.invalid/repo?token={sentinel}", f"https://example.invalid/repo#{sentinel}",
                 f"ssh://{sentinel}@example.invalid/repo", f"{sentinel}@example.invalid:repo"]
+        # Usernames must never become regex replacement templates.
+        urls.extend([f"https://u\\g<3>:{sentinel}@example.invalid/repo",
+                     f"https://u\\3:{sentinel}@example.invalid/repo"])
         for index, url in enumerate(urls):
             case(f"safe redaction and normalization form {index}", lambda url=url: sentinel not in guard.redact_url(url) + guard.normalize_url(url))
             raw(policy())
