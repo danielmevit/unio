@@ -32297,31 +32297,42 @@ supported effort; other approved defaults remain, including GLM high.
 
 ## Effort-specific field results — 2026-10-16
 
-Keep profiles separate by subscription route, requested model, requested effort
-and task type. The native `unio experience` store already groups these fields;
-this public summary adds elapsed time and review context. All identities and
-efforts below are requested settings, not verified serving identities.
+Profiles separate subscription route, requested model, requested effort and task
+type. Native `unio experience record/show` already groups those fields; the lead
+records the final assessment and keeps CLI versions/timestamps in task receipts.
+Effective identity/effort and per-task allowance savings remain Unknown.
 
-| Route / CLI / requested model | Effort | Task and observed result | Elapsed |
+| Route / CLI / requested model | Effort | Task and actual result | Provider elapsed |
 | --- | --- | --- | --- |
-| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | low | Shared-lead consent: Source0, six native checks PASS, independent Gemini APPROVE and lead accepted; revision02bfcac. | 16m13s |
-| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | low | Failed-worker WIP preservation: Source0, six native checks PASS, independent Gemini APPROVE and lead accepted; revision9c4dba0. | 10m44s |
-| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | low | Bound plain outcomes: Source0, six native checks PASS, independent Gemini APPROVE and lead accepted; revision0977d38. | 12m27s |
-| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | high | Remote-guard correction stopped at real usage limit, Source1 before implementation; unfinished test edits retained. Operational failure, not a reasoning-quality result. | 2m03s |
-| Antigravity / agy1.4.0 / Gemini3.8Flash | high | Remote-policy feature: Source0 and six native checks PASS at3cda4ad. Lead reproduced role-conflict, typed-policy and credential defects; not accepted pending correction. | 36m10s |
-| Antigravity / agy1.4.0 / Gemini3.8Flash | high | Three independent final-code reviews of the low-effort Sol components returned adapter0/APPROVE; each assessed separately by lead. Other failed review routes remain incomplete. | 18m03s / 7m31s / 6m37s |
-| Mistral / Vibe2.26.1 / GLM5.3 | high | Consent review ended infrastructure_failure/adapter2 below its cap, no verdict. No code-quality or monthly-allowance inference. | 5m49s |
-| Mistral / Vibe2.26.1 / MistralMedium3.5 | high | Replacement consent review ended infrastructure_failure/adapter2, no verdict. Local busy refusal before the actual call preserved separately. | 4m40s |
-| PerplexityPro / pinned web adapter0.16.1 / Kimi3 | Thinking enabled; depth Unknown | Independent selected-code critique returned Source0. Several concrete defects corroborated; claimed test truncation and scope extensions need qualification. Supporting assessment, not native approval. | 7m36s |
-| CopilotFree / CLI1.0.95 / AutoBalance | Not exposed | Docs proposal Source0; genuine corrected0.5.19 parser transport passed. Advice mainly repeated supplied guidance; serving model/lab Unknown. | 22s |
+| ChatGPT / Codex0.162.1 / GPT-6.1 Sol | low | Lead-budget consent02bfcac: Source0, native6PASS, independent Gemini APPROVE and lead accepted. | 16m13s |
+| ChatGPT / Codex0.162.1 / GPT-6.1 Sol | low | Failed-worker WIP9c4dba0: Source0, native6PASS, independent Gemini APPROVE and lead accepted. | 10m44s |
+| ChatGPT / Codex0.162.1 / GPT-6.1 Sol | low | Plain outcomes0977d38: Source0, native6PASS, independent Gemini APPROVE and lead accepted. | 12m27s |
+| ChatGPT / Codex0.162.1 / GPT-6.1 Sol | high | Guard correction stopped at actual usage limit, Source1 before implementation; test edits retained. Operational failure, not reasoning-quality evidence. | 2m03s |
+| ChatGPT / Codex0.162.1 / GPT-6.1 Sol | low | Guard correction98d6c61: Source0, 38 original +58 regressions passed; native6/7 passed, with a nonexistent operator test path preserved as failure. Separate actual35-case guard passed. Introduced an external-helper initialization dependency, recorded as a quality issue. | 5m54s |
+| ChatGPT / Codex0.162.1 / GPT-6.1 Sol | low | Selftest repairc48c5f0: Source0/native6PASS, installed40 assertions passed. This bounded fix did not resolve other thin-config initialization. | 9m45s |
+| ChatGPT / Codex0.162.1 / GPT-6.1 Sol | low | Release default0f4ee4f: Source0/native5PASS; main default independent of development base, explicit rules preserved; lead accepted with Gemini assessment. | 2m46s |
+| ChatGPT / Codex0.162.1 / GPT-6.1 Sol | low | Gate registration6e06dcd: Source0/native3PASS; preserves40 assertions without duplicate selftest and registers new outcome/remote suites. | 52s |
+| ChatGPT / Codex0.162.1 / GPT-6.1 Sol | medium | General thin-config compatibility6740e0d: Source0/native6PASS, unchanged9-case review-receipts suite now passes, strict guards and stdin retained; fresh Gemini APPROVE and lead accepted. Escalation followed repeated integration gaps. | 10m26s |
+| Antigravity / agy1.4.0 / Gemini3.8Flash | high | Original remote3cda4ad Source0/native6PASS had demonstrated role/credential/type/default defects; retained as unaccepted quality evidence. | 36m10s |
+| Antigravity / agy1.4.0 / Gemini3.8Flash | high | Three independent first-component reviews returned APPROVE/adapter0; lead assessed each. Other failed routes remain incomplete. | 18m03s / 7m31s / 6m37s |
+| Antigravity / agy1.4.0 / Gemini3.8Flash | high | Remote ancestor0f4ee4f APPROVE0/native0; later gate exposed thin-profile integration missed by this review. Fresh6740e0d loader review also APPROVE0/native0 and assessed by lead. Mirror checks reuse real Source evidence; mirror Source remains not_run. | 7m30s / 8m03s |
+| Mistral / Vibe2.26.1 / GLM5.3 | high | Consent review failed infrastructure/adapter2 below its cap, no verdict; not a code-quality or monthly-allowance result. | 5m49s |
+| Mistral / Vibe2.26.1 / MistralMedium3.5 | high | Replacement review failed infrastructure/adapter2, no verdict; local busy refusal preserved separately. | 4m40s |
+| PerplexityPro / pinnedwebadapter0.16.1 / Kimi3 | Thinking enabled; depth Unknown | Original selected-source critique corroborated several defects; claimed truncation and scope additions qualified. Fresh29,511-byte loader-delta critique found no current blocker; future hardening and inaccurate interpreter-PATH statement qualified. Supporting proposals, not formal native approvals. | 7m36s / 1m29s |
+| CopilotFree / CLI1.0.95 / AutoBalance | Not exposed | Docs proposal Source0 and genuine corrected0.5.19 parser transport pass. Advice largely repeated supplied guidance; serving model/lab Unknown. | 22s |
 
-Three low-effort implementation successes support using Sol low first for
-these native-workflow tasks. They do not establish token savings, prove low
-beats high, or rank models on unrelated work. Track future accepted and failed
-results with the same profile fields, including corrections and sample counts.
-The 2026-10-16 owner default supersedes the earlier general high/middle starting
-rule for workers sharing the lead's model or subscription. Raise effort only
-when demonstrated reasoning gaps warrant it; preserve retry and budget rules.
+Start same-model/shared-subscription workers at the lowest supported effort.
+Raise only from demonstrated reasoning/integration gaps, recording the next
+supported level and preserving attempts. Quota/network failures do not justify
+higher effort. These tasks support the default and an evidence-based medium
+escalation; they do not establish universal rankings or token savings.
+
+Source success, checks, bounded lead acceptance and full release acceptance are
+separate. The two initial full gates failed; the final complete gate and shipping
+result are recorded in the release evidence. Windows-mounted selftest timing
+failures remain distinct from unchanged private-tmpfs passes. Native/operator
+checks use project-owned fixtures; one worker diagnostic used private user-runtime
+scratch contrary to workspace guidance and remains recorded locally.
 
 ## Recovery and compatibility observations — 2026-10-15
 

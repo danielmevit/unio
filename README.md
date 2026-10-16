@@ -67,6 +67,16 @@ See [the changelog](CHANGELOG.md) for release history.
 - **Preserve unfinished work.** [Recovery saves](docs/WORK-SAVING.md) keep local
   snapshots before, during and after worker runs, with inspection, restore
   and separately authorized continuation. Saves are not off-device backups.
+- **Protect shared subscription budgets.** [Lead-budget consent](docs/development/LEAD-BUDGET-CONSENT.md)
+  requires explicit permission before a worker spends the lead's declared account.
+  It preserves concurrency limits and does not create extra allowance.
+- **Save eligible failed work as a commit.** Enable [WIP preservation](docs/WORK-WIP.md)
+  before a run. It commits scoped, supported changes after confirmed cleanup,
+  keeping the failed result and leaving acceptance with you.
+- **Understand worker stops.** [Plain outcomes](docs/WORKER-OUTCOMES.md) explain
+  supported adapter results; missing or unsupported evidence stays Unknown.
+- **Control publication destinations.** Opt into [remote policy](docs/REMOTE-POLICY.md)
+  to separate development and release pushes, while preserving owner hooks.
 - **Choose your workflow.** Set YOLO, Balanced or Thorough review, choose
   reasoning effort, and control concurrency per shared account. See
   [the independent workflow choices](#choose-how-unio-works).

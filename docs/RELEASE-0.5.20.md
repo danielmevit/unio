@@ -1,60 +1,79 @@
 # Unio 0.5.20 — protect budgets, work and publication
 
-Unreleased integration checkpoint, 2026-10-16. The first three components are
-accepted after native checks, independent assessment and lead inspection.
-Remote safety remains under correction; no complete bundle acceptance, quality
-gate, installation or publication is claimed at this checkpoint.
+Code and independent review accepted; complete release gate and delivery pending.
+This candidate combines four field improvements and persistent lead guidance.
 
 ## Changes
 
-- **Protect the lead's shared subscription.** One-use, expiring owner consent
-  is required before a native worker or reviewer spends the registered lead's
-  account group. Consent is bound to the exact task and configured route; it
-  never creates allowance or another concurrency slot. See [usage and limits](development/LEAD-BUDGET-CONSENT.md).
-- **Preserve eligible unfinished code.** Optional failed-run WIP commits run
-  after confirmed provider cleanup, using normal Git hooks and literal task
-  scope. Source remains failed and the work remains unaccepted. Initially
-  dirty, unsafe or unsupported states refuse. Power loss/SIGKILL cannot
-  guarantee a final commit. See [work preservation](WORK-WIP.md).
-- **Explain why a worker stopped.** Supported canonical adapters provide
-  bound, typed plain outcome observations. Missing, stale, malformed or generic
-  wrapper evidence stays Unknown, without changing the real process exit,
-  account state or acceptance. See [outcome boundaries](WORKER-OUTCOMES.md).
-- **Separate development and release pushes.** The opt-in remote policy pins
-  destinations and restricts release refs through normal pre-push hooks,
-  preserving worker guards and owner hooks. This remains under correction at
-  this checkpoint. See [remote policy](REMOTE-POLICY.md).
-- **Keep leads economical and moving.** Status questions do not pause authorized
-  work. Same-model/shared-subscription workers start at the lowest supported
-  effort, with evidence-based escalation. Score results separately by route,
-  model, effort and task type; preserve operational failures separately from
-  code-quality findings. See [lead guidance](development/LEAD-ROUTING.md) and
+- **Protect the lead's subscription.** One-use owner consent is required before
+  native workers or reviewers spend the registered lead's declared shared
+  account. Grants expire after15 minutes and bind the exact task and route.
+  They do not create allowance or raise concurrency. [Usage and limits](development/LEAD-BUDGET-CONSENT.md).
+- **Preserve eligible failed work.** Opt-in WIP commits run after confirmed
+  provider cleanup, with normal Git hooks and literal task scope. Source remains
+  failed and the work remains unaccepted. Dirty initial states, unsafe files
+  and unsupported Git states refuse. Power loss cannot guarantee a final
+  commit. [Work preservation](WORK-WIP.md).
+- **Explain supported worker stops.** Canonical adapters provide bounded, typed
+  plain outcome observations. Missing, stale, malformed or generic-wrapper
+  evidence stays Unknown; real exits, budgets and acceptance are unchanged.
+  [Outcome boundaries](WORKER-OUTCOMES.md).
+- **Separate development and release pushes.** Opt-in remote policy pins
+  destinations and validates release refs, source aliases and tag ancestry
+  before ordinary Git publication. main is the default independently of the
+  development work base; explicit owner rules remain. Canonical embedded guard
+  code supports standalone engines and thin configuration overrides, forwards
+  Git ref input and preserves owner hooks/worker guards. [Remote policy](REMOTE-POLICY.md).
+- **Keep leads economical and moving.** Answer status questions and continue
+  authorized work in the same turn. Workers sharing the lead's model or
+  subscription start at the lowest supported effort; escalate gradually from
+  results. The existing experience store and updated scoreboard distinguish
+  route, model, effort and task type. [Lead guidance](development/LEAD-ROUTING.md),
   [effort-specific results](development/MODEL-SCOREBOARD.md).
 
 ## Evidence and limits
 
-ChatGPT subscription / CodexCLI0.162.1 / GPT-6.1 Sol low completed shared-lead
-consent02bfcac in16m13s, WIP9c4dba0 in10m44s and plain outcomes0977d38 in12m27s.
-Each passed six native checks and an independent Antigravity/agy1.4.0 /
-Gemini3.8Flash high review (adapter0/APPROVE), followed by lead acceptance.
-Mistral/Vibe2.26.1 GLM5.3 high and MistralMedium3.5 high review attempts failed
-infrastructure without verdicts. Their collection remains incomplete.
+ChatGPT/CodexCLI0.162.1/GPT-6.1 Sol low completed consent02bfcac, WIP9c4dba0
+and outcomes0977d38. Each passed six native checks, a separate Antigravity/
+agy1.4.0/Gemini3.8Flash high APPROVE/adapter0 and lead inspection. Mistral/
+Vibe2.26.1 GLM5.3 high and MistralMedium3.5 high reviews failed infrastructure
+without verdicts; their collection remains incomplete.
 
-Antigravity/Gemini high remote3cda4ad finished Source0 in36m10s with six checks
-PASS. The lead reproduced role-conflict, typed-policy and credential defects;
-that original implementation is not accepted. A Sol high correction stopped
-at the actual five-hour usage limit in2m03s, with test edits preserved. The
-owner authorized a Sol low continuation after a fresh99percent allowance
-reading; its result and final independent assessment are pending.
+Original Gemini remote3cda4ad finished Source0/native6PASS, but lead inspection
+reproduced credential, conflicting-role and typed-policy failures. That original
+code is not accepted. Sol high stopped at a real usage limit, with test edits
+preserved. Authorized Sol low98d6c61 corrected guard behavior; its native6/7
+result retains an invalid operator-supplied test path as failure, while the
+actual35-case guard suite passed separately. It also introduced the external
+helper dependency that subsequent integration checks exposed.
 
-PerplexityPro/pinned0.16.1/Kimi3Thinking returned a supporting selected-code
-critique in7m36s, corroborating several defects. Its claimed input truncation
-and suggested force-push restriction require qualification; no code execution
-or native approval is claimed. CopilotFree1.0.95/AutoBalance supplied a docs
-proposal and a genuine live pass of the corrected0.5.19 result parser; its
-advice was qualified and does not supply code-security approval.
+Sol lowc48c5f0 repaired selftest,0f4ee4f corrected the development-base-derived
+release default and6e06dcd registered tests. A first full gate failed at selftest;
+a second failed in the unchanged review-receipts suite on thin profiles. Neither
+is relabeled as passed. Sol medium6740e0d corrected initialization generally,
+finished Source0 and passed six native commands, including the unchanged9-case
+review-receipts suite, new installed/standalone thin-profile cases,48 remote
+functional cases and60 regressions. It preserves the40 selftest assertions.
 
-Requested model and effort are not proof of effective identity or reasoning.
-No general token savings or model ranking is established. These are trusted
-host controls, not an OS sandbox or authentication against hostile same-user
-rewriting. Original failed attempts and partial work remain preserved.
+Fresh Antigravity/agy1.4.0/Gemini3.8Flash high review of6740e0d returned
+APPROVE/adapter0/native0. The private review mirror has Source not_run; its
+identity checks reuse the actual original Source/native evidence without
+claiming repeated functional tests. The lead inspected code and assessment.
+PerplexityPro/pinnedadapter0.16.1/Kimi3Thinking supplied two selected-context
+critiques; corroborated findings, unsupported claims and future suggestions
+are qualified separately. They are not formal native approvals. CopilotFree/
+CLI1.0.95/AutoBalance supplied a docs proposal and genuine live compatibility
+follow-up for0.5.19; serving model and AI lab remain Unknown.
+
+Windows-mounted selftest timing failures (38/40) remain preserved alongside
+unchanged private-tmpfs40/40 passes. Controlled fixtures do not establish a
+latency guarantee on every host. Requested model/effort are not verified serving
+identity or per-task quota; no general token savings or model ranking is claimed.
+Hooks and local state are trusted-host controls, not a sandbox or authentication
+against hostile same-user rewriting. Removing markers/hooks or --no-verify
+can bypass host controls. core.hooksPath and automatic remote import remain
+unsupported; import and configurable Vibe caps are follow-up work.
+
+Release provenance records the exact final source, complete-gate identity,
+reproducible artifacts, installation/upgrade checks and official download hashes.
+The candidate must pass its final full gate and install before publication.
