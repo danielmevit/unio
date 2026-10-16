@@ -198,3 +198,7 @@ Native shared-lead admission additionally requires an explicit one-use owner
 `unio lead-budget grant <agent> <worker> <task> <run|review>` expires in 15
 minutes and never raises the tier cap. `show` preserves history; `revoke <id>`
 withdraws unused consent. Alias grouping remains an explicit owner duty.
+
+Failed-run WIP preservation is a separate, default-off project setting:
+`unio wip on|off|status`. It does not change mode, tier, lead consent or account
+ownership. See [WORK-WIP.md](WORK-WIP.md); a WIP commit remains failed and unaccepted.

@@ -78,6 +78,11 @@ def main():
         marker = '# END EMBEDDED DASHBOARD\n'
         assert marker in old
         updated = old.replace(marker, marker + block, 1)
+    helper = (ROOT / 'tools/wip-worker.py').read_text()
+    begin, end = '# BEGIN EMBEDDED WIP\n', '# END EMBEDDED WIP\n'
+    left, rest = updated.split(begin, 1)
+    _, right = rest.split(end, 1)
+    updated = left + begin + helper + end + right
     # These pre-existing templates have canonical public copies too. Updating
     # a role or task-fit result must not leave a stale standalone installer.
     for relative, name, delimiter in (

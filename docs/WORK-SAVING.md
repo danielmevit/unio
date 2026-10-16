@@ -256,3 +256,7 @@ These focused checks make no AI request; the full gate runs before release.
 restore and authorized continuation, byte preservation, protected claims and
 newest saves, archive count/byte bounds, collisions, read-only usage and an
 interrupted archive move using isolated native workflows.
+
+Failed-run commits are separately opt-in with `unio wip on|off|status` (default
+off). See [WIP preservation](WORK-WIP.md) for text-only scope, safety refusals,
+private receipts and recovery limits. Existing snapshot ordering is unchanged.
