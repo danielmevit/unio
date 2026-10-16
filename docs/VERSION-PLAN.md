@@ -17,12 +17,13 @@ remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The comp
 
 | Version | Included work | State |
 | --- | --- | --- |
-| 0.5.19 | Measured saving and recovery performance | Proposed next bundle; not started. 2–4h focused or 4–8h deeper work. |
-| 0.5.20 | Optional continuous delegation within owner-approved bounds | Proposed; 1–3 working days. |
-| 0.5.21 | Managed live CLI sessions and lead continuity | Proposed; 2–4 working days for the first supported route. |
-| 0.5.22 | Session-scoped phone access | Proposed; 2–4 working days after managed session ownership. |
-| 0.5.23 | Native Windows | Proposed; 1–3 working weeks after feasibility assessment; split if required. |
-| 0.5.24 | Native macOS | Proposed; 3–6 working days, subject to actual host checks. |
+| 0.5.21 | Bounded continuous delegation for existing approved jobs | Candidate in review; [frozen first-slice contract](CONTINUOUS-DELEGATION-CONTRACT.md). Rough 4–8h for the first slice, including checks and delivery; broader cross-integration scheduling remains separate. |
+| 0.5.22 | Managed live CLI sessions and lead continuity | Proposed; 2–4 working days for the first supported route. |
+| 0.5.23 | Session-scoped phone access | Proposed; 2–4 working days after managed session ownership. |
+| 0.5.24 | Native Windows | Proposed; 1–3 working weeks after feasibility assessment; split if required. |
+| 0.5.25 | Native macOS | Proposed; 3–6 working days, subject to actual host checks. |
+| 0.5.20 | Shared-lead budget consent, eligible WIP commits, worker stop outcomes and safe publication remotes | [Released and installed 2026-10-16](https://github.com/danielmevit/unio/releases/tag/v0.5.20); complete gate, reproducible assets, upgrade/rollback, configuration preservation and six official download hashes passed. |
+| 0.5.19 | Owned Source cleanup, native verification identity, measured saving and Copilot compatibility | [Released and installed 2026-10-16](https://github.com/danielmevit/unio/releases/tag/v0.5.19); complete gate, isolated install/upgrade checks and official download verification passed. |
 | 0.5.18 | Worker reliability: Vibe live progress, Antigravity structured outcomes and exact Copilot JSONL proposals | [Released and installed 2026-10-14](https://github.com/danielmevit/unio/releases/tag/v0.5.18); full gate, artifacts, upgrade/restore, installation, dashboard identity and six official download hashes passed. |
 | 0.5.17 | Safer project selection and experimental managed Codex workers | [Released and installed2026-10-14](https://github.com/danielmevit/unio/releases/tag/v0.5.17); full gate, exact artifacts, upgrade/restore, installed acceptance, dashboard identity and six official download hashes passed. Current-inference effort changes remain unproven. |
 | 0.5.16 | Recovery performance and static worker diagnostics | [Released and installed 2026-10-14](https://github.com/danielmevit/unio/releases/tag/v0.5.16); source9ee2a20, combined gate9b4dfc4, artifacts, upgrade/restore, installed saving/audit acceptance and six official download hashes passed |
