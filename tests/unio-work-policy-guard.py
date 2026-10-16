@@ -332,6 +332,8 @@ with tempfile.TemporaryDirectory(prefix='work-policy-guard-') as directory:
         env['MOCK_BARRIER'] = ''
 
 
+        grant = unio('lead-budget', 'grant', 'mock4', 'mock4', 'task4', 'run')
+        check('full-slot probe has owner consent', grant.returncode == 0, grant)
         out_denied = unio('run', 'mock4', 'task4')
         check('cap4 with lead limits properly', out_denied.returncode != 0 and 'budget refused' in out_denied.stderr, out_denied)
 
