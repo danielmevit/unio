@@ -139,3 +139,26 @@ Importing remotes from an explicitly supplied local clone (e.g. inspecting anoth
 local working copy while preserving private configuration and without printing
 credentials) is documented as a follow-up enhancement. Cloning a remote URL cannot
 discover another clone's private remotes.
+
+### Destination identity and failure handling
+
+The guard checks every resolved push URL (including Git URL rewrites) before
+accepting any ref. Conflicting roles or ref rules for one destination are invalid.
+No privacy is inferred from a URL or remote name. Transport destinations are
+pinned with exact SHA-256 identities, including userinfo, query and fragment;
+only local paths/file URLs resolve filesystem aliases. Displays are fixed
+`[destination]` strings. Credentials are never stored in displays or policy keys.
+Changing credentials or transport spelling requires owner re-pinning; equivalent
+transport spellings are conservatively distinct rather than silently merged.
+Old policies containing URL displays must be re-pinned with the new helper.
+
+Policy JSON rejects duplicate keys, unknown fields, invalid types and ref rules,
+and is read with bounded no-follow descriptors from owner-controlled paths.
+A corrupt configured policy refuses pushes. An absent policy preserves the
+unconfigured default. Installation explicitly refuses `core.hooksPath`, unsafe
+hook paths and collisions between an owner hook and an existing owner backup.
+Both installation routes use the same helper to generate the pre-push hook.
+A configured project refuses when no guard helper can execute, including empty
+ref batches; unconfigured projects retain the worker guard and owner hook.
+These are normal-operation checks on a trusted host: a host owner can still
+remove the worker marker, hook or policy. This does not establish remote privacy.
