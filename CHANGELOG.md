@@ -4,7 +4,7 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.20 — unreleased — protect budgets, work and publication
+## 0.5.20 — protect budgets, work and publication — 2026-10-16
 
 See [scope, current evidence and limits](docs/RELEASE-0.5.20.md).
 
@@ -14,8 +14,8 @@ See [scope, current evidence and limits](docs/RELEASE-0.5.20.md).
   failed exits and refusing unsupported or unsafe states.
 - Surface bound plain adapter outcomes while missing or unsupported evidence
   remains Unknown; never infer quota or acceptance from output text.
-- Add opt-in development/release remote roles and ref guards; final correction
-  and bundle acceptance remain pending.
+- Add opt-in development/release remote roles and ref guards, with canonical
+  embedded enforcement for standalone engines and thin configuration profiles.
 - Require leads to answer questions and continue authorized work, start shared
   model/subscription workers at low supported effort, and track model/effort
   results separately using existing native experience profiles.

@@ -12,8 +12,8 @@ UI, site, brand and the owner's separate projects are preserved.
 
 The v0.5.20 field bundle implements shared-lead allowance consent, optional
 failed-work WIP commits, plain supported stop reasons and opt-in push policy.
-Code and independent assessments are accepted; final full gate/delivery are
-pending at this candidate checkpoint. See [current evidence](../RELEASE-0.5.20.md).
+Code, independent assessments and the complete quality gate are accepted.
+Artifact, installation and publication evidence is recorded during delivery. See [current evidence](../RELEASE-0.5.20.md).
 Then continuous delegation, managed live sessions, lead continuity and scoped
 phone access. Native Windows precedes macOS in the
 [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md). Windows localization includes

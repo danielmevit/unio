@@ -32313,6 +32313,7 @@ Effective identity/effort and per-task allowance savings remain Unknown.
 | ChatGPT / Codex0.162.1 / GPT-6.1 Sol | low | Release default0f4ee4f: Source0/native5PASS; main default independent of development base, explicit rules preserved; lead accepted with Gemini assessment. | 2m46s |
 | ChatGPT / Codex0.162.1 / GPT-6.1 Sol | low | Gate registration6e06dcd: Source0/native3PASS; preserves40 assertions without duplicate selftest and registers new outcome/remote suites. | 52s |
 | ChatGPT / Codex0.162.1 / GPT-6.1 Sol | medium | General thin-config compatibility6740e0d: Source0/native6PASS, unchanged9-case review-receipts suite now passes, strict guards and stdin retained; fresh Gemini APPROVE and lead accepted. Escalation followed repeated integration gaps. | 10m26s |
+| ChatGPT / Codex0.162.1 / GPT-6.1 Sol | low | Consent fixture integration658cbf0: Source0/native3PASS; only two test files changed, real lead/account mapping and exact one-use consent retained. Runtime unchanged from reviewed6740e0d. | 11m12s |
 | Antigravity / agy1.4.0 / Gemini3.8Flash | high | Original remote3cda4ad Source0/native6PASS had demonstrated role/credential/type/default defects; retained as unaccepted quality evidence. | 36m10s |
 | Antigravity / agy1.4.0 / Gemini3.8Flash | high | Three independent first-component reviews returned APPROVE/adapter0; lead assessed each. Other failed routes remain incomplete. | 18m03s / 7m31s / 6m37s |
 | Antigravity / agy1.4.0 / Gemini3.8Flash | high | Remote ancestor0f4ee4f APPROVE0/native0; later gate exposed thin-profile integration missed by this review. Fresh6740e0d loader review also APPROVE0/native0 and assessed by lead. Mirror checks reuse real Source evidence; mirror Source remains not_run. | 7m30s / 8m03s |
@@ -32328,8 +32329,10 @@ higher effort. These tasks support the default and an evidence-based medium
 escalation; they do not establish universal rankings or token savings.
 
 Source success, checks, bounded lead acceptance and full release acceptance are
-separate. The two initial full gates failed; the final complete gate and shipping
-result are recorded in the release evidence. Windows-mounted selftest timing
+separate. Three earlier complete gates failed (selftest initialization, thin-profile
+initialization and missing consent in managed-worker fixtures). Final658cbf0
+passed the complete gate in25m42s on2026-10-16. Shipping results are recorded
+separately in release evidence. Windows-mounted selftest timing
 failures remain distinct from unchanged private-tmpfs passes. Native/operator
 checks use project-owned fixtures; one worker diagnostic used private user-runtime
 scratch contrary to workspace guidance and remains recorded locally.
