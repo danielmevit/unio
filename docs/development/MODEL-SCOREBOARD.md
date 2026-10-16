@@ -6,6 +6,45 @@ fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start workers sharing the lead model/subscription at the lowest
 supported effort; other approved defaults remain, including GLM high.
 
+## Continuous-delegation observations — 2026-10-16
+
+These are separate task outcomes, not new general model rankings:
+
+- **ChatGPT / Codex 0.162.1 / GPT-6.1 Sol LOW:** scheduler `35f1260`
+  finished Source 0 in 29m17s and passed all five native validation commands.
+  Lead inspection reproduced a process-group cleanup ownership gap; native
+  experience records `quality_issue`, with one focused correction required.
+  Source success and green checks did not establish final acceptance.
+- **Mistral / Vibe 2.26.1 / GLM 5.3 HIGH:** the preceding implementation
+  attempt stopped at infrastructure failure, Source 2 after one minute and
+  no implementation edits. It was below its local task cap. This establishes
+  neither reasoning weakness nor exhaustion of the monthly subscription.
+- **Antigravity / agy 1.4.0 / Gemini 3.8 Flash HIGH:** contract audit returned
+  Source 0 and three native checks; it is supporting architecture work. The
+  first current-code review wrote APPROVE with adapter 0, but native review
+  returned 2 after a lead diagnostic created an untracked bytecode cache in
+  the frozen candidate. That operational invalidation is separate from the
+  review's inaccurate source anchors and missed cleanup gap. It is not a bound
+  final approval; the failed receipt and original verdict remain preserved.
+- **OpenCode Go / OpenCode 1.18.35 / GLM 5.3 HIGH:** the first additional
+  review refused at the native gate because of that candidate drift. No model
+  invocation occurred; this supplies no quota or review-quality observation.
+- **Perplexity Pro / pinned web adapter 0.16.1 / Kimi 3 Thinking:** a selected
+  contract critique finished Source 0 with two artifact checks and qualified
+  visibility claims. A separate managed-session proposal returned only a
+  summary and unsupported local file/test claims; the lead rejected it and
+  recorded `quality_issue` for architecture proposals. Neither supplies
+  current-code review approval.
+- **GitHub Copilot Free / CLI 1.0.95 / Auto Balance:** a routine prose task
+  failed a private launcher version assertion before any model invocation.
+  The canonical product adapter already handles the extra version-output
+  line. Keep this preparation failure distinct from model performance.
+
+The scoped LOW cleanup correction and fresh two-lab current-code review are
+pending. Requested identity/effort and remaining allowance are unverified;
+no per-worker token savings were measured. Preserve original failures and
+use the final exact-revision records before judging task suitability.
+
 ## Effort-specific field results — 2026-10-16
 
 Profiles separate subscription route, requested model, requested effort and task
