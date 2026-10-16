@@ -4,11 +4,12 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.19 — safer stopping and measured saving — unreleased
+## 0.5.19 — safer stopping and measured saving — 2026-10-16
 
 See [scope, evidence and limits](docs/RELEASE-0.5.19.md).
-The candidate is assembled; final stopping review and combined delivery checks
-remain pending. The published and installed release remains 0.5.18.
+The complete quality gate and seven final native checks passed. Independent
+review failures remain disclosed; the lead accepted the inspected code.
+Installation, upgrade/rollback and official download checks accompany delivery.
 
 - Sweep owned Linux Source provider sessions across nested process groups and reparented
   children. Confirm cleanup before the final save; keep worker/account ownership

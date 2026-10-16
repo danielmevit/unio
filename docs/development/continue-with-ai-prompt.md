@@ -1,30 +1,36 @@
-# Current candidate — Unio 0.5.19, 2026-10-15
+# Release handoff — Unio 0.5.19, 2026-10-16
 
-The private candidate combines owned Linux-session stopping, one deep save
-retention pass and the real Copilot filename-array compatibility correction.
-See [scope and evidence](../RELEASE-0.5.19.md). The public/installed release
-remains 0.5.18 until combined delivery; check actual official release and
-installed version before starting a new worker. A version heading alone is
-not publication evidence.
+The checked release combines owned Linux Source-session stopping, one deep
+save-retention validation pass and Copilot filename-array compatibility.
+See [scope, review failures and evidence](../RELEASE-0.5.19.md). Check the actual
+official latest release and installed `unio version` before assignments;
+a version heading alone is not publication evidence.
 
-Saving `91b97bb` passed native checks, independent Google review and personal
-acceptance. Copilot `721c56c` passed checks; Qwen's REQUEST-CHANGES documentation
-findings are resolved in the candidate without changing parser bytes. Stopping
-`3bb3f5e` finished Source 0, with a meaningful old-ordering mutation failing the
-regression; all six native verification commands passed. Qwen's separate review
-timed out without a verdict. The combined installed selftest failed background
-kill confirmation; dedicated ChatGPT/Codex 0.162.1/Sol high finished Source 0
-in 7m46s with minimal correction `14ee672` and fragment `8a47af1`. Its
-offline stopping 52, PID 12 and installed selftest 40 checks passed, including
-old-fail/new-pass evidence. Final native verification and DeepSeek Go high
-independent review remain pending. The corrected combined gate is next.
-Original Grok HTTP402, Vibe local setup/token-cap and Gemini stream-interruption
-failures remain preserved separately from inherited committed work.
+The final ChatGPT subscription / Codex0.162.1 / GPT-6.1Sol low correction
+`10da9e4` finished Source0 in12m29s and passed all seven native checks. The
+integrated `5512307` passed the complete quality gate. Documentation-only
+finalization retains every executable byte outside the generated scoreboard
+guide; the release's PROVENANCE.json records both revisions.
+
+Saving has independent Google approval and lead acceptance. Copilot's Qwen
+documentation findings were resolved without parser changes. Mistral/VibeGLM
+high formally approved ancestor19848; its later current-code review hit the
+local4M cap without a verdict. Current Antigravity/GeminiFlash high wrote an
+APPROVE assessment but terminalERROR invalidates formal approval; the lead
+checked its claims and rejected an inaccurate fixture-barrier description.
+DeepSeekGo high timed out without a verdict; the separate GLMGo high reviewer
+reported a usage limit. Final native review collection remains incomplete.
+The lead accepted the bounded code after personal inspection, actual focused
+regressions, native checks and the full passing gate; no human acceptance or
+failed-provider approval is claimed. Installation and official hashes are
+verified by delivery receipts rather than assumed from this handoff.
 
 Use Unio for implementation and reviews. The newest owner-supplied AGENTS
-instruction permits one dedicated Codex CLI / GPT-6.1 Sol / high correction
+instruction permits one dedicated Codex CLI / GPT-6.1 Sol correction
 beside the coordinating lead. Keep the real shared codex account and registered
-lead; temporary medium admits that one fix, then restore low when idle. Claude Opus is reserved indefinitely for the owner's other projects.
+lead; temporary medium admits that one fix, then restore low when idle.
+The owner selected LOW for new Sol assignments during the current trial;
+earlier high calls keep their frozen settings. Claude Opus is reserved indefinitely for the owner's other projects.
 Other eligible subscription routes remain available subject to current facts:
 Mistral/Vibe, Antigravity/Gemini, OpenCode Go; Grok last reported balance
 exhaustion. Perplexity supplies research/proposals; Copilot/free Zen support
@@ -41,8 +47,9 @@ Give rough estimates before assignments and periodic progress without waiting
 for the owner to ask. Continue authorized work through delivery; a progress
 update is not a reason to end the session.
 
-Finish the current source/review evidence, finalize truthful notes, run one frozen
-combined quality gate, install/test before publication and verify official assets.
+Finish delivery of the already-gated code: isolated artifacts, upgrade/rollback,
+local installation before publication, main push, release and six official hashes.
+Do not repeat the broad gate for final prose-only changes.
 Then complete the owner-authorized field fixes in one useful 0.5.20 batch:
 shared-lead allowance protection, safe opt-in WIP on cutoff, plain stop reasons
 and development/release push guards. Continuous delegation follows those
@@ -56,395 +63,13 @@ Local leads first read coord/AGENT-LOG.md and tmp/unio-next/manifest.json/receip
 inside the enclosing workspace; fresh clones use this prompt and current public
 release evidence. Earlier dated sections below preserve their original context.
 
-Current correction update, 2026-10-16: preserve all earlier failed gates and
-provider runs. Sol high fixed canonical dispatch and per-worker ownership;
-first Sol low19848 finished0/native5PASS. The fullae1ffce gate passed earlier
-runtime/API/adversarial checks but failed its final outdated branding session
-assertion after1872.468s. The lead also demonstrated cached legacy PASS
-bypassing the new dispatch requirement in review/readiness. New Sol low
-10da9e4 finished0 in12m29s with installed old-fail/new-pass proof, identity36,
-quality16+80+26 and branding/custom-space paths passing. Native7checks and
-concurrent MistralGLM/AntigravityGemini high review-set are pending, along with
-a distinct corrected-source full gate. Previous Mistral approval covers
-ancestor19848 only; DeepSeek Go has returned no verdict. Keep exact receipts
-and effective identity/effort/allowance Unknowns. No release acceptance yet.
-
-The latest owner requests LOW for all NEW Sol workers, overriding this
-workspace's high correction default during the trial. Keep the real account
-and lead reservation and one authorized correction; never retune a frozen run.
-Record actual checks, corrections, elapsed time and usage Unknowns. Opus stays
-reserved. The owner also authorized the field-fix implementation order: shared
-lead allowance, safe WIP on cutoff, plain stop reasons, remote push guards;
-then configurable Vibe limits, pre-inference brake classification, proposal
-outcomes, explicit validation outputs, drift checks and workflow commands.
-Finish0.5.19 first; do not attach those features to its frozen release. Local
-notes are coord/FIELD-REPORT-TRIAGE-2026-10-16.md and
-coord/FIELD-FIX-PLAN-2026-10-16.md. Both original field reports stay untouched.
-
----
-
-# Current delivery — Unio 0.5.18, 2026-10-14T14:45:44+02:00
-
-[Unio 0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18) is published and installed from `52e097a0104dd45c935e85fa8ea6937e72b4e159`.
-The complete quality gate passed on `a34159529fd9c76c98bb010e031f1844177c0b4c` in 1331.118 seconds.
-Only README/changelog release labels changed after that gate. Exact artifacts,
-40 offline selftests, 0.5.17 upgrade/restore, installation before publication,
-installed helper identity, dashboard byte identity and all six official
-download hashes passed. Prior release tags are unchanged.
-
-This bundle adds Vibe safe live progress and a distinct liveness heartbeat,
-the fourth packaged Antigravity connector with process/structured-outcome
-reconciliation, and exact Copilot native JSONL proposal extraction. See
-[release notes](../RELEASE-0.5.18.md). Live Vibe progress was observed during
-normal Mistral work; a normal Gemini correction through the frozen new
-Antigravity adapter finished native0/terminalSUCCESS/adapter0. Changed Copilot
-framing has offline/native-source evidence, without a new live Copilot call.
-
-Implementation provenance: Mistral subscription / Vibe2.26.1 / requested
-GLM5.3 high supplied initial progress and Antigravity work. Antigravity
-subscription / agy1.3.5 / requested Gemini3.8Flash high corrected both
-connectors. Grok subscription / Build1.0.52 / requested Grok4.7 high supplied
-Copilot extraction and release preparation. Copilot Free / CLI1.0.95 /
-Auto Balance / effort not exposed supplied an earlier routine progress
-proposal; its underlying model/lab is Unknown. All code corrections were
-delegated; Codex stayed lead-only. Native checks and personal review accepted
-the final code; no extra AI review fleet was launched. Effective identities,
-efforts and remaining allowances remain Unknown.
-
-Separate save profiling is unfinished: Mistral/Vibe2.26.1/GLM5.3 high ended
-native2/infrastructure_failure without a report; its one other-route
-replacement, OpenCode Go/CLI1.18.35/opencode-go/glm-5.3 high, ended timeout124
-without a report. These are preserved operational failures, not proof of
-quota exhaustion or performance improvement. Do not replay frozen tasks.
-
-Recommended v0.5.19 scope: measured saving and recovery performance on a
-populated store. First isolate the slow phase, then optimize one demonstrated
-bottleneck and verify exact restore/last-good behavior. Estimate 2–4 hours
-for a focused slice or 4–8 hours for deeper work and delivery. This is a
-proposal, not a started implementation or promised speedup. Lead-session
-continuity and scoped phone access follow; CodeGraph remains deferred.
-
-All native workers are idle. Keep YOLO/low, the real shared accounts,
-registered Codex lead and STOP; no extra Codex worker under the current owner
-override. Preserve owner UI/site/brand work. The managed local dashboard is
-http://127.0.0.1:36141; use dashboard ensure for its current URL later.
-Read private coord/AGENT-LOG.md and tmp/unio-next/manifest.json/receipts for
-local state. Earlier candidate paragraphs below preserve their dated context.
-
----
-
-# Current candidate — Unio 0.5.18 worker reliability
-
-Prepared2026-10-14. This candidate combines accepted Vibe live progress,
-Antigravity structured outcomes and corrected Copilot JSONL proposal delivery.
-All implementation/fixes used other subscription workers through Unio;
-Codex stayed lead-only. No extra AI review fleet or UI/site/brand edits.
-
-Antigravity e52dfea passed seven native checks and three independent cases.
-The corrected Copilot4516d51 passed six native checks and four independent
-cases. A real task through the frozen new AGY connector returned native0,
-terminalSUCCESS and adapter0. The changed Vibe connector delivered safe live
-labels and a heartbeat during real Mistral/Vibe GLM5.3 high work. Copilot's
-changed JSONL route has offline/native-source evidence only; no live call is
-claimed. Effective identities/efforts and remaining allowances stay Unknown.
-
-Grok subscription/Build1.0.52/Grok4.7high prepared version labels, documentation
-and private delivery scripts; its four native preparation checks passed.
-Original source outcomes, quality findings, failures, commits/saves and
-replacements are preserved. Separate save diagnosis did not deliver a report:
-Mistral/Vibe2.26.1/GLM5.3high ended native2/infrastructure_failure; OpenCode Go/
-CLI1.18.35/GLM5.3high ended timeout124. This does not prove quota exhaustion,
-provider-wide unavailability or a performance improvement.
-
-Public/installed release remains0.5.17 until final delivery. One frozen full
-quality gate, exact artifacts,0.5.17 upgrade/restore, installation acceptance
-and publication/download verification remain. Do not add runtime features or
-replay provider tasks. Preserve real accounts/Codex lead, YOLO/low and STOP.
-All native workers are idle. Read private coord/AGENT-LOG.md and
-../tmp/unio-next/manifest.json/receipts for exact local state. Candidate notes
-in this section supersede earlier current-state paragraphs; history follows.
-
----
-
-# Current development checkpoint — live Vibe observations, not yet released
-
-Updated 2026-10-14T10:13:38+02:00. Accepted implementation `e7fa71a` is on official main.
-The installed and latest public release remains **v0.5.17**. No new release or
-global installation was performed for this slice; include it in the next useful
-0.5.x bundle, with one full frozen-tree gate and normal shipping checks.
-
-The optional Vibe adapter now consumes the supported 2.26.1 streaming route,
-prints only fixed operational labels and a distinct roughly 30-second liveness
-heartbeat, and retains raw output privately. It safely handles malformed typed
-fields and supervises a child after its stdout closes. No raw reasoning, tool
-payloads, command strings or paths are exposed. Completed-history events do not
-certify that a tool is running at that instant. Bounds are decoded characters
-per record and a separate native-output byte limit; see MISTRAL-VIBE.md.
-
-The coherent final source passed all six focused native checks under the
-verification-only contract VIBE-PROGRESS-BATCH-VERIFY-1, including Vibe fixtures,
-embedded adapter identity, standalone packaging, progress observation and docs.
-Personal probes fail on the earlier implementation and pass on the correction.
-The final fixture explicitly closes descriptor1. No live provider call through
-the newly changed adapter has been made; use the next normal eligible Vibe task
-for honest field observation rather than claiming a completed live trial.
-No dashboard, website or brand source changed.
-
-Work provenance:
-
-- Mistral subscription / Vibe2.26.1 / requested GLM5.3 high produced9cbef05 and
-  partial docs, then Source/native3 at its local4M cumulative token cap. This is
-  not evidence that the monthly subscription is exhausted. Original work remains.
-- Antigravity / agy1.3.5 / requested gemini-3.8-flash-high preserved86ad359 and
-  corrected a76089c. Process/Source/native0 but structured terminal ERROR remains
-  recorded; do not turn it into a clean provider success. Code acceptance rests
-  on the later checks and personal review.
-- Copilot Free / CLI1.0.95 / Auto Balance / effort not exposed supplied routine
-  test/docs edits. Source/native/adapter0; underlying model/lab Unknown. CLI
-  presentation wrapping required normalization; exact source matches and original
-  proposal are preserved. Lead applied the reviewed proposal and clarified public
-  release wording; it is not a native Copilot implementation commit.
-
-Effective identities/efforts and remaining allowances stay Unknown. No Codex
-worker ran: the owner reserved Codex for this lead during this milestone.
-Preserve that restriction for its follow-up corrections and check current owner
-instructions before future assignments. Real accounts/lead, YOLO/low and STOP
-remain. The lead made no inline product fix and launched no extra AI reviewers.
-
-The first Gemini-task verification was INCOMPLETE because this lead used the
-wrong Markdown headings. The original frozen task and receipt remain unchanged;
-separate correctly headed verification contracts bind the exact code and scopes.
-They made no provider call and are not Source retries.
-
-Next bounded reliability work to assess: Antigravity returned process0 with a
-structured ERROR; Copilot's rendered output hard-wrapped machine-readable JSON.
-Preserve actual exits, framing and originals when designing better adapters.
-Do not replay these tasks or expand into UI/CodeGraph work. Save performance,
-allowance-aware routing, controlled scheduling, lead/phone continuity and native
-macOS/Windows remain the larger functional roadmap. Read the dated private log,
-manifest and receipts before assigning anything. Earlier delivery notes below
-are preserved history.
-
----
-
-# Current delivery — 2026-10-14: Unio 0.5.17
-
-[Unio 0.5.17](https://github.com/danielmevit/unio/releases/tag/v0.5.17) is published, installed and pushed from a5539eee161d9c6c65c0adcd59b117806058bb21.
-The final combined full gate passed on a420479dab05a1dfeff415bd62bad8ed5ee37251 in 1234.185
-seconds. The earlier gate stopped on an audit-test dirname shim mismatch; its
-failed receipt and test-only correction remain preserved. Only README/changelog
-release labels changed after the final passing gate. Exact artifacts,
-40 offline selftests,0.5.16 upgrade/restore, actual installed root/audit/helper
-checks, dashboard byte identity and six official download hashes passed.
-
-The release combines a physical project-root layout safeguard with opt-in
-experimental managed Codex workers. Future-turn effort configuration is supported;
-current-inference changes and use of pending settings by a one-turn Source remain
-unproven. Select starting effort explicitly. Read WORKER-EFFORT.md and
-RELEASE-0.5.17.md. Legacy direct clone/wt allowance is documented.
-
-Mistral subscription/Vibe2.26.1/GLM5.3 high built the guard, then dedicated ChatGPT/
-Codex0.162.1/GPT-6.1 Sol high corrected two lead-found cases. CopilotFree/CLI1.0.95/
-AutoBalance drafted the recovery note. Earlier managed-worker work used scoped
-Sol low. Effective identities/efforts and current remaining allowances Unknown.
-All original failures and the interrupted original Sol attempt are preserved.
-No extra AI review fleet. Real account maps/Codex lead remain; low tier and STOP.
-
-The local store audit validated34snapshots; only an empty duplicate archive
-reservation was reversibly quarantined. Subsequent300s-budget native baselines
-passed. No automatic recovery feature or default30s success is claimed.
-Current managed dashboard: http://127.0.0.1:38771
-
-Next: assess remaining functionality priorities before a new bundle; provider
-progress visibility needs attention because Vibe returned no live stdout while
-actually editing/committing. Do not misclassify silence as model failure.
-Perplexity Pro/GLM5.3 orKimi3/Thinking is owner-available for research/proposals;
-current readiness/allowance Unknown. Full Cloudflare security audits were only
-assessed, not installed/launched. Focused guidance looks useful; full workflows
-need explicit budget and proper sandboxing, not mere worktree isolation.
-
-Use native background Sources and dated receipts. Default new code fixes use
-dedicated Sol high, one at a time, genuine shared Codex budget/lead and recorded
-temporary medium restored after idle. No blind retries, paid fallback,
-max/ultra or inline product fixes. Preserve owner's UI/site/brand work.
-
-Read private coord/AGENT-LOG.md and tmp/unio-next/manifest.json for exact state.
-Candidate notes below are historical.
-
----
-
-# Current candidate — 2026-10-14: 0.5.17 bundle
-
-Accepted runtime9f62865 combines managed Codex Source/control-channel foundation
-with a physical project-root layout guard. Mistral/Vibe2.26.1/GLM5.3 high built
-the guard; personal review caught two cases, corrected by dedicated ChatGPT/
-Codex0.162.1/GPT-6.1 Sol high. Native verification and personal installed probes
-passed. CopilotFree/CLI1.0.95/AutoBalance drafted the checked recovery note.
-Effective identities/efforts and remaining allowances remain Unknown.
-Original Sol interruption and all actual failed checks remain preserved.
-
-The original local save store is recovered:34 deep-valid snapshots, one empty
-reservation quarantined without content deletion; subsequent explicit-budget
-native baselines succeed. Read SAVE-STORE-RECOVERY-2026-10-14.md and
-PROJECT-ROOT-GUARD-2026-10-14.md. This is not an automatic repair feature.
-
-Stable installed/public remains0.5.16 while this frozen0.5.17 candidate receives
-one combined full gate, exact artifacts, upgrade/restore and installation checks.
-No publication yet. Managed effort requests configure future turns; current-turn
-inference changes are not established and a one-turn Source can end before using
-a pending setting. Guide and release scope disclose that limitation.
-
-Use actual Unio native background mode for independent provider workflows.
-Preserve the real Codex lead/account groups, low tier and STOP between new runs.
-Owner default corrections use one dedicated Sol high with recorded temporary
-medium admission, restored after idle. No blind retries, inline product fixes,
-paid fallback, max/ultra or extra reviewer fleet. Website/dashboard/brand unchanged.
-Read private coord/AGENT-LOG.md and tmp/unio-next/manifest.json for live state.
-
-Earlier entries below are historical.
-
----
-
-# Current development — 2026-10-14: stable 0.5.16, next bundle source checked
-
-Official/latest and installed stable remain [v0.5.16](https://github.com/danielmevit/unio/releases/tag/v0.5.16).
-Its combined gate, installation, official assets and Pages deployment passed.
-The live managed dashboard is http://127.0.0.1:41271. Website/dashboard/brand
-files were left intact.
-
-Main now contains the reviewed managed Codex Source, worker-effort channel,
-idempotent cancellation cleanup and explicit startup sandbox/approval choices
-from 87a0ef7. These are development source for the next bundled release,
-marked 0.5.17 unreleased; no 0.5.17 tag/publication/global update occurred.
-
-Implementation route: existing ChatGPT subscription / Codex CLI 0.162.1 /
-requested GPT-6.1 Sol LOW under the owner's scoped experiment. Configured lead
-GPT-6.1 Sol xhigh; effective model/effort Unknown. Each task had one invocation;
-original failures and early commits remain preserved. Native long-TMPDIR tmpfs
-verification passed at 87a0ef7. A genuine explicitly configured writable task
-created and committed its exact fixture file, passed native verification and
-acknowledged a same-level low request; global engine/config remained unchanged.
-The earlier inherited-read-only write acceptance remains unaccepted, not replayed.
-Effort requests target future-turn configuration; current inference changes and
-quota savings are not established. Cross-level requests were tested offline only.
-
-Read [the guide](../WORKER-EFFORT.md) and [field-trial continuation](SOL-LOW-FIELD-TRIAL-2026-10-13.md).
-No extra AI review fleet was used under YOLO. The first unsupported-only prototype
-0776d80 remains unaccepted on its preserved branch and is not the new backend.
-Two test-added dummy budget aliases were restored while idle; real account maps
-and the Codex lead stayed intact. Canonical receipts and new log timestamps use
-`date`; private worker fixture failures remain separate from final acceptance.
-
-Before another implementation run, audit this workspace's original save history
-under STOP while idle: corrupt/unsupported archived evidence and duplicate
-active/archive IDs still refuse captures; the 30-second deadline was also seen.
-Prior good evidence is retained, and all current code is committed/pushed. This
-existing local-store condition was preserved, not fixed by the performance task.
-Estimate 30–90 minutes for a read-only inventory and a reviewable recovery plan;
-keep original bytes/receipts and use only checked, reversible repair steps.
-Never delete evidence or weaken content/retention validation to make a check pass.
-
-Then implement the nested/uninitialized project-root mutation guardrail (roughly
-1–2 hours), freeze a useful bundle and run one full release gate. Keep UI
-polish later. Before a new assignment verify official latest/installed versions,
-actual routing policy and worker idleness. The low experiment was scoped; do not
-silently make it the default for unrelated future work. Owner's ordinary fix rule
-is one dedicated Sol high worker through Unio, with genuine shared-account/lead
-reservation and a recorded temporary medium admission only when needed.
-Preserve STOP between tasks and restore low when idle. No blind retries, paid API
-fallback, max/ultra or direct inline product fixes. Do not replay completed tasks
-or claim source preview is already an installed stable feature.
-
-From this checkout, private coordination is in ../coord/AGENT-LOG.md and
-../tmp/unio-next/manifest.json, with receipts/ under that run folder, including
-managed-writable-startup-live-20261014.json. Public source
-notes below are historical.
-
----
-
-# Current delivery — 2026-10-14: v0.5.16
-
-[Unio 0.5.16](https://github.com/danielmevit/unio/releases/tag/v0.5.16) is published, installed and pushed from 9ee2a206a81faf65c6bd47058efca4fa385837bb.
-Combined gate 9b4dfc4bed52bf92b96b578f42aff61a0c9a109a passed in 1555.436 seconds.
-Only final README/changelog labels differ. Exact assets, 0.5.15 upgrade/restore,
-actual installed saving and command-audit acceptance, dashboard source identity
-and six official download hashes passed. The release combines two completed
-milestones: recovery performance and static worker diagnostics.
-
-Implementation used ChatGPT subscription / Codex CLI0.162.1 / requested
-GPT-6.1 Sol low. Configured leadGPT-6.1 Sol xhigh; effective identities Unknown.
-Original command-audit fixture issues and the focused correction are recorded
-separately. No extra AI review fleet was used under the owner's YOLO policy.
-
-Managed effort control remains unfinished. Prototype0776d80 is saved on
-wip/codex-effort-boundary-20261013 and excluded from this release. Next work is
-its concrete owned Source backend, channel, slot binding and native effort RPC;
-do not label refusal checks a completed switch or replay unchanged Source tasks.
-Preserve the owner's low-effort experiment, real shared-account/lead reservation,
-early commits and failures. Read local coord/AGENT-LOG.md and
-tmp/unio-next/manifest.json for current activity and capacity.
-
-Earlier candidate/break notes below are historical.
-
----
-
-# Current bundle continuation — 2026-10-13
-
-The owner requests multiple useful milestones in one release. Proposed0.5.16
-combines accepted measured saving and static worker-command diagnostics.
-Development revisionc0ce8d4 is pushed. Original audit source8c0c550 passed
-checks and needed a dedicated portable-fixture correctionc0ce8d4; preserve
-both outcomes separately. Saving425a9e3 and its old627abd9 gate are component
-evidence only. A final combined gate, installation and publication are pending.
-
-Route: ChatGPT subscription/Codex CLI0.162.1/requested GPT-6.1 Sol low.
-Configured leadGPT-6.1 Sol xhigh; effective identities Unknown. No extra
-AI reviewers under YOLO. Effort source0776d80 is an honestly labelled
-prototype that only refuses unsupported requests, saved separately and
-excluded here. Next work is its actual owned managed-session backend,
-channel, native slot binding, RPC and request-boundary acceptance.
-
-Read local coord/AGENT-LOG.md and tmp/unio-next/manifest.json for exact dated
-Source/verify/acceptance/delivery receipts. The owner resumed after the
-earlier break. Older break/candidate notes below are historical. Preserve
-the real lead/shared budget, low experiment, early commits and failures.
-
----
-
-# Current continuation — 2026-10-13: measured saving candidate
-
-The owner resumed after 0.5.15 and authorized three serial GPT-6.1 Sol low
-tasks through actual Unio. Current lead configuration is GPT-6.1 Sol / xhigh;
-the dedicated worker requests Sol / low. Both use the existing shared Codex
-subscription. Effective serving identities remain Unknown. Preserve the real
-lead/account mapping, admit only one dedicated worker beside the lead using
-temporary medium, close unrelated admissions and restore low when idle.
-
-The first task, SAVE-PERFORMANCE-SOL-LOW-1, has a committed implementation,
-passing native verification and personal lead acceptance. Proposed 0.5.16
-contains descriptor-bound deep-save metadata checks, meaningful installed
-tests and matched generated-fixture measurements. No automatic default-budget
-success or model-effort token savings is established. Read the
-[release scope](../RELEASE-0.5.16.md) and [measurement record](SAVE-PERFORMANCE.md).
-Final full gate, install acceptance and publication are pending; do not call
-the candidate released. Private task/Source/verify/acceptance/delivery receipts
-are under workspace tmp/unio-next/receipts/. Original failures remain preserved.
-
-After delivery, continue worker connection reliability, then per-worker effort
-control using the owner's low-effort experiment. No silent effort escalation,
-blind Source retry, paid fallback, extra review fleet or inline lead code fix.
-Keep task prompts compact and avoid repeatedly polling unchanged tool output.
-CodeGraph and further dashboard/site/brand changes remain deferred. Earlier
-dated checkpoints below are historical; this current direction supersedes
-their break instruction.
-
----
-
-# Continue Unio
-
-This handoff continues development of Unio itself. To use Unio to build a
-different app or project from scratch, use the
-[new-project prompt](../ai/NEW-PROJECT-PROMPT.md) instead.
+Current checkpoint: no Source or reviewer remains active. The project is
+YOLO/low with the actual registered Codex lead and STOP after admissions.
+Read local receipts for the exact delivery state; never replay a completed
+provider task. OpenCode Go has an observed usage limit, Grok has a retained
+HTTP402 bench, and Opus remains owner-reserved. Other availability is Unknown
+until a supported local check or an owner update. Serbian is planned as Latin
+only; Montenegrin is excluded. See [Windows localization](WINDOWS-LOCALIZATION.md).
 
 ## Latest owner correction policy — 2026-10-13
 

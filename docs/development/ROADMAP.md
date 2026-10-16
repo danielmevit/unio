@@ -2,62 +2,21 @@
 
 Your AIs, in sync.
 
-Current update,2026-10-14: **[v0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18)** is released,
-installed and pushed. It combines safe Vibe progress and a separate liveness
-heartbeat, a fourth packaged Antigravity connector with honest structured
-outcomes, and exact Copilot native JSONL proposal text. One frozen full gate,
-artifact/upgrade/install checks, dashboard identity and six official download
-hashes passed. UI, site and brand work were preserved.
+Current update, 2026-10-16: v0.5.19 completes owned Linux Source stopping,
+measured save-retention validation and Copilot metadata compatibility. Its
+complete quality gate and seven final native checks passed; the lead accepted
+the inspected code with the independent-review limitations disclosed in the
+[release notes](../RELEASE-0.5.19.md). Delivery installs before publication and
+verifies upgrade/rollback, preserved configuration and six official downloads.
+UI, site, brand and the owner's separate projects are preserved.
 
-Update, 2026-10-15: the v0.5.19 candidate assembles owned native stopping,
-a single deep save-retention traversal, and Copilot filename-array compatibility.
-Saving passed native checks and independent Google review. Copilot passed checks;
-Qwen's documentation findings are resolved in the candidate. The stopping proof
-finished Source 0 at `3bb3f5e`, including an isolated old-ordering mutation that
-fails the new regression; six native verification commands passed. Qwen's
-final review timed out without a verdict. Later bounded Sol corrections fixed
-cancellation confirmation, typed dispatch binding, per-worker ownership,
-never-run verification and cached legacy review/readiness. The latest full
-gate reached an outdated final branding session assertion; that fixture is
-corrected and new native/review/full-gate evidence remains pending.
-See the [release evidence and limits](../RELEASE-0.5.19.md).
-
-The measured retention phase improved on one fixture, while full captures showed
-no clear wall-time reduction. Do not advertise a general save-speed improvement.
-Owner update, 2026-10-16: after this bounded release, prioritize the field
-fixes together: protect the lead's shared allowance, preserve interrupted work
-with opt-in WIP commits, explain stop reasons and guard push destinations.
-Then implement optional continuous delegation, owned live sessions, lead
-continuity and scoped phone access. Native Windows still
-precedes macOS in the [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md).
-
-The functional core includes recovery saving, shared-account policy and capacity
-observations, managed daily startup, read-only planning, explicit single-attempt
-dispatch, separate review receipts, concurrent collection and task-specific worker
-experience. Proposal routes require implementation review. Genuine lead-limit
-restart remains experimental/opt-in and unobserved. General save speedups need
-matched evidence; bounded capture budgets in 0.5.14 do not make saving faster.
-
-The earlier requested break ended when the owner authorized three serial
-GPT-6.1 Sol low tasks: measured saving, worker connection reliability and
-per-worker effort control. Preserve owner dashboard,
-website and brand work; further visual redesign remains lower priority.
-Earlier dated sections below preserve their historical context.
-
-The released 0.5.16 completes the first bounded save optimization: fewer
-stored-file pathname checks with full byte validation. See the
-[measurement limitations](SAVE-PERFORMANCE.md#descriptor-bound-deep-reading--2026-10-13-source-candidate).
-It also includes static worker-command diagnostics; combined release checks and
-installation passed. Further release work should freeze a useful bundle and run
-one combined gate, rather than publish each corrective slice separately.
-
-The [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md) explains the proposed scopes, implementation approach and estimates. Field fixes precede automatic delegation; later version assignments are provisional.
-
-The Windows app track includes [multilingual support](WINDOWS-LOCALIZATION.md):
-major and Balkan languages, Czech and Slovak, a visible selector, persisted
-choice and English fallback. Serbian uses Latin only. Right-to-left layout
-and script coverage need actual
-checks. This is planned work, not a shipped capability.
+Next: proposed v0.5.20 prioritizes shared-lead allowance protection, interrupted
+work preservation, plain stop reasons and development/release push guards.
+Then continuous delegation, managed live sessions, lead continuity and scoped
+phone access. Native Windows precedes macOS in the
+[release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md). Windows localization includes
+Czech, Slovak and Balkan languages, with Serbian Latin only and no Montenegrin;
+see the [staged plan](WINDOWS-LOCALIZATION.md).
 
 ## Current focus: finish the functional core
 

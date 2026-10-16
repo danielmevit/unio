@@ -47,7 +47,7 @@ Copilot evidence includes native schema inspection, an exact offline replay of
 an actual saved native stream and fake-CLI regressions. A fresh live call through
 the corrected parser was not run. See [the result contract](integrations/COPILOT.md).
 
-## Candidate evidence — 2026-10-15
+## Implementation and review evidence — 2026-10-16
 
 Saving revision `91b97bb` passed native verification and independent
 Antigravity/agy 1.3.5 / Gemini 3.8 Flash high review; the lead accepted it.
@@ -101,15 +101,36 @@ history. All 36 identity cases, quality 16+80+26, syntax/embed checks and the
 branding fixture for both custom command paths passed. Earlier test-wrapper
 errors remain separate from the final passing commands.
 
-Mistral subscription / Vibe 2.26.1 / GLM 5.3 high approved the ancestor
-`19848e9`, with one low and two informational observations. This supplies no
-approval for the later correction. Current native verification, a concurrent
-Mistral GLM / Antigravity Gemini high review set and the corrected full gate
-remain pending. The earlier DeepSeek Go call has returned no findings or
-verdict as of this update and supplies no approval. Source success is not
-lead acceptance.
+Mistral subscription / Vibe 2.26.1 / GLM 5.3 high formally approved the
+ancestor `19848e9`, with one low and two informational observations. That
+approval does not cover the later correction. Current `10da9e4` passed all
+seven native verification commands. Its integrated candidate `5512307` passed
+`bash tools/quality-check.sh` on 2026-10-16; final documentation updates preserve
+every executable installer byte outside the generated scoreboard guide.
 
-The combined gate, installation and publication remain pending. Until they
-finish, the official and installed release remains 0.5.18.
-Original provider failures and saved partial work remain separate from later
-accepted revisions. Effective model/effort and remaining allowances are Unknown.
+The final independent review set remains **incomplete**, not approved: Mistral
+GLM high stopped at its configured 4M cumulative-token cap without a verdict;
+Antigravity/agy 1.3.6 / Gemini 3.8 Flash high wrote an APPROVE assessment, but
+terminal ERROR made the adapter fail. The lead inspected its written claims
+as supporting material and rejected an inaccurate fixture-barrier statement.
+The actual mock-start marker is sufficient because provider identity is
+published before the child receives permission to execute.
+
+OpenCode Go / OpenCode 1.18.35 / DeepSeek V4 Pro high timed out without a
+verdict. A separate current-source GLM 5.3 high reviewer reported Go usage-limit
+exhaustion; its waiting supervisor was stopped with identity checks. These
+calls supply no approval. The Go log also showed internal title-request retries
+despite the configured zero-retry setting; effective transport retry behavior
+must not be described as zero.
+
+The lead accepted the bounded code after personally checking the corrections,
+prior component assessments, installed old-fail/new-pass evidence, seven native
+checks and the complete passing gate. This is an explicit lead decision;
+it does not turn failed review collection into approval or human acceptance.
+Original failures and saved partial work remain separate from accepted code.
+Effective model/effort, remaining allowances and reset times are Unknown.
+
+Release artifacts include `PROVENANCE.json` and `SHA256SUMS`, recording the
+exact source, reused gate identity, reproducible archive and isolated installation
+checks. Delivery also checks upgrade/rollback and configuration preservation,
+installs locally before publication, and verifies all six official downloads.

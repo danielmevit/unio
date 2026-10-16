@@ -1,9 +1,9 @@
-# Proposed releases after v0.5.18
+# Release outlook after v0.5.19
 
 Planning checkpoint, 2026-10-14. These are recommended scopes and rough active
 engineering estimates, not shipped capabilities or fixed release commitments.
 Owner update, 2026-10-14: native Windows precedes native macOS.
-v0.5.18 is delivered. The v0.5.19 candidate is being completed; see its
+v0.5.19 has passed its complete quality gate and lead code assessment; see its
 [release evidence and limits](../RELEASE-0.5.19.md). No new provider assignment is authorized
 merely by a row here; use existing owner authorization, current availability and
 the selected work policy when freezing each implementation task.
@@ -35,8 +35,10 @@ failed profiling attempts remain failures rather than successful measurements.
 Bundle this with native stopping of explicitly recorded Linux provider sessions
 and the real Copilot filename-array compatibility fix. Stopping must prove owned
 cleanup before final saving; processes that leave that session remain unmanaged.
-The final stopping proof and combined release checks are still pending at this
-planning update. A higher timeout alone is not a performance improvement.
+The final stopping correction and seven native checks passed; the complete
+integrated gate also passed. Review failures and the lead decision remain
+explicit in the release evidence. A higher timeout alone is not a performance
+improvement.
 
 ## Field-fix priority update — 2026-10-16
 

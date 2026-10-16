@@ -4,13 +4,9 @@ This backlog consolidates pending, accepted, and shipped functional improvements
 
 ## Current Delivery States
 
-- **Shipped**: Latest official and installed release is [v0.5.18](https://github.com/danielmevit/unio/releases/tag/v0.5.18), with worker progress, structured adapter outcomes and Copilot proposal handling. See [release scope](../RELEASE-0.5.18.md). Older dated notes below retain their original context.
-- **Release candidate**: The private0.5.19 bundle combines owned stopping, folded save validation and Copilot metadata compatibility. A failed combined gate exposed verification and concurrent-ownership bugs; corrections are committed, with final checks/review/delivery pending. See [current evidence](../RELEASE-0.5.19.md). A candidate is not publication.
-- **Accepted Development**: Merged in `main`, passes focused checks and personal review, waiting for a release. This state alone does not mean a feature is published or installed.
-- **Partially Implemented**: Working pieces exist in `main`, but the full milestone is incomplete.
-- **Pending**: A prepared task or candidate awaiting completion or acceptance. Distinguish an active run from a queued task or a failed attempt.
-- **Planned**: Approved by the owner but not yet started.
-- **Unknown Evidence**: Claims lacking measured verification or runtime support.
+- **Current delivery**: [v0.5.19](https://github.com/danielmevit/unio/releases/tag/v0.5.19) combines owned Linux Source stopping, folded save validation and Copilot metadata compatibility. Its full gate and seven final native checks passed; the lead accepted the inspected corrections. See [scope and review limitations](../RELEASE-0.5.19.md). Publication and installed version are established by delivery receipts and `unio version`, not this heading.
+- **Next batch**: Shared-lead budget consent, opt-in interrupted-work WIP, plain stop reasons and development/release push guards. Existing snapshots, slots and worker guards remain foundations; the field gaps are not yet fixed.
+
 
 ## Functional Priorities
 

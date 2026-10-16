@@ -89,15 +89,30 @@ in 12m29s (`c532fb5`, `10da9e4`). The lead's additional actual-function probe
 found cached legacy verification could still unlock review/readiness; installed
 fixtures reproduced that behavior. The correction's quality 16+80+26, identity
 36, branding/custom-space paths and syntax/embed/diff checks passed. Setup and
-test-wrapper errors are preserved separately from the final passes. Current
-native verification, two-lab review and release gate remain pending.
+test-wrapper errors are preserved separately from the final passes. All seven
+native checks passed. Integrated `5512307` passed the complete release gate.
 
-Mistral / Vibe 2.26.1 / GLM 5.3 high independently approved ancestor19848 in
-6m51s, recording one low and two informational notes. The lead found the later
-cached-PASS gap; the approval is retained with its actual scope, not promoted
-to final acceptance. OpenCode Go / DeepSeek V4 Pro high has returned no events
-or verdict at this checkpoint; effective progress and allowance remain Unknown.
-No model-quality or quota conclusion follows from that pending call.
+Mistral / Vibe 2.26.1 / GLM 5.3 high formally approved ancestor19848 in
+6m51s, with one low and two informational notes; this is not current-code
+approval. Its fresh current-code review stopped at the configured local4M
+cumulative-token cap (adapter3), with no verdict. Antigravity / agy1.3.6 /
+Gemini3.8Flash high wrote a current-code APPROVE assessment but ended with
+terminalERROR/adapter2. The lead retained it as supporting material, rejected
+an inaccurate claimed fixture polling barrier, and preserved native failure.
+Neither failed call is a formal approval.
+
+OpenCode Go / OpenCode1.18.35 / DeepSeekV4Pro high timed out124 without a
+verdict. A separate current-code GLM5.3 high review reported Go usage-limit
+exhaustion; the lead stopped its waiting identity-checked supervisor. No verdict
+or reset estimate was inferred. Native logs showed internal title-request
+retries despite the configured zero-retry option; actual transport behavior
+must not be claimed retry-free. No further Go calls were made.
+
+The lead accepted the bounded code from personal source inspection, prior
+component assessments, actual old-fail/new-pass evidence, seven native checks
+and the full passing gate. Native final review collection remains incomplete;
+no human acceptance or serving-model identity is inferred. These observations
+do not establish general model rankings or subscription savings.
 
 ### Owner availability for Unio development — 2026-10-15
 
