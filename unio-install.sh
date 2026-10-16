@@ -16287,8 +16287,8 @@ can accompany YOLO, Balanced or Thorough. The owner can switch any axis for
 future assignments; preserve the other two, record the choice in the project's
 instructions/handoff, and map only verified supported model controls.
 
-Low is the economical default, starting at supported middle/high with max
-off. Owner-selected Medium adapts effort and can use supported max for hard
+Low is the economical default; same-model/shared-subscription workers start
+at the lowest supported effort, with max off. Owner-selected Medium adapts effort and can use supported max for hard
 reasoning; Max requests each route's highest permitted setting for new tasks.
 These profile names are lead instructions, not universal native effort flags
 or an implemented `unio effort` command. Explicit project route holds and
@@ -16298,6 +16298,36 @@ The xhigh/no-max defaults below remain the current Unio development workspace's
 policy. An explicit owner's effort selection sets their new project's policy;
 do not treat this workspace's default ceiling as a universal model limitation.
 No profile changes account concurrency, role restrictions or actual allowance.
+
+## Same-model and shared-subscription effort default
+
+Owner update, 2026-10-16: when assigning a worker that uses the lead's model
+or shared subscription, start at its lowest supported reasoning effort.
+For Codex CLI / GPT-6.1 Sol, request `low`. Keep capable implementation models;
+this is an effort choice, not permission to replace them with free chore agents.
+Other routes retain their owner-approved defaults and verified controls.
+
+Assess the actual result and checks. If reasoning is insufficient, raise only
+to the next supported effort for a separately authorized continuation, recording
+why, prior work and every outcome. For example, Sol can progress low → medium
+→ high → xhigh where the installed route supports those settings. Max/ultra
+still requires the owner's explicit permission. Quota, authentication and
+transport failures are operational failures, not evidence that low is too weak.
+Do not increase effort to fix those failures or discard an unsuccessful attempt.
+
+Frozen running assignments keep their settings. Changes normally apply to the
+next assignment; only a supported managed-session control can request a later
+turn setting, without promising to change current reasoning. An escalation
+does not authorize a retry forbidden by the owner, reset task history, open
+extra shared-account slots or bypass STOP. Preserve the real lead reservation.
+
+After each final assessment, record route, requested model, requested effort,
+task type, Source result, native checks, acceptance, correction burden and
+elapsed time. Use `unio experience record` / `show`: profiles already separate
+model, route, effort and task type. Keep CLI/version, timestamps and elapsed
+work in the dated task receipts and scoreboard. Effective effort/model and
+per-task allowance savings stay Unknown unless measured. Compare similar
+tasks and retain sample counts; one result is not a universal model ranking.
 
 ## Mandatory task estimates and progress summaries
 
@@ -16465,7 +16495,7 @@ agents. Use available workers from that group for product features, core
 behavior, UI, complex debugging and substantive security corrections. The
 owner's designated lead normally plans, coordinates, reviews and integrates.
 For Unio development, delegate fixes the lead would otherwise implement to
-Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / high through Unio. The lead defines
+Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / low by default through Unio. The lead defines
 the scope/checks, coordinates, reviews and integrates; it does not repair
 the implementation inline. The owner permits one focused Sol correction
 worker beside the registered lead, with real shared-budget accounting and a
@@ -16896,7 +16926,8 @@ uses. Increasing one does not silently change the others.
 
 These are Unio effort profiles, not identical native flags: **Low does not
 mean pass `--effort low` to every model**. It means conserve allowance while
-starting at the supported middle/high level. The lead maps the selected
+starting same-model/shared-subscription workers at the lowest supported effort;
+other routes use their approved supported default. The lead maps the selected
 profile to each route's verified controls and explains any fixed limit.
 
 The [new-project prompts](NEW-PROJECT-PROMPT.md) start at **low coordination
@@ -16904,11 +16935,41 @@ tier + Low reasoning**. Balanced is the middle review protocol; its
 matching CLI value is `balanced` in 0.5.13 (`medium` remains an alias). Any review protocol can use any
 reasoning profile: Thorough can use Low, and YOLO can use Max.
 
+## Same-model and shared-subscription effort default
+
+Owner update, 2026-10-16: when assigning a worker that uses the lead's model
+or shared subscription, start at its lowest supported reasoning effort.
+For Codex CLI / GPT-6.1 Sol, request `low`. Keep capable implementation models;
+this is an effort choice, not permission to replace them with free chore agents.
+Other routes retain their owner-approved defaults and verified controls.
+
+Assess the actual result and checks. If reasoning is insufficient, raise only
+to the next supported effort for a separately authorized continuation, recording
+why, prior work and every outcome. For example, Sol can progress low → medium
+→ high → xhigh where the installed route supports those settings. Max/ultra
+still requires the owner's explicit permission. Quota, authentication and
+transport failures are operational failures, not evidence that low is too weak.
+Do not increase effort to fix those failures or discard an unsuccessful attempt.
+
+Frozen running assignments keep their settings. Changes normally apply to the
+next assignment; only a supported managed-session control can request a later
+turn setting, without promising to change current reasoning. An escalation
+does not authorize a retry forbidden by the owner, reset task history, open
+extra shared-account slots or bypass STOP. Preserve the real lead reservation.
+
+After each final assessment, record route, requested model, requested effort,
+task type, Source result, native checks, acceptance, correction burden and
+elapsed time. Use `unio experience record` / `show`: profiles already separate
+model, route, effort and task type. Keep CLI/version, timestamps and elapsed
+work in the dated task receipts and scoreboard. Effective effort/model and
+per-task allowance savings stay Unknown unless measured. Compare similar
+tasks and retain sample counts; one result is not a universal model ranking.
+
 ## Three interchangeable reasoning profiles
 
 | Profile | Normal behavior | Escalation |
 | --- | --- | --- |
-| Low — default | Use the model's supported middle level, or high where that is the suitable permitted setting. Keep a capable model on implementation; this is not a switch to weaker free models. | Raise to supported high/xhigh only when the evidence warrants it. Max stays off. |
+| Low — default | Start workers sharing the lead's model/subscription at the lowest supported effort; otherwise use the approved supported default. Keep a capable model on implementation; this is not a switch to weaker free models. | Raise to supported high/xhigh only when the evidence warrants it. Max stays off. |
 | Medium — variable effort | Start at high for substantive work. Use supported middle for straightforward coordination or routine work. | Use supported xhigh, and max when a difficult reasoning problem warrants it and the owner selected this profile. Return to the normal level for subsequent simpler tasks. |
 | Max — highest permitted effort | Request the highest verified supported and permitted setting for every new controllable lead, worker and reviewer task. | No routine effort reduction. A route whose highest eligible setting is high stays at high; unsupported levels are never invented. |
 
@@ -31304,11 +31365,16 @@ Read this at startup and before assigning a correction.
 
 For Unio development, when the lead finds a defect or would otherwise repair
 a worker's implementation itself, delegate the bounded correction through
-Unio to **Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / high effort**. The lead
+Unio to **Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / low effort by default**. The lead
 defines the failure, scope and checks, then reviews and integrates the result.
 It must not silently implement the fix in the coordinating session. This
 supersedes the earlier direct-lead takeover default for this workspace.
 Other project owners can explicitly choose their own correction route.
+
+The owner update of 2026-10-16 supersedes the earlier high-effort default.
+Start same-model/shared-subscription workers at their lowest supported effort;
+escalate gradually only from task evidence and within existing retry authority.
+Preserve frozen assignments. See [effort selection](../development/LEAD-ROUTING.md#same-model-and-shared-subscription-effort-default).
 
 Use the existing approved ChatGPT subscription, a dedicated worker worktree,
 a pinned per-run configuration and one native Source invocation per task.
@@ -31407,7 +31473,36 @@ cat > "$TPL_DIR/MODEL-SCOREBOARD.md" <<'MODEL_SCOREBOARD_TPL_EOF'
 Updated 2026-10-16 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
-fallback. Start at high or the supported middle and keep GLM at high.
+fallback. Start workers sharing the lead model/subscription at the lowest
+supported effort; other approved defaults remain, including GLM high.
+
+## Effort-specific field results — 2026-10-16
+
+Keep profiles separate by subscription route, requested model, requested effort
+and task type. The native `unio experience` store already groups these fields;
+this public summary adds elapsed time and review context. All identities and
+efforts below are requested settings, not verified serving identities.
+
+| Route / CLI / requested model | Effort | Task and observed result | Elapsed |
+| --- | --- | --- | --- |
+| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | low | Shared-lead consent: Source0, six native checks PASS, independent Gemini APPROVE and lead accepted; revision02bfcac. | 16m13s |
+| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | low | Failed-worker WIP preservation: Source0, six native checks PASS, independent Gemini APPROVE and lead accepted; revision9c4dba0. | 10m44s |
+| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | low | Bound plain outcomes: Source0, six native checks PASS, independent Gemini APPROVE and lead accepted; revision0977d38. | 12m27s |
+| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | high | Remote-guard correction stopped at real usage limit, Source1 before implementation; unfinished test edits retained. Operational failure, not a reasoning-quality result. | 2m03s |
+| Antigravity / agy1.4.0 / Gemini3.8Flash | high | Remote-policy feature: Source0 and six native checks PASS at3cda4ad. Lead reproduced role-conflict, typed-policy and credential defects; not accepted pending correction. | 36m10s |
+| Antigravity / agy1.4.0 / Gemini3.8Flash | high | Three independent final-code reviews of the low-effort Sol components returned adapter0/APPROVE; each assessed separately by lead. Other failed review routes remain incomplete. | 18m03s / 7m31s / 6m37s |
+| Mistral / Vibe2.26.1 / GLM5.3 | high | Consent review ended infrastructure_failure/adapter2 below its cap, no verdict. No code-quality or monthly-allowance inference. | 5m49s |
+| Mistral / Vibe2.26.1 / MistralMedium3.5 | high | Replacement consent review ended infrastructure_failure/adapter2, no verdict. Local busy refusal before the actual call preserved separately. | 4m40s |
+| PerplexityPro / pinned web adapter0.16.1 / Kimi3 | Thinking enabled; depth Unknown | Independent selected-code critique returned Source0. Several concrete defects corroborated; claimed test truncation and scope extensions need qualification. Supporting assessment, not native approval. | 7m36s |
+| CopilotFree / CLI1.0.95 / AutoBalance | Not exposed | Docs proposal Source0; genuine corrected0.5.19 parser transport passed. Advice mainly repeated supplied guidance; serving model/lab Unknown. | 22s |
+
+Three low-effort implementation successes support using Sol low first for
+these native-workflow tasks. They do not establish token savings, prove low
+beats high, or rank models on unrelated work. Track future accepted and failed
+results with the same profile fields, including corrections and sample counts.
+The 2026-10-16 owner default supersedes the earlier general high/middle starting
+rule for workers sharing the lead's model or subscription. Raise effort only
+when demonstrated reasoning gaps warrant it; preserve retry and budget rules.
 
 ## Recovery and compatibility observations — 2026-10-15
 

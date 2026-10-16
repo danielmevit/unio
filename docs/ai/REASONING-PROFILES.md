@@ -12,7 +12,8 @@ uses. Increasing one does not silently change the others.
 
 These are Unio effort profiles, not identical native flags: **Low does not
 mean pass `--effort low` to every model**. It means conserve allowance while
-starting at the supported middle/high level. The lead maps the selected
+starting same-model/shared-subscription workers at the lowest supported effort;
+other routes use their approved supported default. The lead maps the selected
 profile to each route's verified controls and explains any fixed limit.
 
 The [new-project prompts](NEW-PROJECT-PROMPT.md) start at **low coordination
@@ -20,11 +21,41 @@ tier + Low reasoning**. Balanced is the middle review protocol; its
 matching CLI value is `balanced` in 0.5.13 (`medium` remains an alias). Any review protocol can use any
 reasoning profile: Thorough can use Low, and YOLO can use Max.
 
+## Same-model and shared-subscription effort default
+
+Owner update, 2026-10-16: when assigning a worker that uses the lead's model
+or shared subscription, start at its lowest supported reasoning effort.
+For Codex CLI / GPT-6.1 Sol, request `low`. Keep capable implementation models;
+this is an effort choice, not permission to replace them with free chore agents.
+Other routes retain their owner-approved defaults and verified controls.
+
+Assess the actual result and checks. If reasoning is insufficient, raise only
+to the next supported effort for a separately authorized continuation, recording
+why, prior work and every outcome. For example, Sol can progress low → medium
+→ high → xhigh where the installed route supports those settings. Max/ultra
+still requires the owner's explicit permission. Quota, authentication and
+transport failures are operational failures, not evidence that low is too weak.
+Do not increase effort to fix those failures or discard an unsuccessful attempt.
+
+Frozen running assignments keep their settings. Changes normally apply to the
+next assignment; only a supported managed-session control can request a later
+turn setting, without promising to change current reasoning. An escalation
+does not authorize a retry forbidden by the owner, reset task history, open
+extra shared-account slots or bypass STOP. Preserve the real lead reservation.
+
+After each final assessment, record route, requested model, requested effort,
+task type, Source result, native checks, acceptance, correction burden and
+elapsed time. Use `unio experience record` / `show`: profiles already separate
+model, route, effort and task type. Keep CLI/version, timestamps and elapsed
+work in the dated task receipts and scoreboard. Effective effort/model and
+per-task allowance savings stay Unknown unless measured. Compare similar
+tasks and retain sample counts; one result is not a universal model ranking.
+
 ## Three interchangeable reasoning profiles
 
 | Profile | Normal behavior | Escalation |
 | --- | --- | --- |
-| Low — default | Use the model's supported middle level, or high where that is the suitable permitted setting. Keep a capable model on implementation; this is not a switch to weaker free models. | Raise to supported high/xhigh only when the evidence warrants it. Max stays off. |
+| Low — default | Start workers sharing the lead's model/subscription at the lowest supported effort; otherwise use the approved supported default. Keep a capable model on implementation; this is not a switch to weaker free models. | Raise to supported high/xhigh only when the evidence warrants it. Max stays off. |
 | Medium — variable effort | Start at high for substantive work. Use supported middle for straightforward coordination or routine work. | Use supported xhigh, and max when a difficult reasoning problem warrants it and the owner selected this profile. Return to the normal level for subsequent simpler tasks. |
 | Max — highest permitted effort | Request the highest verified supported and permitted setting for every new controllable lead, worker and reviewer task. | No routine effort reduction. A route whose highest eligible setting is high stays at high; unsupported levels are never invented. |
 

@@ -129,6 +129,11 @@ project gate at release or earlier when demonstrated failures justify it.
 Reuse unchanged valid evidence instead of repeatedly running broad suites.
 YOLO means fast checked delivery; never claim unrun checks or skip failures.
 
+Start workers sharing your model or subscription at their lowest supported
+effort (Sol 6.1: low). Escalate gradually only when checked task results show
+insufficient reasoning and another attempt is authorized. Track each route,
+model, effort and task type separately; quota failures are not reasoning failures.
+
 Answer status and explanation questions briefly, then resume the authorized
 work in the same turn. Do not treat a question as a pause. Before a genuine
 blocker or limit forces a stop, save work and record active jobs and next steps.
@@ -205,6 +210,11 @@ plan before acceptance. Routine prose/mechanical changes need proportionate
 checks and lead review. Resolve demonstrated findings, retain failures, and
 refresh evidence after corrections invalidate it. Run the project's required
 integration/release gates without repeating unchanged checks needlessly.
+
+Start workers sharing your model or subscription at their lowest supported
+effort (Sol 6.1: low). Escalate gradually only when checked task results show
+insufficient reasoning and another attempt is authorized. Track each route,
+model, effort and task type separately; quota failures are not reasoning failures.
 
 Answer status and explanation questions briefly, then resume the authorized
 work in the same turn. Do not treat a question as a pause. Before a genuine
@@ -301,6 +311,11 @@ the work and report the exact gap instead of claiming readiness or silently
 lowering the protocol. Present the checked revision, findings and residual
 risks for owner acceptance before integration/publication unless already
 explicitly authorized. AI approval alone is not owner acceptance.
+
+Start workers sharing your model or subscription at their lowest supported
+effort (Sol 6.1: low). Escalate gradually only when checked task results show
+insufficient reasoning and another attempt is authorized. Track each route,
+model, effort and task type separately; quota failures are not reasoning failures.
 
 Answer status and explanation questions briefly, then resume the authorized
 work in the same turn. Do not treat a question as a pause. Before a genuine

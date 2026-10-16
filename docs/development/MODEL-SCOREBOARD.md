@@ -3,7 +3,36 @@
 Updated 2026-10-16 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
-fallback. Start at high or the supported middle and keep GLM at high.
+fallback. Start workers sharing the lead model/subscription at the lowest
+supported effort; other approved defaults remain, including GLM high.
+
+## Effort-specific field results — 2026-10-16
+
+Keep profiles separate by subscription route, requested model, requested effort
+and task type. The native `unio experience` store already groups these fields;
+this public summary adds elapsed time and review context. All identities and
+efforts below are requested settings, not verified serving identities.
+
+| Route / CLI / requested model | Effort | Task and observed result | Elapsed |
+| --- | --- | --- | --- |
+| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | low | Shared-lead consent: Source0, six native checks PASS, independent Gemini APPROVE and lead accepted; revision02bfcac. | 16m13s |
+| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | low | Failed-worker WIP preservation: Source0, six native checks PASS, independent Gemini APPROVE and lead accepted; revision9c4dba0. | 10m44s |
+| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | low | Bound plain outcomes: Source0, six native checks PASS, independent Gemini APPROVE and lead accepted; revision0977d38. | 12m27s |
+| ChatGPT / Codex 0.162.1 / GPT-6.1 Sol | high | Remote-guard correction stopped at real usage limit, Source1 before implementation; unfinished test edits retained. Operational failure, not a reasoning-quality result. | 2m03s |
+| Antigravity / agy1.4.0 / Gemini3.8Flash | high | Remote-policy feature: Source0 and six native checks PASS at3cda4ad. Lead reproduced role-conflict, typed-policy and credential defects; not accepted pending correction. | 36m10s |
+| Antigravity / agy1.4.0 / Gemini3.8Flash | high | Three independent final-code reviews of the low-effort Sol components returned adapter0/APPROVE; each assessed separately by lead. Other failed review routes remain incomplete. | 18m03s / 7m31s / 6m37s |
+| Mistral / Vibe2.26.1 / GLM5.3 | high | Consent review ended infrastructure_failure/adapter2 below its cap, no verdict. No code-quality or monthly-allowance inference. | 5m49s |
+| Mistral / Vibe2.26.1 / MistralMedium3.5 | high | Replacement consent review ended infrastructure_failure/adapter2, no verdict. Local busy refusal before the actual call preserved separately. | 4m40s |
+| PerplexityPro / pinned web adapter0.16.1 / Kimi3 | Thinking enabled; depth Unknown | Independent selected-code critique returned Source0. Several concrete defects corroborated; claimed test truncation and scope extensions need qualification. Supporting assessment, not native approval. | 7m36s |
+| CopilotFree / CLI1.0.95 / AutoBalance | Not exposed | Docs proposal Source0; genuine corrected0.5.19 parser transport passed. Advice mainly repeated supplied guidance; serving model/lab Unknown. | 22s |
+
+Three low-effort implementation successes support using Sol low first for
+these native-workflow tasks. They do not establish token savings, prove low
+beats high, or rank models on unrelated work. Track future accepted and failed
+results with the same profile fields, including corrections and sample counts.
+The 2026-10-16 owner default supersedes the earlier general high/middle starting
+rule for workers sharing the lead's model or subscription. Raise effort only
+when demonstrated reasoning gaps warrant it; preserve retry and budget rules.
 
 ## Recovery and compatibility observations — 2026-10-15
 

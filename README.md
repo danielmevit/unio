@@ -248,6 +248,9 @@ Check the local setup and preserve my chosen review protocol, reasoning
 effort and coordination tier. For a new project, default to Low reasoning
 and low coordination tier. I can change any one independently for future
 assignments; record my choice in the project instructions and handoff.
+Workers sharing your model or subscription start at low effort where supported.
+Increase it gradually from task evidence, preserving attempts and retry rules.
+Track results by route, model and effort.
 Register your configured lead alias for this project. Do not replace an active lead.
 Open the managed dashboard and show me its link.
 For the task I give you, estimate the time, delegate through Unio,

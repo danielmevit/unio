@@ -17,8 +17,8 @@ can accompany YOLO, Balanced or Thorough. The owner can switch any axis for
 future assignments; preserve the other two, record the choice in the project's
 instructions/handoff, and map only verified supported model controls.
 
-Low is the economical default, starting at supported middle/high with max
-off. Owner-selected Medium adapts effort and can use supported max for hard
+Low is the economical default; same-model/shared-subscription workers start
+at the lowest supported effort, with max off. Owner-selected Medium adapts effort and can use supported max for hard
 reasoning; Max requests each route's highest permitted setting for new tasks.
 These profile names are lead instructions, not universal native effort flags
 or an implemented `unio effort` command. Explicit project route holds and
@@ -28,6 +28,36 @@ The xhigh/no-max defaults below remain the current Unio development workspace's
 policy. An explicit owner's effort selection sets their new project's policy;
 do not treat this workspace's default ceiling as a universal model limitation.
 No profile changes account concurrency, role restrictions or actual allowance.
+
+## Same-model and shared-subscription effort default
+
+Owner update, 2026-10-16: when assigning a worker that uses the lead's model
+or shared subscription, start at its lowest supported reasoning effort.
+For Codex CLI / GPT-6.1 Sol, request `low`. Keep capable implementation models;
+this is an effort choice, not permission to replace them with free chore agents.
+Other routes retain their owner-approved defaults and verified controls.
+
+Assess the actual result and checks. If reasoning is insufficient, raise only
+to the next supported effort for a separately authorized continuation, recording
+why, prior work and every outcome. For example, Sol can progress low → medium
+→ high → xhigh where the installed route supports those settings. Max/ultra
+still requires the owner's explicit permission. Quota, authentication and
+transport failures are operational failures, not evidence that low is too weak.
+Do not increase effort to fix those failures or discard an unsuccessful attempt.
+
+Frozen running assignments keep their settings. Changes normally apply to the
+next assignment; only a supported managed-session control can request a later
+turn setting, without promising to change current reasoning. An escalation
+does not authorize a retry forbidden by the owner, reset task history, open
+extra shared-account slots or bypass STOP. Preserve the real lead reservation.
+
+After each final assessment, record route, requested model, requested effort,
+task type, Source result, native checks, acceptance, correction burden and
+elapsed time. Use `unio experience record` / `show`: profiles already separate
+model, route, effort and task type. Keep CLI/version, timestamps and elapsed
+work in the dated task receipts and scoreboard. Effective effort/model and
+per-task allowance savings stay Unknown unless measured. Compare similar
+tasks and retain sample counts; one result is not a universal model ranking.
 
 ## Mandatory task estimates and progress summaries
 
@@ -195,7 +225,7 @@ agents. Use available workers from that group for product features, core
 behavior, UI, complex debugging and substantive security corrections. The
 owner's designated lead normally plans, coordinates, reviews and integrates.
 For Unio development, delegate fixes the lead would otherwise implement to
-Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / high through Unio. The lead defines
+Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / low by default through Unio. The lead defines
 the scope/checks, coordinates, reviews and integrates; it does not repair
 the implementation inline. The owner permits one focused Sol correction
 worker beside the registered lead, with real shared-budget accounting and a

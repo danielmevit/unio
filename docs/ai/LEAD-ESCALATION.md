@@ -8,11 +8,16 @@ Read this at startup and before assigning a correction.
 
 For Unio development, when the lead finds a defect or would otherwise repair
 a worker's implementation itself, delegate the bounded correction through
-Unio to **Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / high effort**. The lead
+Unio to **Codex CLI / GPT-6.1 Sol (`gpt-6.1-sol`) / low effort by default**. The lead
 defines the failure, scope and checks, then reviews and integrates the result.
 It must not silently implement the fix in the coordinating session. This
 supersedes the earlier direct-lead takeover default for this workspace.
 Other project owners can explicitly choose their own correction route.
+
+The owner update of 2026-10-16 supersedes the earlier high-effort default.
+Start same-model/shared-subscription workers at their lowest supported effort;
+escalate gradually only from task evidence and within existing retry authority.
+Preserve frozen assignments. See [effort selection](../development/LEAD-ROUTING.md#same-model-and-shared-subscription-effort-default).
 
 Use the existing approved ChatGPT subscription, a dedicated worker worktree,
 a pinned per-run configuration and one native Source invocation per task.

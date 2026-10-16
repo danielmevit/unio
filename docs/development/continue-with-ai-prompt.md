@@ -38,8 +38,11 @@ Use Unio for implementation and reviews. The newest owner-supplied AGENTS
 instruction permits one dedicated Codex CLI / GPT-6.1 Sol correction
 beside the coordinating lead. Keep the real shared codex account and registered
 lead; temporary medium admits that one fix, then restore low when idle.
-The owner selected LOW for new Sol assignments during the current trial;
-earlier high calls keep their frozen settings. Claude Opus is reserved indefinitely for the owner's other projects.
+The owner selected LOW by default for workers sharing the lead model or
+subscription, including new Sol corrections. Escalate gradually only from task
+evidence within existing retry authority; record each route/model/effort result.
+Earlier high calls keep their frozen settings. Answer owner questions briefly
+and continue authorized work in the same turn. Claude Opus is reserved indefinitely for the owner's other projects.
 Other eligible subscription routes remain available subject to current facts:
 Mistral/Vibe, Antigravity/Gemini, OpenCode Go; Grok last reported balance
 exhaustion. Perplexity supplies research/proposals; Copilot/free Zen support
