@@ -25721,6 +25721,14 @@ cmd_init() {
     echo "codegraph    : indexing worktrees in the background (repo/ is indexed)"
   fi
   [ -f "$root/coord/docs/WORK-MODES.md" ] || cp "$TPL_DIR/WORK-MODES.md" "$root/coord/docs/WORK-MODES.md"
+  if [ ! -e "$root/coord/docs/development" ] && [ ! -L "$root/coord/docs/development" ]; then
+    mkdir "$root/coord/docs/development"
+  fi
+  if [ -d "$root/coord/docs/development" ] && [ ! -L "$root/coord/docs/development" ] \
+      && [ ! -e "$root/coord/docs/development/LEAD-BUDGET-CONSENT.md" ] \
+      && [ ! -L "$root/coord/docs/development/LEAD-BUDGET-CONSENT.md" ]; then
+    cp "$TPL_DIR/LEAD-BUDGET-CONSENT.md" "$root/coord/docs/development/LEAD-BUDGET-CONSENT.md"
+  fi
 
   # readable work-policy reference: fresh installs get it from the template;
   # existing custom MASTER.md files keep their content and gain one block
@@ -28120,6 +28128,10 @@ work policy (native per-group slots; workflow_enforcement=native_workflows)
   unio account [agent group]    show mappings, or group aliases that share
                                       one budget (names are budget labels,
                                       never credentials)
+  unio lead-budget grant <agent> <worker> <task> <run|review>
+                                      one shared-lead admission, 15-minute expiry
+  unio lead-budget show        show bounded consent history
+  unio lead-budget revoke <id> revoke unused consent; capacity unchanged
   unio policy [--json]          current mode/tier/lead/accounts, per-group
                                       limits and live native slot counts
                                       (details in coord/docs/WORK-MODES.md)
@@ -30441,6 +30453,46 @@ MINOR / NIT, then exactly one final line:
 VERDICT: APPROVE            (nothing blocking)
 VERDICT: REQUEST-CHANGES    (one or more blockers)
 REVIEW_TPL_EOF
+
+cat > "$TPL_DIR/LEAD-BUDGET-CONSENT.md" <<'LEAD_BUDGET_CONSENT_TPL_EOF'
+# Shared lead budget consent
+
+Native admission refuses spending the registered lead's declared account group
+without explicit owner consent, independently of the concurrency tier.
+
+```
+unio lead-budget grant <agent> <worker> <task> <run|review>
+unio lead-budget show
+unio lead-budget revoke <grant-id>
+```
+
+Grants expire after 15 minutes. Each permits exactly one successful admission,
+bound to the agent route configuration, worker, owner task name and SHA-256
+contents, kind, declared account group, registered lead and lead group. Review
+collections bind the owner task rather than their generated attempt label.
+Changing any binding requires a new grant. Generic aliases still require
+explicit `unio account` grouping; unknown mappings are not detected by reading
+credentials. Unmanaged and cross-workspace sessions remain uncounted.
+
+The separate schema-1 `coord/lead-budget.json` store preserves used and revoked
+records, with bounded typed data and private permissions. Invalid or unsafe
+state refuses without repair or deletion. Issuance, revocation and consumption
+use the existing policy lock. Consumption occurs only after capacity and local
+admission preparation succeed, before the broker replies. Concurrent attempts
+cannot reuse a grant. Uncertain startup, cancellation or provider failure never
+restores a consumed grant. History is bounded to 128 records; a full store
+refuses new issuance rather than discarding evidence.
+
+Consent authorizes spending the lead group: it creates no quota, capacity lease
+or raised cap. Low remains capped including the lead. No tier or lead mutation
+is automatic. Owner-issued means a local trusted_host instruction boundary,
+not authentication against other code running as the same user. Requested and
+effective model, effort and remaining allowance stay distinct; unverified
+values remain Unknown. No model or lab is inferred from aliases.
+
+Older schema-1 policy consumers remain compatible. Older executable runners do
+not enforce this additive guard; use the updated native runner for protection.
+LEAD_BUDGET_CONSENT_TPL_EOF
 
 cat > "$TPL_DIR/WORK-MODES.md" <<'WORKMODES_TPL_EOF'
 # Work modes and subscription tiers

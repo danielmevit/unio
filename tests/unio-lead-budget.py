@@ -39,6 +39,8 @@ with tempfile.TemporaryDirectory(prefix='lead-budget-') as tmp:
     (base/'conf/agents.conf').write_text('mock=bash "'+str(mock)+'"\nalias=bash "'+str(mock)+'"\nother=bash "'+str(mock)+'"\n')
     result = cli('init', 'mock', 'alias', 'other')
     check('installed init', result.returncode == 0, result.stderr)
+    check('installed consent guide packaged', (root/'coord/docs/development/LEAD-BUDGET-CONSENT.md').read_bytes() == (source/'docs/development/LEAD-BUDGET-CONSENT.md').read_bytes())
+    check('CLI help exposes grant', 'unio lead-budget grant' in cli('help').stdout)
     for name in ('task', 'other-task'):
         (root/'coord/tasks'/f'{name}.md').write_text('Owner task '+name+'\n')
     store = root/'coord/lead-budget.json'
@@ -96,7 +98,7 @@ with tempfile.TemporaryDirectory(prefix='lead-budget-') as tmp:
     ready = records()['grants'][-1]['id']; cli('lead-budget','revoke',ready)
     gid = grant('review')
     r = probe()
-    check('review consumed before uncertain startup', records()['grants'][-1]['state']=='used', r.stderr)
+    check('review consumed before uncertain startup', records()['grants'][-1]['state']=='used' and r.returncode != 0 and 'COMPLETE' not in r.stdout, r.stderr)
     refused('review replay denied', probe)
     gid = grant(); cli('lead-budget','revoke',gid)
     refused('revoked grant denied', run)
@@ -128,6 +130,9 @@ with tempfile.TemporaryDirectory(prefix='lead-budget-') as tmp:
     check('concurrent grant used once with no provider',records()['grants'][-1]['state']=='used' and ncall()==before)
     (root/'coord/tasks/background.md').write_text('Background owner task\n')
     refused('native background run cannot bypass',lambda: cli('run','-b','mock','background'))
+    (root/'coord/tasks/racing.md').write_text('Race owner task\n')
+    before=ncall(); race=cli('race','racing','mock','alias')
+    check('race native run cannot bypass',ncall()==before and 'lead-budget grant' in race.stderr,race.stdout+race.stderr)
     check('store private',store.stat().st_mode & 0o777 == 0o600)
     # Legacy slot path refuses shared operation even with a grant.
     grant(); refused('legacy slot creation cannot bypass',lambda: policy('_slot_create','mock','mock','mock','task','run'))
