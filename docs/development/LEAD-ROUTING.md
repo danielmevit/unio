@@ -446,3 +446,18 @@ an explicit new owner assignment can authorize one fresh task attempt, without
 any paid fallback, account change or automatic retry. Low tier permits one
 independent workflow per shared account, so queue reasoning tasks behind an
 active Grok task. Free Zen workers keep their routine supporting role.
+
+Recorded 2026-10-16T21:06:58+02:00
+
+<!-- UNIO_OWNER_CONTINUE_MILESTONES_20261016 -->
+## Continue across authorized milestones — owner clarification
+
+A completed version is a checkpoint, not a pause, when the owner has already
+authorized further milestone work. The lead records delivery, scopes the next
+functional priority, gives an estimate and continues in the same turn without
+waiting for another "continue". Status questions likewise do not pause work.
+Stop for an explicit owner break or an actual authority, information, access,
+capacity or runtime block; preserve receipts, jobs and the exact next step first.
+Do not imply work continues after the lead's turn ends. This applies to leads;
+a worker still finishes only its one frozen assignment.
+<!-- /UNIO_OWNER_CONTINUE_MILESTONES_20261016 -->
