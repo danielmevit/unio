@@ -52,6 +52,7 @@ def embedded_block():
         ('docs/development/AGENT-FLEET.md', 'AGENT-FLEET'),
         ('docs/WORK-WIP.md', 'WORK-WIP'),
         ('docs/WORKER-OUTCOMES.md', 'WORKER-OUTCOMES'),
+        ('docs/REMOTE-POLICY.md', 'REMOTE-POLICY'),
         ('docs/development/LEAD-ROUTING.md', 'LEAD-ROUTING'),
         ('docs/development/MODEL-EFFORT.md', 'MODEL-EFFORT'),
         ('docs/ai/REASONING-PROFILES.md', 'REASONING-PROFILES'),
@@ -86,6 +87,14 @@ def main():
     left, rest = updated.split(begin, 1)
     _, right = rest.split(end, 1)
     updated = left + begin + helper + end + right
+    if (ROOT / 'tools/remote-guard.py').exists():
+        remote_helper = (ROOT / 'tools/remote-guard.py').read_text()
+        begin_rg, end_rg = '# BEGIN EMBEDDED REMOTE GUARD\n', '# END EMBEDDED REMOTE GUARD\n'
+        if begin_rg in updated:
+            left, rest = updated.split(begin_rg, 1)
+            _, right = rest.split(end_rg, 1)
+            rg_block = 'mkdir -p "$CONF_DIR/lib"\ncat > "$CONF_DIR/lib/remote-guard.py" <<\'UNIO_REMOTE_GUARD_PY\'\n' + remote_helper + 'UNIO_REMOTE_GUARD_PY\nchmod +x "$CONF_DIR/lib/remote-guard.py"\n'
+            updated = left + begin_rg + rg_block + end_rg + right
     # These pre-existing templates have canonical public copies too. Updating
     # a role or task-fit result must not leave a stale standalone installer.
     for relative, name, delimiter in (
