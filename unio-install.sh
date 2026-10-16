@@ -28578,11 +28578,16 @@ cmd_selftest() { # the whole loop, rehearsed with mock agents — zero quota
   done
   [ -z "$missing" ] || die "selftest needs:$missing"
   [ -f "$TPL_DIR/TASK.md" ] || die "templates missing at $TPL_DIR — rerun the installer"
+  local remote_helper="$CONF_DIR/lib/remote-guard.py"
+  [ -f "$remote_helper" ] || die "remote guard helper unavailable — rerun the installer"
 
   local ST; ST=$(mktemp -d)
   echo "== unio selftest — sandbox: $ST =="
-  mkdir -p "$ST/conf/templates"
+  mkdir -p "$ST/conf/templates" "$ST/conf/lib"
   cp "$TPL_DIR"/*.md "$ST/conf/templates/"
+  # Init installs real guard hooks even for mocks; use this installation's
+  # canonical helper without importing its agents or configured remote policy.
+  cp -- "$remote_helper" "$ST/conf/lib/remote-guard.py" || die "cannot stage selftest remote guard helper"
 
   cat > "$ST/conf/agents.conf" <<'ST_CONF_EOF'
 mock=bash -c 'cat "$TASKFILE" >/dev/null; echo working; echo line >> hello.txt; git add hello.txt; git commit -q -m "selftest: mock"; echo ok'
