@@ -16025,6 +16025,13 @@ cat > "$TPL_DIR/WORK-WIP.md" <<'UNIO_WORK_WIP_MD'
 schema 1, owner instructions and lead consent. Missing, malformed or unsafe
 settings never enable WIP. No installed project setting changes automatically.
 
+Enable it explicitly before dispatch, then inspect the current setting:
+
+```bash
+unio wip on
+unio wip status
+```
+
 When enabled before a run, a nonzero Source exit can produce one scoped WIP
 commit after the existing final-failure snapshot and exact owned-provider
 quiescence, while the native worker lock and account reservation remain held.

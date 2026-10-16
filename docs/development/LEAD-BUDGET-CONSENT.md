@@ -9,6 +9,19 @@ unio lead-budget show
 unio lead-budget revoke <grant-id>
 ```
 
+For a Source run, `<worker>` is the implementation worktree ID. For a review,
+it is the native reviewer alias, not the implementation worker; `<task>` stays
+the canonical owner task, not a generated review attempt label. For example:
+
+```bash
+unio lead-budget grant codex codex-feature FEATURE-1 run
+unio lead-budget grant vibeglm vibeglm FEATURE-1 review
+```
+
+The configured agent must actually share the registered lead's budget group
+for this consent to be required. A grant authorizes one budget spend; it is
+not approval of the changes, and low-tier capacity still includes the lead.
+
 Grants expire after 15 minutes. Each permits exactly one successful admission,
 bound to the agent route configuration, worker, owner task name and SHA-256
 contents, kind, declared account group, registered lead and lead group. Review

@@ -48,7 +48,7 @@ These are Unio planning profiles, not literal effort flags shared by all AIs.
 
 | Reasoning effort | Instructions for the lead |
 | --- | --- |
-| **Low — default** | Conserve allowance. Start at supported middle/high on a capable model; use high/xhigh only when needed, with max off. |
+| **Low — default** | Conserve allowance. Workers sharing the lead model/subscription start at the lowest supported effort; other routes use approved defaults. Escalate gradually from evidence, with max off. |
 | **Medium** | Adjust effort to the task. Start high for substantive work; use supported middle for routine work and xhigh/max for difficult reasoning. Return to normal for simpler tasks. |
 | **Max** | Use each route's highest permitted, verified supported effort for every new controllable task. Explain any unavailable setting or explicit cap. |
 

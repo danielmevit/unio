@@ -304,8 +304,9 @@ unio policy                       # current state (--json for machines)
 
 ### Low / Medium / Max reasoning effort
 
-- **Low — default:** conserve allowance with supported middle/high settings;
-  increase effort only when needed, with max off.
+- **Low — default:** workers sharing the lead model or subscription start at
+  the lowest supported effort; other routes use their approved defaults. Raise
+  effort gradually from checked results, with max off.
 - **Medium:** let the lead adjust effort to difficulty, including supported
   xhigh/max for hard reasoning and lower settings for routine work.
 - **Max:** request each model route's highest permitted, verified supported
