@@ -6,13 +6,15 @@ version is released.
 
 ## 0.5.21 — unreleased — bounded continuous delegation
 
-Implementation and acceptance are in progress; this is not a published release.
-See [the scoped contract](docs/CONTINUOUS-DELEGATION-CONTRACT.md).
+Implementation, independent reviews and the complete quality gate passed.
+Publication is pending; see [evidence and limits](docs/RELEASE-0.5.21.md).
 
 - Add an optional finite scheduler over explicitly approved existing jobs,
   retaining native shared-account limits, STOP and one-use lead consent.
 - Keep attempts durable before launch, with no automatic replay after failure
   or uncertainty; expose pause, resume, stop and plain waiting reasons.
+- Retain subprocess ownership through all cleanup signals before reaping.
+- Require two independent current-code worker reviews plus lead assessment.
 - Correct stale availability text for the already shipped planner and dispatcher.
 
 ## 0.5.20 — protect budgets, work and publication — 2026-10-16

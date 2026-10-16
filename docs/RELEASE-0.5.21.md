@@ -1,57 +1,61 @@
 # Unio 0.5.21 — bounded continuous delegation
 
-Unreleased candidate. Implementation, checks, independent current-code review,
-installation and publication are not complete. Unio 0.5.20 remains stable.
+Keep a finite batch of approved work moving as account slots become available.
+The scheduler uses the existing planner and dispatcher, retaining native STOP,
+shared-account limits and one-use consent before spending the lead's budget.
 
-## Scoped first outcome
+## Changes
 
-An opt-in finite batch can keep existing approved, disjoint jobs moving as
-account slots free up. This uses the existing planner and dispatcher; task
-approval, shared-lead consent and native slot limits stay in effect. Durable
-attempt recording prevents automatic replay after interruption or uncertain
-startup. Pause and stop close new attempts without killing active workers.
+- `unio schedule create`, `run`, `status`, `pause`, `resume` and `stop` manage
+  an explicitly approved, expiring batch of existing jobs.
+- Distinct ready accounts can start disjoint work without waiting for an
+  earlier worker to finish. Conservative group and scope holds cover the
+  gap before native background admission and span known batches.
+- Attempts are durable before dispatch. A crash, refused launch or uncertain
+  result never silently replays the job. Launcher acceptance, Source completion
+  and owner acceptance remain separate.
+- Pause and stop close new attempts without killing active workers. Reads,
+  output and observation deadlines are bounded; status stays local.
+- Observer cleanup retains its process leader through all group signals,
+  then reaps it, preventing signals to a reused process group.
+- Lead instructions require independent current-code reviews from at least
+  two AI labs followed by lead assessment. Failed calls are preserved separately.
+  The planner/dispatcher availability text and version plan are updated.
 
-The first contract intentionally binds a fixed inventory and base. Integration,
-new instructions and dependent approvals remain explicit. It is not a hands-off
-pipeline across changing main revisions. See the
-[frozen contract](CONTINUOUS-DELEGATION-CONTRACT.md).
+See [commands, exact grant fields and waiting reasons](CONTINUOUS-DELEGATION.md).
+The first slice freezes its inventory and base: integration, new instructions
+and dependent approvals need a renewed explicit batch. It does not approve,
+review, accept, merge or retry work automatically. Unknown quota stays Unknown.
 
-The existing planner/dispatcher availability docs are corrected to describe
-shipped functionality. No UI, website or brand redesign is part of this bundle.
+## Validation and review
 
-## Evidence so far
+Initial ChatGPT / Codex 0.162.1 / GPT-6.1 Sol LOW scheduler `35f1260`
+finished Source 0 and five native checks, but lead inspection reproduced a
+cleanup ownership gap. The separate LOW correction `221ffa5` finished Source 0
+in 16m25s, passed 37 focused cases and all five native checks. Five mocked
+ownership cases fail with the old helper. Planner, dispatcher and service
+source bytes remain unchanged.
 
-Mistral subscription / Vibe 2.26.1 / requested GLM 5.3 HIGH returned Source 2
-with an infrastructure_failure export after one minute, without implementation
-changes. Usage was below its frozen local bounds; this is not a model-quality
-or monthly-allowance finding. The original attempt remains preserved.
+Antigravity / agy 1.4.0 / Gemini 3.8 Flash HIGH and Mistral subscription /
+Vibe 2.26.1 / GLM 5.3 HIGH independently approved `221ffa5`, each with adapter
+0 and current bound native approval. The lead inspected the code and qualified
+the two informational Vibe notes; neither required a change. Effective model,
+effort and remaining allowance remain Unknown.
 
-The replacement is ChatGPT subscription / Codex CLI 0.162.1 / requested
-GPT-6.1 Sol LOW, through native Unio with real shared account mapping, a narrow
-temporary medium coordination tier and one-use lead-budget consent. Initial scheduler `35f1260` finished Source 0 in 29m17s and passed all five
-native checks. Lead inspection then reproduced an ownership-ordering defect in
-bounded observer cleanup. A separate LOW correction is preserving the original
-candidate and addressing that concrete gap; final acceptance remains pending.
-Requested settings do not prove serving identity or available allowance.
+Integrated `3c04fbd9ad149e3bd172b4c1126652c0e8fab619` passed the complete
+`bash tools/quality-check.sh` on 2026-10-16, recorded from 22:12:46 to 22:41:14
+UTC+02:00, exit 0 in 1,647.865 seconds. Source and global installation/config
+were unchanged. Reviewed and gated executable/test bytes match, apart from the
+release version and canonical lead guides. Final prose preserves that runtime.
+Offline fixtures exercised fake native workers; a real provider batch through
+`unio schedule` was not run.
 
-Antigravity / agy 1.4.0 / Gemini 3.8 Flash HIGH returned a committed contract
-assessment. Perplexity Pro / pinned web adapter 0.16.1 / Kimi 3 Thinking returned
-a supporting critique. Neither is an independent review of implemented code.
-Claims are checked separately by the lead, including asynchronous native
-admission and cross-inventory scope limits. A Copilot Free / CLI 1.0.95 /
-Auto Balance docs attempt stopped at a private version-pin check before any
-model call; the lead handled the small prose correction without a retry.
+Original failures remain separate: Mistral's earlier implementation attempt
+failed infrastructure before edits; Copilot stopped at a private pre-call
+version assertion; a lead-created Python cache invalidated the first review;
+OpenCode Go timed out without a verdict; Perplexity was owner-cancelled when
+Vibe was selected. None supplies approval or establishes quota exhaustion.
 
-The first Gemini implementation review wrote APPROVE with adapter exit 0,
-but a lead diagnostic generated an untracked Python cache while the candidate
-was frozen: native review returned 2, and the subsequent OpenCode Go review
-refused before any model call. The cache is preserved privately, source bytes
-are unchanged, and neither native result is rewritten as success. The Gemini
-review also had inaccurate source anchors and missed the cleanup gap.
-
-The corrected candidate must pass fresh native checks and two independent
-blind current-code reviews from different AI labs, followed by lead assessment.
-A new parallel review set is prepared for Antigravity / Gemini HIGH and
-OpenCode Go / OpenCode 1.18.35 / GLM 5.3 HIGH; it has not yet been invoked.
-Final evidence will record actual code revisions, the complete gate,
-installation and official download hashes.
+Artifact, upgrade/rollback, installed-payload and official-download checks are
+recorded separately in release provenance. Installation precedes publication;
+existing configuration and owner templates are preserved.

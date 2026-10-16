@@ -33248,10 +33248,25 @@ These are separate task outcomes, not new general model rankings:
   The canonical product adapter already handles the extra version-output
   line. Keep this preparation failure distinct from model performance.
 
-The scoped LOW cleanup correction and fresh two-lab current-code review are
-pending. Requested identity/effort and remaining allowance are unverified;
-no per-worker token savings were measured. Preserve original failures and
-use the final exact-revision records before judging task suitability.
+The focused ChatGPT / Codex 0.162.1 / GPT-6.1 Sol LOW cleanup correction
+`221ffa5` finished Source 0 in 16m25s, passed 37 focused cases and all five
+native checks, and made the old helper fail five mocked ownership scenarios.
+The lead accepted the correction; native experience records it separately
+from the original implementation's quality issue.
+
+Fresh Antigravity / agy 1.4.0 / Gemini 3.8 Flash HIGH review approved the
+corrected code in 5m07s with adapter 0 and a current bound native approval.
+The parallel OpenCode Go / OpenCode 1.18.35 / GLM 5.3 HIGH review timed out
+124 without a verdict or output; upstream invocation and allowance remain
+Unknown. The original collection remains incomplete, not rewritten as success.
+The owner selected Mistral / Vibe 2.26.1 / GLM 5.3 HIGH as the replacement:
+it finished APPROVE, adapter 0 and current native 0 in 12m11s. Two information
+notes required no change after lead assessment. A newly started Perplexity Pro /
+GLM 5.3 Thinking attempt was owner-cancelled, native 143, and remains separate.
+
+The integrated candidate `3c04fbd` passed the full gate in 1,647.865 seconds.
+Requested identity/effort and remaining allowance are unverified; no per-worker
+token savings were measured. Preserve failures and compare similar tasks.
 
 ## Effort-specific field results — 2026-10-16
 

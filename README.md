@@ -57,6 +57,10 @@ See [the changelog](CHANGELOG.md) for release history.
 - **Plan and delegate.** Explain dependencies and file conflicts with the
   [task planner](docs/TASK-PLAN.md), then start an
   [explicitly approved task](docs/TASK-DISPATCH.md).
+- **Keep an approved batch moving.** [Continuous delegation](docs/CONTINUOUS-DELEGATION.md)
+  starts ready, disjoint jobs as account slots become available. You grant a
+  finite batch; Unio records each attempt durably and never silently retries
+  an uncertain launch. Pause or stop new attempts without stopping active workers.
 - **Follow the team.** The [browser dashboard](bridge/README.md) brings together
   the work map, task filters, live worker output and activity history.
   [Fleet status](docs/FLEET-STATUS.md) shows shared-account slots and recorded
