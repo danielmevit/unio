@@ -20559,8 +20559,8 @@ QUALITY_PY
 # registered lead against the tier cap.
 policy() {
   command -v python3 >/dev/null || die "Python 3 is required before mode/tier/lead/account/policy"
-  UNIO_COOLDOWN_HELPER="$CONF_DIR/lib/lead_cooldown.py" python3 - "$@" <<'POLICY_PY'
-import datetime, fcntl, json, os, re, signal, stat, sys, tempfile
+  UNIO_POLICY_CONF="$CONF_DIR" UNIO_COOLDOWN_HELPER="$CONF_DIR/lib/lead_cooldown.py" python3 - "$@" <<'POLICY_PY'
+import datetime, fcntl, hashlib, json, os, re, signal, stat, sys, tempfile, time, uuid
 
 MAX_STATE = 65536
 MAX_SLOT_META = 4096
@@ -20826,6 +20826,113 @@ def lead_group_of(doc):
     if lead is None:
         return None
     return group_of(doc, lead)
+
+# Consent is owner-local data, never provider output. All callers that mutate
+# it hold the same policy lock as capacity admission.
+def budget_read_file(path, bound, private=False):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        fail('unsafe or missing lead-budget input (left unchanged): ' + path)
+    try:
+        st = os.fstat(fd)
+        if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
+                or st.st_size > bound or st.st_uid != os.getuid()
+                or (private and stat.S_IMODE(st.st_mode) != 0o600)):
+            fail('unsafe lead-budget input (left unchanged): ' + path)
+        data = os.read(fd, bound + 1)
+        if len(data) > bound:
+            fail('oversized lead-budget input (left unchanged)')
+        return data
+    finally:
+        os.close(fd)
+
+def budget_path(root):
+    check_control_path(root, 'coord', 'lead-budget.json')
+    return os.path.join(root, 'coord', 'lead-budget.json')
+
+def budget_read(root):
+    path = budget_path(root)
+    if not os.path.lexists(path):
+        return {'schema_version': 1, 'grants': []}
+    def unique(pairs):
+        obj = {}
+        for k, v in pairs:
+            if k in obj: raise ValueError('duplicate grant key')
+            obj[k] = v
+        return obj
+    try:
+        data = json.loads(budget_read_file(path, 65536, True), object_pairs_hook=unique)
+        if (type(data) is not dict or set(data) != {'schema_version', 'grants'}
+                or type(data['schema_version']) is not int or data['schema_version'] != 1
+                or type(data['grants']) is not list or len(data['grants']) > 128):
+            raise ValueError('store shape')
+        seen = set()
+        for g in data['grants']:
+            keys = {'id', 'agent', 'worker', 'task', 'kind', 'task_hash', 'route_hash',
+                    'group', 'lead', 'lead_group', 'issued', 'expires', 'state', 'ended'}
+            if type(g) is not dict or set(g) != keys: raise ValueError('record shape')
+            for k in ('agent', 'worker', 'task', 'group', 'lead', 'lead_group'):
+                if type(g[k]) is not str or not re.fullmatch(r'[a-zA-Z0-9_][a-zA-Z0-9_-]{0,127}', g[k]):
+                    raise ValueError('label')
+            if (type(g['id']) is not str or not re.fullmatch('[0-9a-f]{32}', g['id'])
+                    or g['id'] in seen): raise ValueError('id')
+            seen.add(g['id'])
+            for k in ('task_hash', 'route_hash'):
+                if type(g[k]) is not str or not re.fullmatch('[0-9a-f]{64}', g[k]): raise ValueError('hash')
+            if g['kind'] not in ('run', 'review') or g['state'] not in ('ready', 'used', 'revoked'):
+                raise ValueError('enum')
+            for k in ('issued', 'expires', 'ended'):
+                if type(g[k]) is not int or not 0 <= g[k] < 2**53: raise ValueError('time')
+            if g['expires'] != g['issued'] + 900 or ((g['state'] == 'ready') != (g['ended'] == 0)):
+                raise ValueError('lifecycle')
+        return data
+    except (ValueError, TypeError, KeyError):
+        fail('malformed lead-budget state (left unchanged): ' + path)
+
+def budget_write(root, data):
+    path = budget_path(root)
+    payload = (json.dumps(data, sort_keys=True) + '\n').encode()
+    if len(payload) > 65536: fail('lead-budget history full (left unchanged)')
+    fd, tmp = tempfile.mkstemp(prefix='.lead-budget-', dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, 'wb') as out:
+            out.write(payload); out.flush(); os.fsync(out.fileno())
+        os.replace(tmp, path)
+        directory = os.open(os.path.dirname(path), os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(directory)
+        finally: os.close(directory)
+    finally:
+        if os.path.exists(tmp): os.unlink(tmp)
+
+def budget_binding(root, doc, agent, worker, task, kind):
+    for label in (agent, worker, task): check_label(label, 'lead-budget binding')
+    if kind not in ('run', 'review'): fail('unknown lead-budget kind')
+    check_control_path(root, 'coord', 'tasks', task + '.md')
+    task_data = budget_read_file(os.path.join(root, 'coord', 'tasks', task + '.md'), 2 * 1024 * 1024)
+    conf = os.path.join(root, 'coord', 'agents.conf')
+    if not os.path.lexists(conf): conf = os.path.join(os.environ['UNIO_POLICY_CONF'], 'agents.conf')
+    # Bind the exact configuration bytes (including routes); never expose commands.
+    route = budget_read_file(conf, 2 * 1024 * 1024)
+    return dict(agent=agent, worker=worker, task=task, kind=kind,
+                task_hash=hashlib.sha256(task_data).hexdigest(), route_hash=hashlib.sha256(route).hexdigest(),
+                group=group_of(doc, agent), lead=doc['lead_agent'], lead_group=lead_group_of(doc))
+
+def budget_check(root, doc, agent, worker, task, kind, consume=False):
+    store = budget_read(root)  # Unsafe consent state always fails closed.
+    if group_of(doc, agent) != lead_group_of(doc): return
+    binding = budget_binding(root, doc, agent, worker, task, kind)
+    now = int(time.time())
+    for grant in store['grants']:
+        if (grant['state'] == 'ready' and grant['issued'] <= now < grant['expires']
+                and all(grant[k] == v for k, v in binding.items())):
+            if consume:
+                grant.update(state='used', ended=now)
+                budget_write(root, store)
+            return
+    fail('shared lead budget requires explicit owner consent before any provider call; '
+         'owner action: unio lead-budget grant %s %s %s %s (15 minutes, one use; no extra capacity)'
+         % (agent, worker, task, kind))
 
 def read_slot_meta(path):
     try:
@@ -21149,6 +21256,33 @@ def main(argv):
             doc['updated_at'] = stamp()
         transact(root, _set_account)
         sys.stdout.write('accounts: %s=%s\n' % (args[0], args[1]))
+    elif cmd == 'lead-budget':
+        if not args: fail('usage: unio lead-budget grant <agent> <worker> <task> <run|review> | show | revoke <id>')
+        lock = open_policy_lock(root)
+        try:
+            doc = read_state_nolock(root)
+            store = budget_read(root)
+            if args == ['show']:
+                sys.stdout.write(json.dumps(store, sort_keys=True) + '\n')
+            elif args[0] == 'grant' and len(args) == 5:
+                agent, worker, task, kind = args[1:]
+                if doc['lead_agent'] is None or group_of(doc, agent) != lead_group_of(doc):
+                    fail('grant requires a registered lead in the actual shared group')
+                binding = budget_binding(root, doc, agent, worker, task, kind)
+                if len(store['grants']) >= 128: fail('lead-budget history full (left unchanged)')
+                now = int(time.time())
+                grant = dict(binding, id=uuid.uuid4().hex, issued=now, expires=now+900, state='ready', ended=0)
+                store['grants'].append(grant)
+                budget_write(root, store)
+                sys.stdout.write('lead-budget grant ' + grant['id'] + ': one admission, expires in 15 minutes; capacity unchanged\n')
+            elif args[0] == 'revoke' and len(args) == 2:
+                grant = next((g for g in store['grants'] if g['id'] == args[1]), None)
+                if grant is None or grant['state'] != 'ready': fail('no unused grant with that id (left unchanged)')
+                grant.update(state='revoked', ended=int(time.time()))
+                budget_write(root, store)
+            else: fail('invalid lead-budget command or arguments')
+        finally:
+            os.close(lock)
     elif cmd == '_admit_check':
         if len(args) != 4:
             fail('usage: policy _admit_check <agent> <worker> <task> <kind>')
@@ -21166,6 +21300,7 @@ def main(argv):
         if native + lead_here + 1 > cap:
             fail('budget group %r holds %d native workflow(s) plus %d lead reservation(s) at cap %d: refusing %s %s/%s before any provider call (no retry, no queue)'
                  % (group, native, lead_here, cap, kind, worker, task))
+        budget_check(root, doc, agent, worker, task, kind)
         sys.stdout.write('GROUP=%s LIMIT=%d ACTIVE=%d LEAD=%d\n' % (group, cap, native, lead_here))
     elif cmd == '_slot_create':
         if len(args) != 5:
@@ -21188,6 +21323,9 @@ def main(argv):
         if native + lead_here + 1 > cap:
             fail('budget group %r holds %d native workflow(s) plus %d lead reservation(s) at cap %d: refusing %s %s/%s before any provider call (no retry, no queue)'
                  % (group, native, lead_here, cap, kind, worker, task))
+        if lead_here:
+            fail('shared lead budget requires lock-held native admission; legacy slot creation refused')
+        budget_read(root)
         directory = slot_group_dir(root, group)
         try:
             os.makedirs(directory, exist_ok=True)
@@ -21302,9 +21440,9 @@ def main(argv):
                         pass
         sys.stdout.write(os.path.join(reports, task + '.prompt.md') + '\n')
     elif cmd == '_admit_hold':
-        if len(args) != 6:
+        if len(args) != 7:
             fail('usage: policy _admit_hold <agent> <worker> <task> <kind> <orig> <in_fifo>')
-        agent, worker, task, kind, orig, in_fifo = args
+        agent, worker, task, kind, orig, in_fifo, owner_task = args
         check_label(agent, 'admit agent')
         check_label(worker, 'admit worker')
         check_label(task, 'admit task')
@@ -21410,6 +21548,7 @@ def main(argv):
                                 os.unlink(tmp_sidecar)
                             except OSError:
                                 pass
+                budget_check(root, doc, agent, worker, owner_task, kind, consume=True)
                 effective_path = os.path.join(reports, task + '.prompt.md')
 
             except BaseException:
@@ -25051,7 +25190,7 @@ policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   set -m
   coproc POLICY_HELD {
     exec {POLICY_IN}>&- 9>&-
-    policy "$root" _admit_hold "$agent" "$worker" "$task" "$kind" "$orig" "$in_fifo" 2>"$err"
+    policy "$root" _admit_hold "$agent" "$worker" "$task" "$kind" "$orig" "$in_fifo" "${7:-$task}" 2>"$err"
   }
   [ "$had_monitor" = 1 ] || set +m
   POLICY_PID=${POLICY_HELD_PID:-}
@@ -26429,7 +26568,7 @@ rs_child() { # $1=root $2=reviewer $3=label $4=material $5=workdir $6=rawdir $7=
   trap 'policy_release_slot "$POLICY_CLEANUP_ROOT"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  if ! policy_admit_hold "$root" "$reviewer" "$reviewer" "$label" review "$pf"; then
+  if ! policy_admit_hold "$root" "$reviewer" "$reviewer" "$label" review "$pf" "$8"; then
     rs_child_result "$raw/attempt.json" "$reviewer" "$label" 0 "${POLICY_GROUP:-}" 0 "" budget_refused
     exit 0
   fi
@@ -26602,7 +26741,7 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   trap 'rs_exit_cleanup' EXIT
   for i in "${!reviewers[@]}"; do
     [ "$RS_SIGNALED" = 0 ] || break
-    rs_child "$root" "${reviewers[$i]}" "rset-$cid-$((i + 1))" "${pfs[$i]}" "${nds[$i]}" "${raws[$i]}" "${rcmds[$i]}" &
+    rs_child "$root" "${reviewers[$i]}" "rset-$cid-$((i + 1))" "${pfs[$i]}" "${nds[$i]}" "${raws[$i]}" "${rcmds[$i]}" "$task" &
     RS_PIDS[$i]=$!
   done
   rs_wait_children
@@ -28028,6 +28167,7 @@ case "${1:-help}" in
   tier)     shift; cmd_tier "$@";;
   lead)     shift; cmd_lead "$@";;
   lead-cooldown) shift; cmd_lead_cooldown "$@";;
+  lead-budget) shift; root=$(find_root) || die "not inside a Unio project"; policy "$root" lead-budget "$@";;
   account)  shift; cmd_account "$@";;
   policy)   shift; cmd_policy "$@";;
   agents)   shift; cmd_agents "$@";;
