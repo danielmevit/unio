@@ -16157,10 +16157,10 @@ release branch: main
 guard hook: installed (owner chained: yes)
 pinned remotes:
   - origin: role=development
-      destinations: git@github.com:private/project.git
+      destinations: [destination]
       hash: e3b0c44298fc...
   - public: role=release
-      destinations: https://github.com/public/project.git
+      destinations: [destination]
       hash: 4b227777d4dd...
       release ref: refs/heads/main
       tag pattern: refs/tags/v* (commit must be ancestor of refs/heads/main)
@@ -16197,7 +16197,8 @@ Installs or upgrades the Git pre-push hook in the project's repository.
 
 ### A. Development Role (`development`)
 - Intended for internal, private development repositories.
-- Allowed refs: development branches (`refs/heads/*`).
+- Ref updates follow the existing development policy; deletions require explicit
+  policy permission. The development role does not establish destination privacy.
 - Worker worktrees remain blocked by the worker guard.
 - If multiple push URLs are configured for the remote alias and any destination is a
   release remote, pushing development branches is refused.
@@ -16234,11 +16235,12 @@ Installs or upgrades the Git pre-push hook in the project's repository.
 
 - Policy storage: Stored in project-local `coord/remote-policy.json` (schema 1, mode 0600,
   owned by current UID, maximum 64 KiB), strictly separate from schema 1 work policy.
-- Normalization: URLs and file paths are canonicalized (stripping trailing slashes,
-  resolving local paths, lowercase scheme and hostname).
-- Credential protection: Passwords and tokens embedded in URLs (e.g. `https://user:token@host/`)
-  are stripped before hashing and redacted (`https://user:***@host/`) in display.
-  Credential-bearing URLs are never written to disk or printed in errors.
+- Identity: transport destinations use exact SHA-256 hashes including all URL
+  components. Local paths/file URLs resolve filesystem aliases. Different transport
+  spellings remain conservatively distinct and require explicit owner pinning.
+- Credential protection: fixed `[destination]` displays and opaque hash-based keys
+  for URL/path targets prevent credentials from reaching policy displays or errors.
+  Credential changes require re-pinning. No URL component is printed.
 - URL rewriting and push URLs:
   Git resolves `url.<base>.pushInsteadOf`, `url.<base>.insteadOf`, and `remote.<name>.pushurl`
   before passing the actual destination URL to `pre-push`. The guard checks the resolved
@@ -16264,6 +16266,32 @@ Importing remotes from an explicitly supplied local clone (e.g. inspecting anoth
 local working copy while preserving private configuration and without printing
 credentials) is documented as a follow-up enhancement. Cloning a remote URL cannot
 discover another clone's private remotes.
+
+### Destination identity and failure handling
+
+The guard checks every resolved push URL (including Git URL rewrites) before
+accepting any ref. Conflicting roles or ref rules for one destination are invalid.
+No privacy is inferred from a URL or remote name. Transport destinations are
+pinned with exact SHA-256 identities, including userinfo, query and fragment;
+only local paths/file URLs resolve filesystem aliases. Displays are fixed
+`[destination]` strings. Credentials are never stored in displays or policy keys.
+Changing credentials or transport spelling requires owner re-pinning; equivalent
+transport spellings are conservatively distinct rather than silently merged.
+Old policies containing URL displays or old normalized hashes require owner
+migration: pause pushes, move the old policy to a private backup outside `coord/`,
+then rebuild every pin with `set` and verify `show` before resuming. The loader
+refuses unsafe legacy displays instead of printing or silently migrating them.
+
+Policy JSON rejects duplicate keys, unknown fields, invalid types and ref rules,
+and is read with bounded no-follow descriptors from owner-controlled paths.
+A corrupt configured policy refuses pushes. An absent policy preserves the
+unconfigured default. Installation explicitly refuses `core.hooksPath`, unsafe
+hook paths and collisions between an owner hook and an existing owner backup.
+Both installation routes use the same helper to generate the pre-push hook.
+A configured project refuses when no guard helper can execute, including empty
+ref batches; unconfigured projects retain the worker guard and owner hook.
+These are normal-operation checks on a trusted host: a host owner can still
+remove the worker marker, hook or policy. This does not establish remote privacy.
 UNIO_REMOTE_POLICY_MD
 fi
 if [ ! -e "$TPL_DIR/LEAD-ROUTING.md" ] && [ ! -L "$TPL_DIR/LEAD-ROUTING.md" ]; then
@@ -30335,7 +30363,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import stat
 import subprocess
 import sys
@@ -30346,7 +30373,6 @@ from pathlib import Path
 MAX_POLICY_BYTES = 65536
 ZERO_OID_RE = re.compile(r'^0{40,64}$')
 HEX_OID_RE = re.compile(r'^[0-9a-fA-F]{40,64}$')
-CREDENTIAL_RE = re.compile(r'^(https?://|ssh://|git\+ssh://)([^:/@]+):([^@]+)@', re.IGNORECASE)
 
 
 class PolicyError(Exception):
@@ -30412,6 +30438,9 @@ def validate_policy(doc):
                     or not pat[10:] or any(c in pat for c in "\r\n\0 \\")
                     or ".." in pat or "@{" in pat or pat.endswith(("/", "."))):
                 raise PolicyError("invalid release tag pattern")
+            sample = re.sub(r"\[[^]\r\n]+\]", "x", pat).replace("*", "x").replace("?", "x")
+            if subprocess.run(["git", "check-ref-format", sample], capture_output=True).returncode:
+                raise PolicyError("invalid release tag pattern")
     if not isinstance(doc, dict) or set(doc) - top or type(doc.get("schema_version")) is not int or doc["schema_version"] != 1:
         raise PolicyError("invalid remote policy schema")
     rules(doc)
@@ -30420,7 +30449,7 @@ def validate_policy(doc):
         raise PolicyError("invalid remotes map")
     roles = {}
     for key, cfg in remotes.items():
-        if not isinstance(key, str) or not key or len(key) > 1024 or not isinstance(cfg, dict) or set(cfg) - fields:
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", key) or not isinstance(cfg, dict) or set(cfg) - fields:
             raise PolicyError("invalid remote entry")
         rules(cfg)
         if cfg.get("role") not in ("development", "release", "same-remote"):
@@ -30452,7 +30481,7 @@ def find_project_root(start=None):
     """Traverse up to find the project root containing coord/."""
     curr = Path(start or os.getcwd()).resolve()
     for parent in [curr] + list(curr.parents):
-        if (parent / "coord").is_dir():
+        if os.path.lexists(parent / "coord"):
             return parent
     return None
 
@@ -30496,7 +30525,12 @@ def load_policy(root, require=False):
             private_stat(st)
             if st.st_size > MAX_POLICY_BYTES:
                 raise PolicyError("policy too large")
-            raw = os.read(fd, MAX_POLICY_BYTES + 1)
+            raw = b""
+            while len(raw) <= MAX_POLICY_BYTES:
+                chunk = os.read(fd, MAX_POLICY_BYTES + 1 - len(raw))
+                if not chunk:
+                    break
+                raw += chunk
             if len(raw) > MAX_POLICY_BYTES:
                 raise PolicyError("policy too large")
         finally:
@@ -30563,6 +30597,7 @@ def get_git_remote_push_urls(repo_dir, remote_name):
 
 def match_destination_to_role(policy, target_url):
     """Match target_url by hash against policy['remotes']. Return (remote_key, remote_cfg) or (None, None)."""
+    validate_policy(policy)
     target_hash = hash_url(target_url)
     remotes = policy.get("remotes", {})
     for key, cfg in remotes.items():
@@ -30750,6 +30785,9 @@ def cli_show(root, as_json=False):
     has_guard = False
     has_owner_chained = (hooks_dir / "pre-push.owner").is_file()
 
+    custom = subprocess.run(["git", "-C", str(repo_dir), "config", "--get", "core.hooksPath"], capture_output=True)
+    if custom.returncode == 0:
+        guard_hook = Path("/nonexistent-unio-hook")
     if guard_hook.is_file():
         try:
             txt = guard_hook.read_text(encoding="utf-8", errors="replace")
@@ -30916,7 +30954,8 @@ fi
 STDIN_DATA=$(cat)
 
 if true; then
-  root=$(dirname "$top")
+  root="$top"
+  while [ ! -e "$root/coord" ] && [ ! -L "$root/coord" ] && [ "$root" != / ]; do root=$(dirname "$root"); done
   guard_py=""
   if [ -n "${UNIO_CONF_DIR:-}" ] && [ -f "$UNIO_CONF_DIR/lib/remote-guard.py" ]; then
     guard_py="$UNIO_CONF_DIR/lib/remote-guard.py"
@@ -30930,7 +30969,7 @@ if true; then
     printf "%s\\n" "$STDIN_DATA" | python3 -B "$guard_py" check "$top" "$1" "$2" || exit $?
   elif command -v unio >/dev/null 2>&1; then
     printf "%s\\n" "$STDIN_DATA" | unio _remote-guard check "$top" "$1" "$2" || exit $?
-  elif [ -e "$root/coord/remote-policy.json" ] || [ -L "$root/coord/remote-policy.json" ]; then
+  elif [ -e "$root/coord/remote-policy.json" ] || [ -L "$root/coord/remote-policy.json" ] || [ -L "$root/coord" ]; then
     echo "unio guard: configured remote policy requires an executable helper" >&2
     exit 1
   fi

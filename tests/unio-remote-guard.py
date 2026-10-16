@@ -456,6 +456,9 @@ def regressions():
         urls = [f"https://{sentinel}@example.invalid/repo", f"https://u:{sentinel}@example.invalid/repo",
                 f"https://example.invalid/repo?token={sentinel}", f"https://example.invalid/repo#{sentinel}",
                 f"ssh://{sentinel}@example.invalid/repo", f"{sentinel}@example.invalid:repo"]
+        # Usernames must never become regex replacement templates.
+        urls.extend([f"https://u\\g<3>:{sentinel}@example.invalid/repo",
+                     f"https://u\\3:{sentinel}@example.invalid/repo"])
         for index, url in enumerate(urls):
             case(f"safe redaction and normalization form {index}", lambda url=url: sentinel not in guard.redact_url(url) + guard.normalize_url(url))
             raw(policy())

@@ -32,10 +32,10 @@ release branch: main
 guard hook: installed (owner chained: yes)
 pinned remotes:
   - origin: role=development
-      destinations: git@github.com:private/project.git
+      destinations: [destination]
       hash: e3b0c44298fc...
   - public: role=release
-      destinations: https://github.com/public/project.git
+      destinations: [destination]
       hash: 4b227777d4dd...
       release ref: refs/heads/main
       tag pattern: refs/tags/v* (commit must be ancestor of refs/heads/main)
@@ -72,7 +72,8 @@ Installs or upgrades the Git pre-push hook in the project's repository.
 
 ### A. Development Role (`development`)
 - Intended for internal, private development repositories.
-- Allowed refs: development branches (`refs/heads/*`).
+- Ref updates follow the existing development policy; deletions require explicit
+  policy permission. The development role does not establish destination privacy.
 - Worker worktrees remain blocked by the worker guard.
 - If multiple push URLs are configured for the remote alias and any destination is a
   release remote, pushing development branches is refused.
@@ -109,11 +110,12 @@ Installs or upgrades the Git pre-push hook in the project's repository.
 
 - Policy storage: Stored in project-local `coord/remote-policy.json` (schema 1, mode 0600,
   owned by current UID, maximum 64 KiB), strictly separate from schema 1 work policy.
-- Normalization: URLs and file paths are canonicalized (stripping trailing slashes,
-  resolving local paths, lowercase scheme and hostname).
-- Credential protection: Passwords and tokens embedded in URLs (e.g. `https://user:token@host/`)
-  are stripped before hashing and redacted (`https://user:***@host/`) in display.
-  Credential-bearing URLs are never written to disk or printed in errors.
+- Identity: transport destinations use exact SHA-256 hashes including all URL
+  components. Local paths/file URLs resolve filesystem aliases. Different transport
+  spellings remain conservatively distinct and require explicit owner pinning.
+- Credential protection: fixed `[destination]` displays and opaque hash-based keys
+  for URL/path targets prevent credentials from reaching policy displays or errors.
+  Credential changes require re-pinning. No URL component is printed.
 - URL rewriting and push URLs:
   Git resolves `url.<base>.pushInsteadOf`, `url.<base>.insteadOf`, and `remote.<name>.pushurl`
   before passing the actual destination URL to `pre-push`. The guard checks the resolved
@@ -150,7 +152,10 @@ only local paths/file URLs resolve filesystem aliases. Displays are fixed
 `[destination]` strings. Credentials are never stored in displays or policy keys.
 Changing credentials or transport spelling requires owner re-pinning; equivalent
 transport spellings are conservatively distinct rather than silently merged.
-Old policies containing URL displays must be re-pinned with the new helper.
+Old policies containing URL displays or old normalized hashes require owner
+migration: pause pushes, move the old policy to a private backup outside `coord/`,
+then rebuild every pin with `set` and verify `show` before resuming. The loader
+refuses unsafe legacy displays instead of printing or silently migrating them.
 
 Policy JSON rejects duplicate keys, unknown fields, invalid types and ref rules,
 and is read with bounded no-follow descriptors from owner-controlled paths.
