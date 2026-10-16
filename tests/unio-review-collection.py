@@ -183,7 +183,10 @@ class ReviewCollection(unittest.TestCase):
         self.assertTrue(all(r['process_exit_code'] is None for r in self.attempts()))
         for reviewer in ('revone','revtwo'):
             self.unio('lead-budget','grant',reviewer,reviewer,'evidence','review')
-        self.collect()
+        # Earlier refused reviews stay in history and keep aggregation unknown.
+        self.collect(code=2)
+        self.assertTrue(all(r['process_exit_code']==0 and r['state']=='approved'
+                            for r in self.attempts()))
         history=json.loads((self.coord/'lead-budget.json').read_text())['grants']
         self.assertEqual([g['state'] for g in history],['used','used'])
         before=self.calls();self.collect(code=2)
