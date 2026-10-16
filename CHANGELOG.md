@@ -4,6 +4,17 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.21 — unreleased — bounded continuous delegation
+
+Implementation and acceptance are in progress; this is not a published release.
+See [the scoped contract](docs/CONTINUOUS-DELEGATION-CONTRACT.md).
+
+- Add an optional finite scheduler over explicitly approved existing jobs,
+  retaining native shared-account limits, STOP and one-use lead consent.
+- Keep attempts durable before launch, with no automatic replay after failure
+  or uncertainty; expose pause, resume, stop and plain waiting reasons.
+- Correct stale availability text for the already shipped planner and dispatcher.
+
 ## 0.5.20 — protect budgets, work and publication — 2026-10-16
 
 See [scope, current evidence and limits](docs/RELEASE-0.5.20.md).
