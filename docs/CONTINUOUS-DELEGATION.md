@@ -159,6 +159,17 @@ explicit; this scheduler does not follow changing branches or approve dependent
 jobs. Dependencies advance only from accepted evidence already in the frozen
 inventory. No startup daemon, general queue service or automatic retry exists.
 
+The unchanged `task-plan.py:build_plan` greedily selects recommendations from
+all inventory rows, and `task-dispatch.py:Preflight.check` requires that exact
+fresh recommendation. An earlier ready inventory row outside the granted job
+list can therefore occupy a virtual group recommendation and leave a granted
+job waiting even when the native slot is free. This scheduler cannot override
+that boundary without weakening the frozen planner/dispatch contract. The
+owner must explicitly approve a suitable inventory/batch; retain known reserved
+scopes and accepted dependency evidence. The existing execution service also
+owns one prepared job per worker until explicit completion/release; this slice
+does not prepare a second queued job or release that ownership automatically.
+
 The existing dispatcher only checks reserved scopes in its supplied inventory.
 The scheduler adds retained scopes for known scheduled attempts across batches;
 it does not discover every unmanaged native session or another workspace's
