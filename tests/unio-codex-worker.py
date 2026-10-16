@@ -80,6 +80,10 @@ class Harness:
             UNIO_AUTO_SYNC='0', UNIO_TIMEOUT='180', FAKE_RECEIPT=str(self.receipt),
             GIT_AUTHOR_NAME='mock', GIT_COMMITTER_NAME='mock', GIT_AUTHOR_EMAIL='mock@example.invalid',
             GIT_COMMITTER_EMAIL='mock@example.invalid', PATH=str(fake)+os.pathsep+os.environ['PATH'])
+        # A suite launched inside managed Source must not inherit its admission.
+        for key in list(self.env):
+            if key.startswith('UNIO_CODEX_'):
+                self.env.pop(key)
         for key in ('OPENAI_API_KEY', 'CODEX_API_KEY'):
             self.env.pop(key, None)
         subprocess.run(['bash',str(SOURCE/'unio-install.sh')],env=self.env,check=True,capture_output=True)
