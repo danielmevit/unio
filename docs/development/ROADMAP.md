@@ -18,6 +18,17 @@ phone access. Native Windows precedes macOS in the
 Czech, Slovak and Balkan languages, with Serbian Latin only and no Montenegrin;
 see the [staged plan](WINDOWS-LOCALIZATION.md).
 
+The functional core includes recovery saving, shared-account policy and capacity
+observations, managed daily startup, read-only planning, explicit single-attempt
+dispatch, separate review receipts, concurrent collection and task-specific worker
+experience. Proposal routes require implementation review. Genuine lead-limit
+restart remains experimental/opt-in and unobserved. Retention measurements do
+not establish a general full-save speedup or a default-budget guarantee.
+
+Keep useful milestones bundled with one final combined gate. Further dashboard,
+website and brand redesign remains lower priority than functional protections.
+Earlier dated sections retain their historical context.
+
 ## Current focus: finish the functional core
 
 Local save-store recovery is complete: 34 snapshots passed deep validation; only
