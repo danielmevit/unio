@@ -125,7 +125,7 @@ def service_for(dispatch, grant):
     return module, service
 
 
-def checked_job(planner, dispatch, batch, job, runner, row, initial=False):
+def checked_job(planner, dispatch, batch, job, runner, row, initial=False, deadline=None):
     raw, _ = planner.read_regular(physical(job['grant']), dispatch.MAX_GRANT_BYTES)
     require(digest(raw) == job['grant_sha256'], 'dispatch grant drift')
     grant = dispatch.read_grant(job['grant'], planner)
@@ -133,6 +133,20 @@ def checked_job(planner, dispatch, batch, job, runner, row, initial=False):
     configured = os.environ.get('UNIO_CONF_DIR')
     require(configured is None or configured == grant['config_dir'], 'configuration route mismatch')
     module, service = service_for(dispatch, grant)
+    previous_handler = None
+    if deadline is not None:
+        import signal
+        original_call = service._call
+        def bounded_call(argv, timeout):
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, 'binding observation deadline')
+            return original_call(argv, min(timeout, remaining))
+        service._call = bounded_call
+        def interrupted(_signal, _frame):
+            # The existing transport catches this and cleans up its own Git
+            # subprocess session before releasing the service lock.
+            raise module._NativeFailure(True)
+        previous_handler = signal.signal(signal.SIGTERM, interrupted)
     try:
         with service._locked(), module.JobStore(batch['project']) as store:
             record, binding, state = service._load_job(store, job['job_id'])
@@ -151,6 +165,8 @@ def checked_job(planner, dispatch, batch, job, runner, row, initial=False):
                         startup=binding['startup'])
     finally:
         service.close()
+        if previous_handler is not None:
+            signal.signal(signal.SIGTERM, previous_handler)
 
 
 def validate_frozen(planner, frozen):
@@ -245,8 +261,10 @@ class Store:
         return physical(str(self.path / batch_id), True)
 
     def ids(self):
-        entries = list(self.path.iterdir())
-        require(len(entries) <= MAX_BATCHES + 1, 'schedule directory bound exceeded')
+        entries = []
+        for entry in self.path.iterdir():
+            require(len(entries) < MAX_BATCHES + 1, 'schedule directory bound exceeded')
+            entries.append(entry)
         result = []
         for path in entries:
             if path.name == 'lock':
@@ -283,10 +301,12 @@ class Store:
 
     def read(self, batch_id):
         directory = self.directory(batch_id)
-        require(set(p.name for p in directory.iterdir()) <= {'frozen.json', 'state.json', 'runner.lock'},
-                'unsupported batch entry; no repair performed')
+        entries = []
         for entry in directory.iterdir():
+            require(len(entries) < 3 and entry.name in {'frozen.json', 'state.json', 'runner.lock'},
+                    'unsupported batch entry; no repair performed')
             physical(str(entry))
+            entries.append(entry)
         frozen, raw = read_json(self.planner, directory / 'frozen.json', MAX_STATE)
         state, _ = read_json(self.planner, directory / 'state.json', MAX_STATE)
         require(set(frozen) == {'schema_version', 'id', 'created_at', 'grant', 'base', 'bindings', 'helpers'}
@@ -345,6 +365,9 @@ def create(store, planner, dispatch, grant_path, runner):
         rows = [row for row in inventory['tasks'] if row.get('job_id') == job['job_id']]
         require(len(rows) == 1, 'job must occur exactly once in inventory')
         bindings[job['job_id']] = checked_job(planner, dispatch, batch, job, runner, rows[0], initial=True)
+    configurations = {binding['startup']['config'] for binding in bindings.values()}
+    require(len(configurations) == 1, 'mixed configuration routes are unsupported')
+    os.environ['UNIO_CONF_DIR'] = configurations.pop()
     planner.OBSERVATION_DEADLINE = time.monotonic() + 10
     report = planner.build_plan(store.project, inventory, loaded[1], loaded[2], 10, runner=runner)
     require(report['head_revision'] == batch['_base'], 'base mismatch')
@@ -368,6 +391,13 @@ def create(store, planner, dispatch, grant_path, runner):
         raw, _ = planner.read_regular(directory / 'frozen.json', MAX_STATE)
         state['frozen_sha256'] = digest(raw)
         store.save(batch_id, state)
+        # Persist the newly published batch directory itself before its ID can
+        # authorize a later runner, including after a host crash.
+        parent = os.open(store.path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
     return batch_id
 
 
@@ -414,6 +444,14 @@ def collect(process, timeout):
     finally:
         # Terminate the bounded observer/dispatcher process group, never a native
         # detached worker (the native runner establishes its own session).
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=0.3)
+        except subprocess.TimeoutExpired:
+            pass
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
@@ -530,18 +568,30 @@ def scheduling_pass(store, planner, dispatch, batch_id, runner, deadline):
             return
         if state['jobs'][job_id]['attempted']:
             continue
+        physical(grant['inventory'])
         loaded, reason = dispatch.read_inventory(planner, grant['inventory'], grant['inventory_sha256'])
         require(reason is None, 'frozen inventory drift')
         inventory, raw, age = loaded
         require(inventory['base_revision'] == frozen['base'], 'base drift')
-        batch = dict(grant, _base=frozen['base'])
         rows = [row for row in inventory['tasks'] if row.get('job_id') == job_id]
         require(len(rows) == 1, 'frozen job missing')
-        binding = checked_job(planner, dispatch, batch, job, runner, rows[0])
-        require(binding == {key: value for key, value in frozen['bindings'][job_id].items() if key != 'group'},
-                'prepared binding drift')
-        timeout = min(10, max(0.01, deadline - time.monotonic()))
+        binding = {key: value for key, value in frozen['bindings'][job_id].items() if key != 'group'}
         config = binding['startup']['config']
+        if time.monotonic() >= deadline:
+            return
+        # The existing service's binding check contains several independent
+        # 15-second Git calls. Isolate that read-only check so their aggregate
+        # cannot overrun this foreground observation window. This is no launcher.
+        process = spawn([sys.executable, '-I', '-S', '-B', str(Path(__file__).resolve()),
+                         '--internal-binding-check', runner, str(store.project), batch_id, job_id],
+                        store.project, config)
+        code, checked = collect(process, min(10, max(0.01, deadline - time.monotonic())))
+        if code != 0 or checked != (digest(json.dumps(binding, sort_keys=True).encode()) + '\n').encode():
+            pending_reason(store, batch_id, job_id, 'binding_check_refused')
+            if time.monotonic() >= deadline:
+                return
+            require(False, 'prepared binding check refused or timed out')
+        timeout = min(10, max(0.01, deadline - time.monotonic()))
         helper = Path(__file__).resolve().with_name('task-plan.py')
         process = spawn([sys.executable, '-I', '-S', '-B', str(helper), runner, '--project',
                          str(store.project), '--inventory', grant['inventory'], '--timeout', '10', '--json'],
@@ -595,6 +645,8 @@ def scheduling_pass(store, planner, dispatch, batch_id, runner, deadline):
                 item['reason'] = reason
                 store.save(batch_id, latest)
                 continue
+            if not allowed(frozen, latest, store) or time.monotonic() >= deadline:
+                return
             # Durable reservation and attempt precede even Popen. A crash here
             # is permanently Unknown; neither restart nor resume refunds it.
             item.update(attempted=True, launcher='unknown', group=task['group'], reason='attempt_recorded')
@@ -611,7 +663,8 @@ def scheduling_pass(store, planner, dispatch, batch_id, runner, deadline):
         result = planner.parse_strict_json(output) if output is not None else None
         outcome = 'unknown'
         launcher_exit = None
-        if (isinstance(result, dict) and result.get('schema_version') == 1 and result.get('operation') == 'start'
+        if (isinstance(result, dict) and type(result.get('schema_version')) is int
+                and result['schema_version'] == 1 and result.get('operation') == 'start'
                 and result.get('outcome') in ('refused', 'launch_failed', 'launch_accepted', 'unknown')):
             # A successful report must identify this exact task/preview. Refusal
             # may have no job at all. Never scrape raw output into state/status.
@@ -670,8 +723,35 @@ def public(frozen, state):
                 jobs=[dict(job_id=job_id, **item) for job_id, item in state['jobs'].items()])
 
 
+def internal_binding_check(arguments):
+    require(len(arguments) == 4, 'invalid internal check')
+    runner, project, batch_id, job_id = arguments
+    planner = load('task-plan')
+    dispatch = load('task-dispatch')
+    store = Store(project, planner)
+    with store.lock():
+        frozen, _ = store.read(batch_id)
+    require(helpers(planner) == frozen['helpers'], 'installed helper identity drift')
+    grant = frozen['grant']
+    physical(grant['inventory'])
+    loaded, reason = dispatch.read_inventory(planner, grant['inventory'], grant['inventory_sha256'])
+    require(reason is None, 'inventory drift')
+    inventory = loaded[0]
+    jobs = [job for job in grant['jobs'] if job['job_id'] == job_id]
+    rows = [row for row in inventory['tasks'] if row.get('job_id') == job_id]
+    require(len(jobs) == len(rows) == 1, 'internal identity mismatch')
+    binding = checked_job(planner, dispatch, dict(grant, _base=frozen['base']), jobs[0], runner, rows[0],
+                          deadline=time.monotonic() + 8)
+    expected = {key: value for key, value in frozen['bindings'][job_id].items() if key != 'group'}
+    require(binding == expected, 'prepared binding drift')
+    print(digest(json.dumps(binding, sort_keys=True).encode()))
+    return 0
+
+
 def main(argv=None):
     native = list(sys.argv[1:] if argv is None else argv)
+    if native[:1] == ['--internal-binding-check']:
+        return internal_binding_check(native[1:])
     parser = argparse.ArgumentParser(prog='unio schedule', allow_abbrev=False,
         description='Finite approved-job scheduling. No approval, retry, acceptance or merge. '
                     'Pause/stop prevent new attempts and leave launched native workers running.')

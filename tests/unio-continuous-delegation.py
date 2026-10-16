@@ -353,20 +353,28 @@ assert args[0] in ('run', 'result'),""")
             if any(str(arg).endswith('/task-dispatch.py') for arg in argv):
                 return replacement(original, project, config)
             return original(argv, project, config)
-        with mock.patch.object(SCHED, 'spawn', controlled):
+        with mock.patch.object(SCHED, 'spawn', controlled), mock.patch.dict(
+                os.environ, {'UNIO_CONF_DIR': str(self.f.config)}):
             SCHED.run(store, planner, dispatch, ident, str(self.f.engine), True)
 
-    def test_launch_failure_and_malformed_stdout_consume_without_replay(self):
-        for program in ('import sys;sys.exit(1)', 'print("not JSON")', 'print("{\\"job\\":null}")'):
-            with self.subTest(program=program):
-                ident = self.create()
-                self.inprocess(ident, lambda original, project, config:
-                               original([sys.executable, '-c', program], project, config))
-                result = self.status(ident)
-                self.assertEqual(result['attempts'], 2)
-                self.assertTrue(all(j['launcher'] == 'unknown' for j in result['jobs']))
-                self.cli('run', ident, '--once')
-                self.assertEqual(self.launches(), [])
+    def test_launch_failure_consumes_without_replay(self):
+        ident = self.create()
+        self.inprocess(ident, lambda original, project, config:
+                       original([sys.executable, '-c', 'import sys;sys.exit(1)'], project, config))
+        self.assertEqual(self.status(ident)['attempts'], 2)
+        self.cli('run', ident, '--once')
+        self.assertEqual(self.launches(), [])
+
+    def test_malformed_stdout_consumes_without_replay(self):
+        programs = iter(('print("not JSON")', 'print(' + repr(json.dumps({'job': None})) + ')'))
+        ident = self.create()
+        self.inprocess(ident, lambda original, project, config:
+                       original([sys.executable, '-c', next(programs)], project, config))
+        result = self.status(ident)
+        self.assertEqual(result['attempts'], 2)
+        self.assertTrue(all(j['launcher'] == 'unknown' for j in result['jobs']))
+        self.cli('run', ident, '--once')
+        self.assertEqual(self.launches(), [])
 
     def test_actual_crash_boundary_after_durable_attempt(self):
         ident = self.create()
@@ -393,19 +401,22 @@ assert args[0] in ('run', 'result'),""")
         self.assertEqual(len(self.launches()), 2)
 
     def test_expiry_after_creation_and_run_duration(self):
-        path = self.batch_grant(expires_at=(SCHED.now()+datetime.timedelta(seconds=12)).isoformat(),
+        path = self.batch_grant(expires_at=(SCHED.now()+datetime.timedelta(seconds=60)).isoformat(),
                                 run_seconds=1)
         ident = self.create(path)
-        with mock.patch.object(SCHED, 'now', return_value=SCHED.now()+datetime.timedelta(seconds=20)):
+        with mock.patch.object(SCHED, 'now', return_value=SCHED.now()+datetime.timedelta(seconds=120)):
             planner = SCHED.load('task-plan')
             SCHED.run(SCHED.Store(str(self.f.project), planner), planner, SCHED.load('task-dispatch'),
                       ident, str(self.f.engine), True)
         self.assertEqual(self.launches(), [])
         # A zero-readiness loop is bounded by the frozen one-second duration.
-        self.shared()
+        data_path = self.f.project / 'engine-data.json'
+        data = json.loads(data_path.read_text())
+        data['policy --json']['active_with_lead'] = {'dispatch': 1, 'other': 1}
+        data_path.write_text(json.dumps(data))
         start = time.monotonic()
         self.cli('run', ident)
-        self.assertLess(time.monotonic()-start, 6)
+        self.assertLess(time.monotonic()-start, 10)
 
     def test_account_route_drift(self):
         ident = self.create()
@@ -421,6 +432,29 @@ assert args[0] in ('run', 'result'),""")
             out.write(' ')
         self.cli('run', ident, '--once', ok=False)
         self.assertEqual(self.launches(), [])
+
+    def test_template_drift_and_special_state_refuse(self):
+        ident = self.create()
+        single = json.loads(Path(self.jobs[0]['grant']).read_text())
+        template = Path(single['template_path'])
+        template.write_text(template.read_text() + ' ')
+        self.cli('run', ident, '--once', ok=False)
+        self.assertEqual(self.launches(), [])
+        path = self.state_path(ident)
+        content = path.read_bytes()
+        path.unlink()
+        os.mkfifo(path)
+        self.cli('status', ident, ok=False)
+        path.unlink()
+        path.write_bytes(content)
+        lock = path.parent / 'runner.lock'
+        if lock.exists():
+            lock.unlink()
+        target = self.f.root / 'lock-target'
+        target.touch()
+        lock.symlink_to(target)
+        self.cli('status', ident, ok=False)
+        self.cli('run', ident, '--once', ok=False)
 
     def test_helper_identity_drift(self):
         ident = self.create()

@@ -83,7 +83,8 @@ The inventory uses the existing schema-1 planner format. Each granted job must
 occur exactly once and match its immutable task hash, worker, prepared preview,
 frozen base and existing approval. The scheduler records the engine, complete
 existing service configuration fingerprint, task template, account group and
-loaded helper identities. Before launching it rechecks the original grant and
+loaded helper identities. All jobs in one batch use the same configuration
+profile; mixed profiles are refused. Before launching it rechecks the original grant and
 inventory bytes, prepared binding and a fresh plan. Planner and dispatcher
 source files remain unchanged. The internal Python helper is orchestration,
 not an AI adapter or an additional native launcher.
@@ -137,6 +138,7 @@ attempted work. Launcher acceptance is never reported as Source 0 or acceptance.
 | `project_STOP` | Native STOP prevents new launches. |
 | `scope_conflict` | The existing planner detects a write conflict. |
 | `agent_off`, `binary_missing`, `auth_signed_out`, `zero_allowance` | Existing local readiness refuses this route. No provider probe runs. |
+| `binding_check_refused` | The bounded existing-service binding check refused or timed out before an attempt. |
 | `plan_unavailable`, `plan_unresolved`, `plan_blocked` | A bounded planner observation cannot recommend this job. |
 | `attempt_recorded` | Attempt was saved before dispatch; a missing result remains Unknown. |
 | `attempt_consumed` | Dispatch returned or became uncertain; this job is never retried. |
@@ -176,10 +178,10 @@ Reads, JSON state, batch counts, subprocess output and process observation
 windows have fixed bounds. State is at most 2 MiB per file, at most 128 batches
 are retained, subprocess combined output is at most 1 MiB, planner observations
 are at most ten seconds and dispatch observation is at most sixty seconds,
-always cut to the remaining foreground duration. Existing service coordination
-and binding checks also have their own bounded lock/Git deadlines. Those
-preparation checks can add a bounded tail beyond the polling duration; no new
-claim starts once the foreground deadline has passed.
+always cut to the remaining foreground duration. The existing service binding check runs as an internal read-only helper with
+an aggregate deadline, because its original transport has multiple separate
+15-second Git deadlines. Short state-lock waits and subprocess cleanup can
+add a bounded tail; no new claim starts once the foreground deadline has passed.
 
 ## Focused offline checks
 
