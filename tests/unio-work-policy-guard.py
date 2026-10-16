@@ -320,6 +320,8 @@ with tempfile.TemporaryDirectory(prefix='work-policy-guard-') as directory:
         # limit 4, lead is 1, so we can start 3
         for i, agent in enumerate(['mock1', 'mock2', 'mock3']):
             unio('account', agent, 'grp1')
+            grant = unio('lead-budget', 'grant', agent, agent, f'task{i+1}', 'run')
+            check('fixture owner grants shared lead task', grant.returncode == 0, grant)
             env['MOCK_BARRIER'] = str(repo / f'bar4_{i}')
             ps.append(unio('run', agent, f'task{i+1}', wait=False))
 

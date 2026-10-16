@@ -174,6 +174,26 @@ class ReviewCollection(unittest.TestCase):
         self.assertTrue(all(r['process_exit_code'] is None for r in self.attempts()))
         self.assertFalse(json.loads(self.unio('policy','--json').stdout)['active_native_workflows'])
 
+    def test_shared_lead_requires_exact_owner_review_consent(self):
+        self.unio('tier','high')
+        self.unio('account','revone','shared');self.unio('account','revtwo','shared')
+        self.unio('lead','revone')
+        before=self.calls();self.collect(code=2)
+        self.assertEqual(self.calls(),before)
+        self.assertTrue(all(r['process_exit_code'] is None for r in self.attempts()))
+        for reviewer in ('revone','revtwo'):
+            self.unio('lead-budget','grant',reviewer,reviewer,'evidence','review')
+        self.collect()
+        history=json.loads((self.coord/'lead-budget.json').read_text())['grants']
+        self.assertEqual([g['state'] for g in history],['used','used'])
+        before=self.calls();self.collect(code=2)
+        self.assertEqual(self.calls(),before)
+        # A single-review path uses the same owner task binding.
+        self.unio('lead-budget','grant','revone','revone','evidence','review')
+        self.unio('review','mock','evidence','revone')
+        before=self.calls();self.unio('review','mock','evidence','revone',code=2)
+        self.assertEqual(self.calls(),before)
+
     def test_mixed_process_verdict_timeout_and_child_failure(self):
         self.controls(revone='changes',revtwo='fail');self.collect(code=1)
         self.assertEqual({(r['state'],r['process_exit_code']) for r in self.attempts()},

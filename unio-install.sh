@@ -20873,8 +20873,9 @@ def budget_read(root):
                     'group', 'lead', 'lead_group', 'issued', 'expires', 'state', 'ended'}
             if type(g) is not dict or set(g) != keys: raise ValueError('record shape')
             for k in ('agent', 'worker', 'task', 'group', 'lead', 'lead_group'):
-                if type(g[k]) is not str or not re.fullmatch(r'[a-zA-Z0-9_][a-zA-Z0-9_-]{0,127}', g[k]):
+                if type(g[k]) is not str or not 1 <= len(g[k]) <= 128:
                     raise ValueError('label')
+                check_label(g[k], 'grant')
             if (type(g['id']) is not str or not re.fullmatch('[0-9a-f]{32}', g['id'])
                     or g['id'] in seen): raise ValueError('id')
             seen.add(g['id'])
@@ -20906,7 +20907,9 @@ def budget_write(root, data):
         if os.path.exists(tmp): os.unlink(tmp)
 
 def budget_binding(root, doc, agent, worker, task, kind):
-    for label in (agent, worker, task): check_label(label, 'lead-budget binding')
+    for label in (agent, worker, task, group_of(doc, agent), doc['lead_agent'], lead_group_of(doc)):
+        if type(label) is not str or not 1 <= len(label) <= 128: fail('lead-budget label exceeds bound')
+        check_label(label, 'lead-budget binding')
     if kind not in ('run', 'review'): fail('unknown lead-budget kind')
     check_control_path(root, 'coord', 'tasks', task + '.md')
     task_data = budget_read_file(os.path.join(root, 'coord', 'tasks', task + '.md'), 2 * 1024 * 1024)
@@ -20918,10 +20921,12 @@ def budget_binding(root, doc, agent, worker, task, kind):
                 task_hash=hashlib.sha256(task_data).hexdigest(), route_hash=hashlib.sha256(route).hexdigest(),
                 group=group_of(doc, agent), lead=doc['lead_agent'], lead_group=lead_group_of(doc))
 
-def budget_check(root, doc, agent, worker, task, kind, consume=False):
+def budget_check(root, doc, agent, worker, task, kind, consume=False, original=None):
     store = budget_read(root)  # Unsafe consent state always fails closed.
     if group_of(doc, agent) != lead_group_of(doc): return
     binding = budget_binding(root, doc, agent, worker, task, kind)
+    if kind == 'run' and original is not None and hashlib.sha256(original).hexdigest() != binding['task_hash']:
+        fail('owner task changed during lead-budget admission; refusing before provider call')
     now = int(time.time())
     for grant in store['grants']:
         if (grant['state'] == 'ready' and grant['issued'] <= now < grant['expires']
@@ -21467,6 +21472,7 @@ def main(argv):
                 fail('budget group %r holds %d native workflow(s) plus %d lead reservation(s) at cap %d: refusing %s %s/%s before any provider call (no retry, no queue)'
                      % (group, native, lead_here, cap, kind, worker, task))
 
+            budget_check(root, doc, agent, worker, owner_task, kind)
             directory = slot_group_dir(root, group)
             try:
                 os.makedirs(directory, exist_ok=True)
@@ -21548,7 +21554,7 @@ def main(argv):
                                 os.unlink(tmp_sidecar)
                             except OSError:
                                 pass
-                budget_check(root, doc, agent, worker, owner_task, kind, consume=True)
+                budget_check(root, doc, agent, worker, owner_task, kind, consume=True, original=original)
                 effective_path = os.path.join(reports, task + '.prompt.md')
 
             except BaseException:
@@ -30631,6 +30637,12 @@ their original evidence; historical review and test failures remain recorded.
 The [roadmap](development/ROADMAP.md) and [version plan](VERSION-PLAN.md)
 describe delivery sequencing. Runtime completion is recorded in the command
 implementation's changelog and tests, not inferred from this contract.
+
+Native shared-lead admission additionally requires an explicit one-use owner
+[lead budget grant](development/LEAD-BUDGET-CONSENT.md), even at medium/high.
+`unio lead-budget grant <agent> <worker> <task> <run|review>` expires in 15
+minutes and never raises the tier cap. `show` preserves history; `revoke <id>`
+withdraws unused consent. Alias grouping remains an explicit owner duty.
 WORKMODES_TPL_EOF
 
 cat > "$TPL_DIR/SABOTEUR.md" <<'SABOTEUR_TPL_EOF'
