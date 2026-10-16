@@ -3,9 +3,8 @@
 `unio dispatch` prepares a saved request, records your approval and starts one
 exact task after fresh local checks. You choose each step explicitly.
 
-**Availability:** implemented in development source; not included in published
-v0.5.9. Use an isolated installation from the matching source revision. The
-command reuses Unio's existing execution service and approval stores.
+This command is available in installed Unio and reuses the existing execution
+service and approval stores. Use the current stable installation.
 
 ## Choose the project and agents
 

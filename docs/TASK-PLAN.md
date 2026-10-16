@@ -1,9 +1,8 @@
 # Explain concurrent task recommendations before dispatch
 
-The source candidate adds `unio plan` for the follow-up; it is not in
-the published 0.5.9 installation. It explains concurrent recommendations before
-dispatch without running executors, provider calls, verification commands,
-creating queues or databases, or mutating state.
+`unio plan` explains concurrent task recommendations before dispatch. It is
+available in installed Unio and makes no executor or provider calls, runs no
+validation commands, creates no queues or databases, and does not mutate state.
 
 ```bash
 unio plan --inventory "/path/to/inventory.json"
@@ -120,7 +119,7 @@ and enforce byte limits. Queue credentials and raw task text are not displayed.
 
 ## Prepared material support
 
-Status: planned source work, not part of installed v0.5.9.
+Prepared-material observation is available in installed Unio.
 
 When an inventory task includes `job_id`, the read-only planner supports reading
 the existing compiled binding in `coord/ui-execution/bindings/<job-id>.md` and its
