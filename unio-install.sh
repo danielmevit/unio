@@ -21448,6 +21448,9 @@ def main(argv):
         if len(args) != 7:
             fail('usage: policy _admit_hold <agent> <worker> <task> <kind> <orig> <in_fifo>')
         agent, worker, task, kind, orig, in_fifo, owner_task = args
+        check_label(owner_task, 'owner task')
+        if kind == 'run' and owner_task != task:
+            fail('run owner task identity differs; refusing lead-budget admission before provider call')
         check_label(agent, 'admit agent')
         check_label(worker, 'admit worker')
         check_label(task, 'admit task')

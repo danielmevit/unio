@@ -93,6 +93,8 @@ with tempfile.TemporaryDirectory(prefix='lead-budget-') as tmp:
     def probe(kind='review', owner='task', worker='mock'):
         return policy('_admit_hold','mock',worker,'attempt',kind,str(task),str(base/'missing-fifo'),owner)
     refused('run grant does not permit review', probe)
+    refused('run cannot substitute a different owner task label',lambda: probe(kind='run'))
+    check('mismatched run identity leaves consent unused',records()['grants'][-1]['state']=='ready')
     # Revoke ready run grant, then permit exactly one review. Missing FIFO is a
     # deliberate post-consumption startup failure, with no fake Source success.
     ready = records()['grants'][-1]['id']; cli('lead-budget','revoke',ready)
