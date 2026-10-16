@@ -2,6 +2,7 @@
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
 """Private, bounded native adapter observations. Never an admission verdict."""
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -21,6 +22,7 @@ LABELS = {
     'time_cap': 'Configured time cap', 'turn_cap': 'Configured turn cap',
     'output_cap': 'Configured output cap', 'provider_limit': 'Provider limit observed',
     'auth': 'Authentication failure', 'transport': 'Transport failure',
+    'infrastructure': 'Infrastructure failure',
     'setup': 'Setup failure', 'terminal_error': 'Provider terminal error',
     'interrupted': 'Interrupted',
 }
@@ -71,6 +73,9 @@ def read(path, limit=LIMIT, private=True):
             data = stream.read(limit + 1)
             if len(data) > limit:
                 raise ValueError('oversized file')
+            after = os.fstat(stream.fileno())
+            if (s.st_size, s.st_mtime_ns, s.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                raise ValueError('file changed while reading')
             return data
     finally:
         os.close(fd)
@@ -103,6 +108,12 @@ def write(path, value):
         os.close(fd)
 
 
+def timestamp(value):
+    if type(value) is not str or not STAMP.fullmatch(value):
+        raise ValueError('timestamp')
+    return datetime.fromisoformat(value.replace('Z', '+00:00'))
+
+
 def valid_binding(b):
     return (type(b) is dict and set(b) == BIND_KEYS
             and type(b['schema_version']) is int and b['schema_version'] == 1
@@ -110,7 +121,7 @@ def valid_binding(b):
             and type(b['run']) is str and RUN.fullmatch(b['run'])
             and all(type(b[k]) is str and HEX.fullmatch(b[k]) for k in ('task_sha256', 'prompt_sha256', 'command_sha256'))
             and type(b['route']) is str and b['route'] in ROUTES + ('unsupported',)
-            and type(b['started_at']) is str and STAMP.fullmatch(b['started_at']))
+            and bool(timestamp(b['started_at'])))
 
 
 def route(command, adapters):
@@ -139,7 +150,13 @@ def current(root, worker, task, command, adapters):
     # The native retry attempt is authoritative; never select a receipt by
     # stdout, a provider-supplied path or directory enumeration.
     state = load(Path(root) / 'coord/retries' / task / 'state.json', False)
-    run = state['latest'][worker]['id']
+    if (type(state) is not dict or type(state.get('schema_version')) is not int
+            or state['schema_version'] != 1 or state.get('task') != task):
+        raise ValueError('native state')
+    attempt = state['latest'][worker]
+    if type(attempt) is not dict or any(type(attempt.get(k)) is not bool for k in ('pending', 'failed')):
+        raise ValueError('native attempt')
+    run = attempt['id']
     if type(run) is not str or not RUN.fullmatch(run):
         raise ValueError('run')
     return dict(task=task, worker=worker, run=run,
@@ -176,10 +193,16 @@ def prepare(root, worker, task, command, adapters, prompt):
 
 
 def classify(r, record):
+    # Adapter-owned supervisors supply typed local-bound outcomes only after
+    # a private run record exists. Preflight failures without one stay Unknown.
+    if r in ('vibe', 'antigravity', 'copilot'):
+        local = {'timeout': 'time_cap', 'output_limit': 'output_cap', 'interrupted': 'interrupted'}
+        if record.get('outcome') in local:
+            return local[record['outcome']]
     if r == 'vibe' and record.get('export_state') == 'valid':
         return {'finished': 'completed', 'token_limit': 'token_cap', 'price_limit': 'price_cap',
                 'turn_limit': 'turn_cap', 'deadline': 'time_cap',
-                'infrastructure_failure': 'transport', 'config_error': 'setup',
+                'infrastructure_failure': 'infrastructure', 'config_error': 'setup',
                 'usage_error': 'setup'}.get(record['export']['outcome'], 'unknown')
     if r == 'antigravity':
         return {'terminal_success': 'completed', 'terminal_error': 'terminal_error',
@@ -204,6 +227,7 @@ def emit(r, record, prompt, adapter_exit, native_exit):
         b = load(Path(dest) / 'binding.json')
         if (not valid_binding(b) or b['route'] != r or Path(dest).name != b['run']
                 or Path(dest).parent.name != '.outcomes'
+                or record.get('task_sha256') != b['prompt_sha256']
                 or sha(read(prompt, 1048576, False)) != b['prompt_sha256']):
             return
         write(Path(dest) / 'outcome.json', dict(b, label=classify(r, record),
@@ -221,7 +245,9 @@ def observe(root, worker, task, command, adapters, source_exit=None):
             return 'unknown'
         if source_exit is None:
             end = load(dest / 'source.json')
-            if type(end) is not dict or set(end) != {'binding', 'source_exit', 'observed_at'} or end['binding'] != b:
+            if (type(end) is not dict or set(end) != {'binding', 'source_exit', 'observed_at'}
+                    or not valid_binding(end['binding']) or end['binding'] != b
+                    or timestamp(end['observed_at']) < timestamp(b['started_at'])):
                 return 'unknown'
             source_exit = end['source_exit']
         o = load(dest / 'outcome.json')
@@ -231,15 +257,63 @@ def observe(root, worker, task, command, adapters, source_exit=None):
                 or type(o['label']) is not str or o['label'] not in LABELS
                 or type(o['adapter_exit']) is not int or o['adapter_exit'] != source_exit
                 or o['native_exit'] is not None and (type(o['native_exit']) is not int or not -127 <= o['native_exit'] <= 255)
-                or type(o['finished_at']) is not str or not STAMP.fullmatch(o['finished_at'])
-                or o['finished_at'] < b['started_at']):
+                or timestamp(o['finished_at']) < timestamp(b['started_at'])):
             return 'unknown'
         return o['label']
     except (OSError, ValueError, KeyError, TypeError, RecursionError):
         return 'unknown'
 
 
+def status_all(root, adapters, config):
+    # One process and at most 1024 native pairs; enumerate native task IDs,
+    # never adapter receipt directories or paths printed by a provider.
+    commands = {}
+    try:
+        for line in read(config, 1048576, False).decode('utf-8').splitlines():
+            name, sep, command = line.partition('=')
+            if sep and ID.fullmatch(name) and name not in commands:
+                commands[name] = command
+    except (OSError, ValueError, UnicodeError):
+        pass
+    fd = directory(Path(root) / 'coord/tasks')
+    try:
+        with os.scandir(fd) as entries:
+            names = []
+            for count, entry in enumerate(entries):
+                if count >= 1024:
+                    print('  Adapter outcome: Unknown (status bound reached)')
+                    break
+                if entry.name.endswith('.md') and ID.fullmatch(entry.name[:-3]) and entry.name != 'TEMPLATE.md':
+                    names.append(entry.name[:-3])
+    finally:
+        os.close(fd)
+    shown = 0
+    for task in sorted(names):
+        try:
+            state = load(Path(root) / 'coord/retries' / task / 'state.json', False)
+            latest = state['latest']
+            if type(latest) is not dict or len(latest) > 128 or any(not ID.fullmatch(k) for k in latest):
+                raise ValueError('native attempts')
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError, KeyError, TypeError, RecursionError):
+            print('  ' + task + ': Adapter outcome: Unknown')
+            continue
+        for worker in sorted(latest):
+            if shown >= 1024:
+                print('  Adapter outcome: Unknown (status bound reached)')
+                return
+            shown += 1
+            label = observe(root, worker, task, commands.get(worker.split('-')[0], ''), adapters)
+            print('  ' + task + ' / ' + worker + ': Adapter outcome: ' + LABELS[label])
+    if not shown:
+        print('  (no current native adapter observations)')
+
+
 def main(a):
+    if a[:1] == ['status-all'] and len(a) == 4:
+        status_all(*a[1:])
+        return
     mode, root, worker, task, command, adapters, *extra = a
     if mode == 'prepare':
         print(prepare(root, worker, task, command, adapters, *extra))

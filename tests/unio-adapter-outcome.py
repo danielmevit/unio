@@ -2,7 +2,6 @@
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
 """Bound outcome contract and installed mock-only native acceptance."""
-import copy
 import importlib.util
 import json
 import os
@@ -28,11 +27,11 @@ class Contract(unittest.TestCase):
         self.task = self.root / 'coord/tasks/T.md'
         self.task.write_text('task\n')
         self.state = self.root / 'coord/retries/T/state.json'
-        self.state.write_text(json.dumps({'latest': {'w': {'id': 'a' * 32, 'pending': True}}}))
+        self.state.write_text(json.dumps({'schema_version': 1, 'task': 'T', 'latest': {'w': {'id': 'a' * 32, 'pending': True, 'failed': False}}}))
         self.command = 'python3 -B ' + shlex.quote(str(ROOT / 'tools/vibe-worker.py')) + ' --model glm-5-3'
         self.dest = Path(o.prepare(str(self.root), 'w', 'T', self.command, str(ROOT / 'tools'), str(self.task)))
         self.binding = o.load(self.dest / 'binding.json')
-        self.record = dict(export_state='valid', export={'outcome': 'token_limit'})
+        self.record = dict(task_sha256=o.sha(self.task.read_bytes()), export_state='valid', export={'outcome': 'token_limit'})
         self.old = os.environ.get(o.ENV)
         os.environ[o.ENV] = str(self.dest)
         o.emit('vibe', self.record, self.task, 3, 3)
@@ -51,7 +50,8 @@ class Contract(unittest.TestCase):
 
     def test_valid_and_caps(self):
         self.assertEqual(self.observe(), 'token_cap')
-        for value, label in [('infrastructure_failure', 'transport'), ('config_error', 'setup'),
+        self.assertEqual(o.observe(str(self.root), 'w', 'T', self.command, str(ROOT/'tools'), 2), 'unknown')
+        for value, label in [('infrastructure_failure', 'infrastructure'), ('config_error', 'setup'),
                              ('price_limit', 'price_cap'), ('deadline', 'time_cap'),
                              ('turn_limit', 'turn_cap')]:
             self.assertEqual(o.classify('vibe', dict(export_state='valid', export={'outcome': value})), label)
@@ -60,6 +60,10 @@ class Contract(unittest.TestCase):
         self.assertEqual(o.classify('perplexity', {'outcome': 'rate_limited'}), 'provider_limit')
         self.assertEqual(o.classify('perplexity', {'outcome': 'auth_denied'}), 'auth')
         self.assertEqual(o.classify('copilot', {'outcome': 'native_failed', 'error': 'rate limit'}), 'unknown')
+        for route in ('vibe','antigravity','copilot'):
+            self.assertEqual(o.classify(route, {'outcome':'timeout'}), 'time_cap')
+            self.assertEqual(o.classify(route, {'outcome':'output_limit'}), 'output_cap')
+            self.assertEqual(o.classify(route, {'outcome':'local_failure', 'error':'auth quota'}), 'unknown')
 
     def test_binding_conflicts_and_exact_types(self):
         for key, value in [('task', 'other'), ('worker', 'other'), ('run', 'b'*32),
@@ -67,6 +71,7 @@ class Contract(unittest.TestCase):
                            ('command_sha256', 'b'*64), ('route', 'antigravity'),
                            ('label', 'SECRET'), ('label', []), ('adapter_exit', True),
                            ('native_exit', False), ('finished_at', '1900-01-01T00:00:00+00:00'),
+                           ('finished_at', '2026-99-99T00:00:00+00:00'),
                            ('schema_version', True), ('extra', 'secret')]:
             with self.subTest(key=key, value=value):
                 d = json.loads(self.good);d[key] = value
@@ -96,12 +101,40 @@ class Contract(unittest.TestCase):
         self.assertEqual(self.observe(), 'unknown')
         p.unlink();self.assertEqual(self.observe(), 'unknown')
 
+    def test_changed_actual_adapter_input_cannot_bind(self):
+        (self.dest/'outcome.json').unlink()
+        wrong = dict(self.record, task_sha256='f'*64)
+        o.emit('vibe', wrong, self.task, 3, 3)
+        self.assertFalse((self.dest/'outcome.json').exists())
+        self.assertEqual(self.observe(), 'unknown')
+
     def test_stale_and_no_reuse(self):
         with self.assertRaises(FileExistsError):
             o.prepare(str(self.root), 'w', 'T', self.command, str(ROOT / 'tools'), str(self.task))
-        self.state.write_text(json.dumps({'latest': {'w': {'id': 'c'*32}}}))
+        self.state.write_text(json.dumps({'schema_version': 1, 'task': 'T', 'latest': {'w': {'id': 'c'*32, 'pending': True, 'failed': False}}}))
         self.assertEqual(self.observe(), 'unknown')
         self.assertEqual((self.dest / 'outcome.json').read_bytes(), self.good)
+
+    def test_perplexity_bound_existing_protocol(self):
+        spec = importlib.util.spec_from_file_location('pplx_fixture', ROOT/'tools/perplexity-worker.py')
+        worker = importlib.util.module_from_spec(spec);spec.loader.exec_module(worker)
+        receipts = self.root/'receipts';receipts.mkdir(mode=0o700)
+        command = 'python3 ' + shlex.quote(str(ROOT/'tools/perplexity-worker.py')) + ' --model glm53 --receipt-dir ' + shlex.quote(str(receipts))
+        cases = [('rate_limited','provider_limit'), ('auth_denied','auth'),
+                 ('dependency_version','setup'), ('upstream_error','transport'),
+                 ('upstream_refused','unknown'), ('invalid_output','unknown')]
+        for index, (state, label) in enumerate(cases):
+            self.state.write_text(json.dumps({'schema_version':1, 'task':'T', 'latest':{
+                'w':{'id':format(index+1,'032x'), 'pending':True, 'failed':False}}}))
+            dest = Path(o.prepare(str(self.root), 'w', 'T', command, str(ROOT/'tools'), str(self.task)))
+            os.environ[o.ENV] = str(dest)
+            worker.run_child = lambda *args: (state, None, [], True)
+            code = worker.main(['--model','glm53','--prompt-file',str(self.task),'--receipt-dir',str(receipts)])
+            self.assertEqual(code, worker.STATES[state][0])
+            b = o.load(dest/'binding.json')
+            o.write(dest/'source.json', dict(binding=b, source_exit=code, observed_at=o.date()))
+            self.assertEqual(o.observe(str(self.root),'w','T',command,str(ROOT/'tools')), label)
+            self.assertTrue(any(receipts.glob('*/receipt.json')))
 
     def test_generic_and_stdout_no_evidence(self):
         for c in ('echo token_limit', 'bash -c ' + shlex.quote(self.command), self.command + ' | cat',
@@ -113,10 +146,11 @@ class Contract(unittest.TestCase):
 VIBE = r'''#!/usr/bin/env python3
 import json,os,pathlib,sys
 if sys.argv[1:]==['--version']:
- print('vibe 2.26.1');raise SystemExit(0)
+ print('vibe 0.0.0' if os.environ.get('OUTCOME_CASE')=='preflight' else 'vibe 2.26.1');raise SystemExit(0)
 a=sys.argv[1:];case=os.environ.get('OUTCOME_CASE','token_limit')
-code=3 if case=='token_limit' else 2
+code=3 if case=='token_limit' else 1 if case=='config_error' else 2
 p=pathlib.Path(a[a.index('--output-dir')+1])/'export.json'
+if case=='missing':raise SystemExit(2)
 p.write_text(json.dumps(dict(schema_version=1,vibe_version='2.26.1',outcome=case,
  exit_code=code,stop_reason=None,usage=None,cost_usd=None)))
 print('untrusted text: provider limit; receipt=/tmp/forged; token=SECRET')
@@ -167,7 +201,10 @@ class Installed(unittest.TestCase):
             unio('init','vibe','agy','mock');unio('tier','low');unio('lead','none')
             project=repo.parent
             for task, worker, case, rc, label in [('V1','vibe','token_limit',3,'Configured token cap'),
-                                                  ('V2','vibe','infrastructure_failure',2,'Transport failure'),
+                                                  ('V2','vibe','infrastructure_failure',2,'Infrastructure failure'),
+                                                  ('V3','vibe','config_error',1,'Setup failure'),
+                                                  ('V4','vibe','missing',2,'Unknown'),
+                                                  ('V5','vibe','preflight',2,'Unknown'),
                                                   ('A1','agy','',2,'Provider terminal error'),
                                                   ('G1','mock','',3,'Unknown')]:
                 (project/'coord/tasks'/f'{task}.md').write_text('# Task\n\nDo no work.\n\n## Allowed scope\n- file.txt\n\n## Validate\n$ true\n')
@@ -178,13 +215,36 @@ class Installed(unittest.TestCase):
                 self.assertIn('exit='+str(rc), report)
                 self.assertIn('\nAdapter outcome: '+label+'\npolicy group=', report)
             status=unio('status').stdout
-            for label in ('Configured token cap','Transport failure','Provider terminal error','Unknown'):
+            self.assertNotIn('SECRET', status)
+            for label in ('Configured token cap','Infrastructure failure','Provider terminal error','Unknown'):
                 self.assertIn('Adapter outcome: '+label, status)
             self.assertFalse((b/'conf/off/mock').exists())
             # Read-only status rejects changed task/config and preserves evidence.
             vdest=next(p for p in (project/'coord/reports/.outcomes').iterdir()
                        if json.loads((p/'binding.json').read_text())['task']=='V1')
             original=(vdest/'outcome.json').read_bytes()
+            outcome = vdest/'outcome.json'
+            for key, value in [('worker','wrong'), ('run','f'*32), ('task','wrong'),
+                               ('task_sha256','f'*64), ('route','antigravity')]:
+                d=json.loads(original);d[key]=value
+                outcome.write_text(json.dumps(d))
+                before=outcome.read_bytes()
+                self.assertIn('V1 / vibe: Adapter outcome: Unknown', unio('status').stdout)
+                self.assertEqual(outcome.read_bytes(), before)
+            for raw in (b'{', b' '*8193):
+                outcome.write_bytes(raw)
+                self.assertIn('V1 / vibe: Adapter outcome: Unknown', unio('status').stdout)
+                self.assertEqual(outcome.read_bytes(), raw)
+            outcome.unlink()
+            self.assertIn('V1 / vibe: Adapter outcome: Unknown', unio('status').stdout)
+            outcome.symlink_to(vdest/'binding.json')
+            self.assertIn('V1 / vibe: Adapter outcome: Unknown', unio('status').stdout)
+            self.assertTrue(outcome.is_symlink())
+            outcome.unlink();outcome.write_bytes(original);outcome.chmod(0o600)
+            # Command identity changes cannot reuse a prior observation.
+            old_conf=conf.read_text();conf.write_text(old_conf.replace('--model glm-5-3', '--model mistral-medium-3-5'))
+            self.assertIn('V1 / vibe: Adapter outcome: Unknown', unio('status').stdout)
+            conf.write_text(old_conf)
             (project/'coord/tasks/V1.md').write_text('changed')
             self.assertIn('V1 / vibe: Adapter outcome: Unknown', unio('status').stdout)
             self.assertEqual((vdest/'outcome.json').read_bytes(), original)
