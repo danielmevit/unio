@@ -16,7 +16,8 @@ def check(label, condition, detail=''):
     print('ok ' + label, flush=True)
 
 
-with tempfile.TemporaryDirectory(prefix='unio selftest ') as tmp:
+with tempfile.TemporaryDirectory(prefix='unio selftest ',
+                                 dir=os.environ.get('TMPDIR', str(SOURCE))) as tmp:
     base = Path(tmp)
     home = base / 'isolated home'
     home.mkdir()
