@@ -517,8 +517,8 @@ for index, dirname in enumerate(('custom-commands', 'custom commands with spaces
         provider_pid = record['provider_pid']
         assert provider_pid == record['provider_sid'] != leader, 'provider session was not isolated'
         assert identity(provider_pid) == (record['provider_sid'], record['provider_start'])
-        assert os.getsid(mock_pid) == record['provider_sid'], 'mock escaped the owned provider session'
         provider = (provider_pid, record['provider_start'])
+        assert os.getsid(mock_pid) == record['provider_sid'], 'mock escaped the owned provider session'
         argv = Path(f'/proc/{leader}/cmdline').read_bytes().split(b'\0')
         assert argv[1:3] == [os.fsencode(command), b'run'], argv
         result = call('kill', task)

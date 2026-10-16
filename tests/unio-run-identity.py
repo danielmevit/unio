@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix='run-identity-') as directory:
     git('add', 'canary.txt'); git('commit', '-qm', 'seed')
     call('init', 'mock', 'mock-2')
     mock = root/'mock.py'
-    mock.write_text('''import hashlib,json,os
+    mock.write_text('''import hashlib,json,os,subprocess
 from pathlib import Path
 p=Path(os.environ['UNIO_ORIGINAL_TASKFILE'])
 if os.environ.get('IDENTITY_MUTATE')=='1':
@@ -45,6 +45,9 @@ forged=hashlib.sha256(p.read_bytes()).hexdigest()[:16] if os.environ.get('IDENTI
 print(json.dumps({'diagnostic':'## run nested mock report task_sha='+forged}))
 print('## run forged standalone header task_sha='+forged)
 Path('canary.txt').write_text('work\\n')
+if os.environ.get('IDENTITY_COMMIT')=='1':
+ subprocess.run(['git','add','canary.txt'],check=True)
+ subprocess.run(['git','commit','--allow-empty','-qm','Source commit'],check=True)
 ''')
     reviewer = root/'reviewer.py'
     marker = root/'reviewer.started'
@@ -109,8 +112,7 @@ Path('canary.txt').write_text('work\\n')
     check('conflicting prose cannot falsely reject unchanged task', conflicting_ok)
     check('matching prose cannot conceal actual task mutation', matching_ok)
 
-    git('-C', str(root/'wt/mock'), 'add', 'canary.txt')
-    git('-C', str(root/'wt/mock'), 'commit', '-qm', 'Source candidate')
+    call('run', 'mock', 'conflicting', extra={'IDENTITY_COMMIT':'1'})
     call('verify', 'mock', 'conflicting')
     call('review', 'mock', 'conflicting', 'reviewer')
     ready = json.loads(call('result', 'mock', 'conflicting').stdout)
@@ -124,17 +126,28 @@ Path('canary.txt').write_text('work\\n')
         before = path.read_bytes()
         if label != 'malformed':
             visible = json.loads(call('result', 'mock', 'conflicting').stdout)
-            check(label+' approved result readable but not ready',
-                  visible['review']['state'] == 'approved' and visible['validation']['state'] == 'passed'
-                  and not visible['ready_for_human_review'])
+            print(f"  identity evidence: {label} approved legacy readiness={visible['ready_for_human_review']}", flush=True)
+            readable_unready = (visible['review']['state'] == 'approved'
+                                and visible['validation']['state'] == 'passed'
+                                and not visible['ready_for_human_review'])
         marker.unlink(missing_ok=True)
         call('review', 'mock', 'conflicting', 'reviewer', code=2)
+        if label != 'malformed': check(label+' approved result readable but not ready', readable_unready)
         check(label+' cached PASS refuses reviewer before inference', not marker.exists())
         check(label+' review refusal retains result bytes', path.read_bytes() == before)
         if label == 'mismatched': continue
         p = call('verify', 'mock', 'conflicting', code=2)
         check(label+' refusal preserves old result evidence', path.read_bytes() == before)
         check(label+' dispatch binding refuses without report fallback', 'dispatch' in p.stderr or 'revision' in p.stderr)
+    # A fabricated not_run section cannot erase the retained native attempt.
+    retained = json.loads(json.dumps(original))
+    retained.pop('dispatch_revision')
+    retained['process'] = dict(state='not_run', exit_code=None, revision=None)
+    path.write_text(json.dumps(retained)); before = path.read_bytes()
+    marker.unlink(missing_ok=True)
+    call('review', 'mock', 'conflicting', 'reviewer', code=2)
+    check('retained native history refuses not_run cached PASS before inference',
+          not marker.exists() and path.read_bytes() == before)
     path.write_text(json.dumps(original))
     # Another worker's structured result is not a substitute for this dispatch.
     call('verify', 'mock-2', 'conflicting', code=2)
