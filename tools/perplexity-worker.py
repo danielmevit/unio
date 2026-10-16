@@ -466,7 +466,7 @@ def main(argv=None):
         try:
             if args.proposal_dir and state == 'ok':
                 write_proposal(run, task, answer, citations)
-            write_receipt(run, {
+            record = {
                 'schema': 'unio-perplexity-receipt-1', 'task_sha256': hashlib.sha256(task).hexdigest(),
                 'task_bytes': len(task), 'question_sha256': hashlib.sha256(prompt).hexdigest(),
                 'question_bytes': len(prompt), 'selected_files': context,
@@ -482,7 +482,15 @@ def main(argv=None):
                            'max_prompt_bytes': MAX_PROMPT},
                 'claims': ('Local unsigned receipt of one research answer. Exit 0 is not an accepted '
                            'result or review; the effective model and lab are unverified, so this is '
-                           'no cross-lab review evidence. Unio verified this adapter offline only.')})
+                           'no cross-lab review evidence. Unio verified this adapter offline only.')}
+            write_receipt(run, record)
+            if os.environ.get('UNIO_ADAPTER_OUTCOME'):
+                try:
+                    import runpy
+                    runpy.run_path(str(Path(__file__).with_name('adapter-outcome.py')))['emit'](
+                        'perplexity', record, args.prompt_file or os.environ.get('TASKFILE'), code, None)
+                except Exception:
+                    pass
         except (OSError, subprocess.SubprocessError):
             return fail('receipt_failed')
     if state != 'ok':

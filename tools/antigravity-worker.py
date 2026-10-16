@@ -387,6 +387,13 @@ def main():
         if record is not None:
             record.update(adapter_exit=exit_code, elapsed_seconds=round(time.monotonic() - started, 3), finished_at=date())
             write_receipt(receipt, record)
+            if os.environ.get("UNIO_ADAPTER_OUTCOME"):
+                try:
+                    import runpy
+                    runpy.run_path(str(Path(__file__).with_name("adapter-outcome.py")))["emit"](
+                        "antigravity", record, prompt, exit_code, record.get("native_exit"))
+                except Exception:
+                    pass  # Optional evidence must never replace the real exit.
             print(json.dumps({"receipt": str(receipt), "adapter_exit": exit_code,
                               "native_exit": record["native_exit"], "outcome": record["outcome"],
                               "terminal_status": record["terminal_status"],

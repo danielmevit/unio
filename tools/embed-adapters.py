@@ -13,6 +13,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 ADAPTERS = (
+    (ROOT / 'tools' / 'adapter-outcome.py', 'UNIO_ADAPTER_OUTCOME_PY', 'adapter-outcome.py'),
     (ROOT / 'tools' / 'vibe-worker.py', 'UNIO_VIBE_WORKER_PY', 'vibe-worker.py'),
     (ROOT / 'tools' / 'perplexity-worker.py', 'UNIO_PERPLEXITY_WORKER_PY', 'perplexity-worker.py'),
     (ROOT / 'tools' / 'copilot-worker.py', 'UNIO_COPILOT_WORKER_PY', 'copilot-worker.py'),
@@ -29,7 +30,7 @@ for adapters_dir in "$CONF_DIR/lib" "$CONF_DIR/lib/adapters"; do
     exit 1
   fi
 done
-for adapters_file in "$CONF_DIR/lib/adapters/vibe-worker.py" "$CONF_DIR/lib/adapters/perplexity-worker.py" "$CONF_DIR/lib/adapters/copilot-worker.py" "$CONF_DIR/lib/adapters/antigravity-worker.py"; do
+for adapters_file in "$CONF_DIR/lib/adapters/adapter-outcome.py" "$CONF_DIR/lib/adapters/vibe-worker.py" "$CONF_DIR/lib/adapters/perplexity-worker.py" "$CONF_DIR/lib/adapters/copilot-worker.py" "$CONF_DIR/lib/adapters/antigravity-worker.py"; do
   if [ -L "$adapters_file" ] || { [ -e "$adapters_file" ] && { [ ! -f "$adapters_file" ] || [ "$(stat -c '%h' -- "$adapters_file")" != 1 ]; }; }; then
     echo "unio: refusing unsafe adapter file: $adapters_file" >&2
     exit 1
@@ -50,6 +51,7 @@ def embedded_block():
     for relative, name in (
         ('docs/development/AGENT-FLEET.md', 'AGENT-FLEET'),
         ('docs/WORK-WIP.md', 'WORK-WIP'),
+        ('docs/WORKER-OUTCOMES.md', 'WORKER-OUTCOMES'),
         ('docs/development/LEAD-ROUTING.md', 'LEAD-ROUTING'),
         ('docs/development/MODEL-EFFORT.md', 'MODEL-EFFORT'),
         ('docs/ai/REASONING-PROFILES.md', 'REASONING-PROFILES'),

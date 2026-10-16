@@ -395,6 +395,13 @@ def main():
                 record["progress"] = progress.summary()
             record.update(adapter_exit=exit_code, elapsed_seconds=round(time.monotonic() - started, 3), finished_at=date())
             receipt.write_text(json.dumps(record, indent=2) + "\n")
+            if os.environ.get("UNIO_ADAPTER_OUTCOME"):
+                try:
+                    import runpy
+                    runpy.run_path(str(Path(__file__).with_name("adapter-outcome.py")))["emit"](
+                        "vibe", record, prompt, exit_code, record.get("process_exit"))
+                except Exception:
+                    pass  # Optional evidence must never replace the real exit.
             final = {"receipt": str(receipt), "adapter_exit": exit_code,
                      "process_exit": record["process_exit"], "export_state": record.get("export_state", "unknown")}
             if progress is not None:
