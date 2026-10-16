@@ -16304,6 +16304,24 @@ A configured project refuses when no guard helper can execute, including empty
 ref batches; unconfigured projects retain the worker guard and owner hook.
 These are normal-operation checks on a trusted host: a host owner can still
 remove the worker marker, hook or policy. This does not establish remote privacy.
+
+### Thin configurations and standalone engines
+
+`UNIO_CONF_DIR` may contain only command overrides and templates. `init`,
+`remote-policy` and `_remote-guard` use the engine's embedded guard core, generated
+byte-for-byte from `tools/remote-guard.py` by `tools/embed-adapters.py`. The same
+canonical source still installs at `lib/remote-guard.py`; it is an internal
+core, and the AI adapter inventory remains four. `--check` verifies both copies.
+Selftest uses the embedded core with an isolated thin profile as well.
+
+New pre-push hooks pin the absolute engine that installed them; direct Python
+helper installation pins that helper. They never search another profile,
+source tree or `PATH` for a replacement Unio. Git ref records remain on stdin
+through the Python dispatcher and reach the owner hook after policy approval.
+Removing an external lib file therefore does not remove the engine's policy
+implementation. Removing the pinned engine refuses configured pushes, including
+empty ref batches, while workers remain unable to push. Moving an engine requires
+explicit guard reinstallation with the intended engine.
 UNIO_REMOTE_POLICY_MD
 fi
 if [ ! -e "$TPL_DIR/LEAD-ROUTING.md" ] && [ ! -L "$TPL_DIR/LEAD-ROUTING.md" ]; then

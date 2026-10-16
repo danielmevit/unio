@@ -43,22 +43,16 @@ with tempfile.TemporaryDirectory(prefix='unio selftest ',
     helper = conf / 'lib/remote-guard.py'
     canonical = (SOURCE / 'tools/remote-guard.py').read_bytes()
     check('installed helper is canonical', helper.read_bytes() == canonical)
-    # A missing payload must fail explicitly before running assertions, rather
-    # than finding a source-tree helper or falling back to another profile.
+    # Removing the external file no longer removes the implementation: the
+    # byte-identical engine core must still run all behavioral assertions.
     helper.rename(helper.with_suffix('.saved'))
-    result = subprocess.run([str(runner), 'selftest'], cwd=base, env=env,
-                            capture_output=True, text=True, timeout=30)
-    check('missing installed helper fails closed', result.returncode != 0 and
-          'remote guard helper unavailable' in result.stderr and
-          'selftest — sandbox:' not in result.stdout, result.stdout + result.stderr)
-    helper.with_suffix('.saved').rename(helper)
     # Snapshot all installed payload/config bytes; selftest may only write its
     # own sandbox, never alter the invoking profile.
     before = {p.relative_to(conf): p.read_bytes() for p in conf.rglob('*') if p.is_file()}
     result = subprocess.run([str(runner), 'selftest'], cwd=base, env=env,
                             capture_output=True, text=True, timeout=300)
     print(result.stdout, end='', flush=True)
-    check('installed selftest exits zero', result.returncode == 0, result.stdout + result.stderr)
+    check('selftest without external helper exits zero', result.returncode == 0, result.stdout + result.stderr)
     check('all 40 built-in assertions pass',
           'selftest: 40 ok, 0 failed' in result.stdout and
           len(re.findall(r'^  ok    ', result.stdout, re.M)) == 40 and

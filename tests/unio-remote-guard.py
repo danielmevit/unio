@@ -570,6 +570,8 @@ def regressions():
         hook.write_text(owner)
         hook.chmod(0o755)
         guard.cli_install_guard(root, repo)
+        case("direct helper hook pins canonical source", lambda: shlex.quote(str(SOURCE / "tools/remote-guard.py")) in hook.read_text())
+        assert run([unio, "remote-policy", "install-guard"], cwd=repo).returncode == 0
         python_hook = hook.read_bytes()
         cp = run(["git", "push", "origin", "main"], cwd=repo)
         case("installed owner hook receives refs and spaced destination", lambda: cp.returncode == 0 and (repo / "owner-input").is_file() and "refs/heads/main" in (repo / "owner-input").read_text() and str(dest) in (repo / "owner-args").read_text())
@@ -611,15 +613,20 @@ def regressions():
         cp = run([unio, "init", "mock"], cwd=shell_repo)
         case("shell init preserves colliding owner hooks", lambda: cp.returncode != 0 and shell_hook.read_text() == "#!/bin/sh\nexit 36\n" and shell_backup.read_text() == "#!/bin/sh\nexit 35\n")
 
-        # Remove all available helpers and hide unio, leaving system git/python.
+        # External file absence leaves the embedded implementation available.
+        # Only removing the pinned engine removes all hook implementation.
+
         (base / "conf/lib/remote-guard.py").rename(base / "hidden-helper")
         safe_path = str(base / "hook-bin")
         Path(safe_path).mkdir()
-        for executable in ("git", "python3", "cat", "dirname"):
+        for executable in ("git", "python3", "cat", "dirname", "bash", "realpath"):
             (Path(safe_path) / executable).symlink_to(shutil.which(executable))
         hook.write_bytes(python_hook)
         hook.chmod(0o755)
         data = f"refs/heads/main {oid} refs/heads/main {'0' * 40}\n"
+        cp = run([str(hook), "origin", str(dest)], cwd=repo, input=data, override={"PATH": safe_path})
+        case("configured embedded guard survives missing lib helper", lambda: cp.returncode == 0)
+        (base / "bin/unio").rename(base / "hidden-engine")
         cp = run([str(hook), "origin", str(dest)], cwd=repo, input=data, override={"PATH": safe_path})
         case("configured missing helper refuses", lambda: cp.returncode != 0)
         cp = run([str(hook), "origin", str(dest)], cwd=repo, input="", override={"PATH": safe_path})

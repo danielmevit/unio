@@ -87,21 +87,19 @@ def main():
     left, rest = updated.split(begin, 1)
     _, right = rest.split(end, 1)
     updated = left + begin + helper + end + right
-    if (ROOT / 'tools/remote-guard.py').exists():
-        remote_helper = (ROOT / 'tools/remote-guard.py').read_text()
-        if not remote_helper.endswith('\n') or '\r' in remote_helper or 'UNIO_REMOTE_GUARD_CORE_PY' in remote_helper.splitlines():
-            raise SystemExit('remote guard must be UTF-8 LF text ending in a newline without its delimiter')
-        begin_core, end_core = '# BEGIN EMBEDDED REMOTE GUARD CORE\n', '# END EMBEDDED REMOTE GUARD CORE\n'
-        left, rest = updated.split(begin_core, 1)
-        _, right = rest.split(end_core, 1)
-        core = "remote_guard_source() {\n  cat <<'UNIO_REMOTE_GUARD_CORE_PY'\n" + remote_helper + 'UNIO_REMOTE_GUARD_CORE_PY\n}\n'
-        updated = left + begin_core + core + end_core + right
-        begin_rg, end_rg = '# BEGIN EMBEDDED REMOTE GUARD\n', '# END EMBEDDED REMOTE GUARD\n'
-        if begin_rg in updated:
-            left, rest = updated.split(begin_rg, 1)
-            _, right = rest.split(end_rg, 1)
-            rg_block = 'mkdir -p "$CONF_DIR/lib"\ncat > "$CONF_DIR/lib/remote-guard.py" <<\'UNIO_REMOTE_GUARD_PY\'\n' + remote_helper + 'UNIO_REMOTE_GUARD_PY\nchmod +x "$CONF_DIR/lib/remote-guard.py"\n'
-            updated = left + begin_rg + rg_block + end_rg + right
+    remote_helper = (ROOT / 'tools/remote-guard.py').read_bytes().decode('utf-8')
+    if not remote_helper.endswith('\n') or '\r' in remote_helper or any(marker in remote_helper.splitlines() for marker in ('UNIO_REMOTE_GUARD_CORE_PY', 'UNIO_REMOTE_GUARD_PY')):
+        raise SystemExit('remote guard must be UTF-8 LF text ending in a newline without its delimiter')
+    begin_core, end_core = '# BEGIN EMBEDDED REMOTE GUARD CORE\n', '# END EMBEDDED REMOTE GUARD CORE\n'
+    left, rest = updated.split(begin_core, 1)
+    _, right = rest.split(end_core, 1)
+    core = "remote_guard_source() {\n  cat <<'UNIO_REMOTE_GUARD_CORE_PY'\n" + remote_helper + 'UNIO_REMOTE_GUARD_CORE_PY\n}\n'
+    updated = left + begin_core + core + end_core + right
+    begin_rg, end_rg = '# BEGIN EMBEDDED REMOTE GUARD\n', '# END EMBEDDED REMOTE GUARD\n'
+    left, rest = updated.split(begin_rg, 1)
+    _, right = rest.split(end_rg, 1)
+    rg_block = 'mkdir -p "$CONF_DIR/lib"\ncat > "$CONF_DIR/lib/remote-guard.py" <<\'UNIO_REMOTE_GUARD_PY\'\n' + remote_helper + 'UNIO_REMOTE_GUARD_PY\nchmod +x "$CONF_DIR/lib/remote-guard.py"\n'
+    updated = left + begin_rg + rg_block + end_rg + right
     # These pre-existing templates have canonical public copies too. Updating
     # a role or task-fit result must not leave a stale standalone installer.
     for relative, name, delimiter in (
