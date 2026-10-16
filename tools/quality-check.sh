@@ -30,7 +30,7 @@ python3 -B tools/embed-codex-worker.py --check
 UNIO_BIN_DIR="$QUALITY_CHECK_DIR/bin" UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" \
   UNIO_COMPLETION_DIR="$QUALITY_CHECK_DIR/completion" bash unio-install.sh > "$QUALITY_CHECK_DIR/install.log"
 shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
-UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" "$QUALITY_CHECK_DIR/bin/unio" selftest
+python3 -B tests/unio-selftest.py
 bash tests/unio-quality.sh
 python3 -B tests/unio-review-receipts.py
 python3 -B tests/unio-review-collection.py
@@ -47,6 +47,7 @@ python3 -B tests/unio-vibe.py
 python3 -B tests/unio-copilot.py
 python3 -B tests/unio-antigravity.py
 python3 -B tests/unio-adapters-install.py
+python3 -B tests/unio-adapter-outcome.py
 python3 -B bridge/tests/progress_test.py
 python3 -B bridge/tests/progress_api_test.py
 python3 -B bridge/tests/worker_files_test.py
@@ -72,6 +73,7 @@ python3 -B tests/unio-provider-capacity.py
 python3 -B tests/unio-lead-budget.py
 python3 -B tests/unio-work-policy.py
 python3 -B tests/unio-work-policy-guard.py
+python3 -B tests/unio-remote-guard.py
 python3 -B tests/unio-project-root.py
 python3 -B tests/unio-save-walk.py
 python3 -B tests/unio-save-performance.py

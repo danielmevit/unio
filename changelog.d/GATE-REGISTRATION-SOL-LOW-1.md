@@ -1,0 +1,1 @@
+Registered the adapter outcome and remote guard suites in the combined quality gate. Replaced the direct installed selftest with the candidate-installing selftest suite, preserving the initial installation, shellcheck and all other gate commands.
