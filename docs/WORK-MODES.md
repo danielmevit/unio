@@ -192,3 +192,9 @@ their original evidence; historical review and test failures remain recorded.
 The [roadmap](development/ROADMAP.md) and [version plan](VERSION-PLAN.md)
 describe delivery sequencing. Runtime completion is recorded in the command
 implementation's changelog and tests, not inferred from this contract.
+
+Native shared-lead admission additionally requires an explicit one-use owner
+[lead budget grant](development/LEAD-BUDGET-CONSENT.md), even at medium/high.
+`unio lead-budget grant <agent> <worker> <task> <run|review>` expires in 15
+minutes and never raises the tier cap. `show` preserves history; `revoke <id>`
+withdraws unused consent. Alias grouping remains an explicit owner duty.
