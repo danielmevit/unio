@@ -16329,6 +16329,14 @@ work in the dated task receipts and scoreboard. Effective effort/model and
 per-task allowance savings stay Unknown unless measured. Compare similar
 tasks and retain sample counts; one result is not a universal model ranking.
 
+Owner authorization, 2026-10-16: low-effort Sol workers and necessary
+continuations are standing-authorized; do not ask permission for their count.
+This replaces the earlier per-task no-retry restriction for low-effort Sol
+work. Preserve failed attempts, diagnose the cause and continue from saved
+work. Keep one focused shared-budget correction alongside the lead at a time,
+with the real lead/account reservation and temporary medium only as needed.
+It authorizes no extra paid tokens, parallel account drain or blind retry loop.
+
 ## Mandatory task estimates and progress summaries
 
 The lead must give the owner a rough elapsed-time estimate before starting
