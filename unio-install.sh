@@ -29711,9 +29711,25 @@ Source 0 in 5m52s (`61c77dd`, `19848e9`). It reproduced the baseline failure
 and restored machine-only verification while retaining native dispatch binding
 and legacy/malformed-evidence refusal. Its quality checks passed 16 shell,
 80 contract and 26 coverage cases, identity checks passed 25, and the unchanged
-loop suite passed 38 cases in private tmpfs. Native checks and independent
-DeepSeek Go high review remain pending. This is one useful low-effort outcome;
+loop suite passed 38 cases in private tmpfs. Its native checks passed all five commands in 204.471 seconds. The next full
+gate passed preceding runtime/API/probe checks, then failed the outdated final
+branding session assertion. This is one useful low-effort outcome;
 no per-worker subscription savings or general model-quality ranking is known.
+
+A second ChatGPT / Codex 0.162.1 / Sol 6.1 low correction finished Source 0
+in 12m29s (`c532fb5`, `10da9e4`). The lead's additional actual-function probe
+found cached legacy verification could still unlock review/readiness; installed
+fixtures reproduced that behavior. The correction's quality 16+80+26, identity
+36, branding/custom-space paths and syntax/embed/diff checks passed. Setup and
+test-wrapper errors are preserved separately from the final passes. Current
+native verification, two-lab review and release gate remain pending.
+
+Mistral / Vibe 2.26.1 / GLM 5.3 high independently approved ancestor19848 in
+6m51s, recording one low and two informational notes. The lead found the later
+cached-PASS gap; the approval is retained with its actual scope, not promoted
+to final acceptance. OpenCode Go / DeepSeek V4 Pro high has returned no events
+or verdict at this checkpoint; effective progress and allowance remain Unknown.
+No model-quality or quota conclusion follows from that pending call.
 
 ### Owner availability for Unio development — 2026-10-15
 

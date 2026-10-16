@@ -10,7 +10,7 @@ See [scope, evidence and limits](docs/RELEASE-0.5.19.md).
 The candidate is assembled; final stopping review and combined delivery checks
 remain pending. The published and installed release remains 0.5.18.
 
-- Sweep owned Linux provider sessions across nested process groups and reparented
+- Sweep owned Linux Source provider sessions across nested process groups and reparented
   children. Confirm cleanup before the final save; keep worker/account ownership
   when cleanup is Unknown. Detached sessions remain outside this boundary.
   Confirm completed cancellation after the runner removes its control files,
@@ -19,7 +19,9 @@ remain pending. The published and installed release remains 0.5.18.
   true task-mutation refusal even when provider diagnostics contain fake hashes.
   Legacy results remain readable; native verification needs trustworthy dispatch
   data. Preserve machine-only checks for never-run tasks, without fabricating
-  process success or readiness for human review.
+  process success or readiness for human review. Refuse cached legacy PASS in
+  new review admission and readiness when native dispatch binding is missing
+  or mismatched, while retaining readable historical evidence.
 - Isolate runtime ownership per worker. Refused or concurrent same-task runs
   cannot overwrite or remove another worker's active controls.
 - Fold duplicate active-save metadata/deep reads into one full validation pass,

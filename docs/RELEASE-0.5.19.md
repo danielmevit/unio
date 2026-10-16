@@ -1,11 +1,11 @@
 # Unio 0.5.19 — safer stopping and measured saving
 
 A bounded recovery and compatibility release: stop the provider sessions Unio
-started, avoid duplicate save validation, and accept real Copilot result metadata.
+started for native Source runs, avoid duplicate save validation, and accept real Copilot result metadata.
 
 ## What changes
 
-- **Owned stopping:** cancellation and normal exit sweep nested process groups
+- **Owned Source stopping:** cancellation and normal exit sweep nested process groups
   and reparented children within the recorded Linux provider session. Cleanup
   must be confirmed before the final save; unproved cleanup keeps the worker
   and shared-account slot held. Confirm completed cancellation after the runner
@@ -15,7 +15,8 @@ started, avoid duplicate save validation, and accept real Copilot result metadat
   Legacy results remain readable, but missing native dispatch evidence refuses
   verification; old report prose is not a substitute for that evidence. Tasks
   with no native Source history can still receive machine-only checks, without
-  a fabricated process success or human acceptance.
+  a fabricated process success or human acceptance. Cached legacy passes cannot
+  start a new review or establish readiness without the matching native binding.
 - **Concurrent ownership:** per-worker runtime records keep a refused or
   parallel same-task run from deleting another worker's controls. Public
   background controls select the latest published run without serializing
@@ -85,7 +86,28 @@ reproduced; the corrected quality suite passed 16 shell, 80 contract and 26
 coverage cases, plus 25 identity cases and the unchanged 38-case loop suite
 in private tmpfs. Actual native verification, independent OpenCode Go /
 OpenCode 1.18.35 / DeepSeek V4 Pro high review and the corrected combined
-release gate remain pending. Source success is not lead acceptance.
+release gate were still pending at that checkpoint. Native verification later
+passed all five required commands in 204.471 seconds on the unchanged revision.
+
+The following complete gate ran for 1872.468 seconds. All preceding runtime,
+API and 14 adversarial probes passed; its final branding fixture still expected
+a shared runner/provider session, contrary to the new isolation design. The
+lead also reproduced a cached legacy PASS admitting review and reporting
+readiness despite missing dispatch evidence. A second Sol low Source finished
+0 in 12m29s (`c532fb5`, `10da9e4`), correcting both within the existing scope.
+Its installed old-fail/new-pass checks cover cached missing/mismatched binding,
+read-only legacy data, valid Source readiness, no-Source review and retained
+history. All 36 identity cases, quality 16+80+26, syntax/embed checks and the
+branding fixture for both custom command paths passed. Earlier test-wrapper
+errors remain separate from the final passing commands.
+
+Mistral subscription / Vibe 2.26.1 / GLM 5.3 high approved the ancestor
+`19848e9`, with one low and two informational observations. This supplies no
+approval for the later correction. Current native verification, a concurrent
+Mistral GLM / Antigravity Gemini high review set and the corrected full gate
+remain pending. The earlier DeepSeek Go call has returned no findings or
+verdict as of this update and supplies no approval. Source success is not
+lead acceptance.
 
 The combined gate, installation and publication remain pending. Until they
 finish, the official and installed release remains 0.5.18.

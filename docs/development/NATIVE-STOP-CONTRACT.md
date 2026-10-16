@@ -157,6 +157,7 @@ This does not claim the entire old revision was tested with a later fault hook.
 | --- | --- |
 | Pidfile text is empty, zero, negative, or not a decimal pid | No signal. Pidfile retained. Exit 1. |
 | Live pid is not a Unio background run | No signal. Stale pidfile removed. Exit 1. |
+| Live pid is a Unio background run for another task | No signal. Foreign identity refused; pidfile retained. Exit 2. |
 | Ownership file is missing, malformed, or from another boot | No signal. Pidfile retained. Exit 2. |
 | Ownership file has a boolean, string or otherwise non-integer identity field | No signal. Pidfile retained. Exit 2. |
 | Recorded shell start ticks do not match the live pid | No signal. Pidfile retained. Exit 2. |

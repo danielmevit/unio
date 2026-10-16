@@ -56,20 +56,18 @@ Local leads first read coord/AGENT-LOG.md and tmp/unio-next/manifest.json/receip
 inside the enclosing workspace; fresh clones use this prompt and current public
 release evidence. Earlier dated sections below preserve their original context.
 
-Current correction update, 2026-10-16: the first corrected gate timed out at
-7200s near concurrent loop-brake runs. All six Sol correction checks passed,
-but legacy verification falsely read a nested diagnostic task hash. A second
-dedicated ChatGPT/Codex0.162.1/Sol6.1 high Source finished 0 in22m18s with
-53882eb/de336b0: typed full dispatch revision and per-worker ownership. Its
-offline12identity/38loop/52stop checks pass; loop38 passed in~70s in private
-tmpfs, with a separate Windows-mounted timeout preserved. Current native
-verification passed five commands but timed out on a Windows-mounted fixture.
-The next combined gate passed all 40 selftests, then exposed standalone
-verification incompatibility. A new ChatGPT/Codex0.162.1/Sol6.1 LOW Source
-finished 0 in5m52s with61c77dd/19848e9: quality16+80+26, identity25 and
-unchangedloop38 passed inprivateTmpfs. Native checks, DeepSeek Go high review
-and the new integrated acceptance gate remain pending; original failures stay
-preserved. Never-run machine-only checks do not invent native Source success.
+Current correction update, 2026-10-16: preserve all earlier failed gates and
+provider runs. Sol high fixed canonical dispatch and per-worker ownership;
+first Sol low19848 finished0/native5PASS. The fullae1ffce gate passed earlier
+runtime/API/adversarial checks but failed its final outdated branding session
+assertion after1872.468s. The lead also demonstrated cached legacy PASS
+bypassing the new dispatch requirement in review/readiness. New Sol low
+10da9e4 finished0 in12m29s with installed old-fail/new-pass proof, identity36,
+quality16+80+26 and branding/custom-space paths passing. Native7checks and
+concurrent MistralGLM/AntigravityGemini high review-set are pending, along with
+a distinct corrected-source full gate. Previous Mistral approval covers
+ancestor19848 only; DeepSeek Go has returned no verdict. Keep exact receipts
+and effective identity/effort/allowance Unknowns. No release acceptance yet.
 
 The latest owner requests LOW for all NEW Sol workers, overriding this
 workspace's high correction default during the trial. Keep the real account

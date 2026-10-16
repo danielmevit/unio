@@ -15,11 +15,12 @@ can add elapsed time. Re-estimate after each bounded technical assessment.
 | Proposed release | Outcome | Rough effort |
 | --- | --- | --- |
 | 0.5.19 | Owned stopping, measured save validation and Copilot compatibility | 2–4 hours for a focused slice; 4–8 hours if deeper changes are needed |
-| 0.5.20 | Optional continuous delegation within explicit owner-approved bounds | 1–3 working days |
-| 0.5.21 | Managed live CLI sessions and reliable lead continuity | 2–4 working days for the first supported route |
-| 0.5.22 | Phone access paired to a selected Unio session | 2–4 working days after session ownership works |
-| 0.5.23 | Native Windows execution and a Microsoft Store desktop-app track | Runtime estimate: 1–3 working weeks after feasibility; desktop onboarding, packaging and certification estimated separately |
-| 0.5.24 | Native macOS support | 3–6 working days, subject to host checks |
+| 0.5.20 | Shared-lead budget protection, interrupted-work WIP, plain stop reasons and development/release push safety | Roughly 1–2 focused working days for the minimal bundle; hardening estimated separately |
+| 0.5.21 | Optional continuous delegation within explicit owner-approved bounds | 1–3 working days |
+| 0.5.22 | Managed live CLI sessions and reliable lead continuity | 2–4 working days for the first supported route |
+| 0.5.23 | Phone access paired to a selected Unio session | 2–4 working days after session ownership works |
+| 0.5.24 | Native Windows execution and Microsoft Store desktop app, including staged localization | Runtime estimate: 1–3 working weeks after feasibility; desktop UX, localization and certification estimated separately |
+| 0.5.25 | Native macOS support | 3–6 working days, subject to host checks |
 
 ## 0.5.19 — Owned stopping and measured saving
 
@@ -58,11 +59,11 @@ setup classification, proposal-only outcomes, declared validation outputs and
 opt-in route drift checks. Existing frozen caps and spending boundaries remain
 until explicitly changed; uncapped does not imply unlimited entitlement.
 
-The version table above records the earlier proposal. Shift continuous
-delegation and later assignments after the field-fix batch when their tasks
-are frozen; retain Windows before macOS. Do not expand the frozen0.5.19 release.
+The version table incorporates this priority update; later numbers remain
+provisional until tasks are frozen. Keep Windows before macOS and do not
+expand the frozen 0.5.19 release.
 
-## Continuous delegation within a clear work plan — after field fixes
+## 0.5.21 — Continuous delegation within a clear work plan
 
 Build on the shipped task planner, explicit dispatch, shared-account slots and
 task-specific experience. An opt-in scheduler can advance ready dependencies
@@ -76,7 +77,7 @@ allowance is not available quota. Keep review policy, reasoning effort and
 coordination tier independent. Test restart, dependency failures and occupied
 shared accounts with offline workers before a bounded real workflow.
 
-## 0.5.21 — Managed live sessions and lead continuity
+## 0.5.22 — Managed live sessions and lead continuity
 
 Launch the first supported interactive CLI through Unio with owned terminal
 and process identities. Connect its session to the existing task, worktree,
@@ -90,20 +91,20 @@ sub-slice after explicit ownership transfer is verified. Existing cooldown
 restart is already experimental runtime, not a feature to rebuild from zero.
 Do not claim an arbitrary already-open AI conversation is automatically linked.
 
-## 0.5.22 — Session-scoped phone access
+## 0.5.23 — Session-scoped phone access
 
 Use a mobile browser rather than requiring an Android application. Pair the
 phone to one selected Unio session using an expiring invitation and revocable
 grants. Begin with status and output, then add deliberately permitted messages
 and commands for that session. Show the current permissions and connection state.
 
-Reuse managed session ownership from 0.5.21. Test expired invitations,
+Reuse managed session ownership from the managed-session milestone. Test expired invitations,
 revocation, reconnect, wrong-session access and duplicate message delivery.
 Choose an authenticated transport explicitly; keep local loopback defaults and
 do not expose a general PC terminal or automatically open a public port.
 Remote control of arbitrary desktop applications is outside this milestone.
 
-## 0.5.23 — Native Windows
+## 0.5.24 — Native Windows
 
 Begin with a 4–8-hour feasibility assessment of the Bash-led engine and shared
 host interface. Then implement PowerShell-facing installation, native agent
@@ -168,6 +169,16 @@ Checked official sources on 2026-10-14:
 - [Store policy 7.19](https://learn.microsoft.com/en-us/windows/apps/publish/store-policy-archive/store-policy-7-19): current effective policy at this checkpoint; disclose non-integrated dependencies and provide a testable, responsive product.
 - [Published policy 7.20](https://learn.microsoft.com/en-us/windows/apps/publish/store-policies): effective 2026-10-22, so recheck the version in force when submitting.
 
+### Windows app languages
+
+The owner requests major languages, Balkan languages, Czech and Slovak.
+Start a shared UTF-8 catalog foundation, language selection and English
+fallback, then review translation groups. Serbian uses Latin only. Keep
+commands, identifiers and raw worker evidence unchanged.
+Include Arabic right-to-left layout, non-Latin font coverage and offline
+installation. See [targets, acceptance and separate estimates](WINDOWS-LOCALIZATION.md).
+This is planned Windows work; no translated UI is shipped in 0.5.19.
+
 ### Optional Eqho transcription and history logic
 
 Owner direction, 2026-10-15: adapt selected logic from the owner's Eqho
@@ -179,7 +190,7 @@ See the [source assessment, adaptation work and estimates](EQHO-VOICE-INTEGRATIO
 This is planned work after the native desktop foundation; a bounded 0.5.x
 follow-up can carry it without delaying that foundation.
 
-## 0.5.24 — Native macOS
+## 0.5.25 — Native macOS
 
 Complete the host-operation inventory and implement macOS equivalents for
 locking, process identity/cleanup, safe filesystem access and installer tools.

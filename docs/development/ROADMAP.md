@@ -15,8 +15,11 @@ Saving passed native checks and independent Google review. Copilot passed checks
 Qwen's documentation findings are resolved in the candidate. The stopping proof
 finished Source 0 at `3bb3f5e`, including an isolated old-ordering mutation that
 fails the new regression; six native verification commands passed. Qwen's
-final review timed out without a verdict. A combined-selftest cancellation
-confirmation race is being corrected before final delivery.
+final review timed out without a verdict. Later bounded Sol corrections fixed
+cancellation confirmation, typed dispatch binding, per-worker ownership,
+never-run verification and cached legacy review/readiness. The latest full
+gate reached an outdated final branding session assertion; that fixture is
+corrected and new native/review/full-gate evidence remains pending.
 See the [release evidence and limits](../RELEASE-0.5.19.md).
 
 The measured retention phase improved on one fixture, while full captures showed
@@ -48,7 +51,13 @@ It also includes static worker-command diagnostics; combined release checks and
 installation passed. Further release work should freeze a useful bundle and run
 one combined gate, rather than publish each corrective slice separately.
 
-The [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md) explains the proposed scopes, implementation approach and estimates. Its latest priority update inserts the field fixes before automatic delegation; later version assignments are provisional.
+The [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md) explains the proposed scopes, implementation approach and estimates. Field fixes precede automatic delegation; later version assignments are provisional.
+
+The Windows app track includes [multilingual support](WINDOWS-LOCALIZATION.md):
+major and Balkan languages, Czech and Slovak, a visible selector, persisted
+choice and English fallback. Serbian uses Latin only. Right-to-left layout
+and script coverage need actual
+checks. This is planned work, not a shipped capability.
 
 ## Current focus: finish the functional core
 
