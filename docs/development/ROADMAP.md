@@ -2,12 +2,12 @@
 
 Your AIs, in sync.
 
-Current update, 2026-10-16: v0.5.19 completes owned Linux Source stopping,
+Current update, 2026-10-16: [v0.5.19](https://github.com/danielmevit/unio/releases/tag/v0.5.19) is published and installed. It completes owned Linux Source stopping,
 measured save-retention validation and Copilot metadata compatibility. Its
 complete quality gate and seven final native checks passed; the lead accepted
 the inspected code with the independent-review limitations disclosed in the
-[release notes](../RELEASE-0.5.19.md). Delivery installs before publication and
-verifies upgrade/rollback, preserved configuration and six official downloads.
+[release notes](../RELEASE-0.5.19.md). Delivery installed before publication; upgrade/rollback, preserved configuration
+and all six official download hashes passed.
 UI, site, brand and the owner's separate projects are preserved.
 
 Next: proposed v0.5.20 prioritizes shared-lead allowance protection, interrupted

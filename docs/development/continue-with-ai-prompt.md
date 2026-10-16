@@ -25,6 +25,15 @@ regressions, native checks and the full passing gate; no human acceptance or
 failed-provider approval is claimed. Installation and official hashes are
 verified by delivery receipts rather than assumed from this handoff.
 
+
+Delivery confirmed on 2026-10-16: official v0.5.19 is published and installed
+from `cc6b8717538465875932c0e007b6362b361fc373`. The exact source was pushed to
+main before publication. Reproducible artifacts, 40 isolated selftests,
+0.5.18 upgrade/rollback, preserved operator configuration/templates, installed
+helper/dashboard identity and all six official download hashes passed. Prior
+release tags were preserved. Installation occurred before publication. Check
+`unio dashboard ensure --open-browser` for the current local URL.
+
 Use Unio for implementation and reviews. The newest owner-supplied AGENTS
 instruction permits one dedicated Codex CLI / GPT-6.1 Sol correction
 beside the coordinating lead. Keep the real shared codex account and registered
@@ -47,10 +56,8 @@ Give rough estimates before assignments and periodic progress without waiting
 for the owner to ask. Continue authorized work through delivery; a progress
 update is not a reason to end the session.
 
-Finish delivery of the already-gated code: isolated artifacts, upgrade/rollback,
-local installation before publication, main push, release and six official hashes.
-Do not repeat the broad gate for final prose-only changes.
-Then complete the owner-authorized field fixes in one useful 0.5.20 batch:
+Delivery is complete. Do not repeat the broad gate for this handoff update.
+Complete the owner-authorized field fixes in one useful 0.5.20 batch:
 shared-lead allowance protection, safe opt-in WIP on cutoff, plain stop reasons
 and development/release push guards. Continuous delegation follows those
 protections, then owned live sessions, scoped phone access, Windows and macOS. Read the

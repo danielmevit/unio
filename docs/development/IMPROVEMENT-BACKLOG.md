@@ -4,7 +4,7 @@ This backlog consolidates pending, accepted, and shipped functional improvements
 
 ## Current Delivery States
 
-- **Current delivery**: [v0.5.19](https://github.com/danielmevit/unio/releases/tag/v0.5.19) combines owned Linux Source stopping, folded save validation and Copilot metadata compatibility. Its full gate and seven final native checks passed; the lead accepted the inspected corrections. See [scope and review limitations](../RELEASE-0.5.19.md). Publication and installed version are established by delivery receipts and `unio version`, not this heading.
+- **Shipped and installed**: [v0.5.19](https://github.com/danielmevit/unio/releases/tag/v0.5.19) combines owned Linux Source stopping, folded save validation and Copilot metadata compatibility. Its full gate and seven final native checks passed; the lead accepted the inspected corrections. See [scope and review limitations](../RELEASE-0.5.19.md). Published and installed on 2026-10-16 after upgrade/rollback, configuration preservation and six official download hash checks.
 - **Next batch**: Shared-lead budget consent, opt-in interrupted-work WIP, plain stop reasons and development/release push guards. Existing snapshots, slots and worker guards remain foundations; the field gaps are not yet fixed.
 
 
