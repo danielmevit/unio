@@ -17576,9 +17576,20 @@ exhausted subscription allowance.
 Keep source execution, checks, review, acceptance, merge and publication distinct.
 Use independent agents from different AI labs under the project's review rules;
 the project's current owner instructions decide the review count and the
-lead always performs its own assessment. The current Unio session uses
-personal lead review without extra reviewer workers, under the owner-selected
-YOLO mode. Preserve that explicit exception in review receipts.
+lead always performs its own assessment. For this owner's Unio development,
+code changes need at least two independent worker reviews from different AI
+labs, followed by the lead's assessment. Gemini must not be the sole worker
+reviewer. This owner direction supersedes the earlier session exception for
+personal lead review alone; YOLO still uses focused checks and one final gate.
+Keep verdicts separate and prepare reviewers without their peers' conclusions.
+Use native `unio review-set` for a new simultaneous review batch when supported;
+let an existing healthy single review finish before adding another under its
+worker lock. Report the exact subscription route, CLI version, requested model
+and effort. A requested or announced newer model does not establish serving
+identity or availability. Failed calls and contract-only proposals do not count
+as completed current-code reviews. Preserve unavailable routes and choose an
+eligible independent route without paid fallback; disclose missing review
+evidence instead of silently reducing the required count.
 Prepare reviewers separately with complete material and no peer verdicts.
 Supplementary routine checks do not replace a competent final security review.
 Fixes require fresh reviews of the changed candidate. Reviews reduce risk;
@@ -17638,6 +17649,21 @@ an explicit new owner assignment can authorize one fresh task attempt, without
 any paid fallback, account change or automatic retry. Low tier permits one
 independent workflow per shared account, so queue reasoning tasks behind an
 active Grok task. Free Zen workers keep their routine supporting role.
+
+Recorded 2026-10-16T21:06:58+02:00
+
+<!-- UNIO_OWNER_CONTINUE_MILESTONES_20261016 -->
+## Continue across authorized milestones — owner clarification
+
+A completed version is a checkpoint, not a pause, when the owner has already
+authorized further milestone work. The lead records delivery, scopes the next
+functional priority, gives an estimate and continues in the same turn without
+waiting for another "continue". Status questions likewise do not pause work.
+Stop for an explicit owner break or an actual authority, information, access,
+capacity or runtime block; preserve receipts, jobs and the exact next step first.
+Do not imply work continues after the lead's turn ends. This applies to leads;
+a worker still finishes only its one frozen assignment.
+<!-- /UNIO_OWNER_CONTINUE_MILESTONES_20261016 -->
 UNIO_LEAD_ROUTING_MD
 fi
 if [ ! -e "$TPL_DIR/MODEL-EFFORT.md" ] && [ ! -L "$TPL_DIR/MODEL-EFFORT.md" ]; then
@@ -20549,7 +20575,7 @@ cat > "$BIN_DIR/unio" <<'UNIO_BIN_EOF'
 #   PROJECT/coord/    board.md, base, docs/, tasks/, reports/, blockers.md, STOP
 set -euo pipefail
 
-UNIO_VERSION="0.5.20"
+UNIO_VERSION="0.5.21"
 CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
 CONF_FILE="$CONF_DIR/agents.conf"
 TPL_DIR="$CONF_DIR/templates"
@@ -33187,6 +33213,45 @@ the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start workers sharing the lead model/subscription at the lowest
 supported effort; other approved defaults remain, including GLM high.
+
+## Continuous-delegation observations — 2026-10-16
+
+These are separate task outcomes, not new general model rankings:
+
+- **ChatGPT / Codex 0.162.1 / GPT-6.1 Sol LOW:** scheduler `35f1260`
+  finished Source 0 in 29m17s and passed all five native validation commands.
+  Lead inspection reproduced a process-group cleanup ownership gap; native
+  experience records `quality_issue`, with one focused correction required.
+  Source success and green checks did not establish final acceptance.
+- **Mistral / Vibe 2.26.1 / GLM 5.3 HIGH:** the preceding implementation
+  attempt stopped at infrastructure failure, Source 2 after one minute and
+  no implementation edits. It was below its local task cap. This establishes
+  neither reasoning weakness nor exhaustion of the monthly subscription.
+- **Antigravity / agy 1.4.0 / Gemini 3.8 Flash HIGH:** contract audit returned
+  Source 0 and three native checks; it is supporting architecture work. The
+  first current-code review wrote APPROVE with adapter 0, but native review
+  returned 2 after a lead diagnostic created an untracked bytecode cache in
+  the frozen candidate. That operational invalidation is separate from the
+  review's inaccurate source anchors and missed cleanup gap. It is not a bound
+  final approval; the failed receipt and original verdict remain preserved.
+- **OpenCode Go / OpenCode 1.18.35 / GLM 5.3 HIGH:** the first additional
+  review refused at the native gate because of that candidate drift. No model
+  invocation occurred; this supplies no quota or review-quality observation.
+- **Perplexity Pro / pinned web adapter 0.16.1 / Kimi 3 Thinking:** a selected
+  contract critique finished Source 0 with two artifact checks and qualified
+  visibility claims. A separate managed-session proposal returned only a
+  summary and unsupported local file/test claims; the lead rejected it and
+  recorded `quality_issue` for architecture proposals. Neither supplies
+  current-code review approval.
+- **GitHub Copilot Free / CLI 1.0.95 / Auto Balance:** a routine prose task
+  failed a private launcher version assertion before any model invocation.
+  The canonical product adapter already handles the extra version-output
+  line. Keep this preparation failure distinct from model performance.
+
+The scoped LOW cleanup correction and fresh two-lab current-code review are
+pending. Requested identity/effort and remaining allowance are unverified;
+no per-worker token savings were measured. Preserve original failures and
+use the final exact-revision records before judging task suitability.
 
 ## Effort-specific field results — 2026-10-16
 
