@@ -42,6 +42,14 @@ After a native Source, verification requires the engine-owned full
 supply it. Missing legacy bindings, malformed/foreign results, or retained
 run history without a structured binding remain incomplete (exit 2).
 Deleting a result does not turn retained Source history into a manual check.
+Review admission resolves the same binding before starting a reviewer, even
+with cached passing validation. A native process requires a typed full dispatch
+revision whose task hash matches the current task. Dispatch commit/tree hashes
+may precede provider commits and need not equal the final candidate revision.
+Legacy results remain readable with their historical fields intact, but missing
+or mismatched binding makes them unready and refuses a fresh review without
+rewriting the result. Genuine no-Source candidates may still receive machine-only
+verification and review; their process remains `not_run` and readiness false.
 
 ## The stored result
 

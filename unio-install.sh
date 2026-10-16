@@ -19110,10 +19110,46 @@ def load(root, worker, task, missing=False):
         fail('no persisted result; old reports are not trusted structured evidence')
     return valid_document(json.loads(regular(path)), worker, task)
 
+def dispatch_sha(root, worker, task, d=None):
+    if d is None: d = load(root, worker, task, missing=True)
+    if d['process']['state'] != 'not_run':
+        if not revision(d.get('dispatch_revision')):
+            fail('dispatch binding unavailable; legacy reports are not dispatch evidence')
+        return d['dispatch_revision']['task_sha256']
+    else:
+        # Absence of a Source permits machine-only checks, never a native
+        # delivery claim. Retained history prevents a lost/legacy result
+        # from turning an actual Source into a verify-only candidate.
+        if 'dispatch_revision' in d:
+            fail('dispatch evidence conflicts with not_run process')
+        ledger = safe(root, 'coord', 'reports', 'ledger.jsonl')
+        if os.path.exists(ledger):
+            for row in regular(ledger).splitlines():
+                event = json.loads(row)
+                if not isinstance(event, dict): fail('malformed Source ledger')
+                if event.get('task') == task and event.get('event') in ('run_start', 'run'):
+                    fail('dispatch binding unavailable for recorded Source')
+        retry_path = safe(root, 'coord', 'retries', task, 'state.json')
+        if os.path.exists(retry_path):
+            fail('dispatch binding unavailable for retained Source attempts')
+        results = safe(root, 'coord', 'results')
+        if os.path.isdir(results):
+            for entry in os.scandir(results):
+                other = safe(root, 'coord', 'results', entry.name, task + '.json')
+                if entry.name != worker and os.path.lexists(other):
+                    fail('foreign task result cannot establish absence of Source')
+        report = safe(root, 'coord', 'reports', task + '.md')
+        if os.path.exists(report) and re.search(rb'^## run ', regular(report), re.M):
+            fail('legacy run report requires structured dispatch evidence')
+        # Empty output is deliberately distinct from a full dispatch SHA.
+        # No task hash, Source identity or process success is fabricated.
+    return None
+
 def current(d, rev):
     evidence = [d.get('revision')] + [d[s].get('revision') for s in ('process','validation','review') if d[s]['state'] != 'not_run']
     d['stale'] = any(r is not None and r != rev for r in evidence) or d['process'].get('post_run_snapshot') == 'failed'
-    d['ready_for_human_review'] = not d['stale'] and all(d[s]['state'] == state and d[s]['revision'] == rev for s,state in [('process','succeeded'),('validation','passed'),('review','approved')])
+    bound = revision(d.get('dispatch_revision')) and d['dispatch_revision']['task_sha256'] == rev['task_sha256']
+    d['ready_for_human_review'] = bound and not d['stale'] and all(d[s]['state'] == state and d[s]['revision'] == rev for s,state in [('process','succeeded'),('validation','passed'),('review','approved')])
     d['current_revision'] = rev
     return d
 
@@ -19267,6 +19303,9 @@ def changed(root, worker, task):
 
 def gate(root,worker,task):
     d=current(load(root,worker,task), snapshot(root,worker,task))
+    binding = dispatch_sha(root, worker, task, d)
+    if binding is not None and binding != d['current_revision']['task_sha256']:
+        fail('dispatch binding does not match current task; run verify')
     v=d['validation']
     if v['state'] != 'passed' or v['revision'] != d['current_revision']:
         fail('review requires current passed validation; run verify')
@@ -20479,38 +20518,8 @@ try:
     elif cmd=='snapshot': print(json.dumps(snapshot(*a),sort_keys=True,separators=(',',':')))
     elif cmd=='dispatch-sha':
         root, worker, task = a
-        d = load(*a, missing=True)
-        if d['process']['state'] != 'not_run':
-            if not revision(d.get('dispatch_revision')):
-                fail('dispatch binding unavailable; legacy reports are not dispatch evidence')
-            print(d['dispatch_revision']['task_sha256'])
-        else:
-            # Absence of a Source permits machine-only checks, never a native
-            # delivery claim. Retained history prevents a lost/legacy result
-            # from turning an actual Source into a verify-only candidate.
-            if 'dispatch_revision' in d:
-                fail('dispatch evidence conflicts with not_run process')
-            ledger = safe(root, 'coord', 'reports', 'ledger.jsonl')
-            if os.path.exists(ledger):
-                for row in regular(ledger).splitlines():
-                    event = json.loads(row)
-                    if not isinstance(event, dict): fail('malformed Source ledger')
-                    if event.get('task') == task and event.get('event') in ('run_start', 'run'):
-                        fail('dispatch binding unavailable for recorded Source')
-            retry_path = safe(root, 'coord', 'retries', task, 'state.json')
-            if os.path.exists(retry_path):
-                fail('dispatch binding unavailable for retained Source attempts')
-            results = safe(root, 'coord', 'results')
-            if os.path.isdir(results):
-                for entry in os.scandir(results):
-                    other = safe(root, 'coord', 'results', entry.name, task + '.json')
-                    if entry.name != worker and os.path.lexists(other):
-                        fail('foreign task result cannot establish absence of Source')
-            report = safe(root, 'coord', 'reports', task + '.md')
-            if os.path.exists(report) and re.search(rb'^## run ', regular(report), re.M):
-                fail('legacy run report requires structured dispatch evidence')
-            # Empty output is deliberately distinct from a full dispatch SHA.
-            # No task hash, Source identity or process success is fabricated.
+        binding = dispatch_sha(root, worker, task)
+        if binding is not None: print(binding)
     elif cmd=='update': update(*a)
     elif cmd=='retry': retry(*a)
     elif cmd=='gate': gate(*a)

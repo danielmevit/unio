@@ -432,6 +432,8 @@ grep -Fq 'unio guard' "$PROJECT_REPO/.git/hooks/pre-push"
 # Run real background sessions with a local holding mock from custom paths.
 python3 -B - "$REPO_DIR" "$BRAND_SANDBOX" <<'KILL_TEST'
 import os
+import json
+import stat
 from pathlib import Path
 import shlex
 import signal
@@ -491,6 +493,11 @@ for index, dirname in enumerate(('custom-commands', 'custom commands with spaces
     (root / 'coord/tasks' / f'{task}.md').write_text(
         f'# {task}\n## Allowed scope\n- payload.txt\n## Validate\n$ true\n')
     pidfile = root / 'coord/reports' / f'{task}.pid'
+    ownerfile = root / 'coord/reports/.owners/mock' / f'{task}.own'
+    provider = None
+    def identity(pid):
+        fields = Path(f'/proc/{pid}/stat').read_text().rpartition(')')[2].split()
+        return int(fields[3]), int(fields[19])
     leader = None
     try:
         call('run', '-b', 'mock', task)
@@ -501,14 +508,32 @@ for index, dirname in enumerate(('custom-commands', 'custom commands with spaces
                  'local holding mock did not start')
         mock_pid = int(marker.read_text())
         assert live(leader) and live(mock_pid), 'background run was not live'
-        assert os.getsid(leader) == leader == os.getsid(mock_pid), 'mock escaped the run session'
+        record = json.loads(ownerfile.read_text())
+        assert ownerfile.stat().st_uid == os.getuid() and not stat.S_IMODE(ownerfile.stat().st_mode) & 0o077
+        assert record['worker'] == 'mock' and record['task'] == task
+        assert record['boot_id'] == Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        assert record['shell_pid'] == leader and record['shell_sid'] == leader
+        assert identity(leader) == (record['shell_sid'], record['shell_start'])
+        provider_pid = record['provider_pid']
+        assert provider_pid == record['provider_sid'] != leader, 'provider session was not isolated'
+        assert identity(provider_pid) == (record['provider_sid'], record['provider_start'])
+        assert os.getsid(mock_pid) == record['provider_sid'], 'mock escaped the owned provider session'
+        provider = (provider_pid, record['provider_start'])
         argv = Path(f'/proc/{leader}/cmdline').read_bytes().split(b'\0')
         assert argv[1:3] == [os.fsencode(command), b'run'], argv
         result = call('kill', task)
         assert f"killed '{task}' (session {leader})" in result.stdout, result.stdout
         assert not pidfile.exists(), 'killed run retained its pidfile'
         wait_for(lambda: not live(leader) and not live(mock_pid), 'kill left the run or mock alive')
+        result_path = root / 'coord/results/mock' / f'{task}.json'
+        wait_for(result_path.exists, 'kill did not preserve Source result')
+        result_doc = json.loads(result_path.read_text())
+        assert result_doc['process']['state'] == 'failed' and result_doc['process']['exit_code'] == 143, result_doc['process']
     finally:
+        # Only the fixture's proven private provider identity may be cleaned.
+        if provider is not None and live(provider[0]) and identity(provider[0]) == provider:
+            subprocess.run(['pkill', '-KILL', '-s', str(provider[0])], check=False,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if leader is None and pidfile.exists() and pidfile.read_text().strip():
             leader = int(pidfile.read_text())
         if leader is not None and live(leader) and os.getsid(leader) == leader:

@@ -1,0 +1,1 @@
+Fix cached review admission and dynamic readiness to require native dispatch evidence bound to the current task, while retaining readable legacy results and machine-only no-Source flows. Share verification dispatch resolution with review admission. Update the branding kill fixture to prove the separate private provider session and clean only its recorded identity on failure.
