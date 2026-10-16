@@ -13347,7 +13347,18 @@ def collect(process, timeout):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None, None
-            return process.wait(timeout=remaining), bytes(output)
+            # Observe exit without releasing the PID/PGID ownership anchor.
+            # Popen.wait/poll would reap the leader before the group cleanup.
+            while True:
+                status = os.waitid(os.P_PID, process.pid,
+                                   os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                if status is not None:
+                    code = status.si_status if status.si_code == os.CLD_EXITED else -status.si_status
+                    return code, bytes(output)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None, None
+                time.sleep(min(remaining, 0.01))
     except (OSError, subprocess.TimeoutExpired):
         return None, None
     finally:
@@ -13357,10 +13368,14 @@ def collect(process, timeout):
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
-        try:
-            process.wait(timeout=0.3)
-        except subprocess.TimeoutExpired:
-            pass
+        # Keep the leader waitable through the final signal, including when
+        # TERM has already ended it. Only waitid(WNOWAIT) may inspect it here.
+        grace = time.monotonic() + 0.3
+        while time.monotonic() < grace:
+            if os.waitid(os.P_PID, process.pid,
+                         os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None:
+                break
+            time.sleep(min(0.01, max(0, grace - time.monotonic())))
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
