@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import importlib.util
 from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parent.parent
@@ -32,7 +33,7 @@ def check(label, condition, detail=""):
 def main():
     global passed
     # Installed fixtures use project-owned private tmpfs paths, never shared /dev/shm files.
-    with tempfile.TemporaryDirectory(prefix="unio-remote-guard-") as tmp:
+    with tempfile.TemporaryDirectory(prefix=".unio-remote-guard-", dir=SOURCE) as tmp:
         base = Path(tmp)
         env = dict(
             os.environ,
@@ -46,6 +47,8 @@ def main():
             GIT_COMMITTER_NAME="offline",
             GIT_AUTHOR_EMAIL="offline@example.invalid",
             GIT_COMMITTER_EMAIL="offline@example.invalid",
+            GIT_CONFIG_GLOBAL="/dev/null",
+            GIT_CONFIG_NOSYSTEM="1",
         )
         for key in ("UNIO_SAVE_TEST_FAULT", "UNIO_TEST_FAULT_DIR", "BASH_ENV"):
             env.pop(key, None)
@@ -359,5 +362,230 @@ def main():
         print(f"\nPASS: all {passed} remote guard checks passed successfully.")
 
 
+def regressions():
+    """Collect independent old-fail/new-pass evidence without contacting a network."""
+    spec = importlib.util.spec_from_file_location("guard", SOURCE / "tools/remote-guard.py")
+    guard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guard)
+    results = []
+
+    def case(name, fn):
+        try:
+            ok = bool(fn())
+        except Exception as exc:
+            # Never include exception text: malformed URLs can contain secrets.
+            results.append({"case": name, "pass": False, "exception_type": type(exc).__name__})
+            return
+        results.append({"case": name, "pass": ok})
+
+    def refused(fn):
+        try:
+            fn()
+        except guard.PolicyError:
+            return True
+        return False
+
+    with tempfile.TemporaryDirectory(prefix=".remote-regression-", dir=SOURCE) as tmp:
+        base = Path(tmp)
+        env = dict(os.environ, UNIO_BIN_DIR=str(base / "bin"), UNIO_CONF_DIR=str(base / "conf"),
+                   UNIO_COMPLETION_DIR=str(base / "completion"), UNIO_AUTO_VERIFY="0", UNIO_AUTO_SYNC="0",
+                   GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1", GIT_AUTHOR_NAME="offline",
+                   GIT_COMMITTER_NAME="offline", GIT_AUTHOR_EMAIL="offline@example.invalid",
+                   GIT_COMMITTER_EMAIL="offline@example.invalid")
+        for key in ("BASH_ENV", "UNIO_SAVE_TEST_FAULT", "UNIO_TEST_FAULT_DIR"):
+            env.pop(key, None)
+
+        def run(args, cwd=None, input=None, override=None):
+            return subprocess.run(args, cwd=cwd, env=dict(env, **(override or {})), input=input,
+                                  text=True, capture_output=True, timeout=60)
+
+        def git(*args):
+            cp = run(["git", "-C", str(repo), *args])
+            assert cp.returncode == 0
+            return cp.stdout.strip()
+
+        root = base / "project with spaces"
+        repo = root / "repo"
+        repo.mkdir(parents=True)
+        coord = root / "coord"
+        coord.mkdir(mode=0o700)
+        policy_path = coord / "remote-policy.json"
+        git("init", "-q", "-b", "main")
+        git("commit", "--allow-empty", "-qm", "fixture")
+        git("branch", "dev")
+        oid = git("rev-parse", "HEAD")
+        refs = [("refs/heads/dev", oid, "refs/heads/main", "0" * 40)]
+        dest = base / "bare destination with spaces.git"
+        other = base / "other bare.git"
+        unknown = base / "unknown bare.git"
+        for path in (dest, other, unknown):
+            assert run(["git", "init", "--bare", "-q", str(path)]).returncode == 0
+        git("remote", "add", "origin", str(dest))
+        git("remote", "add", "release", str(other))
+
+        def cfg(role, url):
+            return dict(role=role, url_hashes=[guard.hash_url(str(url))], redacted_urls=[guard.redact_url(str(url))],
+                        release_branch="main", tag_pattern="refs/tags/v*", allow_deletions=False)
+
+        def policy(remotes=None):
+            return dict(schema_version=1, enabled=True, release_branch="main", tag_pattern="refs/tags/v*",
+                        allow_deletions=False, remotes=remotes or {"origin": cfg("development", dest), "release": cfg("release", other)})
+
+        def raw(doc):
+            policy_path.write_text(doc if isinstance(doc, str) else json.dumps(doc))
+            policy_path.chmod(0o600)
+
+        raw(policy({"dev": cfg("development", dest), "pub": cfg("release", dest)}))
+        case("conflicting roles rejected while checking dev:main", lambda: refused(lambda: guard.verify_push(root, repo, "origin", str(dest), refs)))
+        raw(policy())
+        case("conflicting roles rejected before configuration write", lambda: refused(lambda: guard.cli_set(root, str(dest), "release")))
+        raw(policy())
+        git("remote", "set-url", "--add", "--push", "origin", str(dest))
+        git("remote", "set-url", "--add", "--push", "origin", str(other))
+        case("all push destinations apply release source rule", lambda: refused(lambda: guard.verify_push(root, repo, "origin", str(dest), refs)))
+        git("remote", "set-url", "--delete", "--push", "origin", ".*")
+        git("remote", "set-url", "--add", "--push", "origin", str(dest))
+        git("remote", "set-url", "--add", "--push", "origin", str(unknown))
+        case("unpinned second push destination refused before refs", lambda: refused(lambda: guard.verify_push(root, repo, "origin", str(dest), [])))
+        git("remote", "set-url", "--delete", "--push", "origin", ".*")
+        git("remote", "add", "rewrite", "test-remote://fixture/repo")
+        git("config", f"url.{other.as_uri()}/.pushInsteadOf", "test-remote://fixture/repo")
+        case("rewrite configuration detects existing release pin", lambda: refused(lambda: guard.cli_set(root, "rewrite", "development")))
+
+        sentinel = "SYNTHETIC_CREDENTIAL_SENTINEL"
+        urls = [f"https://{sentinel}@example.invalid/repo", f"https://u:{sentinel}@example.invalid/repo",
+                f"https://example.invalid/repo?token={sentinel}", f"https://example.invalid/repo#{sentinel}",
+                f"ssh://{sentinel}@example.invalid/repo", f"{sentinel}@example.invalid:repo"]
+        for index, url in enumerate(urls):
+            case(f"safe redaction and normalization form {index}", lambda url=url: sentinel not in guard.redact_url(url) + guard.normalize_url(url))
+            raw(policy())
+            cp = run([sys.executable, "-B", str(SOURCE / "tools/remote-guard.py"), "set", url, "development"], cwd=repo)
+            case(f"no credential persistence or CLI output form {index}", lambda cp=cp: cp.returncode == 0 and sentinel not in cp.stdout + cp.stderr + policy_path.read_text())
+        raw(policy())
+        cp = run([sys.executable, "-B", str(SOURCE / "tools/remote-guard.py"), "set", f"https://[{sentinel}/bad", "development"], cwd=repo)
+        case("malformed URL errors contain no credential", lambda: cp.returncode != 0 and sentinel not in cp.stdout + cp.stderr)
+        case("query destinations remain distinct", lambda: guard.hash_url(urls[2]) != guard.hash_url("https://example.invalid/repo?token=different"))
+        case("SSH users remain distinct", lambda: guard.hash_url("ssh://a@example.invalid/repo") != guard.hash_url("ssh://b@example.invalid/repo"))
+
+        for label, mutate in [
+            ("enabled string", lambda d: d.update(enabled="")),
+            ("schema boolean", lambda d: d.update(schema_version=True)),
+            ("unknown key", lambda d: d.update(unexpected=True)),
+            ("invalid role", lambda d: d["remotes"]["origin"].update(role="private")),
+            ("invalid hash", lambda d: d["remotes"]["origin"].update(url_hashes=["bad"])),
+            ("nonboolean deletion flag", lambda d: d.update(allow_deletions=0)),
+            ("invalid branch", lambda d: d.update(release_branch="bad..branch")),
+            ("invalid tag namespace", lambda d: d.update(tag_pattern="refs/heads/*")),
+            ("unbounded remotes", lambda d: d.update(remotes={str(i): cfg("development", dest) for i in range(257)})),
+        ]:
+            doc = policy()
+            mutate(doc)
+            raw(doc)
+            case(f"strict schema refuses {label}", lambda: refused(lambda: guard.load_policy(root)))
+        raw('{"schema_version":1,"enabled":true,"enabled":false,"remotes":{}}')
+        case("duplicate JSON keys refused", lambda: refused(lambda: guard.load_policy(root)))
+        policy_path.unlink()
+        target = base / "policy-target"
+        target.write_text(json.dumps(policy()))
+        target.chmod(0o600)
+        policy_path.symlink_to(target)
+        case("policy symlink refused", lambda: refused(lambda: guard.load_policy(root)))
+        policy_path.unlink()
+        policy_path.symlink_to(base / "absent")
+        case("dangling configured policy refused", lambda: refused(lambda: guard.load_policy(root)))
+        policy_path.unlink()
+        os.mkfifo(policy_path, 0o600)
+        case("FIFO refused without blocking", lambda: refused(lambda: guard.load_policy(root)))
+        policy_path.unlink()
+        coord.rename(root / "real-coord")
+        coord.symlink_to(root / "real-coord", target_is_directory=True)
+        case("coord symlink refused", lambda: refused(lambda: guard.load_policy(root)))
+        coord.unlink()
+        (root / "real-coord").rename(coord)
+        case("clean unconfigured default allowed", lambda: guard.verify_push(root, repo, "origin", str(dest), refs) is None)
+        raw(policy())
+        for opts in [["--unknown"], ["--branch"], ["--branch", "bad..branch"], ["--tag-pattern", "refs/heads/*"], ["--branch", ""], ["--branch", "main", "--branch", "dev"]]:
+            before = policy_path.read_bytes()
+            cp = run([sys.executable, "-B", str(SOURCE / "tools/remote-guard.py"), "set", "origin", "development", *opts], cwd=repo)
+            case("invalid CLI arguments refused " + repr(opts), lambda cp=cp, before=before: cp.returncode != 0 and policy_path.read_bytes() == before)
+
+        # Install and exercise both hook creation routes only in private fixtures.
+        assert run(["bash", str(SOURCE / "unio-install.sh")]).returncode == 0
+        unio = str(base / "bin/unio")
+        case("installed helper byte-identical", lambda: (base / "conf/lib/remote-guard.py").read_bytes() == (SOURCE / "tools/remote-guard.py").read_bytes())
+        hooks = repo / ".git/hooks"
+        hook = hooks / "pre-push"
+        backup = hooks / "pre-push.owner"
+        owner = '#!/bin/sh\ncat > "$PWD/owner-input"\nprintf "%s\\n" "$@" > "$PWD/owner-args"\nexit 0\n'
+        hook.write_text(owner)
+        hook.chmod(0o755)
+        guard.cli_install_guard(root, repo)
+        python_hook = hook.read_bytes()
+        cp = run(["git", "push", "origin", "main"], cwd=repo)
+        case("installed owner hook receives refs and spaced destination", lambda: cp.returncode == 0 and (repo / "owner-input").is_file() and "refs/heads/main" in (repo / "owner-input").read_text() and str(dest) in (repo / "owner-args").read_text())
+        hook.write_text("#!/bin/sh\nexit 37\n")
+        current, saved = hook.read_bytes(), backup.read_bytes()
+        case("existing owner backup collision refuses without clobber", lambda: refused(lambda: guard.cli_install_guard(root, repo)) and hook.read_bytes() == current and backup.read_bytes() == saved)
+        hook.unlink()
+        hook.symlink_to(base / "hook-victim")
+        (base / "hook-victim").write_text("preserve")
+        case("hook symlink refused", lambda: refused(lambda: guard.cli_install_guard(root, repo)) and (base / "hook-victim").read_text() == "preserve")
+        hook.unlink()
+        hook.write_bytes(python_hook)
+        hook.chmod(0o755)
+        git("config", "core.hooksPath", str(base / "custom hooks"))
+        case("custom hooksPath explicitly refused", lambda: refused(lambda: guard.cli_install_guard(root, repo)))
+        git("config", "--unset", "core.hooksPath")
+        hooks.rename(repo / ".git/real-hooks")
+        hooks.symlink_to(repo / ".git/real-hooks", target_is_directory=True)
+        case("hook directory symlink refused", lambda: refused(lambda: guard.cli_install_guard(root, repo)))
+        hooks.unlink()
+        (repo / ".git/real-hooks").rename(hooks)
+
+        # Shell init writes the other hook implementation. Separate project avoids
+        # initialization mutating any operator checkout or its hooks.
+        shell_root = base / "shell project with spaces"
+        shell_repo = shell_root / "repo"
+        shell_repo.mkdir(parents=True)
+        assert run(["git", "init", "-q", "-b", "main"], cwd=shell_repo).returncode == 0
+        assert run(["git", "commit", "--allow-empty", "-qm", "fixture"], cwd=shell_repo).returncode == 0
+        cp = run([unio, "init", "mock"], cwd=shell_repo)
+        case("shell init succeeds", lambda: cp.returncode == 0)
+        shell_hook = shell_repo / ".git/hooks/pre-push"
+        case("both hook generators byte-identical", lambda: shell_hook.read_bytes() == python_hook)
+        shell_backup = shell_hook.with_name("pre-push.owner")
+        shell_hook.write_text("#!/bin/sh\nexit 36\n")
+        shell_backup.write_text("#!/bin/sh\nexit 35\n")
+        shell_hook.chmod(0o755)
+        shell_backup.chmod(0o755)
+        cp = run([unio, "init", "mock"], cwd=shell_repo)
+        case("shell init preserves colliding owner hooks", lambda: cp.returncode != 0 and shell_hook.read_text() == "#!/bin/sh\nexit 36\n" and shell_backup.read_text() == "#!/bin/sh\nexit 35\n")
+
+        # Remove all available helpers and hide unio, leaving system git/python.
+        (base / "conf/lib/remote-guard.py").rename(base / "hidden-helper")
+        safe_path = str(base / "hook-bin")
+        Path(safe_path).mkdir()
+        for executable in ("git", "python3", "cat", "dirname"):
+            (Path(safe_path) / executable).symlink_to(shutil.which(executable))
+        hook.write_bytes(python_hook)
+        hook.chmod(0o755)
+        data = f"refs/heads/main {oid} refs/heads/main {'0' * 40}\n"
+        cp = run([str(hook), "origin", str(dest)], cwd=repo, input=data, override={"PATH": safe_path})
+        case("configured missing helper refuses", lambda: cp.returncode != 0)
+        cp = run([str(hook), "origin", str(dest)], cwd=repo, input="", override={"PATH": safe_path})
+        case("configured missing helper refuses empty ref batch", lambda: cp.returncode != 0)
+        policy_path.unlink()
+        cp = run([str(hook), "origin", str(dest)], cwd=repo, input=data, override={"PATH": safe_path})
+        case("unconfigured missing helper preserves owner hook", lambda: cp.returncode == 0)
+        (repo / ".unio-worker").write_text("mock\n")
+        cp = run([str(hook), "origin", str(dest)], cwd=repo, input=data, override={"PATH": safe_path})
+        case("missing helper still blocks workers", lambda: cp.returncode != 0 and "workers do not push" in cp.stderr)
+
+    print(json.dumps({"regressions": results, "passed": sum(r["pass"] for r in results), "total": len(results)}, indent=2))
+    return all(r["pass"] for r in results)
+
+
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] != ["--regressions"]:
+        main()
+    sys.exit(0 if regressions() else 1)
