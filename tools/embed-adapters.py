@@ -101,6 +101,7 @@ def main():
         ('docs/ai/MODEL-ROLES.md', 'MODEL-ROLES.md', 'MODEL_ROLES_TPL_EOF'),
         ('docs/development/MODEL-SCOREBOARD.md', 'MODEL-SCOREBOARD.md', 'MODEL_SCOREBOARD_TPL_EOF'),
         ('docs/WORK-MODES.md', 'WORK-MODES.md', 'WORKMODES_TPL_EOF'),
+        ('docs/development/LEAD-BUDGET-CONSENT.md', 'LEAD-BUDGET-CONSENT.md', 'LEAD_BUDGET_CONSENT_TPL_EOF'),
     ):
         guide = (ROOT / relative).read_text()
         if not guide.endswith('\n') or '\r' in guide or delimiter in guide.splitlines():
