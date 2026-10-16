@@ -384,9 +384,20 @@ exhausted subscription allowance.
 Keep source execution, checks, review, acceptance, merge and publication distinct.
 Use independent agents from different AI labs under the project's review rules;
 the project's current owner instructions decide the review count and the
-lead always performs its own assessment. The current Unio session uses
-personal lead review without extra reviewer workers, under the owner-selected
-YOLO mode. Preserve that explicit exception in review receipts.
+lead always performs its own assessment. For this owner's Unio development,
+code changes need at least two independent worker reviews from different AI
+labs, followed by the lead's assessment. Gemini must not be the sole worker
+reviewer. This owner direction supersedes the earlier session exception for
+personal lead review alone; YOLO still uses focused checks and one final gate.
+Keep verdicts separate and prepare reviewers without their peers' conclusions.
+Use native `unio review-set` for a new simultaneous review batch when supported;
+let an existing healthy single review finish before adding another under its
+worker lock. Report the exact subscription route, CLI version, requested model
+and effort. A requested or announced newer model does not establish serving
+identity or availability. Failed calls and contract-only proposals do not count
+as completed current-code reviews. Preserve unavailable routes and choose an
+eligible independent route without paid fallback; disclose missing review
+evidence instead of silently reducing the required count.
 Prepare reviewers separately with complete material and no peer verdicts.
 Supplementary routine checks do not replace a competent final security review.
 Fixes require fresh reviews of the changed candidate. Reviews reduce risk;
