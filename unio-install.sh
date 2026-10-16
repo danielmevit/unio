@@ -26407,17 +26407,19 @@ STDIN_DATA=$(cat)
 
 if [ -n "$STDIN_DATA" ]; then
   root=$(dirname "$top")
-  guard_cmd=""
+  guard_py=""
   if [ -n "${UNIO_CONF_DIR:-}" ] && [ -f "$UNIO_CONF_DIR/lib/remote-guard.py" ]; then
-    guard_cmd="python3 -B $UNIO_CONF_DIR/lib/remote-guard.py"
-  elif command -v unio >/dev/null 2>&1; then
-    guard_cmd="unio _remote-guard"
+    guard_py="$UNIO_CONF_DIR/lib/remote-guard.py"
+  elif [ -n "${CONF_DIR:-}" ] && [ -f "$CONF_DIR/lib/remote-guard.py" ]; then
+    guard_py="$CONF_DIR/lib/remote-guard.py"
   elif [ -f "$root/tools/remote-guard.py" ]; then
-    guard_cmd="python3 -B $root/tools/remote-guard.py"
+    guard_py="$root/tools/remote-guard.py"
   fi
 
-  if [ -n "$guard_cmd" ]; then
-    printf "%s\n" "$STDIN_DATA" | $guard_cmd check "$top" "$1" "$2" || exit $?
+  if [ -n "$guard_py" ]; then
+    printf "%s\n" "$STDIN_DATA" | python3 -B "$guard_py" check "$top" "$1" "$2" || exit $?
+  elif command -v unio >/dev/null 2>&1; then
+    printf "%s\n" "$STDIN_DATA" | unio _remote-guard check "$top" "$1" "$2" || exit $?
   fi
 fi
 
@@ -30325,7 +30327,7 @@ def normalize_url(url):
         return ""
     raw = url.strip()
     if raw.startswith("file://"):
-        path = raw[7:]
+        path = urllib.parse.unquote(raw[7:])
         if os.path.exists(path):
             path = os.path.realpath(path)
         return f"file://{path.rstrip('/')}"
@@ -30690,7 +30692,7 @@ def cli_show(root, as_json=False):
             hashes = cfg.get("url_hashes", [])
             url_str = ", ".join(urls) if urls else "n/a"
             hash_str = ", ".join(h[:12] for h in hashes) if hashes else "n/a"
-            print(f"  - {name}: role={role}")
+            print(f"  - {redact_url(name)}: role={role}")
             print(f"      destinations: {url_str}")
             print(f"      hash: {hash_str}")
             if role in ("release", "same-remote"):
@@ -30746,20 +30748,28 @@ def cli_set(root, target, role, branch=None, tag_pattern=None, allow_deletions=F
         "allow_deletions": allow_deletions,
     }
 
-    policy.setdefault("remotes", {})[target] = remote_cfg
+    target_key = redact_url(target)
+    policy.setdefault("remotes", {})[target_key] = remote_cfg
     save_policy(root, policy)
 
     print(
-        f"unio remote-policy: pinned remote '{target}' as {role}\n"
+        f"unio remote-policy: pinned remote '{target_key}' as {role}\n"
         f"  destination: {', '.join(redacted)}\n"
         f"  hash: {', '.join(h[:12] for h in hashes)}"
     )
     return 0
 
 
-def cli_install_guard(root):
+def cli_install_guard(root, repo_dir=None):
     """Safely install pre-push guard hook with owner hook backup and chaining."""
-    repo_dir = root / "repo"
+    if repo_dir is None:
+        cwd = Path.cwd().resolve()
+        if (cwd / ".git").exists() or (cwd / ".git").is_file():
+            repo_dir = cwd
+        elif (root / "repo").is_dir():
+            repo_dir = root / "repo"
+        else:
+            repo_dir = cwd
     if not repo_dir.is_dir():
         raise PolicyError(f"no repository found at {repo_dir}")
 
@@ -30798,17 +30808,19 @@ STDIN_DATA=$(cat)
 
 if [ -n "$STDIN_DATA" ]; then
   root=$(dirname "$top")
-  guard_cmd=""
+  guard_py=""
   if [ -n "${UNIO_CONF_DIR:-}" ] && [ -f "$UNIO_CONF_DIR/lib/remote-guard.py" ]; then
-    guard_cmd="python3 -B $UNIO_CONF_DIR/lib/remote-guard.py"
-  elif command -v unio >/dev/null 2>&1; then
-    guard_cmd="unio _remote-guard"
+    guard_py="$UNIO_CONF_DIR/lib/remote-guard.py"
+  elif [ -n "${CONF_DIR:-}" ] && [ -f "$CONF_DIR/lib/remote-guard.py" ]; then
+    guard_py="$CONF_DIR/lib/remote-guard.py"
   elif [ -f "$root/tools/remote-guard.py" ]; then
-    guard_cmd="python3 -B $root/tools/remote-guard.py"
+    guard_py="$root/tools/remote-guard.py"
   fi
 
-  if [ -n "$guard_cmd" ]; then
-    printf "%s\\n" "$STDIN_DATA" | $guard_cmd check "$top" "$1" "$2" || exit $?
+  if [ -n "$guard_py" ]; then
+    printf "%s\\n" "$STDIN_DATA" | python3 -B "$guard_py" check "$top" "$1" "$2" || exit $?
+  elif command -v unio >/dev/null 2>&1; then
+    printf "%s\\n" "$STDIN_DATA" | unio _remote-guard check "$top" "$1" "$2" || exit $?
   fi
 fi
 
@@ -30914,7 +30926,8 @@ def main(argv=None):
             return cli_set(root, target, role, branch=branch, tag_pattern=tag_pat)
 
         if cmd in ("install-guard", "install"):
-            return cli_install_guard(root)
+            target_repo = Path(rest[0]).resolve() if rest else None
+            return cli_install_guard(root, repo_dir=target_repo)
 
         print(f"unio remote-policy: unknown command '{cmd}'", file=sys.stderr)
         return 1
