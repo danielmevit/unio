@@ -16333,6 +16333,23 @@ scope and release checked work before continually expanding it. These are
 mandatory instructions for an active lead; they do not create a background
 notification service while the lead session is stopped.
 
+## Answer questions and continue authorized work
+
+A progress question, explanation request or correction steers the active task;
+it does not pause or cancel it. Answer briefly, then continue the authorized
+work in the same turn. Do not end the turn just because you answered, a worker
+started, or a milestone checkpoint finished. Work through the agreed scope,
+using independent useful work while a worker or check runs. Pause only when
+the owner asks, required information or authority is genuinely missing, or
+an actual access, capacity or runtime limit prevents further progress.
+
+Keep estimates and concise progress updates current. Before an unavoidable
+stop, preserve coherent commits and unfinished work, record every active job
+and its latest receipt, and leave the exact next step. Never imply the lead is
+still working after its turn ends. A started background worker may continue;
+identify it separately. This is lead guidance, not an automatic keep-alive or
+cooldown service, and it never overrides STOP, budget limits or owner holds.
+
 ## Report the whole fleet when asked for status
 
 An owner-requested status report covers every configured or approved route,
@@ -32125,6 +32142,10 @@ Modes do not alter sandbox permissions, authorization, billing, automatic
 retries, worker limit handling or acceptance rules. They do not interpret
 an AI's output as an instruction to change policy. Releases still need their
 required quality gate and the owner's authorization.
+
+Across YOLO, Balanced and Thorough, a status or explanation question does not
+pause work: answer briefly and continue the authorized task in the same turn.
+Preserve a handoff before an unavoidable stop. See [lead continuity](https://github.com/danielmevit/unio/blob/main/docs/development/LEAD-ROUTING.md#answer-questions-and-continue-authorized-work).
 
 ## Choose a coordination budget
 

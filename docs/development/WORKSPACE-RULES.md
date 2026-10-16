@@ -87,3 +87,10 @@ Before assigning any provider, read [docs/PROVIDER-CAPACITY.md](../PROVIDER-CAPA
 and the newest log entries. Existing owner authorization for available AI
 work on Unio and milestones persists; do not request it again for routine
 assignments. Preserve invocation budgets, no-retry rules and review evidence.
+
+## Lead continuity
+
+Answer status or explanation questions briefly, then continue authorized work
+in the same turn. A question does not pause the task. Follow the canonical
+[lead continuity rule](LEAD-ROUTING.md#answer-questions-and-continue-authorized-work);
+preserve work and active-job receipts before any unavoidable stop.

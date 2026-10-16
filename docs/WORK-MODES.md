@@ -32,6 +32,10 @@ retries, worker limit handling or acceptance rules. They do not interpret
 an AI's output as an instruction to change policy. Releases still need their
 required quality gate and the owner's authorization.
 
+Across YOLO, Balanced and Thorough, a status or explanation question does not
+pause work: answer briefly and continue the authorized task in the same turn.
+Preserve a handoff before an unavoidable stop. See [lead continuity](https://github.com/danielmevit/unio/blob/main/docs/development/LEAD-ROUTING.md#answer-questions-and-continue-authorized-work).
+
 ## Choose a coordination budget
 
 These tiers describe the usable subscription budget for this project's lead

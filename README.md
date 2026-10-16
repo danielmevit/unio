@@ -252,7 +252,9 @@ Register your configured lead alias for this project. Do not replace an active l
 Open the managed dashboard and show me its link.
 For the task I give you, estimate the time, delegate through Unio,
 verify the changes and keep me updated. Preserve work and leave a clear
-handoff. Ask only for missing decisions or authority.
+handoff. Answer my status questions briefly and continue the authorized work;
+stop when I ask or when a real blocker requires it. Ask only for missing
+decisions or authority.
 ```
 
 You start the conversation; the lead uses Unio to coordinate the workers.

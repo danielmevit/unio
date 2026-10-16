@@ -109,6 +109,10 @@ For an existing checkout not yet initialized, follow the
 Other projects receive their lead guides under `../coord/docs/` during
 initialization; use those when this repository's `docs/ai/` is absent.
 
+After answering a status or explanation question, continue the authorized
+work in the same turn unless the owner asks to stop or a real blocker prevents
+progress. Follow [answer and continue](../development/LEAD-ROUTING.md#answer-questions-and-continue-authorized-work).
+
 ## Switch to a different lead
 
 This procedure replaces the lead on the same project. Starting a separate
