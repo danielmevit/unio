@@ -17,7 +17,7 @@ remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The comp
 
 | Version | Included work | State |
 | --- | --- | --- |
-| 0.5.21 | Bounded continuous delegation for existing approved jobs | Candidate in review; [frozen first-slice contract](CONTINUOUS-DELEGATION-CONTRACT.md). Rough 4–8h for the first slice, including checks and delivery; broader cross-integration scheduling remains separate. |
+| 0.5.21 | Bounded continuous delegation for existing approved jobs | [Released and installed 2026-10-17](https://github.com/danielmevit/unio/releases/tag/v0.5.21); complete gate, independent Gemini and Mistral/Vibe GLM reviews, reproducible assets, upgrade/rollback and six official download hashes passed. |
 | 0.5.22 | Managed live CLI sessions and lead continuity | Proposed; 2–4 working days for the first supported route. |
 | 0.5.23 | Session-scoped phone access | Proposed; 2–4 working days after managed session ownership. |
 | 0.5.24 | Native Windows | Proposed; 1–3 working weeks after feasibility assessment; split if required. |

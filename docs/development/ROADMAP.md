@@ -1,8 +1,14 @@
 # Unio roadmap and development priorities
 
+Current update, 2026-10-17: [v0.5.21](https://github.com/danielmevit/unio/releases/tag/v0.5.21)
+adds a bounded scheduler for finite approved batches. It is published and installed,
+with two independent current-code reviews, the full gate and download verification.
+Next: managed CLI session ownership and continuity; then session-scoped phone access,
+Windows before macOS. See [the version plan](../VERSION-PLAN.md).
+
 Your AIs, in sync.
 
-Current update, 2026-10-16: [v0.5.20](https://github.com/danielmevit/unio/releases/tag/v0.5.20)
+Previous update, 2026-10-16: [v0.5.20](https://github.com/danielmevit/unio/releases/tag/v0.5.20)
 is published and installed. It adds shared-lead allowance consent, optional
 failed-work WIP commits, plain supported stop reasons and opt-in push policy.
 Code, independent assessments and the complete quality gate passed. Delivery

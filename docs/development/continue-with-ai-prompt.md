@@ -1,5 +1,30 @@
 # Lead handoff — Unio 0.5.20, 2026-10-16
 
+## Latest release checkpoint — 2026-10-17T01:16:04+02:00
+
+Official latest and installed: Unio 0.5.21, source
+`ecd88eacabee33e5fa7a99e0e4b80b5aeafec688`. Scheduler correction `221ffa5`
+passed 37 focused cases and five native checks. The complete gate passed on
+`3c04fbd` in 1,647.865 seconds; final prose preserves executable/test identity.
+Antigravity/agy1.4.0/Gemini3.8FlashHIGH and Mistral/Vibe2.26.1/GLM5.3HIGH
+provided independent current bound approvals, then lead assessment accepted.
+Original failed, timed-out and owner-cancelled attempts remain separate.
+
+Artifacts, 40 isolated selftests, upgrade/rollback, configuration preservation,
+installation before publication and six official download hashes passed.
+Read the newest shared coord/AGENT-LOG.md and private
+workspace path `tmp/unio-next/LIVE-HANDOFF-0521-20261016.md` before
+resuming owner development; local receipts are not part of the public release.
+All AI jobs are idle and native STOP is set. The managed read-only dashboard
+may remain running. Use dashboard status for its current local link.
+
+Next functional priority: managed CLI sessions and lead continuity (planned
+0.5.22), then phone23, Windows24 andmacOS25. No UI/site/brand changes belong
+in the completed21 release. Existing gate evidence need not be replayed for
+prose. Read current lead-routing/model-effort rules and owner availability
+before any new assignment; requested identity/effort/allowance remain Unknown
+without evidence. Preserve current owner holds and subscription boundaries.
+
 Read the newest project `coord/AGENT-LOG.md`, this guide and
 [the release notes](../RELEASE-0.5.20.md). Check GitHub's actual latest release
 and `unio version`; a version heading alone does not prove publication.

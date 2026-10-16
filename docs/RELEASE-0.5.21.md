@@ -1,5 +1,11 @@
 # Unio 0.5.21 — bounded continuous delegation
 
+Published and installed on 2026-10-17 (UTC+02:00) from
+`ecd88eacabee33e5fa7a99e0e4b80b5aeafec688`. Installation preceded publication.
+Reproducible artifacts, all 40 isolated selftests, 0.5.20 upgrade/rollback,
+configuration and owner-template preservation, exact installed scheduler/help,
+and all six official download hashes passed. Prior tags remain unchanged.
+
 Keep a finite batch of approved work moving as account slots become available.
 The scheduler uses the existing planner and dispatcher, retaining native STOP,
 shared-account limits and one-use consent before spending the lead's budget.
