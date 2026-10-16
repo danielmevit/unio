@@ -1,0 +1,1 @@
+Fix release-policy defaults to use `main` independently of the development work base, including helper enforcement and CLI display. Preserve stored rules and explicit owner branch choices; cover installed local-bare publication and fallback behavior.

@@ -16177,6 +16177,11 @@ With `--json`, outputs structured schema 1 JSON.
 
 ### `unio remote-policy set <alias-or-url> <role> [--branch <name>] [--tag-pattern <pat>]`
 Pins an approved remote destination and configures its role.
+Omitting `--branch` uses the stored release branch, or `main` when none is stored,
+independently of `coord/base`. Existing explicit rules are preserved. Owners may
+explicitly select any valid branch, including `--branch dev`; names and URLs do
+not establish privacy. This default also applies to `same-remote`.
+
 Supported roles:
 - `development` (or `dev`): Private development destination.
 - `release` (or `public`): Public release destination.
@@ -30382,6 +30387,7 @@ import tempfile
 import urllib.parse
 from pathlib import Path
 
+DEFAULT_RELEASE_BRANCH = "main"
 MAX_POLICY_BYTES = 65536
 ZERO_OID_RE = re.compile(r'^0{40,64}$')
 HEX_OID_RE = re.compile(r'^[0-9a-fA-F]{40,64}$')
@@ -30496,18 +30502,6 @@ def find_project_root(start=None):
         if os.path.lexists(parent / "coord"):
             return parent
     return None
-
-
-def get_base_branch(root):
-    """Read coord/base or default to 'main'."""
-    base_file = root / "coord" / "base"
-    try:
-        content = base_file.read_text(encoding="utf-8").strip()
-        if content:
-            return content
-    except OSError:
-        pass
-    return "main"
 
 
 def load_policy(root, require=False):
@@ -30640,7 +30634,6 @@ def verify_push(root, repo_dir, remote_name, remote_url, ref_lines):
         # No policy configured: preserve simple existing projects without guessing
         return
 
-    default_base = get_base_branch(root)
     target_hash = hash_url(remote_url)
 
     # 1. Check resolved target push destination against pinned roles
@@ -30670,11 +30663,10 @@ def verify_push(root, repo_dir, remote_name, remote_url, ref_lines):
 
 def verify_ref_updates(root, repo_dir, policy, cfg, remote_url, ref_lines):
     role = cfg["role"]
-    default_base = get_base_branch(root)
     # 3. Validate every ref update
     for local_ref, local_oid, remote_ref, remote_oid in ref_lines:
         is_delete = local_ref in ("(delete)", "") or ZERO_OID_RE.match(local_oid)
-        release_branch = cfg.get("release_branch") or policy.get("release_branch") or default_base
+        release_branch = cfg.get("release_branch") or policy.get("release_branch") or DEFAULT_RELEASE_BRANCH
         release_ref = f"refs/heads/{release_branch}"
         tag_pat = cfg.get("tag_pattern") or policy.get("tag_pattern") or "refs/tags/v*"
         allow_deletions = cfg.get("allow_deletions", policy.get("allow_deletions", False))
@@ -30825,7 +30817,7 @@ def cli_show(root, as_json=False):
         return 0
 
     print(f"remote policy: {'enabled' if policy.get('enabled', True) else 'disabled'}")
-    print(f"release branch: {policy.get('release_branch', get_base_branch(root))}")
+    print(f"release branch: {policy.get('release_branch', DEFAULT_RELEASE_BRANCH)}")
     print(f"guard hook: {'installed' if has_guard else 'not installed'} (owner chained: {'yes' if has_owner_chained else 'no'})")
     remotes = policy.get("remotes", {})
     if not remotes:
@@ -30842,7 +30834,7 @@ def cli_show(root, as_json=False):
             print(f"      destinations: {url_str}")
             print(f"      hash: {hash_str}")
             if role in ("release", "same-remote"):
-                rel_b = cfg.get("release_branch") or policy.get("release_branch") or get_base_branch(root)
+                rel_b = cfg.get("release_branch") or policy.get("release_branch") or DEFAULT_RELEASE_BRANCH
                 tag_p = cfg.get("tag_pattern") or policy.get("tag_pattern") or "refs/tags/v*"
                 print(f"      release ref: refs/heads/{rel_b}")
                 print(f"      tag pattern: {tag_p} (commit must be ancestor of refs/heads/{rel_b})")
@@ -30862,7 +30854,7 @@ def cli_set(root, target, role, branch=None, tag_pattern=None, allow_deletions=F
     policy = load_policy(root, require=False) or {
         "schema_version": 1,
         "enabled": True,
-        "release_branch": get_base_branch(root),
+        "release_branch": DEFAULT_RELEASE_BRANCH,
         "tag_pattern": "refs/tags/v*",
         "allow_deletions": False,
         "remotes": {},
@@ -30885,16 +30877,17 @@ def cli_set(root, target, role, branch=None, tag_pattern=None, allow_deletions=F
     hashes = [hash_url(u) for u in push_urls]
     redacted = [redact_url(u) for u in push_urls]
 
+    target_key = target if re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", target) else "destination-" + hash_url(target)
+    existing = policy.get("remotes", {}).get(target_key, {})
     remote_cfg = {
         "role": role,
         "url_hashes": hashes,
         "redacted_urls": redacted,
-        "release_branch": branch or policy.get("release_branch", get_base_branch(root)),
+        "release_branch": branch if branch is not None else existing.get("release_branch", policy.get("release_branch", DEFAULT_RELEASE_BRANCH)),
         "tag_pattern": tag_pattern or policy.get("tag_pattern", "refs/tags/v*"),
         "allow_deletions": allow_deletions,
     }
 
-    target_key = target if re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", target) else "destination-" + hash_url(target)
     policy.setdefault("remotes", {})[target_key] = remote_cfg
     save_policy(root, policy)
 

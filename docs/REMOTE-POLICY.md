@@ -45,6 +45,11 @@ With `--json`, outputs structured schema 1 JSON.
 
 ### `unio remote-policy set <alias-or-url> <role> [--branch <name>] [--tag-pattern <pat>]`
 Pins an approved remote destination and configures its role.
+Omitting `--branch` uses the stored release branch, or `main` when none is stored,
+independently of `coord/base`. Existing explicit rules are preserved. Owners may
+explicitly select any valid branch, including `--branch dev`; names and URLs do
+not establish privacy. This default also applies to `same-remote`.
+
 Supported roles:
 - `development` (or `dev`): Private development destination.
 - `release` (or `public`): Public release destination.

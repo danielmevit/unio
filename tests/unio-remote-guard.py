@@ -106,6 +106,53 @@ def main():
         git("remote", "add", "same", str(bare_same))
         git("remote", "add", "unapproved", str(bare_unpinned))
 
+        # The work base is independent from release policy, including installed fallbacks.
+        (proj_root / "coord" / "base").write_text("dev\n")
+        git("branch", "dev")
+        policy_file = proj_root / "coord" / "remote-policy.json"
+        run([unio_bin, "remote-policy", "set", "public", "release"])
+        run([unio_bin, "remote-policy", "set", "same", "same-remote"])
+        stored = json.loads(policy_file.read_text())
+        check("dev work base defaults release and same-remote to main",
+              stored["release_branch"] == "main" and all(
+                  c["release_branch"] == "main" for c in stored["remotes"].values()))
+        run([unio_bin, "remote-policy", "install-guard"])
+        cp = git("push", "public", "dev:dev", codes=(1,))
+        check("implicit dev publication refused", "non-release branch" in cp.stderr)
+        check("refused dev was not published", not git("--git-dir", str(bare_pub), "for-each-ref", "refs/heads/dev").stdout)
+        git("push", "public", "main:main")
+        check("intended main published", git("--git-dir", str(bare_pub), "rev-parse", "refs/heads/main").stdout.strip() == c_main_initial)
+        cp = git("push", "same", "HEAD:main", codes=(1,))
+        check("same-remote default protects main source", "non-canonical source" in cp.stderr)
+        git("push", "same", "main:main")
+
+        # Missing stored branch fields use main in both display and enforcement.
+        stored.pop("release_branch")
+        for cfg in stored["remotes"].values():
+            cfg.pop("release_branch")
+        policy_file.write_text(json.dumps(stored))
+        cp = run([unio_bin, "remote-policy", "show"])
+        check("show fallback ignores dev work base", "release branch: main" in cp.stdout and cp.stdout.count("release ref: refs/heads/main") == 2)
+        cp = git("push", "public", "dev:dev", codes=(1,))
+        check("helper fallback refuses accidental dev publication", "non-release branch" in cp.stderr)
+        run([unio_bin, "remote-policy", "set", "public", "release", "--branch", "dev"])
+        git("push", "public", "dev:dev")
+        run([unio_bin, "remote-policy", "set", "public", "release"])
+        stored = json.loads(policy_file.read_text())
+        check("explicit stored dev survives omitted branch", stored["release_branch"] == "dev" and stored["remotes"]["public"]["release_branch"] == "dev")
+        run([unio_bin, "remote-policy", "set", "same", "same-remote", "--branch", "dev"])
+        check("same-remote explicit dev override retained", json.loads(policy_file.read_text())["remotes"]["same"]["release_branch"] == "dev")
+        git("push", "same", "dev:dev")
+        run([unio_bin, "remote-policy", "set", "same", "same-remote", "--branch", "main"])
+        run([unio_bin, "remote-policy", "set", "public", "release"])
+        check("per-destination explicit dev survives different global branch", json.loads(policy_file.read_text())["remotes"]["public"]["release_branch"] == "dev")
+        # Restore the original fixture without changing any regression assertions.
+        policy_file.unlink()
+        git("branch", "-D", "dev")
+        for dest in (bare_pub, bare_same):
+            for branch in ("main", "dev"):
+                git("--git-dir", str(dest), "update-ref", "-d", "refs/heads/" + branch)
+
         # -------------------------------------------------------------
         # 1. Unconfigured policy: preserves simple existing projects
         # -------------------------------------------------------------
