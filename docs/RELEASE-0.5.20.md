@@ -1,8 +1,11 @@
 # Unio 0.5.20 — protect budgets, work and publication
 
 Four practical protections from field use, with clearer guidance for the lead.
-The complete quality gate passed. Installation, upgrade and public download
-results are recorded separately during delivery.
+The complete quality gate passed. Published and installed on 2026-10-16 from
+`20e203cdba5692bfe246a8621eb8e207a22d6c49`; installation preceded publication.
+Reproducible artifacts, all 40 isolated selftests, 0.5.19 upgrade/rollback,
+configuration preservation and all six official download hashes passed.
+Earlier release tags remain unchanged.
 
 ## Changes
 
@@ -95,5 +98,7 @@ against hostile rewriting by the same user. Removing hooks or markers, or using
 import remain unsupported. Configurable Vibe caps, continuous delegation and
 managed interactive sessions remain follow-up work.
 
-Delivery provenance records reproducible artifacts, installation before
-publication, upgrade/rollback checks and all six official download hashes.
+Delivery completed at 19:55:48 UTC+02:00. The installed dashboard and internal
+helpers match the released source. The existing local save-store usage check
+remains exit 2/Unknown; installation did not repair that store. Delivery receipts
+retain this limit separately from the passing release and installation checks.

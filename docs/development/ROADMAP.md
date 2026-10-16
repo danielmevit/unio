@@ -2,18 +2,15 @@
 
 Your AIs, in sync.
 
-Current update, 2026-10-16: [v0.5.19](https://github.com/danielmevit/unio/releases/tag/v0.5.19) is published and installed. It completes owned Linux Source stopping,
-measured save-retention validation and Copilot metadata compatibility. Its
-complete quality gate and seven final native checks passed; the lead accepted
-the inspected code with the independent-review limitations disclosed in the
-[release notes](../RELEASE-0.5.19.md). Delivery installed before publication; upgrade/rollback, preserved configuration
-and all six official download hashes passed.
+Current update, 2026-10-16: [v0.5.20](https://github.com/danielmevit/unio/releases/tag/v0.5.20)
+is published and installed. It adds shared-lead allowance consent, optional
+failed-work WIP commits, plain supported stop reasons and opt-in push policy.
+Code, independent assessments and the complete quality gate passed. Delivery
+installed before publication; reproducible artifacts, 40 isolated selftests,
+0.5.19 upgrade/rollback, preserved configuration and all six official download
+hashes passed. See [evidence and limits](../RELEASE-0.5.20.md).
 UI, site, brand and the owner's separate projects are preserved.
 
-The v0.5.20 field bundle implements shared-lead allowance consent, optional
-failed-work WIP commits, plain supported stop reasons and opt-in push policy.
-Code, independent assessments and the complete quality gate are accepted.
-Artifact, installation and publication evidence is recorded during delivery. See [current evidence](../RELEASE-0.5.20.md).
 Then continuous delegation, managed live sessions, lead continuity and scoped
 phone access. Native Windows precedes macOS in the
 [release outlook](RELEASE-OUTLOOK-0.5.19-0.5.24.md). Windows localization includes

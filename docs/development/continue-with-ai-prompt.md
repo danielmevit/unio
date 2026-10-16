@@ -22,11 +22,20 @@ components each have their own independent Google approval and lead inspection.
 Perplexity Pro / pinned web adapter 0.16.1 / Kimi 3 Thinking provided supporting
 critiques, not formal approval. Failed Mistral/Vibe reviews retain no verdict.
 
-The release is prepared for installation before publication. Check delivery
-receipts, official release state and the installed binary before claiming that
-step complete. Documentation finalization preserves all executable installer
-bytes outside the canonical scoreboard guide. Do not repeat the passing broad
-gate for prose-only updates. Record any actual delivery failure separately.
+Delivery confirmed on 2026-10-16 at 19:55:48 UTC+02:00: official
+[v0.5.20](https://github.com/danielmevit/unio/releases/tag/v0.5.20) is published,
+latest and installed from `20e203cdba5692bfe246a8621eb8e207a22d6c49`. The exact
+source reached main before publication. Reproducible artifacts, all 40 isolated
+selftests, 0.5.19 upgrade/rollback, preserved operator configuration/templates,
+installed helper/dashboard identity and all six official download hashes passed.
+Earlier tags are unchanged. Installation occurred before publication. The local
+save-usage inspection retained exit 2/Unknown for the existing store; installation
+did not repair it. Use `unio dashboard ensure --open-browser` for the current URL.
+
+Documentation finalization preserves executable installer bytes outside the
+canonical scoreboard guide. Do not repeat the passing broad gate for prose-only
+updates. Public delivery confirmation is a later docs commit, not a changed
+release tag or rebuilt artifact. Record any new failure separately.
 
 ## Owner rules for every continuation
 
@@ -68,10 +77,11 @@ gate for prose-only updates. Record any actual delivery failure separately.
 
 ## Next functional work
 
-Finish checked artifact generation, 0.5.19-to-0.5.20 upgrade/rollback, global
-installation, exact-source main push, release publication and all six download
-hashes. Reopen the managed dashboard and report its actual local URL. Update
-this checkpoint with observed delivery facts, then proceed in bounded bundles:
+Delivery is complete. Do not rerun release checks without a new relevant change
+or failure. The next functional milestone is continuous delegation; scope a
+bounded first implementation before assigning work. Initial estimate: 4–8 hours,
+including focused checks and independent review; revise from the scoped contract.
+Proceed in bounded bundles:
 
 1. **Continuous delegation:** eligible accounts take separate ready tasks while
    others run; preserve dependencies, admission, consent and review evidence.
