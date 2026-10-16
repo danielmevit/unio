@@ -15648,6 +15648,56 @@ never loop through weaker workers or duplicate the lead's account session.
   the current guide and scoreboard are instructions, not runtime scoring.
 UNIO_AGENT_FLEET_MD
 fi
+if [ ! -e "$TPL_DIR/WORK-WIP.md" ] && [ ! -L "$TPL_DIR/WORK-WIP.md" ]; then
+cat > "$TPL_DIR/WORK-WIP.md" <<'UNIO_WORK_WIP_MD'
+# Failed-run WIP preservation
+
+`unio wip on|off|status` controls an explicit project-local setting in private
+`coord/wip.json` (schema 1). Default is off. This is separate from work-policy
+schema 1, owner instructions and lead consent. Missing, malformed or unsafe
+settings never enable WIP. No installed project setting changes automatically.
+
+When enabled before a run, a nonzero Source exit can produce one scoped WIP
+commit after the existing final-failure snapshot and exact owned-provider
+quiescence, while the native worker lock and account reservation remain held.
+The Source exit stays nonzero, the structured result stays failed, and work
+remains unaccepted. There is no extra model call, retry, merge, push or acceptance.
+Cleanup Unknown continues holding ownership; silence, heartbeats and timeout
+text are not idle proof. No WIP is attempted before exact idle proof.
+
+The first supported state is an ordinary `agent/<worker>` branch with a clean
+initial worktree and index. Existing user edits, staging (including partial
+staging), merge/rebase/cherry-pick/unmerged/sparse/shallow states, unsafe paths,
+secret-looking names, links and special files refuse. Changed files must be
+UTF-8 text without NUL bytes. Allowed deletions are supported. Scope must have
+one `## Allowed scope` section containing literal relative file paths or
+trailing-slash directories; globs currently refuse. Every changed path must be
+explicitly covered, including changelog paths. Bounds and full-file safety
+checks reuse safe-save observations; failed snapshots never waive WIP checks.
+
+Two full observations and checked staged object IDs reject changing bytes and
+Git filters that change content. Only explicit changed paths are staged into
+an isolated index. A single normal Git commit runs configured hooks. The
+original index is retained on hook/commit failure; edits remain available.
+After success the checked index is installed only if the original is unchanged.
+Hook/concurrent changes or uncertain completion report Unknown; inspect HEAD,
+index and saved state manually. Hooks are trusted Git configuration and can
+have their normal side effects. The native lock excludes other native workflows,
+not arbitrary unrelated editors; avoid external writers during recovery.
+
+Private dated receipts at `coord/reports/.wip/<native-run-id>.json` bind worker,
+task, native attempt, owned session identity, original exit, outcome, revision
+and safe relative paths. Outcomes are created, skipped, refused or unknown;
+these are preservation outcomes, not adapter stop categories. The run report
+shows the revision or actionable refusal plus snapshot and handoff guidance.
+Success/clean runs and already committed work produce no duplicate WIP.
+
+Baseline/periodic/final captures retain their existing order. SIGKILL or host
+loss can recover only bytes already saved or committed; they cannot guarantee
+a final snapshot or WIP commit. This feature is recovery assistance, not release
+or lead acceptance.
+UNIO_WORK_WIP_MD
+fi
 if [ ! -e "$TPL_DIR/LEAD-ROUTING.md" ] && [ ! -L "$TPL_DIR/LEAD-ROUTING.md" ]; then
 cat > "$TPL_DIR/LEAD-ROUTING.md" <<'UNIO_LEAD_ROUTING_MD'
 # Lead routing, reasoning effort and spending
@@ -24847,6 +24897,8 @@ def wip_scope(raw, paths):
         raise Refuse('incomplete', 'missing or excessive WIP scope')
     for p in paths:
         check_secret(p, 'WIP scope')
+        if re.search(r'(^|/)(\.npmrc|\.pypirc|\.netrc|\.git-credentials|\.ssh|\.aws|credentials|secrets?|tokens?)(/|\.|$)|\.(key|keystore|jks)$', p, re.I):
+            raise Refuse('secret_name', 'secret-looking WIP path: ' + p)
         if not any(p == s or s.endswith('/') and p.startswith(s) for s in scope):
             raise Refuse('incomplete', 'out-of-scope edit: ' + p)
 
@@ -24869,7 +24921,7 @@ def wip_prepare(root, worker, task):
             doc.update(ready=True, task_sha256=sha(raw), head=obs['git']['head_commit'])
     except (Refuse, OSError, ValueError) as e:
         doc['reason'] = str(e)
-    atomic_private(under(wip_store(root), run_id + '.start.json'), canon(doc))
+    write_private(under(wip_store(root), run_id + '.start.json'), canon(doc))
 
 
 def wip_git(wt, budget, index, *args, codes=(0,)):
@@ -24884,6 +24936,9 @@ def wip_finish(root, worker, task, original_exit):
     doc = dict(schema_version=1, worker=worker, task=task, run_id=run_id,
                original_exit=int(original_exit), observed_at=stamp(), outcome='refused',
                revision=None, paths=[], accepted=False)
+    # An interrupted attempt is never replayed, even if its final receipt is absent.
+    write_private(under(wip_store(root), run_id + '.claim.json'),
+                  canon(dict(worker=worker, task=task, run_id=run_id, original_exit=int(original_exit), started_at=stamp())))
     commit_started = False
     try:
         enabled = wip_setting(root)
@@ -25934,6 +25989,7 @@ cmd_init() {
     echo "codegraph    : indexing worktrees in the background (repo/ is indexed)"
   fi
   [ -f "$root/coord/docs/WORK-MODES.md" ] || cp "$TPL_DIR/WORK-MODES.md" "$root/coord/docs/WORK-MODES.md"
+  [ -e "$root/coord/docs/WORK-WIP.md" ] || [ -L "$root/coord/docs/WORK-WIP.md" ] || cp "$TPL_DIR/WORK-WIP.md" "$root/coord/docs/WORK-WIP.md"
   if [ ! -e "$root/coord/docs/development" ] && [ ! -L "$root/coord/docs/development" ]; then
     mkdir "$root/coord/docs/development"
   fi
@@ -26152,10 +26208,10 @@ cmd_run() {
   POLICY_SOURCE_SUPERVISOR=0
   trap 'exit 143' TERM
   trap 'exit 130' INT
-  local wip_summary
-  wip_summary=$(saves "$root" _wip-finish "$worker" "$task" "$rc" 2>&1) || wip_summary="WIP Unknown: $wip_summary; inspect saved state and commit manually"
-  echo "$wip_summary"
-  printf "%s\n" "$wip_summary" >> "$report"
+  # Call directly: command substitution would substitute a subshell identity.
+  saves "$root" _wip-finish "$worker" "$task" "$rc" >> "$report" 2>&1 || \
+    echo "WIP Unknown: preservation receipt unavailable; inspect saves and commit manually" >> "$report"
+  tail -n 1 "$report"
   # The reservation ends with owned cleanup: release before the post-run
   # receipts so the next admission can reuse the group.
   policy_release_slot "$root"
@@ -26464,6 +26520,7 @@ cmd_status() {
   local root; root=$(find_root) || die "not inside a Unio project"
   local base; base=$(get_base "$root")
   [ -f "$root/coord/STOP" ] && echo "!! STOP is active — runs are blocked" && echo
+  saves "$root" _wip status || echo "WIP Unknown: inspect coord/wip.json; automatic preservation refuses"
   echo "== agents off (quota) =="
   local f a found=0
   for f in "$OFF_DIR"/*; do
@@ -31394,7 +31451,7 @@ cat > "$COMP_DIR/unio" <<'COMPLETION_EOF'
 _unio() {
   local cur cmd root d cmds
   cur="${COMP_WORDS[COMP_CWORD]}"
-  cmds="new init run verify result handoff save diff sync review reviews review-set race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan experience dispatch capacity readiness off on smoke selftest stop resume allow-retry version license help"
+  cmds="new init run verify result handoff save wip diff sync review reviews review-set race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan experience dispatch capacity readiness off on smoke selftest stop resume allow-retry version license help"
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$cmds" -- "$cur") ); return
   fi

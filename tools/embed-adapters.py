@@ -49,6 +49,7 @@ def embedded_block():
         parts.append(head + text + delimiter + '\n')
     for relative, name in (
         ('docs/development/AGENT-FLEET.md', 'AGENT-FLEET'),
+        ('docs/WORK-WIP.md', 'WORK-WIP'),
         ('docs/development/LEAD-ROUTING.md', 'LEAD-ROUTING'),
         ('docs/development/MODEL-EFFORT.md', 'MODEL-EFFORT'),
         ('docs/ai/REASONING-PROFILES.md', 'REASONING-PROFILES'),

@@ -72,6 +72,8 @@ def wip_scope(raw, paths):
         raise Refuse('incomplete', 'missing or excessive WIP scope')
     for p in paths:
         check_secret(p, 'WIP scope')
+        if re.search(r'(^|/)(\.npmrc|\.pypirc|\.netrc|\.git-credentials|\.ssh|\.aws|credentials|secrets?|tokens?)(/|\.|$)|\.(key|keystore|jks)$', p, re.I):
+            raise Refuse('secret_name', 'secret-looking WIP path: ' + p)
         if not any(p == s or s.endswith('/') and p.startswith(s) for s in scope):
             raise Refuse('incomplete', 'out-of-scope edit: ' + p)
 
@@ -94,7 +96,7 @@ def wip_prepare(root, worker, task):
             doc.update(ready=True, task_sha256=sha(raw), head=obs['git']['head_commit'])
     except (Refuse, OSError, ValueError) as e:
         doc['reason'] = str(e)
-    atomic_private(under(wip_store(root), run_id + '.start.json'), canon(doc))
+    write_private(under(wip_store(root), run_id + '.start.json'), canon(doc))
 
 
 def wip_git(wt, budget, index, *args, codes=(0,)):
@@ -109,6 +111,9 @@ def wip_finish(root, worker, task, original_exit):
     doc = dict(schema_version=1, worker=worker, task=task, run_id=run_id,
                original_exit=int(original_exit), observed_at=stamp(), outcome='refused',
                revision=None, paths=[], accepted=False)
+    # An interrupted attempt is never replayed, even if its final receipt is absent.
+    write_private(under(wip_store(root), run_id + '.claim.json'),
+                  canon(dict(worker=worker, task=task, run_id=run_id, original_exit=int(original_exit), started_at=stamp())))
     commit_started = False
     try:
         enabled = wip_setting(root)
