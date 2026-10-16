@@ -122,6 +122,9 @@ class Harness:
         self.task += 1
         name = 'TASK-'+str(self.task)
         (self.root/'coord/tasks'/ (name+'.md')).write_text('# Task\nNATIVE-TASK-SENTINEL\n## Allowed scope\n- task-output.txt\n## Validate\n$ test -f task-output.txt\n')
+        # Task contents and route settings are frozen before native owner consent.
+        # Each start needs a fresh one-use grant, including failed provider starts.
+        self.call('lead-budget','grant',self.worker,self.worker,name,'run')
         self.process = subprocess.Popen([self.unio,'run',self.worker,name],cwd=self.repo,
             env=dict(self.env,FAKE_MODE=mode,UNIO_TIMEOUT=timeout,**(extra or {})),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         if mode == 'hold':
@@ -218,7 +221,11 @@ def main():
             assert 'sandbox' not in thread['params'] and 'approvalPolicy' not in thread['params']
             # The real shared group retains its lead reservation: a second worker refuses.
             (h.root/'coord/tasks/OTHER.md').write_text('NATIVE-TASK-SENTINEL')
-            h.call('run','legacy','OTHER',code=2)
+            h.call('lead-budget','grant','legacy','legacy','OTHER','run')
+            denied=h.call('run','legacy','OTHER',code=2)
+            assert 'budget refused' in denied.stderr
+            grants=json.loads((h.root/'coord/lead-budget.json').read_text())['grants']
+            assert grants[-1]['state']=='ready', 'capacity refusal consumed owner consent'
             assert len([m for m in h.messages() if 'launch' in m])==1
             h.terminate()
             print('ok installed documented config/account/init/run reaches managed backend in shared codex group with lead reservation',flush=True)
@@ -244,7 +251,11 @@ def main():
             assert Path(doc['socket']).parent.parent==custom_tmp and len(doc['socket'].encode())>108
             assert Path(doc['slot']).parent.name=='codex'
             alternate=h.root/'coord/tasks/OTHER.md';alternate.write_text('NATIVE-TASK-SENTINEL')
-            h.call('run','legacy','OTHER',code=2)
+            h.call('lead-budget','grant','legacy','legacy','OTHER','run')
+            denied=h.call('run','legacy','OTHER',code=2)
+            assert 'budget refused' in denied.stderr
+            grants=json.loads((h.root/'coord/lead-budget.json').read_text())['grants']
+            assert grants[-1]['state']=='ready', 'capacity refusal consumed owner consent'
             assert len([m for m in h.messages() if 'launch' in m])==1
             thread=next(m for m in h.messages() if m.get('method')=='thread/start')
             assert 'sandbox' not in thread['params'] and 'approvalPolicy' not in thread['params']
