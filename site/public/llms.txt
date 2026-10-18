@@ -1,0 +1,22 @@
+# Unio
+
+> Free, open-source tool that brings AI agents from different AI labs into one coordinated team. A lead agent delegates the work, worker agents execute in parallel on isolated branches, and agents from different labs review changes before you accept them.
+
+- Site: https://danielmevit.github.io/unio/
+- Source: https://github.com/danielmevit/unio
+- Releases: https://github.com/danielmevit/unio/releases
+- License: AGPL-3.0-only. Free and open source.
+- Author: Daniel Mevit
+
+## What Unio Does
+* **Multi-Lab Agent Fleet:** Connect coding agents from various AI labs (Claude Code, Codex, Grok, Antigravity, OpenCode, Mistral Vibe, GitHub Copilot) into a single unified workspace.
+* **Lead Agent Delegation:** A designated lead agent decomposes broad project goals into discrete tasks, assigns them to appropriate worker agents, and coordinates dependencies.
+* **Parallel Execution via Worktrees:** Workers execute independent tasks simultaneously in separate git worktrees/branches, eliminating conflicts and race conditions.
+* **Cross-Lab Code Review:** Proposed changes are reviewed by an agent from a different AI lab to catch subtle bugs, security flaws, and regressions before approval.
+* **Strict Verification:** Every task specifies exact file boundaries and test checks that must pass alongside an approved review before being marked done.
+* **Context Preservation & Handoffs:** When rate limits or token windows interrupt an agent, structured handoff documents record progress and allow another model to take over seamlessly.
+* **Human in the Loop:** The human user retains full oversight, approves high-level plans, and controls merges.
+
+## Environments & Platform
+* Platform: Linux and Windows (via WSL2).
+* Interface: Command-line tool with a local browser-based dashboard for real-time task maps, agent status, diffs, and logs.
