@@ -667,6 +667,11 @@ def main():
         exit_code = 124 if state == "timeout" else 2
     finally:
         if record is not None:
+            try:
+                import runpy
+                record["stop_reason"] = runpy.run_path(str(Path(__file__).with_name("adapter-outcome.py")))["classify"]("copilot", record)
+            except Exception:
+                record["stop_reason"] = "unknown"
             record["budget_telemetry"] = run_telemetry(record, native_usage)
             record.update(adapter_exit=exit_code, elapsed_seconds=round(time.monotonic() - started, 3), finished_at=date())
             receipt.write_text(json.dumps(record, indent=2) + "\n")

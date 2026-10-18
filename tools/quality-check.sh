@@ -51,6 +51,7 @@ python3 -B tests/unio-copilot.py
 python3 -B tests/unio-antigravity.py
 python3 -B tests/unio-adapters-install.py
 python3 -B tests/unio-adapter-outcome.py
+python3 -B tests/unio-adapter-budget.py
 python3 -B bridge/tests/progress_test.py
 python3 -B bridge/tests/progress_api_test.py
 python3 -B bridge/tests/worker_files_test.py

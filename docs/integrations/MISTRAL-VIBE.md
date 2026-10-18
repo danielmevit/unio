@@ -64,14 +64,14 @@ experiments, updates, connectors, MCP and subagent calls are disabled. The built
 auto-approve agent receives only bash/read_file/write_file/edit/grep tools. Worktrees
 and these flags provide trusted-host execution, not an operating-system sandbox.
 
-High is explicitly configured. The installed Vibe backend maps medium/high/max
-to wire high; this adapter accepts no effort override and never requests max.
+High is the default; optional `--thinking {low,medium,high}` selects the
+process-local model override. Effective wire effort remains Unknown.
 Do not promise xhigh or server-proven effective effort on this route. The standing
 [effort policy](../development/MODEL-EFFORT.md) permits at most supported xhigh on
 other routes. Configuration/export metadata is not server identity evidence.
 
 Ordinary implementation defaults are 2,000,000 cumulative tokens, $5 estimated
-price, 120 turns and 90 minutes. Substantial work can explicitly select 4,000,000,
+price, 120 turns and 90 minutes. Substantial work can explicitly select up to 16,000,000 cumulative tokens,
 $10, up to 180 turns and 120 minutes. Values must be finite and positive within
 those supported bounds. The owner-selected task scope and funded subscription
 remain the spending authority; these defaults do not authorize additional charges.
@@ -100,7 +100,9 @@ The receipt reports requested/configured model and high effort, actual process
 exit, time, task hash and selected bounds. Effective model/effort and remaining
 subscription allowance remain Unknown. Native schema-1 usage uses input_tokens,
 output_tokens, cached_input_tokens and total_tokens; cost_usd is an estimate.
-Missing usage/cost remain null rather than invented zero. Malformed, duplicate or
+Native missing usage/cost remain null. Additive budget telemetry prefers native
+usage, then partial cumulative owned-stream estimates; see
+[worker observations](../WORKER-OUTCOMES.md) for the estimation caveats. Malformed, duplicate or
 nonfinite export data cannot establish success. A nonzero native result is preserved;
 a missing/invalid export after exit zero makes the adapter fail with exit 2.
 

@@ -543,6 +543,11 @@ def main(argv=None):
                 'claims': ('Local unsigned receipt of one research answer. Exit 0 is not an accepted '
                            'result or review; the effective model and lab are unverified, so this is '
                            'no cross-lab review evidence. Unio verified this adapter offline only.')}
+            try:
+                import runpy
+                record["stop_reason"] = runpy.run_path(str(Path(__file__).with_name("adapter-outcome.py")))["classify"]("perplexity", record)
+            except Exception:
+                record["stop_reason"] = "unknown"
             record['budget_telemetry'] = run_telemetry(record)
             write_receipt(run, record)
             if os.environ.get('UNIO_ADAPTER_OUTCOME'):

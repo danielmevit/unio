@@ -103,7 +103,7 @@ class Progress:
     only and is distinct from an observed provider/tool event.
     """
 
-    def __init__(self, stream=None):
+    def __init__(self, stream=None, prompt_bytes=0):
         self.stream = sys.stdout if stream is None else stream
         self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         self.buffer = ""
@@ -114,6 +114,10 @@ class Progress:
         self.unlabeled = 0
         self.printed = 0
         self.responses = 0
+        self.context_bytes = prompt_bytes
+        self.input_estimate = 0
+        self.output_estimate = 0
+        self.observed_content = False
         self.last_label = None
         self.last_observed_at = None
         self.last_emit = time.monotonic()
@@ -159,6 +163,30 @@ class Progress:
         except (ValueError, RecursionError):
             self.malformed += 1
             return
+        # Only structural stream entries contribute counters; content is never
+        # retained or published. Four UTF-8 bytes/token is a heuristic, not a
+        # tokenizer or a measured lower bound. Hidden context/cache are unknown.
+        if isinstance(value, dict):
+            kind = value.get("type")
+            if kind == "message" and value.get("role") in ("user", "assistant"):
+                content = value.get("content")
+                if isinstance(content, list):
+                    size = sum(len(v["text"].encode("utf-8")) for v in content
+                               if isinstance(v, dict) and v.get("type") == "text"
+                               and isinstance(v.get("text"), str))
+                    if value.get("role") == "user" and self.responses == 0:
+                        self.context_bytes = max(self.context_bytes, size)
+                    elif value.get("role") == "assistant":
+                        self.input_estimate += (self.context_bytes + 3) // 4
+                        self.output_estimate += (size + 3) // 4
+                        self.context_bytes += size
+                        self.observed_content = True
+                    else:
+                        self.context_bytes += size
+            elif kind == "effect":
+                self.context_bytes += len(line.encode("utf-8"))
+            elif kind == "reasoning" and isinstance(value.get("text"), str):
+                self.context_bytes += len(value["text"].encode("utf-8"))
         label = self.label(value)
         if label is None:
             self.unlabeled += 1
@@ -209,6 +237,9 @@ class Progress:
 
 
 def model_environment(label, thinking="high", inherited=None):
+    # Preserve the original positional (label, inherited_environment) API.
+    if isinstance(thinking, dict) and inherited is None:
+        inherited, thinking = thinking, "high"
     wire, lab, inp, cache, out = MODELS[label]
     model = dict(name=wire, alias=label, provider="mistral", thinking=thinking,
                  thinking_levels=[thinking], input_price=inp,
@@ -371,15 +402,30 @@ def run_telemetry(record, progress):
     if isinstance(usage, dict):
         tokens = module.meter(usage.get("total_tokens"), limits.get("max_tokens"), "reported")
     else:
-        tokens = module.meter(None, limits.get("max_tokens"), "unknown")
-        notes.append(module.NOTE_NO_EXPORT)
+        if progress is not None and progress.observed_content:
+            tokens = module.meter(progress.input_estimate + progress.output_estimate,
+                                  limits.get("max_tokens"), "estimated")
+            notes.append("partial stream estimate: 4 UTF-8 bytes/token, cumulative observed context re-sent per assistant turn; excludes hidden system/tools, cache and unobserved calls; not a measured lower bound")
+        else:
+            tokens = module.meter(None, limits.get("max_tokens"), "unknown")
+            notes.append("no usage and no completed assistant stream entries; cumulative tokens cannot be estimated reliably")
     if cost is not None:
         usd = module.meter(cost, limits.get("max_price"), "reported")
     else:
         usd = module.meter(None, limits.get("max_price"), "unknown")
-        if isinstance(usage, dict):
-            notes.append("the native export carried no cost for this run; USD usage is unknown, not zero")
-    if progress is not None:
+        prices = MODELS.get(record.get("requested_model"))
+        if prices and isinstance(usage, dict):
+            inp, out, cached = usage["input_tokens"], usage["output_tokens"], usage["cached_input_tokens"]
+            estimate = ((inp - cached) * prices[2] + cached * prices[3] + out * prices[4]) / 1000000
+            usd = module.meter(estimate, limits.get("max_price"), "estimated")
+            notes.append("USD estimated from reported tokens and configured model prices; not subscription spend or remaining allowance")
+        elif prices and progress is not None and progress.observed_content:
+            estimate = (progress.input_estimate * prices[2] + progress.output_estimate * prices[4]) / 1000000
+            usd = module.meter(estimate, limits.get("max_price"), "estimated")
+            notes.append("partial USD estimate uses stream token estimates and configured uncached model prices; cache and hidden usage unknown")
+        else:
+            notes.append("no usage/prices sufficient for USD estimation; unknown, not zero")
+    if progress is not None and progress.responses:
         turns = module.meter(progress.responses, limits.get("max_turns"), "estimated")
         notes.append(module.NOTE_TURNS_COUNTED)
     else:
@@ -467,7 +513,7 @@ def main():
                 "--output", "streaming"]
         for name in ("bash", "read_file", "write_file", "edit", "grep"):
             argv.extend(["--enabled-tools", name])
-        progress = Progress()
+        progress = Progress(prompt_bytes=len(data))
         with (directory / "native-stdout.log").open("xb") as log:
             code, _ = owned_call(argv, env, args.time_limit + 20, log, progress=progress)
         record["process_exit"] = code
@@ -496,6 +542,11 @@ def main():
         if record is not None:
             if progress is not None:
                 record["progress"] = progress.summary()
+            try:
+                import runpy
+                record["stop_reason"] = runpy.run_path(str(Path(__file__).with_name("adapter-outcome.py")))["classify"]("vibe", record)
+            except Exception:
+                record["stop_reason"] = "unknown"
             record["budget_telemetry"] = run_telemetry(record, progress)
             record.update(adapter_exit=exit_code, elapsed_seconds=round(time.monotonic() - started, 3), finished_at=date())
             receipt.write_text(json.dumps(record, indent=2) + "\n")

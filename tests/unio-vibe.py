@@ -29,7 +29,7 @@ assert get('--output')=='streaming'
 label=os.environ['VIBE_ACTIVE_MODEL'];model=json.loads(os.environ['VIBE_MODELS'])[label]
 wire='zai-glm-5-3' if label=='glm-5-3' else 'mistral-medium-3-5'
 assert model['name']==wire and model['alias']==label and model['provider']=='mistral'
-assert model['thinking']=='high' and model['thinking_levels']==['high']
+assert model['thinking']==os.environ.get('EXPECT_THINKING','high') and model['thinking_levels']==[model['thinking']]
 assert model['input_price']>0 and model['output_price']>0
 assert json.loads(os.environ['VIBE_ALLOWED_MODELS'])==[wire]
 assert json.loads(os.environ['VIBE_COMPACTION_MODEL'])==model
@@ -47,6 +47,10 @@ assert len(content)==int(os.environ['EXPECT_PROMPT_LENGTH'])
 assert content not in ' '.join(a)
 mode=os.environ.get('FAKE_MODE','ok');code=int(os.environ.get('FAKE_EXIT','0'))
 if mode=='missing':raise SystemExit(code)
+if mode=='noexport':
+ for text in ['abcd','abcdefgh']:
+  print(json.dumps({'type':'message','role':'assistant','content':[{'type':'text','text':text}]}))
+ raise SystemExit(code)
 x={'schema_version':1,'vibe_version':'2.26.1','outcome':'finished' if code==0 else 'token_limit','stop_reason':None if code==0 else 'interrupted','exit_code':code,'usage':{'input_tokens':198950,'output_tokens':2336,'cached_input_tokens':0,'total_tokens':201286},'cost_usd':.2888084,'config':{'secret':'NEVER-IN-RECEIPT'},'error':{'message':'NEVER-IN-RECEIPT'}}
 if mode=='nan':x['cost_usd']=float('nan')
 if mode=='bool':x['usage']['input_tokens']=True
@@ -171,6 +175,37 @@ class VibeTests(unittest.TestCase):
         self.assertEqual(p.returncode,0,p.stderr)
         self.assertIsNone(self.receipt()['export']['usage'])
         self.assertIsNone(self.receipt()['export']['estimated_cost_usd'])
+
+    def test_no_export_repeated_context_estimates_and_generic_three(self):
+        p=self.invoke(FAKE_MODE='noexport', FAKE_EXIT='3')
+        self.assertEqual(p.returncode,3,p.stderr)
+        r=self.receipt(); b=r['budget_telemetry']
+        # Prompt 150000 bytes, then 4 and 8 bytes of responses: second
+        # request includes the first response, rather than counting input once.
+        self.assertEqual(b['tokens']['used'],37500+37501+1+2)
+        self.assertEqual(b['tokens']['provenance'],'estimated')
+        self.assertEqual(b['turns']['used'],2)
+        self.assertGreater(b['usd']['used'],0)
+        self.assertEqual(b['usd']['provenance'],'estimated')
+        self.assertEqual(r['process_exit'],3)
+        self.assertEqual(r['stop_reason'],'unknown')
+        self.assertNotIn('turn_limit',json.dumps(r))
+
+    def test_usage_none_stream_fallback_and_reported_precedence(self):
+        p=self.invoke(FAKE_MODE='none',FAKE_STREAM='1')
+        self.assertEqual(p.returncode,0,p.stderr)
+        b=self.receipt()['budget_telemetry']
+        self.assertEqual(b['tokens']['provenance'],'estimated')
+        self.assertGreater(b['tokens']['used'],0)
+        self.assertGreater(b['usd']['used'],0)
+
+    def test_current_twelve_million_bound_thinking_and_legacy_environment_api(self):
+        p=self.invoke('--max-tokens','12000000','--max-turns','180','--thinking','medium',
+                      EXPECT_TOKENS='12000000',EXPECT_THINKING='medium')
+        self.assertEqual(p.returncode,0,p.stderr)
+        self.assertEqual(self.receipt()['requested_thinking'],'medium')
+        env,_,_=worker.model_environment('glm-5-3',{'VIBE_HOME':'owned'})
+        self.assertEqual(env['VIBE_HOME'],'owned')
 
     def test_invalid_bounds_unknown_model_and_unsupported_version_pre_call(self):
         for args in [('--max-price','nan'),('--max-price','inf'),('--max-tokens','0'),

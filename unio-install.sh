@@ -14712,7 +14712,10 @@ def emit(r, record, prompt, adapter_exit, native_exit):
                 or sha(read(prompt, 1048576, False)) != b['prompt_sha256']):
             return
         budget = budget_of(record)
-        outcome = dict(b, label=classify(r, record),
+        label = classify(r, record)
+        if 'budget_telemetry' in record and budget is None:
+            label = 'unknown'
+        outcome = dict(b, label=label,
                        adapter_exit=adapter_exit, native_exit=native_exit, finished_at=date())
         if budget is not None:
             outcome[BUDGET_KEY] = budget
@@ -14746,7 +14749,7 @@ def observe_full(root, worker, task, command, adapters, source_exit=None):
                 or timestamp(o['finished_at']) < timestamp(b['started_at'])):
             return 'unknown', None
         budget = o.get(BUDGET_KEY)
-        if budget is not None:
+        if BUDGET_KEY in o:
             module = budget_module()
             if module is None or module.validate(budget) is None:
                 return 'unknown', None
@@ -14821,6 +14824,7 @@ def main(a):
         label, budget = observe_full(root, worker, task, command, adapters)
         print('Adapter outcome: ' + LABELS[label])
         module = budget_module()
+        print('Stop reason: ' + LABELS[label])
         print('Run budget: ' + (module.summary(budget)
                                 if module is not None and budget is not None else 'Unknown'))
     else:
@@ -14890,7 +14894,7 @@ def _number(value, integral=False):
         return False
 
 
-def meter(used, cap, provenance):
+def meter(used, cap, provenance, integral=False):
     """Build one meter; used None means unknown, never zero."""
     if provenance not in PROVENANCE:
         raise ValueError("provenance")
@@ -14898,16 +14902,22 @@ def meter(used, cap, provenance):
         raise ValueError("missing used value")
     if used is not None and provenance == "unknown":
         raise ValueError("unknown provenance with a value")
-    if not _number(used) or not _number(cap):
+    if not _number(used, integral) or not _number(cap, integral):
         raise ValueError("used or cap")
     return dict(used=used, cap=cap, provenance=provenance)
 
 
 def telemetry(tokens=None, turns=None, usd=None, notes=()):
     """Build the bounded receipt object; absent meters stay unknown."""
-    values = dict(tokens=tokens or meter(None, None, "unknown"),
-                  turns=turns or meter(None, None, "unknown"),
-                  usd=usd or meter(None, None, "unknown"))
+    values = {}
+    for name, item, integral in (("tokens", tokens, True), ("turns", turns, True), ("usd", usd, False)):
+        if item is None:
+            item = meter(None, None, "unknown")
+        else:
+            if not isinstance(item, dict) or set(item) != {"used", "cap", "provenance"}:
+                raise ValueError(name)
+            item = meter(item["used"], item["cap"], item["provenance"], integral)
+        values[name] = item
     clean = []
     for note in notes:
         if not isinstance(note, str) or not note.strip() or len(note) > MAX_NOTE_CHARS:
@@ -14927,11 +14937,14 @@ def validate(value):
     if not set(value) <= {"schema_version", *METERS, "notes"} or not set(value) >= {"schema_version", *METERS}:
         return None
     for name in METERS:
+        item = value[name]
+        if not isinstance(item, dict) or set(item) != {"used", "cap", "provenance"}:
+            return None
         try:
-            item = meter(**value[name]) if isinstance(value[name], dict) else None
+            checked = meter(item["used"], item["cap"], item["provenance"], name != "usd")
         except (ValueError, TypeError):
             return None
-        if item is None or item != value[name]:
+        if checked != item:
             return None
     notes = value.get("notes", [])
     if not isinstance(notes, list) or len(notes) > MAX_NOTES:
@@ -15061,7 +15074,7 @@ class Progress:
     only and is distinct from an observed provider/tool event.
     """
 
-    def __init__(self, stream=None):
+    def __init__(self, stream=None, prompt_bytes=0):
         self.stream = sys.stdout if stream is None else stream
         self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         self.buffer = ""
@@ -15072,6 +15085,10 @@ class Progress:
         self.unlabeled = 0
         self.printed = 0
         self.responses = 0
+        self.context_bytes = prompt_bytes
+        self.input_estimate = 0
+        self.output_estimate = 0
+        self.observed_content = False
         self.last_label = None
         self.last_observed_at = None
         self.last_emit = time.monotonic()
@@ -15117,6 +15134,30 @@ class Progress:
         except (ValueError, RecursionError):
             self.malformed += 1
             return
+        # Only structural stream entries contribute counters; content is never
+        # retained or published. Four UTF-8 bytes/token is a heuristic, not a
+        # tokenizer or a measured lower bound. Hidden context/cache are unknown.
+        if isinstance(value, dict):
+            kind = value.get("type")
+            if kind == "message" and value.get("role") in ("user", "assistant"):
+                content = value.get("content")
+                if isinstance(content, list):
+                    size = sum(len(v["text"].encode("utf-8")) for v in content
+                               if isinstance(v, dict) and v.get("type") == "text"
+                               and isinstance(v.get("text"), str))
+                    if value.get("role") == "user" and self.responses == 0:
+                        self.context_bytes = max(self.context_bytes, size)
+                    elif value.get("role") == "assistant":
+                        self.input_estimate += (self.context_bytes + 3) // 4
+                        self.output_estimate += (size + 3) // 4
+                        self.context_bytes += size
+                        self.observed_content = True
+                    else:
+                        self.context_bytes += size
+            elif kind == "effect":
+                self.context_bytes += len(line.encode("utf-8"))
+            elif kind == "reasoning" and isinstance(value.get("text"), str):
+                self.context_bytes += len(value["text"].encode("utf-8"))
         label = self.label(value)
         if label is None:
             self.unlabeled += 1
@@ -15167,6 +15208,9 @@ class Progress:
 
 
 def model_environment(label, thinking="high", inherited=None):
+    # Preserve the original positional (label, inherited_environment) API.
+    if isinstance(thinking, dict) and inherited is None:
+        inherited, thinking = thinking, "high"
     wire, lab, inp, cache, out = MODELS[label]
     model = dict(name=wire, alias=label, provider="mistral", thinking=thinking,
                  thinking_levels=[thinking], input_price=inp,
@@ -15329,15 +15373,30 @@ def run_telemetry(record, progress):
     if isinstance(usage, dict):
         tokens = module.meter(usage.get("total_tokens"), limits.get("max_tokens"), "reported")
     else:
-        tokens = module.meter(None, limits.get("max_tokens"), "unknown")
-        notes.append(module.NOTE_NO_EXPORT)
+        if progress is not None and progress.observed_content:
+            tokens = module.meter(progress.input_estimate + progress.output_estimate,
+                                  limits.get("max_tokens"), "estimated")
+            notes.append("partial stream estimate: 4 UTF-8 bytes/token, cumulative observed context re-sent per assistant turn; excludes hidden system/tools, cache and unobserved calls; not a measured lower bound")
+        else:
+            tokens = module.meter(None, limits.get("max_tokens"), "unknown")
+            notes.append("no usage and no completed assistant stream entries; cumulative tokens cannot be estimated reliably")
     if cost is not None:
         usd = module.meter(cost, limits.get("max_price"), "reported")
     else:
         usd = module.meter(None, limits.get("max_price"), "unknown")
-        if isinstance(usage, dict):
-            notes.append("the native export carried no cost for this run; USD usage is unknown, not zero")
-    if progress is not None:
+        prices = MODELS.get(record.get("requested_model"))
+        if prices and isinstance(usage, dict):
+            inp, out, cached = usage["input_tokens"], usage["output_tokens"], usage["cached_input_tokens"]
+            estimate = ((inp - cached) * prices[2] + cached * prices[3] + out * prices[4]) / 1000000
+            usd = module.meter(estimate, limits.get("max_price"), "estimated")
+            notes.append("USD estimated from reported tokens and configured model prices; not subscription spend or remaining allowance")
+        elif prices and progress is not None and progress.observed_content:
+            estimate = (progress.input_estimate * prices[2] + progress.output_estimate * prices[4]) / 1000000
+            usd = module.meter(estimate, limits.get("max_price"), "estimated")
+            notes.append("partial USD estimate uses stream token estimates and configured uncached model prices; cache and hidden usage unknown")
+        else:
+            notes.append("no usage/prices sufficient for USD estimation; unknown, not zero")
+    if progress is not None and progress.responses:
         turns = module.meter(progress.responses, limits.get("max_turns"), "estimated")
         notes.append(module.NOTE_TURNS_COUNTED)
     else:
@@ -15425,7 +15484,7 @@ def main():
                 "--output", "streaming"]
         for name in ("bash", "read_file", "write_file", "edit", "grep"):
             argv.extend(["--enabled-tools", name])
-        progress = Progress()
+        progress = Progress(prompt_bytes=len(data))
         with (directory / "native-stdout.log").open("xb") as log:
             code, _ = owned_call(argv, env, args.time_limit + 20, log, progress=progress)
         record["process_exit"] = code
@@ -15454,6 +15513,11 @@ def main():
         if record is not None:
             if progress is not None:
                 record["progress"] = progress.summary()
+            try:
+                import runpy
+                record["stop_reason"] = runpy.run_path(str(Path(__file__).with_name("adapter-outcome.py")))["classify"]("vibe", record)
+            except Exception:
+                record["stop_reason"] = "unknown"
             record["budget_telemetry"] = run_telemetry(record, progress)
             record.update(adapter_exit=exit_code, elapsed_seconds=round(time.monotonic() - started, 3), finished_at=date())
             receipt.write_text(json.dumps(record, indent=2) + "\n")
@@ -15931,7 +15995,7 @@ def run_telemetry(record):
         turns=module.meter(1 if asked else 0, None, 'reported'),
         usd=module.meter(None, None, 'unknown'),
         notes=('turns count the single ask this adapter makes; the pinned library '
-               'reports no token or USD usage, so those meters are unknown, not zero'))
+               'reports no token or USD usage, so those meters are unknown, not zero',))
 
 
 def contract_validate(argv):
@@ -16021,6 +16085,11 @@ def main(argv=None):
                 'claims': ('Local unsigned receipt of one research answer. Exit 0 is not an accepted '
                            'result or review; the effective model and lab are unverified, so this is '
                            'no cross-lab review evidence. Unio verified this adapter offline only.')}
+            try:
+                import runpy
+                record["stop_reason"] = runpy.run_path(str(Path(__file__).with_name("adapter-outcome.py")))["classify"]("perplexity", record)
+            except Exception:
+                record["stop_reason"] = "unknown"
             record['budget_telemetry'] = run_telemetry(record)
             write_receipt(run, record)
             if os.environ.get('UNIO_ADAPTER_OUTCOME'):
@@ -16725,6 +16794,11 @@ def main():
         exit_code = 124 if state == "timeout" else 2
     finally:
         if record is not None:
+            try:
+                import runpy
+                record["stop_reason"] = runpy.run_path(str(Path(__file__).with_name("adapter-outcome.py")))["classify"]("copilot", record)
+            except Exception:
+                record["stop_reason"] = "unknown"
             record["budget_telemetry"] = run_telemetry(record, native_usage)
             record.update(adapter_exit=exit_code, elapsed_seconds=round(time.monotonic() - started, 3), finished_at=date())
             receipt.write_text(json.dumps(record, indent=2) + "\n")
@@ -17193,6 +17267,11 @@ def main():
         exit_code = 124 if state == "timeout" else 2
     finally:
         if record is not None:
+            try:
+                import runpy
+                record["stop_reason"] = runpy.run_path(str(Path(__file__).with_name("adapter-outcome.py")))["classify"]("antigravity", record)
+            except Exception:
+                record["stop_reason"] = "unknown"
             record["budget_telemetry"] = run_telemetry()
             record.update(adapter_exit=exit_code, elapsed_seconds=round(time.monotonic() - started, 3), finished_at=date())
             write_receipt(receipt, record)
@@ -17453,6 +17532,28 @@ nor a reset time/five-hour window. Heartbeats indicate process liveness only.
 Raw private adapter receipts and stdout/stderr remain separate and unchanged;
 public outcome labels contain no raw errors, account IDs or tokens. Labels
 never override the actual native Source or adapter exit, even when they differ.
+
+Receipts add `budget_telemetry`; bound outcomes add optional `budget` with
+schema_version 1 and tokens/turns/usd meters (`used`, `cap`, `provenance`).
+Provenance is reported, estimated or unknown; unknown usage is null, never zero.
+Older strict schema1 outcomes remain readable. Present malformed additive data
+makes the whole observation Unknown. Native report summaries and verdicts show
+budget meters and an explicit typed stop reason or Unknown. Generic Source 3
+alone establishes no particular cap. These observations never control admission.
+
+Vibe prefers its validated native export. Without usage, its bounded owned
+NDJSON stream counts observed assistant turns and estimates cumulative input
+by re-sending the observed context for each turn, plus observed output, using
+four UTF-8 bytes per token. These partial heuristic estimates omit hidden
+system/tool context, unobserved calls and compaction; they are not measured
+lower bounds. USD estimates use configured model prices, with caching unknown
+for stream estimates. Export usage with missing cost uses the configured input,
+cached-input and output prices. No completed stream entries means Unknown.
+Copilot premium requests are not tokens or USD; its single protocol completion
+is an estimated turn. Perplexity counts its one transport ask, but its library
+exposes no cumulative model context or prices. Antigravity exposes neither
+complete cumulative requests nor model prices. Those unsupported meters stay
+null with a precise reason; no subscription allowance is inferred.
 UNIO_WORKER_OUTCOMES_MD
 fi
 if [ ! -e "$TPL_DIR/REMOTE-POLICY.md" ] && [ ! -L "$TPL_DIR/REMOTE-POLICY.md" ]; then
@@ -28505,6 +28606,7 @@ cmd_run() {
     git -C "$wt" diff --stat "$base...HEAD" 2>/dev/null || echo "(none)"
     echo
     echo "### verdict"
+    echo "$adapter_outcome"
     echo "commits=$commits files=$files insertions=$ins deletions=$dels uncommitted=$unc"
     if [ "$rc" -eq 0 ] && [ "$commits" -eq 0 ] && [ "$unc" -eq 0 ]; then
       echo "!! exit=0 with an empty diff — no-op or overclaim; treat as FAILED (I10/I12)"

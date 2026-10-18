@@ -49,3 +49,25 @@ nor a reset time/five-hour window. Heartbeats indicate process liveness only.
 Raw private adapter receipts and stdout/stderr remain separate and unchanged;
 public outcome labels contain no raw errors, account IDs or tokens. Labels
 never override the actual native Source or adapter exit, even when they differ.
+
+Receipts add `budget_telemetry`; bound outcomes add optional `budget` with
+schema_version 1 and tokens/turns/usd meters (`used`, `cap`, `provenance`).
+Provenance is reported, estimated or unknown; unknown usage is null, never zero.
+Older strict schema1 outcomes remain readable. Present malformed additive data
+makes the whole observation Unknown. Native report summaries and verdicts show
+budget meters and an explicit typed stop reason or Unknown. Generic Source 3
+alone establishes no particular cap. These observations never control admission.
+
+Vibe prefers its validated native export. Without usage, its bounded owned
+NDJSON stream counts observed assistant turns and estimates cumulative input
+by re-sending the observed context for each turn, plus observed output, using
+four UTF-8 bytes per token. These partial heuristic estimates omit hidden
+system/tool context, unobserved calls and compaction; they are not measured
+lower bounds. USD estimates use configured model prices, with caching unknown
+for stream estimates. Export usage with missing cost uses the configured input,
+cached-input and output prices. No completed stream entries means Unknown.
+Copilot premium requests are not tokens or USD; its single protocol completion
+is an estimated turn. Perplexity counts its one transport ask, but its library
+exposes no cumulative model context or prices. Antigravity exposes neither
+complete cumulative requests nor model prices. Those unsupported meters stay
+null with a precise reason; no subscription allowance is inferred.

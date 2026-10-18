@@ -255,7 +255,10 @@ def emit(r, record, prompt, adapter_exit, native_exit):
                 or sha(read(prompt, 1048576, False)) != b['prompt_sha256']):
             return
         budget = budget_of(record)
-        outcome = dict(b, label=classify(r, record),
+        label = classify(r, record)
+        if 'budget_telemetry' in record and budget is None:
+            label = 'unknown'
+        outcome = dict(b, label=label,
                        adapter_exit=adapter_exit, native_exit=native_exit, finished_at=date())
         if budget is not None:
             outcome[BUDGET_KEY] = budget
@@ -289,7 +292,7 @@ def observe_full(root, worker, task, command, adapters, source_exit=None):
                 or timestamp(o['finished_at']) < timestamp(b['started_at'])):
             return 'unknown', None
         budget = o.get(BUDGET_KEY)
-        if budget is not None:
+        if BUDGET_KEY in o:
             module = budget_module()
             if module is None or module.validate(budget) is None:
                 return 'unknown', None
@@ -364,6 +367,7 @@ def main(a):
         label, budget = observe_full(root, worker, task, command, adapters)
         print('Adapter outcome: ' + LABELS[label])
         module = budget_module()
+        print('Stop reason: ' + LABELS[label])
         print('Run budget: ' + (module.summary(budget)
                                 if module is not None and budget is not None else 'Unknown'))
     else:

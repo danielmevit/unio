@@ -65,6 +65,22 @@ class Contract(unittest.TestCase):
             self.assertEqual(o.classify(route, {'outcome':'output_limit'}), 'output_cap')
             self.assertEqual(o.classify(route, {'outcome':'local_failure', 'error':'auth quota'}), 'unknown')
 
+    def test_additive_budget_strict_and_legacy(self):
+        self.assertEqual(self.observe(),'token_cap')  # Original schema1.
+        good=json.loads(self.good)
+        budget=o.budget_module()
+        good['budget']=budget.telemetry(tokens=budget.meter(123,12000000,'estimated'))
+        (self.dest/'outcome.json').write_text(json.dumps(good))
+        self.assertEqual(self.observe(),'token_cap')
+        for bad in (None,{}, {'schema_version':True}):
+            good['budget']=bad
+            (self.dest/'outcome.json').write_text(json.dumps(good))
+            self.assertEqual(self.observe(),'unknown')
+        good['budget']=budget.telemetry()
+        good['budget']['tokens']['used']=True
+        (self.dest/'outcome.json').write_text(json.dumps(good))
+        self.assertEqual(self.observe(),'unknown')
+
     def test_binding_conflicts_and_exact_types(self):
         for key, value in [('task', 'other'), ('worker', 'other'), ('run', 'b'*32),
                            ('task_sha256', 'b'*64), ('prompt_sha256', 'b'*64),
@@ -213,7 +229,8 @@ class Installed(unittest.TestCase):
                 self.assertIn('Adapter outcome: '+label, cp.stdout)
                 # Report's native outcome line is before untrusted log tail.
                 self.assertIn('exit='+str(rc), report)
-                self.assertIn('\nAdapter outcome: '+label+'\npolicy group=', report)
+                self.assertIn('\nAdapter outcome: '+label+'\nStop reason: '+label+'\nRun budget:', report)
+                self.assertIn('### verdict\nAdapter outcome: '+label+'\nStop reason: '+label,report)
             status=unio('status').stdout
             self.assertNotIn('SECRET', status)
             for label in ('Configured token cap','Infrastructure failure','Provider terminal error','Unknown'):
