@@ -1,3 +1,13 @@
+<!-- operator-legibility-checkpoint 2026-10-19T01:03:50+02:00 -->
+Current priority: the 2026-10-19 operator legibility round. See
+`docs/development/OPERATOR-LEGIBILITY-2026-10-19.md`. Worktree/branch
+`agent/operator-legibility-20261019` starts from main 9d2234c. Three scoped
+native workers own items1–2,3–4,7; no product changes accepted or pushed yet.
+Private receipts are in the enclosing workspace's
+`tmp/unio-next/operator-legibility-20261019/`. Preserve the earlier managed-session
+candidate at04c51ee; its reviewers have not been invoked. Follow the newest
+coordination log before resuming old instructions below.
+
 # Lead handoff — Unio 0.5.20, 2026-10-16
 
 ## Latest release checkpoint — 2026-10-17T01:16:04+02:00
