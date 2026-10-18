@@ -20624,6 +20624,124 @@ def safe(root, *parts):
         fail('symlink in project root')
     return p
 
+# Disk admission uses directory descriptors so a replaced/symlink component
+# cannot redirect the temporary write. No existing contents or modes change.
+def storage_directory(path, create=False):
+    path = os.path.abspath(path)
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for component in path.split('/')[1:]:
+            if not component:
+                continue
+            if create:
+                try:
+                    os.mkdir(component, 0o700, dir_fd=fd)
+                except FileExistsError:
+                    pass
+            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                            dir_fd=fd)
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def storage_file(directory, name):
+    try:
+        st = os.stat(name, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+        fail('unsafe storage file (regular, singly linked file required): ' + name)
+    # Opening without truncation tests an existing receipt/lock's permissions;
+    # never write probe bytes into historical records.
+    fd = os.open(name, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK,
+                 dir_fd=directory)
+    try:
+        actual = os.fstat(fd)
+        if (actual.st_dev, actual.st_ino) != (st.st_dev, st.st_ino):
+            fail('storage file changed during preflight: ' + name)
+    finally:
+        os.close(fd)
+
+
+def storage_probe(path, names=()):
+    directory = storage_directory(path, create=True)
+    name = '.unio-disk-' + uuid.uuid4().hex
+    created = False
+    try:
+        for existing in names:
+            storage_file(directory, existing)
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                     0o600, dir_fd=directory)
+        created = True
+        try:
+            payload = b'unio storage preflight\n'
+            if os.write(fd, payload) != len(payload):
+                raise OSError(5, 'short storage probe write', path)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        # dir_fd errors often contain only a basename (or no filename).
+        raise OSError(exc.errno, exc.strerror, path) from exc
+    finally:
+        try:
+            if created:
+                os.unlink(name, dir_fd=directory)
+        finally:
+            os.close(directory)
+
+
+def disk_preflight(root, worker, task, group, shared, background):
+    ident(worker); ident(task); ident(group)
+    paths = [
+        (('reports',), [task + ext for ext in ('.md', '.log', '.prompt.md', '.policy.json')] + ['ledger.jsonl']),
+        (('results', worker), [task + '.json']),
+        (('retries', task), ['lock', 'state.json']),
+        (('.locks',), [worker + '.lock', 'work-policy.lock']),
+        (('.locks', 'work-policy-slots', group), []),
+        (('reports', '.owners', worker), [task + '.own']),
+    ]
+    if background == '1':
+        paths.extend([(('.locks', '.owners'), [task + '.lock']),
+                      (('reports',), [task + '.own', task + '.pid'])])
+    for parts, names in paths:
+        path = safe(root, 'coord', *parts)
+        try:
+            storage_probe(path, names)
+        except (OSError, ValueError) as exc:
+            raise ValueError('storage/disk/permissions path ' + path + ': ' + str(exc)) from exc
+    # Consent records are atomic writes in coord itself, when applicable.
+    if shared == '1':
+        storage_probe(safe(root, 'coord'), ['lead-budget.json'])
+
+
+def storage_report(root, worker, task, reason):
+    ident(worker); ident(task)
+    directory = storage_directory(safe(root, 'coord', 'reports'))
+    name = task + '.md'
+    try:
+        storage_file(directory, name)
+        fd = os.open(name, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     0o600, dir_fd=directory)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode) or os.fstat(fd).st_nlink != 1:
+                fail('unsafe storage report')
+            body = ('\n## storage-refused ' + stamp() + ' — worker=' + worker + ' task=' + task
+                    + '\n' + reason[:4096] + '\nNo provider was started. Restore writable storage '
+                    'at the named path (disk space, mount health or permissions), then run again.\n').encode()
+            if os.write(fd, body) != len(body):
+                raise OSError(5, 'short storage report write')
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(directory)
+
+
 def regular(path):
     # NONBLOCK and fstat also close the file-type race before a FIFO read.
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -22168,6 +22286,8 @@ work before review. Only the owner decides acceptance and integration.
 try:
     cmd,*a=sys.argv[1:]
     if cmd=='preflight': pass
+    elif cmd=='disk-preflight': disk_preflight(*a)
+    elif cmd=='storage-report': storage_report(*a)
     elif cmd=='snapshot': print(json.dumps(snapshot(*a),sort_keys=True,separators=(',',':')))
     elif cmd=='dispatch-sha':
         root, worker, task = a
@@ -22197,7 +22317,10 @@ try:
         for part in ('.locks','reports','results','handoffs'): safe(a[0],'coord',part)
         safe(a[0],'coord','.locks',a[1]+'.lock')
     else: fail('unknown quality command')
-except (ValueError,OSError,KeyError,TypeError) as exc:
+except OSError as exc:
+    print('UNIO_STORAGE_ERROR storage/disk/permissions: '+str(exc),file=sys.stderr)
+    sys.exit(3)
+except (ValueError,KeyError,TypeError) as exc:
     print('unio quality: '+str(exc),file=sys.stderr)
     sys.exit(2)
 QUALITY_PY
@@ -22343,7 +22466,7 @@ def read_state_nolock(root):
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
-        fail('refusing to read policy state (symlink or unreadable, left unchanged): ' + path)
+        raise
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
@@ -22402,7 +22525,7 @@ def open_policy_lock(root):
     try:
         fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o644)
     except OSError:
-        fail('refusing unsafe policy lock path (left unchanged): ' + path)
+        raise
     st = os.fstat(fd)
     if not stat.S_ISREG(st.st_mode):
         os.close(fd)
@@ -22485,8 +22608,10 @@ def lead_group_of(doc):
 def budget_read_file(path, bound, private=False):
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    except OSError:
+    except FileNotFoundError:
         fail('unsafe or missing lead-budget input (left unchanged): ' + path)
+    except OSError:
+        raise
     try:
         st = os.fstat(fd)
         if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
@@ -22598,7 +22723,7 @@ def read_slot_meta(path):
     except FileNotFoundError:
         return None
     except OSError:
-        fail('refusing unreadable slot: ' + path)
+        raise
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
@@ -22609,7 +22734,7 @@ def read_slot_meta(path):
             fail('refusing unsafe slot (oversized): ' + path)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
+        except BlockingIOError:
             return {'locked': True}
 
         chunks = []
@@ -22657,7 +22782,7 @@ def count_active(root, group):
     try:
         names = os.listdir(directory)
     except OSError:
-        return 0
+        raise
     for name in names:
         if not name.startswith(WPSLOT_PREFIX) or not name.endswith('.json'):
             continue
@@ -22941,6 +23066,13 @@ def main(argv):
             else: fail('invalid lead-budget command or arguments')
         finally:
             os.close(lock)
+    elif cmd == '_storage_group':
+        if len(args) != 1:
+            fail('invalid storage group query')
+        check_label(args[0], 'agent')
+        doc = read_state_nolock(root)
+        group = group_of(doc, args[0])
+        sys.stdout.write(group + '\n' + ('1' if lead_group_of(doc) == group else '0') + '\n')
     elif cmd == '_admit_check':
         if len(args) != 4:
             fail('usage: policy _admit_check <agent> <worker> <task> <kind>')
@@ -23310,7 +23442,11 @@ def main(argv):
     else:
         fail('unknown policy command: ' + cmd)
 
-main(sys.argv)
+try:
+    main(sys.argv)
+except OSError as exc:
+    print('UNIO_STORAGE_ERROR storage/disk/permissions: ' + str(exc), file=sys.stderr)
+    sys.exit(3)
 POLICY_PY
 }
 
@@ -26750,8 +26886,20 @@ host_warning() {
 # the control descriptors or the worker lock. An unlocked slot file is a dead
 # holder and is swept on the next admission. Machine verification never counts
 # as a workflow; internal helpers on one assignment are not extra assignments.
+storage_refuse_report() { # stderr is authoritative if the report cannot be saved
+  local root="$1" worker="$2" task="$3" reason="$4"
+  printf 'unio: storage refused (%s/%s): %s\n' "$worker" "$task" "$reason" >&2
+  echo '  No provider was started. Restore writable storage at the named path: check disk space, mount health and permissions; then run again.' >&2
+  quality storage-report "$root" "$worker" "$task" "$reason" 2>/dev/null || true
+}
+
 policy_refuse_report() { # $1=root $2=worker $3=task $4=kind $5=agent $6=reason
   local root="$1" worker="$2" task="$3" kind="$4" agent="$5" reason="$6"
+  case "$reason" in
+    UNIO_STORAGE_ERROR*)
+      storage_refuse_report "$root" "$worker" "$task" "$reason"
+      return 0;;
+  esac
   local report="$root/coord/reports/$task.md"
   mkdir -p "$root/coord/reports"
   {
@@ -27034,11 +27182,11 @@ policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   local ipc_dir=""
   ipc_dir=$(mktemp -d -- "$root/coord/.locks/.ipc-XXXXXXXX") || {
     policy_refuse_report "$root" "$worker" "$task" "$kind" "$agent" \
-      "unio: cannot create a private admission directory"
+      "UNIO_STORAGE_ERROR cannot create private admission directory: $root/coord/.locks (disk/mount/permissions)"
     return 2
   }
   POLICY_IPC="$ipc_dir"
-  chmod 0700 -- "$ipc_dir" || { policy_fail_admission "$root" "$worker" "$task" "$kind" "$agent" "unio: cannot protect the admission directory"; return 2; }
+  chmod 0700 -- "$ipc_dir" || { policy_fail_admission "$root" "$worker" "$task" "$kind" "$agent" "UNIO_STORAGE_ERROR cannot protect admission directory: $ipc_dir (permissions/mount)"; return 2; }
   if ! policy_dir_private "$ipc_dir"; then
     policy_fail_admission "$root" "$worker" "$task" "$kind" "$agent" \
       "unio: refusing an admission directory that is not private (mode 0700)"
@@ -27047,7 +27195,7 @@ policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   local in_fifo="$ipc_dir/in" err="$ipc_dir/err"
   ( umask 077; mkfifo -- "$in_fifo" && : >"$err" ) || {
     policy_fail_admission "$root" "$worker" "$task" "$kind" "$agent" \
-      "unio: cannot create private admission endpoints"
+      "UNIO_STORAGE_ERROR cannot create admission endpoints: $ipc_dir (disk/mount/permissions)"
     return 2
   }
   if [ -L "$in_fifo" ] || [ ! -p "$in_fifo" ] || [ -L "$err" ] || [ ! -f "$err" ]; then
@@ -27058,7 +27206,7 @@ policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   # One duplex open. Later reads use the coproc pipe, never a second FIFO open.
   exec {POLICY_IN}<>"$in_fifo" || {
     policy_fail_admission "$root" "$worker" "$task" "$kind" "$agent" \
-      "unio: cannot open the admission release endpoint"
+      "UNIO_STORAGE_ERROR cannot open admission release endpoint: $in_fifo (disk/mount/permissions)"
     return 2
   }
   local had_monitor=0 deadline=0
@@ -27656,6 +27804,18 @@ cmd_run() {
   conf=$(conf_for_root "$root")
   cmdline=$(agent_cmd "$agent" "$conf") || die "no agents.conf entry for '$agent' in $conf"
   base=$(get_base "$root")
+  local storage_group storage_error storage_info storage_shared storage_background="$bg"
+  [ "${UNIO_BG:-0}" != 1 ] || storage_background=1
+  if ! storage_info=$(policy "$root" _storage_group "$agent" 2>&1); then
+    policy_refuse_report "$root" "$worker" "$task" run "$agent" "$storage_info"
+    return 2
+  fi
+  storage_group="${storage_info%%$'\n'*}"
+  storage_shared="${storage_info#*$'\n'}"
+  if ! storage_error=$(quality disk-preflight "$root" "$worker" "$task" "$storage_group" "$storage_shared" "$storage_background" 2>&1); then
+    storage_refuse_report "$root" "$worker" "$task" "$storage_error"
+    return 2
+  fi
   quality paths "$root" "$worker" "$task" || return $?
   host_warning || return $?
 
@@ -27733,9 +27893,14 @@ cmd_run() {
   # before any structured start is recorded or any provider command runs.
   POLICY_SLOT=""; POLICY_EFFECTIVE=""; POLICY_GROUP=""
   policy_admit_hold "$root" "$agent" "$worker" "$task" run "$tf" || return 2
-  local start_rc=0
-  quality update "$root" "$worker" "$task" start "$revision_before" || start_rc=$?
+  local start_rc=0 start_error=""
+  start_error=$(quality update "$root" "$worker" "$task" start "$revision_before" 2>&1) || start_rc=$?
   if [ "$start_rc" -ne 0 ]; then
+    if [ "$start_rc" = 3 ]; then
+      storage_refuse_report "$root" "$worker" "$task" "$start_error"
+    else
+      printf '%s\n' "$start_error" >&2
+    fi
     policy_release_slot "$root" || true
     return "$start_rc"
   fi

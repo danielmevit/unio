@@ -424,7 +424,9 @@ with tempfile.TemporaryDirectory(prefix='work-policy-guard-') as directory:
         out_unsafe = unio('run', 'mock3', 'task3')
         check('unsafe admission path rejection',
               out_unsafe.returncode == 2 and
-              'unsafe control path' in out_unsafe.stderr and
+              'storage refused' in out_unsafe.stderr and
+              'symlink refused' in out_unsafe.stderr and
+              'budget refused' not in out_unsafe.stderr and
               unsafe_dir.name in out_unsafe.stderr and
               unsafe_dir.is_symlink() and
               out_unsafe.stdout == '' and
