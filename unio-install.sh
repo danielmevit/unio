@@ -18065,9 +18065,17 @@ import uuid
 LEVELS = ('low', 'medium', 'high', 'xhigh')
 BOUND = 16384
 MAX_STEER_TEXT = 8192
+WIRE_BOUND = 65536
+ARCHIVE_BOUND = 16 * 1024 * 1024
+RECORD_BOUND = 65536
+PAGE_BOUND = 1024 * 1024
 LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
 
 class Refusal(Exception):
+    pass
+
+
+class RPCRejected(Refusal):
     pass
 
 
@@ -18111,39 +18119,43 @@ def read_session_output(path, after=0, limit=100):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         st = os.fstat(fd)
-        if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or (st.st_mode & 0o077):
+        if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
+                or st.st_uid != os.getuid() or st.st_mode & 0o077):
             raise Refusal('unsafe output file')
-        with os.fdopen(fd, 'r', encoding='utf-8') as f:
+        records, last, size, page = [], 0, 0, 0
+        gap, truncated = False, st.st_size > ARCHIVE_BOUND
+        with os.fdopen(fd, 'rb') as stream:
             fd = None
-            records = []
-            last_cursor = 0
-            first_cursor = None
-            total_after = 0
-            for line in f:
-                line = line.strip()
+            while size < ARCHIVE_BOUND:
+                line = stream.readline(min(RECORD_BOUND + 1, ARCHIVE_BOUND - size))
                 if not line:
-                    continue
+                    break
+                size += len(line)
+                # Stop at the first unknown byte range. Never skip corruption.
+                if len(line) > RECORD_BOUND or not line.endswith(b'\n'):
+                    gap = truncated = True
+                    break
                 try:
                     rec = json.loads(line)
-                except ValueError:
-                    continue
-                cur = rec.get('cursor', 0)
-                if first_cursor is None and cur > 0:
-                    first_cursor = cur
-                if cur > last_cursor:
-                    last_cursor = cur
+                    cur = rec.get('cursor') if isinstance(rec, dict) else None
+                    if (type(cur) is not int or cur != last + 1
+                            or rec.get('kind') not in ('agent_message', 'command_output', 'lifecycle', 'steer', 'archive_limit')
+                            or not isinstance(rec.get('data'), dict)):
+                        raise ValueError('unsupported or unordered record')
+                except (ValueError, UnicodeError):
+                    gap = truncated = True
+                    break
+                last = cur
+                if rec['kind'] == 'archive_limit':
+                    gap = truncated = True
                 if cur > after:
-                    total_after += 1
-                    if len(records) < limit:
+                    if len(records) < limit and page + len(line) <= PAGE_BOUND:
                         records.append(rec)
-            gap = False
-            if after > last_cursor and last_cursor > 0:
-                gap = True
-            elif first_cursor is not None and after > 0 and after < (first_cursor - 1):
-                gap = True
-            truncated = total_after > len(records)
-            next_cursor = records[-1]['cursor'] if records else after
-            return records, next_cursor, last_cursor, truncated, gap
+                        page += len(line)
+                    else:
+                        truncated = True
+        gap |= after > last
+        return records, records[-1]['cursor'] if records else after, last, truncated, gap
     finally:
         if fd is not None:
             os.close(fd)
@@ -18217,6 +18229,8 @@ class Server:
         self.output_fd = None
         self.output_cursor = 0
         self.steer_history = {}
+        self.output_bytes = 0
+        self.archive_limited = False
 
     def stop(self, number, frame):
         # Native supervision and timeout can both forward cancellation. A
@@ -18272,15 +18286,28 @@ class Server:
     def record_output(self, kind, data):
         if self.output_fd is None:
             return
-        self.output_cursor += 1
-        rec = {
-            'cursor': self.output_cursor,
-            'kind': kind,
-            'data': data,
-            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-        }
-        os.write(self.output_fd, (json.dumps(rec) + '\n').encode('utf-8'))
-        self.write_meta()
+        if self.archive_limited:
+            return
+        rec = {'cursor': self.output_cursor + 1, 'kind': kind, 'data': data,
+               'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+        line = (json.dumps(rec, ensure_ascii=False) + '\n').encode('utf-8')
+        if len(line) > RECORD_BOUND or self.output_bytes + len(line) > ARCHIVE_BOUND - 1024:
+            self.archive_limited = True
+            rec['kind'], rec['data'] = 'archive_limit', {'history': 'truncated; subsequent output Unknown'}
+            line = (json.dumps(rec) + '\n').encode()
+        # A recorder failure must not change the provider's observed outcome.
+        try:
+            view = memoryview(line)
+            while view:
+                written = os.write(self.output_fd, view)
+                if not written:
+                    raise OSError('short archive write')
+                view = view[written:]
+            self.output_cursor += 1
+            self.output_bytes += len(line)
+            self.write_meta()
+        except OSError:
+            self.archive_limited = True
 
     def event(self, msg):
         method, p = msg.get('method'), msg.get('params', {})
@@ -18315,7 +18342,8 @@ class Server:
                 continue
             data = os.read(self.child.stdout.fileno(), 65536)
             if not data:
-                code = self.child.wait()
+                info = os.waitid(os.P_PID, self.child.pid, os.WEXITED | os.WNOWAIT)
+                code = info.si_status if info.si_code == os.CLD_EXITED else -info.si_status
                 self.done = code if code > 0 else (128-code if code < 0 else 1)
                 raise Refusal('provider exited')
             self.buffer += data
@@ -18338,7 +18366,7 @@ class Server:
             msg = self.message(deadline)
             if msg.get('id') == request_id and 'method' not in msg:
                 if 'error' in msg:
-                    raise Refusal('provider rejected RPC')
+                    raise RPCRejected('provider rejected RPC')
                 return msg.get('result', {})
             self.event(msg)
 
@@ -18358,8 +18386,8 @@ class Server:
             try:
                 data = b''
                 while b'\n' not in data:
-                    chunk = conn.recv(BOUND + 1 - len(data))
-                    if not chunk or len(data) + len(chunk) > BOUND:
+                    chunk = conn.recv(WIRE_BOUND + 1 - len(data))
+                    if not chunk or len(data) + len(chunk) > WIRE_BOUND:
                         raise Refusal('invalid request bounds')
                     data += chunk
                 if data.count(b'\n') != 1 or not data.endswith(b'\n'):
@@ -18387,32 +18415,40 @@ class Server:
                         prev = self.steer_history[steer_req_id]
                         if prev['sha256'] != text_sha:
                             raise Refusal('changed content for request id')
-                        if prev['status'] == 'accepted':
-                            result = prev['result']
-                        else:
-                            raise Refusal('previous request failed or uncertain; no replay')
+                        result = prev['result']
                     else:
                         if self.turn is None or self.done is not None:
                             raise Refusal('turn already finished')
-                        self.steer_history[steer_req_id] = {'sha256': text_sha, 'status': 'uncertain'}
+                        result = {'session_id': self.session_id, 'worker': self.doc['worker'],
+                                  'task': self.doc['task'], 'request_id': steer_req_id, 'state': 'uncertain'}
+                        self.steer_history[steer_req_id] = {'sha256': text_sha, 'result': result}
+                        # Cache before any effect; refuse if bounded history cannot store intent.
+                        if self.archive_limited:
+                            result['state'] = 'rejected'
+                            raise Refusal('steering history unavailable')
+                        self.record_output('steer', {'request_id': steer_req_id, 'sha256': text_sha, 'state': 'intent'})
+                        if self.archive_limited:
+                            result['state'] = 'rejected'
+                            raise Refusal('steering history unavailable')
+                        os.fsync(self.output_fd)
                         try:
-                            self.rpc('turn/steer', {
-                                'threadId': self.thread,
-                                'expectedTurnId': self.turn,
+                            ack = self.rpc('turn/steer', {
+                                'threadId': self.thread, 'expectedTurnId': self.turn,
                                 'input': [{'type': 'text', 'text': text}]
                             })
-                        except Exception:
-                            self.steer_history[steer_req_id]['status'] = 'failed'
-                            raise
-                        self.record_output('steer', {'request_id': steer_req_id, 'text': text})
-                        result = {
-                            'session_id': self.session_id,
-                            'worker': self.doc['worker'],
-                            'task': self.doc['task'],
-                            'request_id': steer_req_id,
-                            'state': 'accepted'
-                        }
-                        self.steer_history[steer_req_id] = {'sha256': text_sha, 'status': 'accepted', 'result': result}
+                            if not isinstance(ack, dict) or ack.get('turnId') != self.turn:
+                                raise Refusal('unverified steering acknowledgement')
+                        except RPCRejected:
+                            result['state'] = 'rejected'
+                        except (Refusal, OSError, ValueError, TypeError, KeyError):
+                            pass  # Delivery may have occurred; never replay this ID.
+                        else:
+                            result['state'] = 'accepted'
+                        try:
+                            self.record_output('steer', {'request_id': steer_req_id, 'state': result['state']})
+                        except OSError:
+                            pass  # An acknowledged delivery stays acknowledged.
+
                 else:
                     state = 'observed'
                     if 'effort' in req:
@@ -18471,11 +18507,7 @@ class Server:
                     'pid': os.getpid(), 'pid_stamp': process_stamp(os.getpid()), 'nonce': uuid.uuid4().hex}
         identity(self.doc)
         self.session_id = f"sess-{uuid.uuid4().hex[:16]}"
-        self.sessions_directory = sessions_dir(root)
-        self.output_file = self.sessions_directory / f"{self.session_id}.output.jsonl"
-        self.output_fd = os.open(self.output_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         self.doc['session_id'] = self.session_id
-        self.write_meta('active')
         supervisor = int(env.get('UNIO_CODEX_SUPERVISOR', '0'))
         ancestor = os.getppid()
         while ancestor > 1 and ancestor != supervisor:
@@ -18510,6 +18542,11 @@ class Server:
         with os.fdopen(fd, 'w') as f:
             json.dump(self.doc, f)
         _, self.manifest_inode = read_private(self.manifest)
+        self.sessions_directory = sessions_dir(root)
+        self.output_file = self.sessions_directory / f"{self.session_id}.output.jsonl"
+        self.output_fd = os.open(self.output_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        self.doc['session_id'] = self.session_id
+        self.write_meta('active')
         self.child = subprocess.Popen([self.args.binary, 'app-server', '--listen', 'stdio://'],
                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                       start_new_session=True)
@@ -18562,8 +18599,9 @@ class Server:
     def close(self):
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
-        if getattr(self, 'session_id', None) is not None:
+        if self.sessions_directory is not None:
             exit_code = self.stop_code if self.stop_code is not None else (self.done if self.done is not None else 2)
+            self.done = exit_code
             state = 'completed' if exit_code == 0 else ('interrupted' if exit_code in (130, 143) else 'failed')
             try:
                 self.record_output('lifecycle', {'event': 'session_completed', 'exit_code': exit_code})
@@ -18580,20 +18618,18 @@ class Server:
                 pass
             self.output_fd = None
         if self.child:
+            # Keep the session leader unreaped (including a zombie leader) until
+            # every group signal is complete; its PID/PGID cannot be recycled.
             try:
                 os.killpg(self.child.pid, signal.SIGTERM)
-                self.child.wait(timeout=2)
-            except subprocess.TimeoutExpired:
+                deadline = time.monotonic() + .2
+                while time.monotonic() < deadline:
+                    time.sleep(.01)
                 os.killpg(self.child.pid, signal.SIGKILL)
-                self.child.wait()
             except ProcessLookupError:
                 pass
             finally:
-                # Reap owned descendants even when the app-server exits first.
-                try:
-                    os.killpg(self.child.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                self.child.wait()
         if self.listener:
             self.listener.close()
         if self.manifest_inode:
@@ -18642,7 +18678,10 @@ def client(args):
             raise Refusal('replaced socket peer')
         if read_private(manifest) != (doc, inode):
             raise Refusal('replaced channel')
-        connection.sendall((json.dumps(request) + '\n').encode())
+        wire = (json.dumps(request, ensure_ascii=False) + '\n').encode('utf-8')
+        if len(wire) > WIRE_BOUND:
+            raise Refusal('request wire bound exceeded')
+        connection.sendall(wire)
         data = b''
         while b'\n' not in data:
             chunk = connection.recv(BOUND + 1 - len(data))
@@ -18664,60 +18703,62 @@ def client(args):
     return result
 
 
+def session_binding(args, manifest):
+    latest_path = safe_path(Path(args.project) / 'coord/sessions' / f'latest-{args.worker}.json')
+    if not os.path.lexists(latest_path):
+        if os.path.lexists(manifest):
+            doc, _ = read_private(manifest)
+            if doc.get('session_id'):
+                raise Refusal('missing session binding')
+        return None
+    latest, _ = read_private(latest_path)
+    if (not isinstance(latest, dict) or latest.get('worker') != args.worker
+            or not isinstance(latest.get('session_id'), str)
+            or not LABEL.fullmatch(latest['session_id'])
+            or not isinstance(latest.get('task'), str) or not LABEL.fullmatch(latest['task'])):
+        raise Refusal('invalid latest binding')
+    sid = latest['session_id']
+    meta, _ = read_private(safe_path(latest_path.parent / f'{sid}.json'))
+    if (not isinstance(meta, dict)
+            or any(meta.get(k) != latest[k] for k in ('session_id', 'worker', 'task'))
+            or meta.get('route') != 'codex-app-server'
+            or meta.get('state') not in ('active', 'completed', 'failed', 'interrupted')
+            or type(meta.get('output_cursor')) is not int or meta['output_cursor'] < 0
+            or meta.get('requested') not in LEVELS or meta.get('configured') not in (*LEVELS, None)
+            or not isinstance(meta.get('model'), str)
+            or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,127}', meta['model'])
+            or (meta.get('exit_code') is not None and type(meta['exit_code']) is not int)
+            or (meta['state'] == 'active' and meta.get('exit_code') is not None)
+            or (meta['state'] != 'active' and meta.get('exit_code') is None)):
+        raise Refusal('invalid archive binding')
+    if os.path.lexists(manifest):
+        doc, _ = read_private(manifest)
+        if (not isinstance(doc, dict) or doc.get('project') != str(Path(args.project).absolute())
+                or any(doc.get(k) != latest[k] for k in ('session_id', 'worker', 'task'))):
+            raise Refusal('replaced archive binding')
+    return meta
+
+
 def session_client(args):
     if not LABEL.fullmatch(args.worker):
         raise Refusal('invalid worker')
     latest_path = safe_path(Path(args.project) / 'coord/sessions' / f'latest-{args.worker}.json')
     manifest = endpoint(args.project, args.worker)
 
+    meta = session_binding(args, manifest)
     if args.session_action == 'status':
-        if not os.path.lexists(latest_path):
-            if not os.path.lexists(manifest):
-                return {'worker': args.worker, 'state': 'unsupported', 'effective': 'Unknown'}
-            doc, _ = read_private(manifest)
-            session_id = doc.get('session_id')
-            if not session_id:
-                return {'worker': args.worker, 'state': 'unsupported', 'effective': 'Unknown'}
-        else:
-            latest, _ = read_private(latest_path)
-            session_id = latest.get('session_id')
-            if not session_id or not LABEL.fullmatch(session_id):
-                raise Refusal('invalid session id in metadata')
-
-        meta_file = safe_path(Path(args.project) / 'coord/sessions' / f'{session_id}.json')
-        if not os.path.lexists(meta_file):
-            raise Refusal('missing session metadata')
-        meta, _ = read_private(meta_file)
-
-        is_live = False
-        if os.path.lexists(manifest):
+        if meta is None:
+            return {'worker': args.worker, 'state': 'unsupported', 'effective': 'Unknown'}
+        state = meta['state']
+        if state == 'active':
             try:
                 doc, _ = read_private(manifest)
-                if doc.get('session_id') == session_id and process_stamp(doc['pid']) == doc['pid_stamp']:
-                    identity(doc)
-                    is_live = True
+                if process_stamp(doc['pid']) != doc['pid_stamp']:
+                    raise Refusal('stale backend')
+                identity(doc)
             except (Refusal, OSError, KeyError, ValueError):
-                is_live = False
-
-        state = meta.get('state', 'completed')
-        if is_live:
-            state = 'active'
-        elif state == 'active':
-            state = 'failed' if meta.get('exit_code') != 0 else 'completed'
-
-        return {
-            'session_id': session_id,
-            'worker': meta['worker'],
-            'task': meta['task'],
-            'route': 'codex-app-server',
-            'model': meta['model'],
-            'requested': meta.get('requested'),
-            'configured': meta.get('configured'),
-            'effective': 'Unknown',
-            'state': state,
-            'exit_code': meta.get('exit_code'),
-            'output_cursor': meta.get('output_cursor', 0)
-        }
+                state = 'stale'
+        return dict(meta, state=state, effective='Unknown')
 
     elif args.session_action == 'output':
         after = 0 if args.after is None else args.after
@@ -18725,24 +18766,9 @@ def session_client(args):
         if after < 0 or limit < 1 or limit > 500:
             raise Refusal('invalid bounds')
 
-        if not os.path.lexists(latest_path):
-            if not os.path.lexists(manifest):
-                return {'worker': args.worker, 'state': 'unsupported', 'effective': 'Unknown'}
-            doc, _ = read_private(manifest)
-            session_id = doc.get('session_id')
-            if not session_id:
-                return {'worker': args.worker, 'state': 'unsupported', 'effective': 'Unknown'}
-        else:
-            latest, _ = read_private(latest_path)
-            session_id = latest.get('session_id')
-            if not session_id or not LABEL.fullmatch(session_id):
-                raise Refusal('invalid session id in metadata')
-
-        meta_file = safe_path(Path(args.project) / 'coord/sessions' / f'{session_id}.json')
-        if not os.path.lexists(meta_file):
-            raise Refusal('missing session metadata')
-        meta, _ = read_private(meta_file)
-
+        if meta is None:
+            return {'worker': args.worker, 'state': 'unsupported', 'effective': 'Unknown'}
+        session_id = meta['session_id']
         output_file = safe_path(Path(args.project) / 'coord/sessions' / f'{session_id}.output.jsonl')
         if not os.path.lexists(output_file):
             records, next_cursor, last_cursor, truncated, gap = [], after, 0, False, False
@@ -18763,18 +18789,22 @@ def session_client(args):
         }
 
     elif args.session_action == 'send':
+        if meta is None or meta['state'] != 'active':
+            raise Refusal('turn already finished')
         if not LABEL.fullmatch(args.request_id):
             raise Refusal('invalid request id')
         file_path = safe_path(args.file)
-        if not file_path.is_file() or file_path.is_symlink():
-            raise Refusal('unsafe file')
-        st = file_path.lstat()
-        if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or (st.st_mode & 0o077):
-            raise Refusal('unsafe file permissions')
-        if st.st_size <= 0 or st.st_size > MAX_STEER_TEXT:
-            raise Refusal('invalid file bounds')
-        with open(file_path, 'rb') as f:
-            data = f.read(MAX_STEER_TEXT + 1)
+        fd = os.open(file_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            st = os.fstat(fd)
+            if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
+                    or st.st_uid != os.getuid() or st.st_mode & 0o077):
+                raise Refusal('unsafe file permissions')
+            if st.st_size <= 0 or st.st_size > MAX_STEER_TEXT:
+                raise Refusal('invalid file bounds')
+            data = os.read(fd, MAX_STEER_TEXT + 1)
+        finally:
+            os.close(fd)
         if len(data) > MAX_STEER_TEXT or not data:
             raise Refusal('invalid file bounds')
         try:
@@ -18819,7 +18849,10 @@ def session_client(args):
                 raise Refusal('replaced socket peer')
             if read_private(manifest) != (doc, inode):
                 raise Refusal('replaced channel')
-            connection.sendall((json.dumps(request) + '\n').encode())
+            wire = (json.dumps(request, ensure_ascii=False) + '\n').encode('utf-8')
+            if len(wire) > WIRE_BOUND:
+                raise Refusal('request wire bound exceeded')
+            connection.sendall(wire)
             data = b''
             while b'\n' not in data:
                 chunk = connection.recv(BOUND + 1 - len(data))
@@ -18830,7 +18863,8 @@ def session_client(args):
         allowed = {'session_id', 'worker', 'task', 'request_id', 'state'}
         if not isinstance(result, dict) or set(result) != allowed or result['worker'] != args.worker or result['task'] != doc['task']:
             raise Refusal('invalid response')
-        if result['state'] not in ('accepted', 'rejected'):
+        if (result['state'] not in ('accepted', 'rejected', 'uncertain')
+                or result['session_id'] != doc['session_id'] or result['request_id'] != args.request_id):
             raise Refusal('invalid response')
         return result
 
@@ -18912,6 +18946,8 @@ def main():
         elif args.session_action == 'output':
             return 0 if 'records' in result else 2
         elif args.session_action == 'send':
+        if meta is None or meta['state'] != 'active':
+            raise Refusal('turn already finished')
             return 0 if result.get('state') == 'accepted' else 2
         return 2
 
