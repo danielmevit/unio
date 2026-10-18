@@ -28150,6 +28150,87 @@ task_section() { # $1=task file  $2=section title (text after "## ")
   awk -v s="$2" '/^## /{f=(substr($0,4)==s); next} f' "$1"
 }
 
+parse_scope_line() {
+  local raw="$1"
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  # shellcheck disable=SC2034
+  REPLY_PATH=""
+  # shellcheck disable=SC2034
+  REPLY_ANNOT=""
+  [ -n "$raw" ] || return 1
+
+  local first="${raw:0:1}"
+  if [ "$first" = '"' ] || [ "$first" = "'" ] || [ "$first" = '`' ]; then
+    local rest="${raw:1}"
+    if [[ "$rest" == *"$first"* ]]; then
+      local inner="${rest%%"$first"*}"
+      local after="${rest#*"$first"}"
+      after="${after#"${after%%[![:space:]]*}"}"
+      if [ -z "$after" ]; then
+        REPLY_PATH="$inner"
+        return 0
+      elif [[ "$after" == \(*\) ]]; then
+        local depth=0 i c balanced=1
+        for (( i=0; i<${#after}; i++ )); do
+          c="${after:i:1}"
+          case "$c" in
+            '(') depth=$((depth+1));;
+            ')')
+              depth=$((depth-1))
+              if [ "$depth" -lt 0 ]; then balanced=0; break; fi
+              ;;
+          esac
+        done
+        if [ "$balanced" -eq 1 ] && [ "$depth" -eq 0 ]; then
+          REPLY_PATH="$inner"
+          REPLY_ANNOT="$after"
+          return 0
+        fi
+      fi
+    fi
+  fi
+
+  local path="$raw"
+  local annots=()
+  while [ "${path: -1}" = ')' ]; do
+    local depth=0 open_pos=-1 i c
+    for (( i=${#path}-1; i>=0; i-- )); do
+      c="${path:i:1}"
+      case "$c" in
+        ')') depth=$((depth+1));;
+        '(')
+          depth=$((depth-1))
+          if [ "$depth" -eq 0 ]; then
+            open_pos="$i"
+            break
+          fi
+          ;;
+      esac
+    done
+    if [ "$depth" -eq 0 ] && [ "$open_pos" -gt 0 ]; then
+      local prev_char="${path:$((open_pos-1)):1}"
+      if [[ "$prev_char" =~ [[:space:]] ]]; then
+        local cand_path="${path:0:$((open_pos-1))}"
+        cand_path="${cand_path%"${cand_path##*[![:space:]]}"}"
+        if [ -n "$cand_path" ]; then
+          local annot_chunk="${path:$open_pos}"
+          annots=("$annot_chunk" "${annots[@]}")
+          path="$cand_path"
+          continue
+        fi
+      fi
+    fi
+    break
+  done
+
+  REPLY_PATH="$path"
+  if [ ${#annots[@]} -gt 0 ]; then
+    REPLY_ANNOT="${annots[*]}"
+  fi
+  return 0
+}
+
 scope_allowed() { # $1=changed path, rest=patterns; changelog.d/ always in scope
   local f="$1"; shift
   local p
@@ -28829,9 +28910,20 @@ cmd_verify() {
   commits=$(git -C "$wt" rev-list --count "$base..HEAD" 2>/dev/null || echo 0)
 
   # scope: every "- path" line under "## Allowed scope" is an enforced pattern
-  local pats=() line
+  local pats=() scope_warnings=() line
   while IFS= read -r line; do
-    case "$line" in '- '*) pats+=("${line#- }");; esac
+    case "$line" in '- '*)
+      local raw="${line#- }"
+      if parse_scope_line "$raw"; then
+        [ -n "$REPLY_PATH" ] || continue
+        case "$REPLY_PATH" in ..|../*|*/../*|*/..) continue;; esac
+        pats+=("$REPLY_PATH")
+        if [ -n "$REPLY_ANNOT" ]; then
+          scope_warnings+=("stripped annotation '$REPLY_ANNOT' from scope pattern '$REPLY_PATH'")
+        fi
+      fi
+      ;;
+    esac
   done < <(task_section "$tf" "Allowed scope")
 
   local scope="OK" viol=""
@@ -28898,6 +28990,12 @@ cmd_verify() {
     UNCHECKED) echo "scope    : UNCHECKED — no '- path' lines under '## Allowed scope'";;
     VIOLATION) echo "scope    : VIOLATION — out-of-scope changes:"; printf '%s' "$viol" | sed 's/^/             /';;
   esac
+  if [ ${#scope_warnings[@]} -gt 0 ]; then
+    local w
+    for w in "${scope_warnings[@]:0:10}"; do
+      echo "warning  : $w"
+    done
+  fi
   if [ "$vrun" -eq 0 ]; then echo "validate : none — no '\$ ' command lines under '## Validate'"
   else echo "validate : $((vrun-vfail))/$vrun passed"; printf '%s' "$vout"; fi
   echo "changes  : commits=$commits, paths touched=$pcount"
@@ -28911,6 +29009,12 @@ cmd_verify() {
     echo "### verify $(date -Is) — worker=$worker scope=$scope validate=$((vrun-vfail))/$vrun empty=$empty verdict=$verdict"
     [ -z "$reasons" ] || echo "reasons: $reasons"
     [ "$tampered" = 1 ] && echo "!! task file changed since the run — the scope being enforced is not the scope that was dispatched"
+    if [ ${#scope_warnings[@]} -gt 0 ]; then
+      local w
+      for w in "${scope_warnings[@]:0:10}"; do
+        echo "warning: $w"
+      done
+    fi
     [ -n "$viol" ] && { echo "out-of-scope:"; printf '%s' "$viol" | sed 's/^/  /'; }
     [ -n "$vout" ] && printf '%s' "$vout"
   } >> "$root/coord/reports/$task.md"
@@ -29561,7 +29665,13 @@ continuation_orders() { # Use the native verifier's exact section/line rules.
   local tf="$1" line scope=0 validate=0
   [ -f "$tf" ] && [ ! -L "$tf" ] || { echo "unio: new task must exist separately" >&2; return 1; }
   while IFS= read -r line; do
-    case "$line" in '- '*) [[ "${line#- }" =~ [^[:space:]] ]] && scope=1;; esac
+    case "$line" in '- '*)
+      local raw="${line#- }"
+      if parse_scope_line "$raw" && [ -n "$REPLY_PATH" ]; then
+        case "$REPLY_PATH" in ..|../*|*/../*|*/..) ;; *) scope=1;; esac
+      fi
+      ;;
+    esac
   done < <(task_section "$tf" "Allowed scope")
   while IFS= read -r line; do
     case "$line" in '$ '*) [[ "${line#\$ }" =~ [^[:space:]] ]] && validate=1;; esac
