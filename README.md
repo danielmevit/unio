@@ -556,7 +556,7 @@ Everyday commands once a project is set up:
 ```bash
 unio help             # discover commands
 unio status           # tasks, reports, review queue, running work
-unio tail             # follow the latest run's log
+unio tail             # print recent log tail (use -f to follow live)
 unio score            # per-worker scorecard from the event ledger
 unio result codex T7  # stored run/verify/review evidence as JSON
 unio handoff codex T7 # context packet for the next AI, same checkout

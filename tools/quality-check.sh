@@ -34,6 +34,7 @@ shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
 python3 -B tests/unio-thin-config.py
 python3 -B tests/unio-selftest.py
 bash tests/unio-quality.sh
+python3 -B tests/unio-tail.py
 python3 -B tests/unio-review-receipts.py
 python3 -B tests/unio-review-collection.py
 python3 -B tests/unio-review-findings.py

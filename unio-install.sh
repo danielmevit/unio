@@ -27837,7 +27837,7 @@ cmd_run() {
     else
       UNIO_BG=1 nohup "$0" run "$worker" "$task" >/dev/null 2>&1 &
     fi
-    echo "started in background — poll: unio status   live: unio tail $task   abort: unio kill $task"
+    echo "started in background — poll: unio status   live: unio tail -f $task   abort: unio kill $task"
     return 0
   fi
 
@@ -28331,7 +28331,7 @@ cmd_status() {
     t=$(basename "$pf" .pid)
     pid=$(cat "$pf" 2>/dev/null || true)
     if [ -n "$pid" ] && { pgrep -s "$pid" >/dev/null 2>&1 || kill -0 -- "-$pid" 2>/dev/null || kill -0 "$pid" 2>/dev/null; }; then
-      echo "  $t (background, pid $pid) — tail: unio tail $t   abort: unio kill $t"; any=1
+      echo "  $t (background, pid $pid) — tail: unio tail -f $t   abort: unio kill $t"; any=1
     else
       rm -f "$pf"
     fi
@@ -29054,15 +29054,71 @@ cmd_sabotage() { # the saboteur seat: attack fresh merges with failing tests
 # ------------------------------------------------------------- tail/kill
 cmd_tail() {
   local root; root=$(find_root) || die "not inside a Unio project"
-  local task="${1:-}" f
+  local task="" lines=40 follow=0
+  local task_seen=0 lines_seen=0 follow_seen=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -f|--follow)
+        [ "$follow_seen" -eq 0 ] || die "duplicate follow option: '$1'"
+        follow=1
+        follow_seen=1
+        shift
+        ;;
+      --lines=*|-n=*)
+        [ "$lines_seen" -eq 0 ] || die "duplicate line count option: '$1'"
+        lines="${1#*=}"
+        lines_seen=1
+        shift
+        ;;
+      --lines|-n)
+        [ "$lines_seen" -eq 0 ] || die "duplicate line count option: '$1'"
+        [ "$#" -ge 2 ] || die "option '$1' requires a positive integer argument"
+        lines="$2"
+        lines_seen=1
+        shift 2
+        ;;
+      -*)
+        die "unknown option: '$1' (usage: unio tail [TASK] [-f|--follow] [--lines N])"
+        ;;
+      *)
+        [ -n "$1" ] || die "empty or invalid task name"
+        if [ "$task_seen" -eq 1 ]; then
+          die "ambiguous arguments: task already specified as '$task', unexpected '$1'"
+        fi
+        task="$1"
+        task_seen=1
+        shift
+        ;;
+    esac
+  done
+
+  [[ "$lines" =~ ^[1-9][0-9]*$ ]] || die "lines must be a positive integer (got '$lines')"
+  [ "$lines" -le 100000 ] || die "lines exceeds maximum bound of 100000: '$lines'"
+
+  local f=""
   if [ -n "$task" ]; then
-    task="${task%.md}"; f="$root/coord/reports/$task.log"
+    local clean_task="${task%.md}"
+    check_id "$clean_task" task
+    f="$root/coord/reports/$clean_task.log"
+    [ -f "$f" ] || die "no log found for task '$clean_task' (coord/reports/$clean_task.log)"
   else
-    f=$(ls -t "$root"/coord/reports/*.log 2>/dev/null | head -1 || true)
+    f=$(python3 -c '
+import glob, os, sys
+files = [p for p in glob.glob(os.path.join(sys.argv[1], "*.log")) if os.path.isfile(p)]
+if files:
+    files.sort(key=os.path.getmtime, reverse=True)
+    sys.stdout.write(files[0])
+' "$root/coord/reports" 2>/dev/null || true)
+    [ -n "$f" ] && [ -f "$f" ] || die "no log found (unio tail <task-id>)"
   fi
-  [ -n "$f" ] && [ -f "$f" ] || die "no log found (unio tail <task-id>)"
+
   echo ">> $f"
-  exec tail -n 40 -f "$f"
+  if [ "$follow" -eq 1 ]; then
+    exec tail -n "$lines" -f "$f"
+  else
+    tail -n "$lines" "$f"
+  fi
 }
 
 cmd_kill() {
@@ -29145,7 +29201,7 @@ cmd_report() { # read a task's report without typing coord/reports paths
   local root; root=$(find_root) || die "not inside a Unio project"
   task="${task%.md}"
   local f="$root/coord/reports/$task.md"
-  [ -f "$f" ] || die "no report yet for '$task' (run it first; live output: unio tail $task)"
+  [ -f "$f" ] || die "no report yet for '$task' (run it first; live output: unio tail -f $task)"
   local n="${2:-60}"
   echo ">> $f (last $n lines — full history is append-only above)"
   tail -n "$n" "$f"
@@ -30808,7 +30864,8 @@ work
                                      Two failed attempts block further calls
   unio allow-retry <task>      OWNER: grant one more attempt after the
                                      loop brake; preserves failure history
-  unio tail [task]              follow a run's live log (default: newest)
+  unio tail [task] [-f] [--lines N] print a run's log tail (default: last 40;
+                                      -f/--follow to follow live; default: newest)
   unio kill <task>              stop a background run (whole session)
   unio report <task> [lines]    read a task's report (default: last 60)
   unio verify <w> <task>        machine gate: diff vs the task's "- path"
@@ -33058,7 +33115,7 @@ cross-workspace sessions stay uncounted.
    "- path" lines under Allowed scope and the "$ " lines under Validate
    are machine-enforced by `unio verify` — write them precisely.
 3. `unio run <worker> <ID>-<worker>` (long: add -b, poll with status,
-   watch live with `unio tail`).
+   watch live with `unio tail -f`).
 4. Machine check FIRST: `unio verify <worker> <ID>-<worker>` — scope
    compliance, Validate commands re-run, commit sanity; the verdict lands
    in the report. Then read ../coord/reports/<ID>-<worker>.md and the REAL
@@ -34677,7 +34734,7 @@ unio run [-b] <w> <task>  execute coord/tasks/<task>.md as worker <w>
                                in wt/<w>; -b = background; per-worker lock;
                                writes report+log+ledger+structured result;
                                a failed worker's own exit code wins
-unio tail [task]          follow a run's live log (default: newest)
+unio tail [task] [-f]     print log tail (default 40 lines; -f to follow)
 unio kill <task>          terminate a background run (whole session,
                                including the agent under `timeout`)
 unio report <task> [n]    print the last n (default 60) lines of a
@@ -34957,7 +35014,8 @@ _unio() {
     race)
       if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "$tasks" -- "$cur") )
       else COMPREPLY=( $(compgen -W "$workers" -- "$cur") ); fi;;
-    tail|kill|report) COMPREPLY=( $(compgen -W "$tasks" -- "$cur") );;
+    tail)        COMPREPLY=( $(compgen -W "$tasks -f --follow --lines" -- "$cur") );;
+    kill|report) COMPREPLY=( $(compgen -W "$tasks" -- "$cur") );;
     off|on) COMPREPLY=( $(compgen -W "$agents" -- "$cur") );;
     mode) COMPREPLY=( $(compgen -W "yolo balanced thorough medium safe" -- "$cur") );;
     tier) COMPREPLY=( $(compgen -W "low medium high" -- "$cur") );;
