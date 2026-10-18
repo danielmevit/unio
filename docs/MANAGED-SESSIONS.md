@@ -45,3 +45,42 @@ tokens, and full RPC envelopes remain private and are excluded from public API o
 Session records survive normal failure and completion under `coord/sessions/`.
 Existing STOP meaning is preserved: it blocks new admissions, not the control
 channel of an already authorized Source.
+
+## Recorded history and delivery results
+
+History is limited to 16 MiB per session, 64 KiB per JSONL record, and 1 MiB
+of recorded JSONL bytes per output page (also at most 500 records). A record
+that would exceed the record or archive bound is replaced by an `archive_limit`
+marker; subsequent history is Unknown. Ordinary Source stdout/report streaming
+continues, and reaching a history limit does not change a successful provider
+outcome. Steering refuses before its RPC if its intent cannot be archived.
+
+Output stops at the first corrupt, unsupported, out-of-order, overbound or torn
+record and sets `gap` and `truncated`. A torn final line may be an in-progress
+append; observation never skips it to claim a complete transcript. A page limit
+sets `truncated` while retaining a contiguous cursor prefix. Reconnect using
+`next_cursor`; `output_cursor` describes the validated prefix, not a claim about
+unreadable history. A missing transcript with recorded output also reports a gap.
+
+Steering returns `accepted` only for a matching active-turn acknowledgement,
+`rejected` for a refusal before delivery or an explicit provider rejection, and
+`uncertain` when transport or the acknowledgement cannot establish delivery.
+Both rejected and uncertain sends exit nonzero. Identical request IDs return
+the cached result without another RPC; changed content refuses. Intent is cached
+and archived before transport. An archive error after acknowledgement cannot
+turn confirmed acceptance into rejection. This does not provide crash recovery
+or automatic retries: a terminated Source never resumes a turn.
+
+Status, output and send validate the exact latest/session/worker/task binding.
+An archive recorded as active whose backend identity cannot be established is
+`stale`, with its unobserved exit left Unknown (`null`); PID disappearance does
+not prove success or failure. Recorded terminal outcomes remain terminal while
+process cleanup finishes. Refused authorization or a duplicate exclusive native
+claim does not replace existing history. Input is read through an owned regular
+file descriptor with no symlink following or blocking FIFO open; the full 8 KiB
+UTF-8 instruction fits the bounded control frame, including JSON escaping.
+
+These are trusted-host, same-user controls, not OS isolation. Cleanup signals
+only the newly created app-server process group while its leader remains
+unreaped, then reaps the leader. Processes deliberately detached into another
+session are outside that group and are not signalled.

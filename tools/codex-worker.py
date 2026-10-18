@@ -60,7 +60,10 @@ def read_private(path, private=True):
         data = os.read(fd, BOUND + 1)
         if len(data) > BOUND:
             raise Refusal('metadata bound exceeded')
-        return json.loads(data), (st.st_dev, st.st_ino)
+        doc = json.loads(data)
+        if not isinstance(doc, dict):
+            raise Refusal('invalid metadata shape')
+        return doc, (st.st_dev, st.st_ino)
     finally:
         os.close(fd)
 
@@ -82,6 +85,7 @@ def read_session_output(path, after=0, limit=100):
             raise Refusal('unsafe output file')
         records, last, size, page = [], 0, 0, 0
         gap, truncated = False, st.st_size > ARCHIVE_BOUND
+        page_full = False
         with os.fdopen(fd, 'rb') as stream:
             fd = None
             while size < ARCHIVE_BOUND:
@@ -98,20 +102,22 @@ def read_session_output(path, after=0, limit=100):
                     cur = rec.get('cursor') if isinstance(rec, dict) else None
                     if (type(cur) is not int or cur != last + 1
                             or rec.get('kind') not in ('agent_message', 'command_output', 'lifecycle', 'steer', 'archive_limit')
-                            or not isinstance(rec.get('data'), dict)):
+                            or not isinstance(rec.get('data'), dict)
+                            or (rec['kind'] in ('agent_message', 'command_output')
+                                and not isinstance(rec['data'].get('delta'), str))):
                         raise ValueError('unsupported or unordered record')
-                except (ValueError, UnicodeError):
+                except (ValueError, UnicodeError, RecursionError):
                     gap = truncated = True
                     break
                 last = cur
                 if rec['kind'] == 'archive_limit':
                     gap = truncated = True
                 if cur > after:
-                    if len(records) < limit and page + len(line) <= PAGE_BOUND:
+                    if not page_full and len(records) < limit and page + len(line) <= PAGE_BOUND:
                         records.append(rec)
                         page += len(line)
                     else:
-                        truncated = True
+                        page_full = truncated = True
         gap |= after > last
         return records, records[-1]['cursor'] if records else after, last, truncated, gap
     finally:
@@ -300,8 +306,13 @@ class Server:
                 continue
             data = os.read(self.child.stdout.fileno(), 65536)
             if not data:
-                info = os.waitid(os.P_PID, self.child.pid, os.WEXITED | os.WNOWAIT)
-                code = info.si_status if info.si_code == os.CLD_EXITED else -info.si_status
+                exit_deadline = min(deadline, time.monotonic() + .2)
+                while True:
+                    info = os.waitid(os.P_PID, self.child.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG)
+                    if info is not None or time.monotonic() >= exit_deadline:
+                        break
+                    time.sleep(.01)
+                code = (info.si_status if info.si_code == os.CLD_EXITED else -info.si_status) if info else 2
                 self.done = code if code > 0 else (128-code if code < 0 else 1)
                 raise Refusal('provider exited')
             self.buffer += data
@@ -384,11 +395,14 @@ class Server:
                         if self.archive_limited:
                             result['state'] = 'rejected'
                             raise Refusal('steering history unavailable')
-                        self.record_output('steer', {'request_id': steer_req_id, 'sha256': text_sha, 'state': 'intent'})
-                        if self.archive_limited:
+                        try:
+                            self.record_output('steer', {'request_id': steer_req_id, 'sha256': text_sha, 'state': 'intent'})
+                            if self.archive_limited:
+                                raise Refusal('steering history unavailable')
+                            os.fsync(self.output_fd)
+                        except (Refusal, OSError):
                             result['state'] = 'rejected'
-                            raise Refusal('steering history unavailable')
-                        os.fsync(self.output_fd)
+                            raise
                         try:
                             ack = self.rpc('turn/steer', {
                                 'threadId': self.thread, 'expectedTurnId': self.turn,
@@ -475,12 +489,18 @@ class Server:
         prompt_path = safe_path(env['TASKFILE'])
         if prompt_path != Path(root) / 'coord/reports' / (task + '.prompt.md'):
             raise Refusal('task binding mismatch')
-        with open(prompt_path, 'rb') as f:
+        prompt_fd = os.open(prompt_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(prompt_fd, 'rb') as f:
+            st = os.fstat(f.fileno())
+            if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_nlink != 1:
+                raise Refusal('unsafe task file')
             prompt = f.read(2 * 1024 * 1024 + 1)
         if len(prompt) > 2 * 1024 * 1024:
             raise Refusal('task too large')
         if env.get('OPENAI_API_KEY') or env.get('CODEX_API_KEY'):
             raise Refusal('subscription Source refuses API-key environment')
+        # Explicitly retain child zombies even if the launcher ignored SIGCHLD.
+        signal.signal(signal.SIGCHLD, signal.SIG_DFL)
         signal.signal(signal.SIGTERM, self.stop)
         signal.signal(signal.SIGINT, self.stop)
         self.directory = Path(tempfile.mkdtemp(prefix='unio-codex-'))
@@ -670,7 +690,10 @@ def session_binding(args, manifest):
                 raise Refusal('missing session binding')
         return None
     latest, _ = read_private(latest_path)
-    if (not isinstance(latest, dict) or latest.get('worker') != args.worker
+    if (not isinstance(latest, dict)
+            or set(latest) != {'session_id', 'worker', 'task', 'active', 'exit_code'}
+            or type(latest.get('active')) is not bool
+            or latest.get('worker') != args.worker
             or not isinstance(latest.get('session_id'), str)
             or not LABEL.fullmatch(latest['session_id'])
             or not isinstance(latest.get('task'), str) or not LABEL.fullmatch(latest['task'])):
@@ -678,6 +701,11 @@ def session_binding(args, manifest):
     sid = latest['session_id']
     meta, _ = read_private(safe_path(latest_path.parent / f'{sid}.json'))
     if (not isinstance(meta, dict)
+            or set(meta) != {'session_id', 'worker', 'task', 'route', 'model', 'requested',
+                             'configured', 'effective', 'state', 'exit_code', 'output_cursor'}
+            or meta.get('effective') != 'Unknown'
+            or latest['active'] != (meta.get('state') == 'active')
+            or latest['exit_code'] != meta.get('exit_code')
             or any(meta.get(k) != latest[k] for k in ('session_id', 'worker', 'task'))
             or meta.get('route') != 'codex-app-server'
             or meta.get('state') not in ('active', 'completed', 'failed', 'interrupted')
@@ -711,6 +739,8 @@ def session_client(args):
         if state == 'active':
             try:
                 doc, _ = read_private(manifest)
+                if any(doc.get(k) != meta[k] for k in ('session_id', 'worker', 'task')):
+                    raise Refusal('replaced archive binding')
                 if process_stamp(doc['pid']) != doc['pid_stamp']:
                     raise Refusal('stale backend')
                 identity(doc)
@@ -729,7 +759,7 @@ def session_client(args):
         session_id = meta['session_id']
         output_file = safe_path(Path(args.project) / 'coord/sessions' / f'{session_id}.output.jsonl')
         if not os.path.lexists(output_file):
-            records, next_cursor, last_cursor, truncated, gap = [], after, 0, False, False
+            records, next_cursor, last_cursor, truncated, gap = [], after, 0, False, meta['output_cursor'] > 0
         else:
             records, next_cursor, last_cursor, truncated, gap = read_session_output(output_file, after=after, limit=limit)
 
@@ -775,7 +805,8 @@ def session_client(args):
         if not os.path.lexists(manifest):
             raise Refusal('turn already finished')
         doc, inode = read_private(manifest)
-        if doc['project'] != str(Path(args.project).absolute()) or doc['worker'] != args.worker:
+        if (doc['project'] != str(Path(args.project).absolute())
+                or any(doc.get(k) != meta[k] for k in ('session_id', 'worker', 'task'))):
             raise Refusal('channel binding mismatch')
         identity(doc)
         if process_stamp(doc['pid']) != doc['pid_stamp']:
@@ -810,21 +841,30 @@ def session_client(args):
             wire = (json.dumps(request, ensure_ascii=False) + '\n').encode('utf-8')
             if len(wire) > WIRE_BOUND:
                 raise Refusal('request wire bound exceeded')
-            connection.sendall(wire)
-            data = b''
-            while b'\n' not in data:
-                chunk = connection.recv(BOUND + 1 - len(data))
-                if not chunk or len(data) + len(chunk) > BOUND:
-                    raise Refusal('invalid response bounds')
-                data += chunk
-        result = json.loads(data)
-        allowed = {'session_id', 'worker', 'task', 'request_id', 'state'}
-        if not isinstance(result, dict) or set(result) != allowed or result['worker'] != args.worker or result['task'] != doc['task']:
-            raise Refusal('invalid response')
-        if (result['state'] not in ('accepted', 'rejected', 'uncertain')
-                or result['session_id'] != doc['session_id'] or result['request_id'] != args.request_id):
-            raise Refusal('invalid response')
+            try:
+                connection.sendall(wire)
+                data = b''
+                while b'\n' not in data:
+                    chunk = connection.recv(BOUND + 1 - len(data))
+                    if not chunk or len(data) + len(chunk) > BOUND:
+                        raise OSError('unverified control response')
+                    data += chunk
+            except OSError:
+                return {'session_id': doc['session_id'], 'worker': args.worker,
+                        'task': doc['task'], 'request_id': args.request_id, 'state': 'uncertain'}
+        try:
+            result = json.loads(data)
+            allowed = {'session_id', 'worker', 'task', 'request_id', 'state'}
+            if (not isinstance(result, dict) or set(result) != allowed
+                    or result['worker'] != args.worker or result['task'] != doc['task']
+                    or result['state'] not in ('accepted', 'rejected', 'uncertain')
+                    or result['session_id'] != doc['session_id'] or result['request_id'] != args.request_id):
+                raise Refusal('invalid response')
+        except (Refusal, ValueError, TypeError, KeyError, RecursionError):
+            return {'session_id': doc['session_id'], 'worker': args.worker,
+                    'task': doc['task'], 'request_id': args.request_id, 'state': 'uncertain'}
         return result
+
 
 
 def main():
@@ -904,8 +944,6 @@ def main():
         elif args.session_action == 'output':
             return 0 if 'records' in result else 2
         elif args.session_action == 'send':
-        if meta is None or meta['state'] != 'active':
-            raise Refusal('turn already finished')
             return 0 if result.get('state') == 'accepted' else 2
         return 2
 
