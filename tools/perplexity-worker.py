@@ -413,7 +413,7 @@ the lead's low-tier account. No paid API fallback or automatic retry is allowed.
 ''')
 
 
-def main(argv=None):
+def build_parser():
     parser = argparse.ArgumentParser(prog='perplexity-worker.py', description=__doc__.split('\n')[0])
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--child', action='store_true', help=argparse.SUPPRESS)
@@ -426,6 +426,66 @@ def main(argv=None):
     parser.add_argument('--context-file', action='append', default=[])
     parser.add_argument('--proposal-dir', help='existing private directory for a new draft handoff packet')
     parser.add_argument('--json', action='store_true')
+    return parser
+
+
+def budget_module():
+    """Load the shared telemetry module installed beside this adapter."""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            'unio_adapter_budget', str(Path(__file__).with_name('adapter-budget.py')))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception:
+        return None
+
+
+def run_telemetry(record):
+    """One ask is an exact adapter-transport fact; tokens and USD stay unknown."""
+    module = budget_module()
+    if module is None:
+        return None
+    asked = bool(record.get('ask_may_have_run'))
+    return module.telemetry(
+        tokens=module.meter(None, None, 'unknown'),
+        turns=module.meter(1 if asked else 0, None, 'reported'),
+        usd=module.meter(None, None, 'unknown'),
+        notes=('turns count the single ask this adapter makes; the pinned library '
+               'reports no token or USD usage, so those meters are unknown, not zero',))
+
+
+def contract_validate(argv):
+    """Route-contract metadata mode: the real parser, no run, no import."""
+    import io
+    if any(flag in argv for flag in ('--check', '--child')):
+        return dict(schema_version=1, adapter='perplexity-worker', state='invalid',
+                    detail='adapter-internal flags are not valid in a route command')
+    parser = build_parser()
+    captured = io.StringIO()
+    original = sys.stderr
+    try:
+        sys.stderr = captured
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return dict(schema_version=1, adapter='perplexity-worker', state='invalid',
+                    detail=(captured.getvalue() or 'unrecognized arguments').strip()[-400:])
+    finally:
+        sys.stderr = original
+    if args.model is None:
+        return dict(schema_version=1, adapter='perplexity-worker', state='invalid',
+                    detail='--model is required in a route command')
+    return dict(schema_version=1, adapter='perplexity-worker', state='valid', detail=None)
+
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv[:1] == ['--contract-validate']:
+        print(json.dumps(contract_validate(argv[1:])))
+        return 0
+    parser = build_parser()
     args = parser.parse_args(argv)
     if args.check:
         return check()
@@ -483,6 +543,7 @@ def main(argv=None):
                 'claims': ('Local unsigned receipt of one research answer. Exit 0 is not an accepted '
                            'result or review; the effective model and lab are unverified, so this is '
                            'no cross-lab review evidence. Unio verified this adapter offline only.')}
+            record['budget_telemetry'] = run_telemetry(record)
             write_receipt(run, record)
             if os.environ.get('UNIO_ADAPTER_OUTCOME'):
                 try:

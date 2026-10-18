@@ -24,6 +24,14 @@ MODELS = {
     "glm-5-3": ("zai-glm-5-3", "Z.ai", 1.4, .14, 4.4),
     "mistral-medium-3-5": ("mistral-medium-3-5", "Mistral", 1.5, .15, 7.5),
 }
+# Adapter-level thinking selector; the installed 2.26.1 CLI has no --thinking
+# flag, so the level travels only through the process-local model override.
+THINKING_LEVELS = ("low", "medium", "high")
+# Supported bounds; the route contract check validates against exactly these.
+MAX_TOKENS = 16000000
+MAX_PRICE_USD = 10.0
+MAX_TURNS = 180
+MAX_TIME_LIMIT = 7200.0
 PROMPT_BYTES = 1048576
 OUTPUT_BYTES = 16777216
 EXPORT_BYTES = 8388608
@@ -105,6 +113,7 @@ class Progress:
         self.malformed = 0
         self.unlabeled = 0
         self.printed = 0
+        self.responses = 0
         self.last_label = None
         self.last_observed_at = None
         self.last_emit = time.monotonic()
@@ -156,6 +165,8 @@ class Progress:
             return
         self.events += 1
         self.last_label = label
+        if label == "assistant response observed":
+            self.responses += 1
         self.last_observed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         self.last_emit = time.monotonic()
         self._print(PROGRESS_PREFIX + label)
@@ -193,13 +204,14 @@ class Progress:
     def summary(self):
         return dict(events=self.events, heartbeats=self.heartbeats,
                     malformed_records=self.malformed, unlabeled_records=self.unlabeled,
+                    assistant_responses=self.responses,
                     last_label=self.last_label, last_observed_at=self.last_observed_at)
 
 
-def model_environment(label, inherited=None):
+def model_environment(label, thinking="high", inherited=None):
     wire, lab, inp, cache, out = MODELS[label]
-    model = dict(name=wire, alias=label, provider="mistral", thinking="high",
-                 thinking_levels=["high"], input_price=inp,
+    model = dict(name=wire, alias=label, provider="mistral", thinking=thinking,
+                 thinking_levels=[thinking], input_price=inp,
                  cached_input_price=cache, output_price=out)
     env = {k: v for k, v in (os.environ if inherited is None else inherited).items()
            if not k.startswith("VIBE_") or k == "VIBE_HOME"}
@@ -300,30 +312,120 @@ def export_summary(path, actual_exit):
                 estimated_cost_usd=cost)
 
 
-def main():
-    def interrupted(_signum, _frame):
-        raise KeyboardInterrupt
-    signal.signal(signal.SIGTERM, interrupted)
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, choices=MODELS)
+    parser.add_argument("--thinking", choices=THINKING_LEVELS, default="high",
+                        help="Adapter-level model thinking level; high is the default")
     parser.add_argument("--prompt-file", help="Regular UTF-8 task; otherwise TASKFILE")
     parser.add_argument("--receipt-dir", required=True, help="Existing private parent; each invocation creates a new run")
     parser.add_argument("--max-price", type=float, default=5.0)
     parser.add_argument("--max-tokens", type=int, default=2000000)
     parser.add_argument("--time-limit", type=float, default=5400)
     parser.add_argument("--max-turns", type=int, default=120)
-    args = parser.parse_args()
+    return parser
+
+
+def check_bounds(args):
+    """Shared bound validator: the run and the route contract check agree."""
+    problems = []
+    if not math.isfinite(args.max_price) or not 0 < args.max_price <= MAX_PRICE_USD:
+        problems.append("--max-price " + str(args.max_price)
+                        + " is outside the supported bound (0, " + str(MAX_PRICE_USD) + "] USD")
+    if not 0 < args.max_tokens <= MAX_TOKENS:
+        problems.append("--max-tokens " + str(args.max_tokens)
+                        + " is outside the supported bound 1.." + str(MAX_TOKENS)
+                        + " tokens; edit the agents.conf route and retry")
+    if not 0 < args.max_turns <= MAX_TURNS:
+        problems.append("--max-turns " + str(args.max_turns)
+                        + " is outside the supported bound 1.." + str(MAX_TURNS) + " turns")
+    if not math.isfinite(args.time_limit) or not 0 < args.time_limit <= MAX_TIME_LIMIT:
+        problems.append("--time-limit " + str(args.time_limit)
+                        + " is outside the supported bound (0, " + str(MAX_TIME_LIMIT) + "] seconds")
+    return problems
+
+
+def budget_module():
+    """Load the shared telemetry module installed beside this adapter."""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "unio_adapter_budget", str(Path(__file__).with_name("adapter-budget.py")))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception:
+        return None
+
+
+def run_telemetry(record, progress):
+    """Bounded per-run budget telemetry; reported only by a valid export."""
+    module = budget_module()
+    if module is None:
+        return None
+    export = record.get("export") if record.get("export_state") == "valid" else None
+    usage = export.get("usage") if isinstance(export, dict) else None
+    cost = export.get("estimated_cost_usd") if isinstance(export, dict) else None
+    limits = record.get("native_limits") if isinstance(record.get("native_limits"), dict) else {}
+    notes = [module.NOTE_RESENDS]
+    if isinstance(usage, dict):
+        tokens = module.meter(usage.get("total_tokens"), limits.get("max_tokens"), "reported")
+    else:
+        tokens = module.meter(None, limits.get("max_tokens"), "unknown")
+        notes.append(module.NOTE_NO_EXPORT)
+    if cost is not None:
+        usd = module.meter(cost, limits.get("max_price"), "reported")
+    else:
+        usd = module.meter(None, limits.get("max_price"), "unknown")
+        if isinstance(usage, dict):
+            notes.append("the native export carried no cost for this run; USD usage is unknown, not zero")
+    if progress is not None:
+        turns = module.meter(progress.responses, limits.get("max_turns"), "estimated")
+        notes.append(module.NOTE_TURNS_COUNTED)
+    else:
+        turns = module.meter(None, limits.get("max_turns"), "unknown")
+    return module.telemetry(tokens=tokens, turns=turns, usd=usd, notes=notes)
+
+
+def contract_validate(argv):
+    """Route-contract metadata mode: the real parser and bounds, no run.
+
+    Prints one strict JSON object and exits 0; the caller decides policy.
+    Nothing here touches receipts, the CLI, a provider or the environment.
+    """
+    import io
+    parser = build_parser()
+    captured = io.StringIO()
+    original = sys.stderr
+    try:
+        sys.stderr = captured
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return dict(schema_version=1, adapter="vibe-worker", state="invalid",
+                    detail=(captured.getvalue() or "unrecognized arguments").strip()[-400:])
+    finally:
+        sys.stderr = original
+    problems = check_bounds(args)
+    return dict(schema_version=1, adapter="vibe-worker",
+                state="valid" if not problems else "invalid",
+                detail="; ".join(problems) if problems else None)
+
+
+def main():
+    if sys.argv[1:2] == ["--contract-validate"]:
+        print(json.dumps(contract_validate(sys.argv[2:])))
+        return 0
+    def interrupted(_signum, _frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, interrupted)
+    args = build_parser().parse_args()
     record = None
     receipt = None
     progress = None
     started = time.monotonic()
     exit_code = 2
     try:
-        if not math.isfinite(args.max_price) or not 0 < args.max_price <= 10:
-            raise Refusal("invalid_bounds")
-        if not 0 < args.max_tokens <= 4000000 or not 0 < args.max_turns <= 180:
-            raise Refusal("invalid_bounds")
-        if not math.isfinite(args.time_limit) or not 0 < args.time_limit <= 7200:
+        if check_bounds(args):
             raise Refusal("invalid_bounds")
         prompt = args.prompt_file or os.environ.get("TASKFILE")
         if not prompt:
@@ -336,7 +438,7 @@ def main():
         cli = shutil.which("vibe")
         if not cli:
             raise Refusal("missing_cli")
-        env, wire, lab = model_environment(args.model)
+        env, wire, lab = model_environment(args.model, args.thinking)
         code, version = owned_call([cli, "--version"], env, 15, output_limit=4096)
         if code or version.decode("ascii").strip() != "vibe " + VERSION:
             raise Refusal("unsupported_cli")
@@ -350,8 +452,9 @@ def main():
         export.mkdir(mode=0o700)
         record = dict(schema_version=1, started_at=date(), cli_version=VERSION,
                       requested_model=args.model, configured_wire_model=wire, ai_lab=lab,
-                      transport="Mistral Vibe", budget_group="mistral", requested_effort="high",
-                      configured_wire_effort="high", effective_model="unknown", effective_effort="unknown",
+                      transport="Mistral Vibe", budget_group="mistral",
+                      requested_effort=args.thinking, requested_thinking=args.thinking,
+                      configured_wire_effort=args.thinking, effective_model="unknown", effective_effort="unknown",
                       remaining_allowance="unknown", task_sha256=hashlib.sha256(data).hexdigest(),
                       native_limits=dict(max_price=args.max_price, max_tokens=args.max_tokens,
                                          time_limit=args.time_limit, max_turns=args.max_turns),
@@ -393,6 +496,7 @@ def main():
         if record is not None:
             if progress is not None:
                 record["progress"] = progress.summary()
+            record["budget_telemetry"] = run_telemetry(record, progress)
             record.update(adapter_exit=exit_code, elapsed_seconds=round(time.monotonic() - started, 3), finished_at=date())
             receipt.write_text(json.dumps(record, indent=2) + "\n")
             if os.environ.get("UNIO_ADAPTER_OUTCOME"):

@@ -29,6 +29,9 @@ LABELS = {
 BIND_KEYS = {'schema_version', 'task', 'worker', 'run', 'task_sha256',
              'prompt_sha256', 'command_sha256', 'route', 'started_at'}
 OUT_KEYS = BIND_KEYS | {'label', 'adapter_exit', 'native_exit', 'finished_at'}
+# Additive per-run budget telemetry; absent in older evidence, strictly typed
+# when present, and never an acceptance, readiness or quota verdict.
+BUDGET_KEY = 'budget'
 ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
 HEX = re.compile(r'[a-f0-9]{64}')
 RUN = re.compile(r'[a-f0-9]{32}')
@@ -218,6 +221,27 @@ def classify(r, record):
     return 'unknown'
 
 
+def budget_module():
+    """Load the shared telemetry module installed beside this utility."""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            'unio_adapter_budget', str(Path(__file__).with_name('adapter-budget.py')))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception:
+        return None
+
+
+def budget_of(record):
+    """Strictly validated additive telemetry from the adapter's own record."""
+    module = budget_module()
+    if module is None:
+        return None
+    return module.validate(record.get('budget_telemetry'))
+
+
 def emit(r, record, prompt, adapter_exit, native_exit):
     """Best-effort observation; never changes the adapter's actual exit."""
     dest = os.environ.get(ENV)
@@ -230,38 +254,52 @@ def emit(r, record, prompt, adapter_exit, native_exit):
                 or record.get('task_sha256') != b['prompt_sha256']
                 or sha(read(prompt, 1048576, False)) != b['prompt_sha256']):
             return
-        write(Path(dest) / 'outcome.json', dict(b, label=classify(r, record),
-              adapter_exit=adapter_exit, native_exit=native_exit, finished_at=date()))
+        budget = budget_of(record)
+        outcome = dict(b, label=classify(r, record),
+                       adapter_exit=adapter_exit, native_exit=native_exit, finished_at=date())
+        if budget is not None:
+            outcome[BUDGET_KEY] = budget
+        write(Path(dest) / 'outcome.json', outcome)
     except (OSError, ValueError, KeyError, TypeError, RecursionError, subprocess.SubprocessError):
         pass
 
 
-def observe(root, worker, task, command, adapters, source_exit=None):
+def observe_full(root, worker, task, command, adapters, source_exit=None):
+    """Validated (label, budget) pair; budget is None when absent or unsafe."""
     try:
         expected = current(root, worker, task, command, adapters)
         dest = destination(root, expected)
         b = load(dest / 'binding.json')
         if not valid_binding(b) or any(b[k] != v for k, v in expected.items()) or b['route'] == 'unsupported':
-            return 'unknown'
+            return 'unknown', None
         if source_exit is None:
             end = load(dest / 'source.json')
             if (type(end) is not dict or set(end) != {'binding', 'source_exit', 'observed_at'}
                     or not valid_binding(end['binding']) or end['binding'] != b
                     or timestamp(end['observed_at']) < timestamp(b['started_at'])):
-                return 'unknown'
+                return 'unknown', None
             source_exit = end['source_exit']
         o = load(dest / 'outcome.json')
         if (type(source_exit) is not int or not 0 <= source_exit <= 255
-                or type(o) is not dict or set(o) != OUT_KEYS
+                or type(o) is not dict or not OUT_KEYS <= set(o) <= OUT_KEYS | {BUDGET_KEY}
                 or not valid_binding({k: o[k] for k in BIND_KEYS}) or any(o[k] != v for k, v in b.items())
                 or type(o['label']) is not str or o['label'] not in LABELS
                 or type(o['adapter_exit']) is not int or o['adapter_exit'] != source_exit
                 or o['native_exit'] is not None and (type(o['native_exit']) is not int or not -127 <= o['native_exit'] <= 255)
                 or timestamp(o['finished_at']) < timestamp(b['started_at'])):
-            return 'unknown'
-        return o['label']
+            return 'unknown', None
+        budget = o.get(BUDGET_KEY)
+        if budget is not None:
+            module = budget_module()
+            if module is None or module.validate(budget) is None:
+                return 'unknown', None
+        return o['label'], budget
     except (OSError, ValueError, KeyError, TypeError, RecursionError):
-        return 'unknown'
+        return 'unknown', None
+
+
+def observe(root, worker, task, command, adapters, source_exit=None):
+    return observe_full(root, worker, task, command, adapters, source_exit)[0]
 
 
 def status_all(root, adapters, config):
@@ -323,7 +361,11 @@ def main(a):
             dest = destination(root, b)
             binding = load(dest / 'binding.json')
             write(dest / 'source.json', dict(binding=binding, source_exit=int(extra[0]), observed_at=date()))
-        print('Adapter outcome: ' + LABELS[observe(root, worker, task, command, adapters)])
+        label, budget = observe_full(root, worker, task, command, adapters)
+        print('Adapter outcome: ' + LABELS[label])
+        module = budget_module()
+        print('Run budget: ' + (module.summary(budget)
+                                if module is not None and budget is not None else 'Unknown'))
     else:
         raise ValueError('mode')
 

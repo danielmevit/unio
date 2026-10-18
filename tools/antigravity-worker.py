@@ -273,10 +273,7 @@ def parse_stream(raw):
     return "valid", normalized_status, error is not None and error != ""
 
 
-def main():
-    def interrupted(_signum, _frame):
-        raise KeyboardInterrupt
-    signal.signal(signal.SIGTERM, interrupted)
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selector", choices=tuple(SELECTORS), default="high",
                         help="Fixed Gemini 3.8 Flash variant; high is the default")
@@ -284,13 +281,78 @@ def main():
     parser.add_argument("--receipt-dir", required=True, help="Existing private parent; each invocation creates a new run")
     parser.add_argument("--time-limit", type=float, default=3300,
                         help="Native print-mode deadline in seconds, up to 7200")
-    args = parser.parse_args()
+    return parser
+
+
+def check_bounds(args):
+    """Shared bound validator: the run and the route contract check agree."""
+    problems = []
+    if not math.isfinite(args.time_limit) or not 0 < args.time_limit <= TIME_LIMIT_MAX:
+        problems.append("--time-limit " + str(args.time_limit)
+                        + " is outside the supported bound (0, " + str(TIME_LIMIT_MAX)
+                        + "] seconds; edit the agents.conf route and retry")
+    return problems
+
+
+def budget_module():
+    """Load the shared telemetry module installed beside this adapter."""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "unio_adapter_budget", str(Path(__file__).with_name("adapter-budget.py")))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception:
+        return None
+
+
+def run_telemetry():
+    """The native CLI exports no usage; nothing is inferred from the stream."""
+    module = budget_module()
+    if module is None:
+        return None
+    return module.telemetry(notes=(
+        "the native CLI exports no token, turn or USD usage for a run; "
+        "usage is unknown, not zero, and is never inferred from the stream or the exit code",
+        "only a native time limit is configured on this route; no token, turn or price cap exists",
+    ))
+
+
+def contract_validate(argv):
+    """Route-contract metadata mode: the real parser and bounds, no run."""
+    import io
+    parser = build_parser()
+    captured = io.StringIO()
+    original = sys.stderr
+    try:
+        sys.stderr = captured
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return dict(schema_version=1, adapter="antigravity-worker", state="invalid",
+                    detail=(captured.getvalue() or "unrecognized arguments").strip()[-400:])
+    finally:
+        sys.stderr = original
+    problems = check_bounds(args)
+    return dict(schema_version=1, adapter="antigravity-worker",
+                state="valid" if not problems else "invalid",
+                detail="; ".join(problems) if problems else None)
+
+
+def main():
+    if sys.argv[1:2] == ["--contract-validate"]:
+        print(json.dumps(contract_validate(sys.argv[2:])))
+        return 0
+    def interrupted(_signum, _frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, interrupted)
+    args = build_parser().parse_args()
     record = None
     receipt = None
     started = time.monotonic()
     exit_code = 2
     try:
-        if not math.isfinite(args.time_limit) or not 0 < args.time_limit <= TIME_LIMIT_MAX:
+        if check_bounds(args):
             raise Refusal("invalid_bounds")
         prompt = args.prompt_file or os.environ.get("TASKFILE")
         if not prompt:
@@ -385,6 +447,7 @@ def main():
         exit_code = 124 if state == "timeout" else 2
     finally:
         if record is not None:
+            record["budget_telemetry"] = run_telemetry()
             record.update(adapter_exit=exit_code, elapsed_seconds=round(time.monotonic() - started, 3), finished_at=date())
             write_receipt(receipt, record)
             if os.environ.get("UNIO_ADAPTER_OUTCOME"):
