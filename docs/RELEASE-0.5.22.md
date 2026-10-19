@@ -34,7 +34,18 @@ published in report provenance; command hashes provide the binding.
 
 ## Validation and review
 
-Pending final evidence. The [round report](development/OPERATOR-LEGIBILITY-2026-10-19.md)
+Mistral subscription/Vibe2.26.1/Mistral Medium3.5 HIGH supplied a clean independent
+full-code baseline review. ChatGPT subscription/CodexCLI0.163.0/GPT-6.1 Sol LOW
+then found three genuine gaps; dedicated LOW corrections passed six focused
+suites and all six native Validate commands. Google/Antigravity Gemini3.8Flash HIGH and OpenAI/Codex Sol LOW independently approved
+the current correction delta81a3f40, with Source0/native0/report verification0.
+The lead inspected their reports and actual changes. Effective serving identity,
+effort and remaining allowance remain Unknown.
+
+The complete `bash tools/quality-check.sh` passed0 at81a3f40 on2026-10-19
+from17:31:25 to18:08:56UTC+02 in2225.171seconds. Final prose retains identical
+runtime and test bytes. Delivery checks follow this code acceptance.
+The [round report](development/OPERATOR-LEGIBILITY-2026-10-19.md)
 records actual attempts, focused checks and review capture failures. Prior failed
 runs are retained rather than recast as successful validation.
 

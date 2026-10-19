@@ -1,5 +1,19 @@
 # Current priority — operator legibility, 2026-10-19T15:57:17+02:00
 
+## Current freeze — 2026-10-19T21:26:06+02:00
+
+All7 and three confirmed review corrections are committed through81a3f40.
+Correction Source0/native0/six native checksPASS. Two fresh blind current-delta
+reviews (Antigravity/agy1.4.2/Gemini3.8FlashHIGH; ChatGPT/CodexCLI0.163.0/SolLOW) each
+APPROVE, Source0/native0/artifactverify0, no findings. Lead assessed actual code.
+Version0.5.22 stays unreleased until real gate, artifacts/upgrade/install and
+publication. Final versioned full gate passed0 at81a3f40 in2225.171seconds; preserve earlier gate
+failures and review setup/capture/quota/stream failures unchanged. Use the latest
+workspace CURRENT-STATE and machine-gate-release receipts, not older pending
+statements below. Official/global remain0.5.21 until delivery actually completes.
+Saved managed-session04c51ee remains unaccepted and next after reliability release;
+phone, Windows and macOS follow. No UI/site/brand/CodeGraph changes in this batch.
+
 ## Operator reliability release preparation — 2026-10-19
 
 All seven Vecto operator items are committed through3f59d54. The exact full gate

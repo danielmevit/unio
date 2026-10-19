@@ -35482,6 +35482,15 @@ are not proof of effective serving identity, effort or remaining allowance.
 | Antigravity / agy1.4.2 | Claude Opus4.6 fixed Thinking | Generic --effort high refused before inference; use the fixed thinking selector without that flag. Genuine full-code CLI0 approval report completed in five minutes, then private capture/native1. A subsequent test-delta call returned RESOURCE_EXHAUSTED/quota, CLI3. Preserve each separately; Claude Code remains a different held route. |
 | Antigravity / agy1.4.2 | GPT-OSS120B fixed MEDIUM | One bounded current-code trial: CLI0 after66 seconds, but the claimed report file was absent and wrapper/native1. No usable verdict or acceptance. Hosted model selection is not evidence of local/private execution. |
 
+A later independent Sol LOW full-code review completed Source0/native0/artifact
+verification0 and identified three real gaps in the candidate despite earlier
+passing focused checks. A new dedicated Sol LOW correction finished Source0 in
+131 seconds, with all six focused suites and six native checks passed. Fresh
+blind Sol LOW and Antigravity Gemini3.8Flash HIGH delta reviews each approved the corrected
+candidate with clean native/artifact evidence. This demonstrates useful checked
+LOW work and the value of separate reviewers; the final release gate remains
+separate from those observations.
+
 These small samples do not establish universal model rankings or token savings.
 Native experience profiles keep model, route, effort and task type separate;
 private receipts retain the actual calls, corrections and report-capture failures.
