@@ -26,3 +26,85 @@ Pending. Replace this section with actual item commits, test exits, review revis
 Items 5 and 6 are coupled. Proposal-only routes intentionally produce useful research without repository tools. A successful proposal is not a successful implementation, but arbitrary answer text cannot reliably decide which artifact the owner authorized. Existing task files also have no explicit declaration separating these outcomes.
 
 A future explicit task contract should distinguish implementation from report-only work and declare required capabilities. Dispatch can then refuse a known missing repository capability with a typed nonzero blocked outcome, while a declared diagnostic task can pass checks against its own current, run-bound report artifact. It must retain Source failure, scope checks, task identity, stale-evidence checks and independent review. Merely ignoring `empty_work`, or searching the model's prose for “blocked,” would weaken those guarantees. Preserve legacy task interpretation and proposal routes while adding this declaration. This is a deferred design dependency, not a claim that the requested functionality conflicts with Unio's purpose.
+
+## Standalone preflight continuation receipt — 2026-10-19
+
+Dedicated implementation worker: ChatGPT subscription / Codex CLI (locally verified
+`codex-cli 0.163.0`) / requested `gpt-6.1-sol` LOW. Effective model identity,
+effort and remaining allowance are Unknown. This worker used no other AI calls,
+subagents or paid fallback. This is implementation and local validation evidence;
+it is not an independent review or lead acceptance. The outer Source exit is
+Unknown from inside this invocation.
+
+Base revision: `472aadb253cb89c0cd1f3c170269cd8db1912c0e`, including the preserved
+standalone WIP and previous corrections. Prior invocation termination 143 and
+its stale/reconciled receipts remain preserved; no causal claim about its
+termination or the removed namespace layer is made here. The referenced
+`coord/tasks/OPERATOR-FINAL-COMPLETION-20261019.md` is absent in this worktree;
+the explicit continuation assignment supplied the requirements and allowed scope.
+
+Item 2 completion: `23a6737b8c866f731864b3eafbabd7ff38e41248`. The generated inline
+checker retains the frozen canonical parser sources. Relocated recognition now
+uses nonblocking/no-follow open, descriptor type/size checks and bounded exact
+byte comparison. Unsafe or changed sources stay unvalidated; only packaged
+sources are executed for parser discovery. Recognizable malformed quoting is
+refused without inferring contracts from wrapper text or model names. The six
+route-contract tests passed, including run/review/review-set refusals, thin
+configs, copied standalone `unio`, no provider/version markers on refusal,
+custom compatibility and bounded FIFO/symlink/directory/changed-source checks.
+
+Separate item 7 test correction:
+`0b1827263ab4a1bd3fd89a778d2f04b62d55473d`. The initial disk suite returned 1
+after its behavioral checks passed because TemporaryDirectory teardown raced
+background EXIT cleanup (`Directory not empty: coord`). The test now waits,
+within its existing deadline, for native worker-lock release. Its focused rerun
+returned 0 with 193 checks; no production disk behavior changed.
+
+Preserved failed test attempts: the first route suite returned 1 because its
+copied binary was named `copied-engine`, which the existing ownership guard
+refuses; the fixture now copies to `standalone/unio` and still requires custom
+exit 7. Added review assertions initially returned 1 at the prerequisite current
+validation gate; the fixture now performs a real in-scope edit and successful
+verify before testing invalid reviewer dispatch. The final route suite returned
+0 (six tests, 24.982 seconds). No assertions were weakened.
+
+Focused validation batch started at `2026-10-19T03:29:02Z`; final results follow.
+
+| Focused command | Actual exit / evidence |
+| --- | --- |
+| `bash -n unio-install.sh` | 0 |
+| `python3 -B tools/embed-adapters.py --check` | 0, regenerated canonical bytes match |
+| `python3 -B tools/embed-task-plan.py --check` | 0 |
+| `python3 -B tests/unio-vibe.py` | 0, 22 tests |
+| `python3 -B tests/unio-antigravity.py` | 0, 41 checks |
+| `python3 -B tests/unio-copilot.py` | 0, 14 tests |
+| `python3 -B tests/unio-perplexity.py` | 0, 11 tests |
+| `python3 -B tests/unio-adapter-budget.py` | 0, 7 tests |
+| `python3 -B tests/unio-adapter-outcome.py` | 0, 9 tests |
+| `python3 -B tests/unio-route-contract.py` | final 0, 6 tests; earlier failures described above |
+| `python3 -B tests/unio-adapters-install.py` | 0, 3 tests |
+| `python3 -B tests/unio-tail.py` | 0 |
+| `python3 -B tests/unio-scope-annotations.py` | 0 |
+| `python3 -B tests/unio-disk-preflight.py` | initial 1, corrected rerun 0, 193 checks |
+| `python3 -B tests/unio-thin-config.py` | 0, 1 test |
+| `python3 -B tests/unio-task-plan.py` | 0, 13 tests |
+
+| `bash tests/unio-quality.sh` | 0, including contract cases and 26 coverage regressions |
+| `git diff --check` | 0, also repeated after the handoff edit |
+
+Validation end receipt: `2026-10-19T03:47:07.761104+00:00`.
+The focused batch elapsed approximately 18 minutes; route/disk correction reruns
+ran separately alongside the batch. Full quality gate and independent AI
+reviews were not run by this worker, as instructed. Logs are retained locally
+under `/tmp/unio-focused-20261019/`; the initial disk failure is `12.log`, the
+corrected disk exit-0 run is `disk-correction.log`, and the final route exit-0
+run is `route-contract.log`. The table above is the durable results receipt.
+
+Remaining limits: custom/wrapped/unsafe/unrecognized sources remain callable
+with validation Unknown; canonical validation proves syntax/bounds only, not
+provider capacity or successful execution. A standalone native engine retains
+the existing required `unio` basename. Items 5–6 remain deferred. No push,
+global installation, release, policy/task/auth-store edits or Vecto changes
+were performed. Next step belongs to the lead: focused native verify, the full
+quality gate, two independent current-code lab reviews and lead acceptance;
+record the outer Source exit separately when it becomes observable.
