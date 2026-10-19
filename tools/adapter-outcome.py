@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import stat
 import subprocess
 import sys
@@ -130,9 +129,13 @@ def valid_binding(b):
 def route(command, adapters):
     # Exact simple argv only. Shell wrappers, expansions, pipelines and env
     # prefixes are deliberately unsupported, even if they call an adapter.
-    if any(c in command for c in '\n\r$`;&|<>()*?{}'):
-        return 'unsupported'
-    a = shlex.split(command)
+    # Import only our trusted sibling, never a route-selected module.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        'unio_outcome_contract', Path(__file__).with_name('adapter-contract.py'))
+    contract = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(contract)
+    a = contract.simple_argv(command)
     if not a or Path(a.pop(0)).name not in ('python', 'python3'):
         return 'unsupported'
     while a and a[0] in ('-B', '-I', '-S'):

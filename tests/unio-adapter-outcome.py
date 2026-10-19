@@ -152,6 +152,14 @@ class Contract(unittest.TestCase):
             self.assertEqual(o.observe(str(self.root),'w','T',command,str(ROOT/'tools')), label)
             self.assertTrue(any(receipts.glob('*/receipt.json')))
 
+    def test_quoted_literals_and_unsafe_shell(self):
+        for literal in ('receipts (private)', 'literal;$`|<>*?{}~', 'a\\b'):
+            command = self.command + ' --receipt-dir ' + shlex.quote(literal)
+            self.assertEqual(o.route(command, str(ROOT/'tools')), 'vibe')
+        for suffix in (' | cat', '; true', ' $(echo x)', ' "$HOME"',
+                       ' `echo x`', ' *', ' ~/receipts', ' (private)'):
+            self.assertEqual(o.route(self.command + suffix, str(ROOT/'tools')), 'unsupported')
+
     def test_generic_and_stdout_no_evidence(self):
         for c in ('echo token_limit', 'bash -c ' + shlex.quote(self.command), self.command + ' | cat',
                   'env ' + self.command, self.command + '; echo ok'):
@@ -210,9 +218,9 @@ class Installed(unittest.TestCase):
             at=str(b/'bin/unio')
             def unio(*args, **kw): return run([at,*args], repo, **kw)
             conf=b/'conf/agents.conf'
-            receipts=b/'receipts';receipts.mkdir(mode=0o700)
-            conf.write_text('vibe=python3 -B '+shlex.quote(str(adapters/'vibe-worker.py'))+' --model glm-5-3 --receipt-dir '+str(receipts)+'\n'
-                            +'agy=python3 -B '+shlex.quote(str(adapters/'antigravity-worker.py'))+' --receipt-dir '+str(receipts)+'\n'
+            receipts=b/'receipts (private);$literal';receipts.mkdir(mode=0o700)
+            conf.write_text('vibe=python3 -B '+shlex.quote(str(adapters/'vibe-worker.py'))+' --model glm-5-3 --receipt-dir '+shlex.quote(str(receipts))+'\n'
+                            +'agy=python3 -B '+shlex.quote(str(adapters/'antigravity-worker.py'))+' --receipt-dir '+shlex.quote(str(receipts))+'\n'
                             +'mock=python3 -c '+shlex.quote("print('Adapter outcome: Provider limit observed');raise SystemExit(3)")+'\n')
             unio('init','vibe','agy','mock');unio('tier','low');unio('lead','none')
             project=repo.parent
@@ -231,6 +239,14 @@ class Installed(unittest.TestCase):
                 self.assertIn('exit='+str(rc), report)
                 self.assertIn('\nAdapter outcome: '+label+'\nStop reason: '+label+'\nRun budget:', report)
                 self.assertIn('### verdict\nAdapter outcome: '+label+'\nStop reason: '+label,report)
+                if task == 'V1':
+                    bound = next(p for p in (project/'coord/reports/.outcomes').iterdir()
+                                 if json.loads((p/'binding.json').read_text())['task'] == task)
+                    observation = json.loads((bound/'outcome.json').read_text())
+                    self.assertEqual(observation['route'], 'vibe')
+                    self.assertIsNotNone(o.budget_module().validate(observation['budget']))
+                    self.assertNotIn('Run budget: Unknown', report)
+
             status=unio('status').stdout
             self.assertNotIn('SECRET', status)
             for label in ('Configured token cap','Infrastructure failure','Provider terminal error','Unknown'):
