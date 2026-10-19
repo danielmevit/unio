@@ -99,8 +99,17 @@ def main():
                  + 'BUNDLED_ADAPTERS = json.loads(zlib.decompress(base64.b64decode(\n'
                  + ''.join(repr(line) + '\n' for line in textwrap.wrap(payload, 100)) + ')))\n'
                  + '__file__ = str(Path(sys.argv[2]) / "lib/adapters/adapter-contract.py")\n'
+                 + 'if len(sys.argv)>3 and sys.argv[3]:\n'
+                 + '    outcome_ns = {"__name__": "unio_outcomes"}\n'
+                 + '    exec(' + repr((ROOT/'tools/task-outcomes.py').read_text()) + ', outcome_ns)\n'
+                 + '    try: mode = outcome_ns["parse"](outcome_ns["read_task"](sys.argv[3]))\n'
+                 + '    except (ValueError, OSError) as e: print("task outcome: "+str(e), file=sys.stderr); raise SystemExit(2)\n'
+                 + '    route = check(sys.argv[1])\n'
+                 + '    if mode=="implementation" and route.get("adapter") in ("copilot-worker","perplexity-worker"):\n'
+                 + '        print("blocked_no_repo_access: declared implementation requires repository access; use a repository route or declare report-only", file=sys.stderr)\n'
+                 + '        raise SystemExit(2)\n'
                  + 'raise SystemExit(main(sys.argv[1:2]))\n')
-    block = ('route_contract() {\n  python3 -I -S -B - "$1" "$CONF_DIR" <<\'UNIO_ROUTE_CONTRACT_PY\'\n'
+    block = ('route_contract() {\n  python3 -I -S -B - "$1" "$CONF_DIR" "${2:-}" <<\'UNIO_ROUTE_CONTRACT_PY\'\n'
              + contract + bootstrap + 'UNIO_ROUTE_CONTRACT_PY\n}\n')
     begin, end = '# BEGIN EMBEDDED ROUTE CONTRACT\n', '# END EMBEDDED ROUTE CONTRACT\n'
     left, rest = updated.split(begin, 1)

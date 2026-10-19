@@ -22,6 +22,7 @@ python3 -B tools/embed-capacity.py --check
 python3 -B tools/embed-readiness.py --check
 python3 -B tools/embed-fleet.py --check
 python3 -B tools/embed-task-plan.py --check
+python3 -B tools/embed-task-outcomes.py --check
 python3 -B tools/embed-task-dispatch.py --check
 python3 -B tools/embed-continuous-delegation.py --check
 python3 -B tools/embed-dashboard.py --check
@@ -31,6 +32,7 @@ python3 -B tools/embed-codex-worker.py --check
 UNIO_BIN_DIR="$QUALITY_CHECK_DIR/bin" UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" \
   UNIO_COMPLETION_DIR="$QUALITY_CHECK_DIR/completion" bash unio-install.sh > "$QUALITY_CHECK_DIR/install.log"
 shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
+python3 -B tests/unio-task-outcomes.py
 python3 -B tests/unio-thin-config.py
 python3 -B tests/unio-selftest.py
 bash tests/unio-quality.sh

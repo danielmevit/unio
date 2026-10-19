@@ -54,6 +54,7 @@ LOGIN_HINT = ('run `pwm login` yourself in the venv that provides this interpret
               '(email code; never paste the token into a chat), then retry once')
 # state -> (exit code, safe message). No message ever contains upstream text.
 STATES = {
+    'blocked_no_repo_access': (2, 'declared implementation requires a repository route; use report-only for research'),
     'ok': (0, 'answer received'),
     'invalid_input': (2, 'invalid flags, task file or receipt directory'),
     'dependency_missing': (3, f'{DIST} is not installed for this interpreter; owner installs it manually (docs/integrations/PERPLEXITY-WEB.md)'),
@@ -492,6 +493,15 @@ def main(argv=None):
         if args.receipt_dir and args.proposal_dir:
             raise ValueError
         task = read_task(path)
+        import importlib.util
+        helper = Path(__file__).with_name('task-outcomes.py')
+        if helper.is_file():
+            spec = importlib.util.spec_from_file_location('task_outcomes', helper)
+            outcomes = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(outcomes)
+            mode = outcomes.parse(task.decode('utf-8'))
+            if mode == 'implementation':
+                return fail('blocked_no_repo_access')
         prompt, context = prepare_question(task, args.context_file, bool(args.proposal_dir))
         destination = args.proposal_dir or args.receipt_dir
         run = private_run_dir(destination) if destination else None

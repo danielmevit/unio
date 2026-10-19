@@ -10,6 +10,7 @@ fenced examples are ignored while parsing. parse() never classifies arbitrary
 model prose and performs no I/O.
 """
 import os
+import re
 import stat
 import sys
 
@@ -42,22 +43,31 @@ def parse(text):
     headers = 0
     values = []
     in_section = False
-    fenced = False
+    fence = None
     for line in text.split('\n'):
         stripped = line.strip()
-        if stripped.startswith('```') or stripped.startswith('~~~'):
-            fenced = not fenced
+        marker = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line)
+        if fence:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
+                fence = None
             continue
-        if fenced:
+        if marker:
+            fence = marker[1]
             continue
-        if line.startswith('## '):
-            in_section = line[3:].strip() == HEADER
-            if in_section:
+        heading = re.match(r'^ {0,3}(#{1,6})(?:[ \t]+(.*)|$)', line)
+        if heading:
+            title = (heading[2] or '').strip()
+            if title.lower().startswith('outcome'):
+                if line != HEADER:
+                    raise OutcomeError("use the exact heading '## Outcome' and one plain value on the next line")
+                in_section = True
                 headers += 1
+            else:
+                in_section = False
             continue
         if not in_section or not stripped:
             continue
-        if stripped in MODES:
+        if stripped in MODES and line == stripped:
             values.append(stripped)
         else:
             raise OutcomeError("the '## Outcome' section must contain exactly one plain "
