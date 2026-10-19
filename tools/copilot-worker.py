@@ -513,6 +513,7 @@ def run_telemetry(record, native_usage):
     if finite_number(premium) and premium >= 0:
         note = ("the native usage file reported " + str(premium)
                 + " premium request(s); this is not a token or USD measurement")
+        # Finite JSON integers can still exceed the bounded note schema.
         if len(note) <= module.MAX_NOTE_CHARS:
             notes.append(note)
     completed = record.get("outcome") == "proposal_recorded"

@@ -108,3 +108,24 @@ global installation, release, policy/task/auth-store edits or Vecto changes
 were performed. Next step belongs to the lead: focused native verify, the full
 quality gate, two independent current-code lab reviews and lead acceptance;
 record the outer Source exit separately when it becomes observable.
+
+
+## Bounded telemetry/diagnostic continuation — 2026-10-19
+
+Assignment/start receipt: `2026-10-19T10:56:41+02:00`, base
+`f6567278639be5c6fe83823ad2e3c2b1a3d692af` (preserved WIP).
+Dedicated correction worker: ChatGPT subscription / Codex CLI, locally verified
+`codex-cli 0.163.0` / requested `gpt-6.1-sol` LOW; effective model and effort
+Unknown. No other provider calls, subagents or paid fallback. Outer Source and
+native invocation exits remain Unknown until observed by the controller.
+The original missing-PID/no-receipt attempt and the prior interrupted LOW
+Source 1/native 1 allowance-limit attempt remain historical failures; this
+continuation does not replace their evidence. Reported reset allowance was
+shared-group metadata, not an allocation to this worker.
+
+Item 1 continues the existing overflow-safe `finite_number` check and single
+bounded usage-file read. Notes exceeding the telemetry schema limit are omitted,
+including finite enormous JSON integers; native/adapter exit and final receipt
+must survive. Added fake-CLI cases cover `10**200`, `10**400`, negative enormous
+integers, booleans, nonfinite values, malformed JSON and wrong shapes, and assert
+unknown token/USD meters, bounded notes and absence of raw usage/secrets.

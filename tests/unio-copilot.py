@@ -405,7 +405,8 @@ class CopilotTests(unittest.TestCase):
 
     def test_invalid_native_usage_preserves_success_and_receipt(self):
         cases = [json.dumps({'premiumRequests': value}) for value in
-                 (10**400, True, float('nan'), float('inf'), 'NEVER-IN-RECEIPT')]
+                 (10**400, 10**200, -10**400, True, False, float('nan'),
+                  float('inf'), -float('inf'), 'NEVER-IN-RECEIPT')]
         cases += ['{"premiumRequests":', '[]']
         for raw in cases:
             with self.subTest(raw=raw):
@@ -419,7 +420,9 @@ class CopilotTests(unittest.TestCase):
                 self.assertEqual(telemetry['tokens']['provenance'], 'unknown')
                 self.assertEqual(telemetry['usd']['provenance'], 'unknown')
                 self.assertFalse(any('premium request(s)' in n for n in telemetry['notes']))
+                self.assertTrue(all(len(n) <= 240 for n in telemetry['notes']))
                 self.assertNotIn(SECRET, json.dumps(record))
+                self.assertNotIn('premiumRequests', json.dumps(record))
                 import shutil
                 for run in self.receipts.glob('copilot-run-*'):
                     shutil.rmtree(run)
@@ -432,6 +435,7 @@ class CopilotTests(unittest.TestCase):
                                                  {'premiumRequests': value})
                 self.assertEqual(telemetry['turns']['used'], 1)
                 self.assertFalse(any('premium request(s)' in n for n in telemetry['notes']))
+                self.assertTrue(all(len(n) <= 240 for n in telemetry['notes']))
         self.assertTrue(any('2 premium request(s)' in n for n in
                             worker.run_telemetry({}, {'premiumRequests': 2})['notes']))
 
