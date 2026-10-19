@@ -17870,6 +17870,37 @@ not an automatic scheduler or proof that an account has allowance left.
 The account inventory below was checked on 2026-10-10. Current owner
 instructions and fresher observations take precedence.
 
+## Antigravity worker inventory — 2026-10-19
+
+Owner-authorized additional worker options were confirmed in the installed
+agy1.4.2 `models` catalog: `claude-opus-4-6-thinking` (Claude Opus4.6 Thinking),
+`claude-sonnet-4-6` (Sonnet4.6 Thinking) and `gpt-oss-120b-medium` (GPT-OSS120B
+Medium), alongside Gemini3.8Flash low/medium/high selectors. The owner's new
+worker authorization specifically names Opus4.6 and GPT-OSS120B; cataloguing
+Sonnet does not itself assign a task. Keep exact subscription route, CLI,
+selector and requested effort in each task receipt. Effective identity and
+supported per-model effort controls require evidence; do not infer them from
+the generic CLI's accepted effort flags.
+
+These are Antigravity routes, separate from Claude Code or ChatGPT account
+routes. The owner's Claude Code hold is unchanged. The owner reports different
+model allowances, but this catalog exposes no remaining quota, reset or pool
+separation. Conservatively retain one Antigravity budget group and sequential
+admission until actual independent allowance evidence is available. A catalog
+entry is not a successful call, benchmark or proof of available capacity.
+
+Use a bounded real task to assess fit: Opus for substantial review/architecture
+work when available; GPT-OSS initially for a clearly scoped worker task. These
+are starting assignments, not measured rankings. A hosted GPT-OSS selection
+does not establish local execution, self-hosting, fine-tuning access, no third-
+party transmission or free usage. Verify deployment and plan terms separately;
+no extra paid API fallback or billing changes are authorized.
+
+The packaged Antigravity adapter currently pins Gemini selectors and a specific
+CLI version. Do not pretend new catalog entries automatically enable that
+adapter. Use an explicit task-frozen custom route with truthful receipts, or
+implement/review an adapter extension separately. Preserve existing routes.
+
 ## Make each assignment visible
 
 Follow the [mandatory reporting rule](LEAD-ROUTING.md#name-the-model-route-in-every-work-summary).

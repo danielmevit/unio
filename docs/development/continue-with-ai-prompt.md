@@ -1,12 +1,30 @@
-<!-- operator-legibility-checkpoint 2026-10-19T01:03:50+02:00 -->
-Current priority: the 2026-10-19 operator legibility round. See
-`docs/development/OPERATOR-LEGIBILITY-2026-10-19.md`. Worktree/branch
-`agent/operator-legibility-20261019` starts from main 9d2234c. Three scoped
-native workers own items1–2,3–4,7; no product changes accepted or pushed yet.
-Private receipts are in the enclosing workspace's
-`tmp/unio-next/operator-legibility-20261019/`. Preserve the earlier managed-session
-candidate at04c51ee; its reviewers have not been invoked. Follow the newest
-coordination log before resuming old instructions below.
+# Current priority — operator legibility, 2026-10-19T15:57:17+02:00
+
+Read the newest shared coord/AGENT-LOG.md and
+[the seven-item round](OPERATOR-LEGIBILITY-2026-10-19.md) first. All seven have
+source commits on agent/operator-legibility-20261019, latest code362c932.
+No acceptance/push/global install/release yet. Correction Source/native1 hit a
+real Codex limit after two commits and14 passing outcome tests; preserve the
+failed call, do not invent Source0. Final frozen full gate and independent
+current-code report reviews from at least two AI labs remain. The patch exceeds
+native review-set's300000-byte bound; its old preparation is retired, no clipping
+or cap change. Private receipts and launch state:
+tmp/unio-next/operator-legibility-20261019/ in the enclosing workspace.
+
+Resume managed-session candidate04c51ee (Source0/six native checks, unaccepted)
+only after this round. Then lead continuity/phone/Windows/macOS, Windows first.
+Further CodeGraph work is deferred. Main9d2234c and installed official0.5.21
+remain unchanged. Owner website/UI/brand projects are excluded.
+
+Owner authorizes Antigravity's catalogued Opus4.6 Thinking and GPT-OSS120B Medium
+as workers. agy1.4.2 catalog is recorded; effective model, effort, privacy and
+per-model quota separation remain Unknown. Keep Antigravity aliases grouped
+conservatively until independent allowances are evidenced. The Claude Code
+subscription hold remains. Do not infer self-hosting or zero-cost usage from
+a hosted model catalog. See [fleet guidance](AGENT-FLEET.md).
+
+The older release checkpoint below is historical; its idle/priority statements
+do not describe this current active round.
 
 # Lead handoff — Unio 0.5.20, 2026-10-16
 
