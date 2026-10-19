@@ -7,7 +7,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 FILES = (('tools', 'codex-worker.py', 'UNIO_CODEX_WORKER_PY'),
-         ('docs', 'WORKER-EFFORT.md', 'UNIO_WORKER_EFFORT_MD'))
+         ('docs', 'WORKER-EFFORT.md', 'UNIO_WORKER_EFFORT_MD'),
+         ('docs', 'MANAGED-SESSIONS.md', 'UNIO_MANAGED_SESSIONS_MD'))
 BEGIN = '# BEGIN EMBEDDED CODEX WORKER\n'
 END = '# END EMBEDDED CODEX WORKER\n'
 DIRS = ('"$CONF_DIR/lib"',)
@@ -22,7 +23,7 @@ def embedded_block():
   fi
 done
 '''
-    block += 'for worker_name in codex-worker.py WORKER-EFFORT.md; do\n'
+    block += 'for worker_name in codex-worker.py WORKER-EFFORT.md MANAGED-SESSIONS.md; do\n'
     block += '''  worker_file="$CONF_DIR/lib/$worker_name"
   if [ -L "$worker_file" ] || { [ -e "$worker_file" ] && { [ ! -f "$worker_file" ] || [ "$(stat -c '%h' -- "$worker_file")" != 1 ]; }; }; then
     echo "unio: refusing unsafe codex worker file: $worker_file" >&2
