@@ -105,7 +105,7 @@ def main():
         # 2. Annotated glob passes with warning
         # -------------------------------------------------------------
         reset_mock()
-        setup_task("T_annot_glob", ["src/* (CAD Stage 1 adjustments)"], ["test -s src/engine.py"])
+        setup_task("T_annot_glob", ["src/* (only CAD Stage 1 adjustments)"], ["test -s src/engine.py"])
         set_mock_worker("mkdir -p src; echo 'engine' > src/engine.py; git add src; git commit -qm 'touch src/engine.py'")
         run_cmd([unio_bin, "run", "mock", "T_annot_glob"], env=env, cwd=str(repo_dir))
         p = run_cmd([unio_bin, "verify", "mock", "T_annot_glob"], env=env, cwd=str(repo_dir))
@@ -113,7 +113,7 @@ def main():
         assert p.returncode == 0
         assert "verdict  : PASS" in p.stdout
         assert "scope    : OK (1 pattern(s))" in p.stdout
-        assert "warning  : stripped annotation '(CAD Stage 1 adjustments)' from scope pattern 'src/*'" in p.stdout
+        assert "warning  : stripped annotation '(only CAD Stage 1 adjustments)' from scope pattern 'src/*'" in p.stdout
         print("  ✓ annotated glob passes with visible bounded warning")
 
         # -------------------------------------------------------------
@@ -167,6 +167,18 @@ def main():
         assert p.returncode == 0
         assert "verdict  : PASS" in p.stdout
         assert "warning" not in p.stdout.lower()
+
+        # A trailing unquoted parenthesis is a literal path, never authority
+        # to change the different path obtained by stripping it.
+        for task_id, changed, expected in [('T_literal', 'folder (old)', 0),
+                                           ('T_literal_forbidden', 'folder', 1)]:
+            reset_mock()
+            setup_task(task_id, ['folder (old)'], ['true'])
+            set_mock_worker(f"echo content > '{changed}'; git add '{changed}'; git commit -qm literal")
+            run_cmd([unio_bin, "run", "mock", task_id], env=env, cwd=str(repo_dir))
+            p = run_cmd([unio_bin, "verify", "mock", task_id], env=env, cwd=str(repo_dir), check=False)
+            assert p.returncode == expected, p.stdout + p.stderr
+            assert "stripped annotation" not in p.stdout
 
         # 5c. Quoted path with spaces and parentheses (unannotated)
         reset_mock()

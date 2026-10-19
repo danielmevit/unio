@@ -32,27 +32,19 @@ Operators sometimes add clarifying notes to scope lines to guide workers, for ex
 - tests/* (new coverage only)
 ```
 
-The verifier parses human annotations according to strict rules:
-- **Recognized annotation syntax**: Separating whitespace followed by balanced parentheses at the end of the line (e.g. ` (annotation text)`).
-- **Enforcement**: The verifier strips the trailing human annotation, issues a visible bounded warning in verification output and append-only reports, and enforces the actual path or glob pattern.
-- **No waiver authority**: Annotations are informational notes. They grant no authority to waive scope enforcement or modify files outside the parsed path/glob.
-- **Glob survival**: Globs with annotations (e.g. `- tests/* (unit tests only)`) enforce the glob pattern (`tests/*`) and do not broaden to `*` or drop the pattern.
+The verifier and task planner share this conservative grammar:
+- An unquoted path may end with ` (only TEXT)`, where TEXT contains no parentheses. This reserved suffix is an informational annotation and is stripped with a bounded verification warning.
+- A path enclosed in matching double quotes, single quotes or backticks may be followed by a balanced parenthesized annotation. The quoted content is preserved literally.
+- Every other unquoted suffix is literal: `folder (old)` authorizes that exact path, never `folder`. Quote literal names ending in the reserved ` (only TEXT)` form.
+- Globs remain globs; annotations cannot broaden a pattern or waive scope enforcement.
 
-### Paths with Spaces, Parentheses, and Disambiguation
-
-Real repository paths often include spaces, literal parentheses, or punctuation. The parser handles them safely:
-- **Paths with spaces**: Real paths such as `- path with spaces/my file.txt` are preserved intact. The parser never blindly splits on whitespace.
-- **Paths with literal parentheses**: Paths such as `- docs/file (copy).txt` or `- dir/(notes)/file.txt` that do not end in separating whitespace and parentheses are treated as literal paths with no annotation stripped.
-- **Ambiguous syntax disambiguation**:
-  If a literal file or directory name ends with separating whitespace and parentheses (for example, a file named `archive (1)` with no extension):
-  - If written unquoted (`- archive (1)`), the parser treats `(1)` as a human annotation on `archive`, issues a warning, and matches `archive`.
-  - **Documented guidance**: To match the literal filename `archive (1)`, enclose the path in double quotes, single quotes, or backticks:
-    ```markdown
-    - "archive (1)"
-    - 'archive (1)'
-    - `archive (1)`
-    ```
-    Quoted and backticked paths preserve their exact inner content verbatim without stripping literal parentheses. If a quoted path is followed by an annotation outside the quotes (e.g. `- "archive (1)" (only metadata)`), only the outer annotation is stripped with a warning.
+Examples:
+```markdown
+- src/Core/Centerline.cs (only X adjustments)
+- tests/* (only new coverage)
+- folder (old)
+- "archive (1)" (only metadata)
+```
 
 ### Path Traversal and Safety
 

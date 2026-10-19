@@ -11413,6 +11413,26 @@ def is_ancestor_commit(repo_dir, ancestor, base, timeout=5.0):
     return rc == 0
 
 
+def parse_scope_line(raw):
+    """Match native scope grammar: quoted path + note, or (only ...) suffix."""
+    raw = raw.strip()
+    if raw[:1] in ('"', "'", '`'):
+        quote = raw[0]
+        end = raw.find(quote, 1)
+        if end >= 0:
+            after = raw[end + 1:].strip()
+            depth = 0
+            balanced = bool(after) and after.startswith('(') and after.endswith(')')
+            for char in after:
+                depth += (char == '(') - (char == ')')
+                if depth < 0:
+                    balanced = False
+            if not after or (balanced and depth == 0):
+                return raw[1:end]
+    match = re.fullmatch(r'(.+)\s(\(only\s[^()]*\))', raw)
+    return match.group(1).rstrip() if match else raw
+
+
 def validate_scope_pattern(pattern):
     if not isinstance(pattern, str) or not pattern:
         return False, 'empty scope pattern'
@@ -11513,6 +11533,7 @@ def parse_task_markdown(raw, expected_sha256):
 
     validated_scopes = []
     for pat in raw_scope_lines:
+        pat = parse_scope_line(pat)
         valid, err = validate_scope_pattern(pat)
         if not valid:
             return None, None, 'unresolved', 'unsupported_scope_pattern'
@@ -28194,42 +28215,13 @@ parse_scope_line() {
     fi
   fi
 
-  local path="$raw"
-  local annots=()
-  while [ "${path: -1}" = ')' ]; do
-    local depth=0 open_pos=-1 i c
-    for (( i=${#path}-1; i>=0; i-- )); do
-      c="${path:i:1}"
-      case "$c" in
-        ')') depth=$((depth+1));;
-        '(')
-          depth=$((depth-1))
-          if [ "$depth" -eq 0 ]; then
-            open_pos="$i"
-            break
-          fi
-          ;;
-      esac
-    done
-    if [ "$depth" -eq 0 ] && [ "$open_pos" -gt 0 ]; then
-      local prev_char="${path:$((open_pos-1)):1}"
-      if [[ "$prev_char" =~ [[:space:]] ]]; then
-        local cand_path="${path:0:$((open_pos-1))}"
-        cand_path="${cand_path%"${cand_path##*[![:space:]]}"}"
-        if [ -n "$cand_path" ]; then
-          local annot_chunk="${path:$open_pos}"
-          annots=("$annot_chunk" "${annots[@]}")
-          path="$cand_path"
-          continue
-        fi
-      fi
-    fi
-    break
-  done
-
-  REPLY_PATH="$path"
-  if [ ${#annots[@]} -gt 0 ]; then
-    REPLY_ANNOT="${annots[*]}"
+  # Unquoted parentheses are literal. Only an explicit " (only ... )"
+  # suffix is annotation syntax; quote a literal path using that reserved form.
+  REPLY_PATH="$raw"
+  if [[ "$raw" =~ ^(.+)[[:space:]](\(only[[:space:]][^\(\)]*\))$ ]]; then
+    REPLY_PATH="${BASH_REMATCH[1]}"
+    REPLY_PATH="${REPLY_PATH%"${REPLY_PATH##*[![:space:]]}"}"
+    REPLY_ANNOT="${BASH_REMATCH[2]}"
   fi
   return 0
 }

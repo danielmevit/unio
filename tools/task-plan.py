@@ -272,6 +272,26 @@ def is_ancestor_commit(repo_dir, ancestor, base, timeout=5.0):
     return rc == 0
 
 
+def parse_scope_line(raw):
+    """Match native scope grammar: quoted path + note, or (only ...) suffix."""
+    raw = raw.strip()
+    if raw[:1] in ('"', "'", '`'):
+        quote = raw[0]
+        end = raw.find(quote, 1)
+        if end >= 0:
+            after = raw[end + 1:].strip()
+            depth = 0
+            balanced = bool(after) and after.startswith('(') and after.endswith(')')
+            for char in after:
+                depth += (char == '(') - (char == ')')
+                if depth < 0:
+                    balanced = False
+            if not after or (balanced and depth == 0):
+                return raw[1:end]
+    match = re.fullmatch(r'(.+)\s(\(only\s[^()]*\))', raw)
+    return match.group(1).rstrip() if match else raw
+
+
 def validate_scope_pattern(pattern):
     if not isinstance(pattern, str) or not pattern:
         return False, 'empty scope pattern'
@@ -372,6 +392,7 @@ def parse_task_markdown(raw, expected_sha256):
 
     validated_scopes = []
     for pat in raw_scope_lines:
+        pat = parse_scope_line(pat)
         valid, err = validate_scope_pattern(pat)
         if not valid:
             return None, None, 'unresolved', 'unsupported_scope_pattern'
