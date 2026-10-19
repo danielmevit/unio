@@ -14992,7 +14992,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import stat
 import subprocess
 import sys
@@ -15114,9 +15113,13 @@ def valid_binding(b):
 def route(command, adapters):
     # Exact simple argv only. Shell wrappers, expansions, pipelines and env
     # prefixes are deliberately unsupported, even if they call an adapter.
-    if any(c in command for c in '\n\r$`;&|<>()*?{}'):
-        return 'unsupported'
-    a = shlex.split(command)
+    # Import only our trusted sibling, never a route-selected module.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        'unio_outcome_contract', Path(__file__).with_name('adapter-contract.py'))
+    contract = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(contract)
+    a = contract.simple_argv(command)
     if not a or Path(a.pop(0)).name not in ('python', 'python3'):
         return 'unsupported'
     while a and a[0] in ('-B', '-I', '-S'):
@@ -16526,16 +16529,17 @@ def budget_module():
 
 
 def run_telemetry(record):
-    """One ask is an exact adapter-transport fact; tokens and USD stay unknown."""
+    """Count only established asks; possible asks and usage stay unknown."""
     module = budget_module()
     if module is None:
         return None
-    asked = bool(record.get('ask_may_have_run'))
+    turns = (1 if record.get('outcome') == 'ok' else
+             0 if record.get('ask_may_have_run') is False else None)
     return module.telemetry(
         tokens=module.meter(None, None, 'unknown'),
-        turns=module.meter(1 if asked else 0, None, 'reported'),
+        turns=module.meter(turns, None, 'reported' if turns is not None else 'unknown'),
         usd=module.meter(None, None, 'unknown'),
-        notes=('turns count the single ask this adapter makes; the pinned library '
+        notes=('turns count only transport-established asks; uncertain asks remain unknown; the pinned library '
                'reports no token or USD usage, so those meters are unknown, not zero',))
 
 
@@ -29720,25 +29724,26 @@ BUNDLED_ADAPTERS = json.loads(zlib.decompress(base64.b64decode(
 'BT6sV5entCCa38/i3iSaDkZRcLdteYXftYM/Wjg5RrtKLkuK6iIWSyge2RJeFOq38ouii3XqtW0rIQlWN8/E6jFaZ+P0lJXWNNIs'
 'ZelQG7hrq5abAbdmrDq2kWuULb1Ysd5NfDa1UBuwr9hBQJgeIxYMO7SmwOgwn6Z8HPn4XNFouZfU7y0hFJzdJBRWxHNLuHKYRQIW'
 'ckMQOhoiVcdD13fBQVwwAgqScaaEjnrVEo3VE+4vId50TbToN/fOb+NXEm8FWtHh5ATYZQqGP4d4r03APUQcX60WUNgCCB+ErT2b'
-'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'
+'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'
+'imk='
 )))
 __file__ = str(Path(sys.argv[2]) / "lib/adapters/adapter-contract.py")
 if len(sys.argv)>3 and sys.argv[3]:
