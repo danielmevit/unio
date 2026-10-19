@@ -376,7 +376,7 @@ def main():
               result.returncode == 2 and 'receipt_parent_must_be_private' in result.stderr
               and not list(public_parent.glob('antigravity-run-*')))
         result = h.run('--time-limit', '0')
-        check('invalid bounds refused', result.returncode == 2 and 'invalid_bounds' in result.stderr)
+        check('invalid bounds refused', result.returncode == 2 and '--time-limit' in result.stderr and '7200' in result.stderr)
         result = h.run('--selector', 'xhigh')
         check('unknown selector refused by argparse', result.returncode == 2)
 

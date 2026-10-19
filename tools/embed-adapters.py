@@ -13,6 +13,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 ADAPTERS = (
+    (ROOT / 'tools' / 'adapter-contract.py', 'UNIO_ADAPTER_CONTRACT_PY', 'adapter-contract.py'),
     (ROOT / 'tools' / 'adapter-outcome.py', 'UNIO_ADAPTER_OUTCOME_PY', 'adapter-outcome.py'),
     (ROOT / 'tools' / 'adapter-budget.py', 'UNIO_ADAPTER_BUDGET_PY', 'adapter-budget.py'),
     (ROOT / 'tools' / 'vibe-worker.py', 'UNIO_VIBE_WORKER_PY', 'vibe-worker.py'),
@@ -31,7 +32,7 @@ for adapters_dir in "$CONF_DIR/lib" "$CONF_DIR/lib/adapters"; do
     exit 1
   fi
 done
-for adapters_file in "$CONF_DIR/lib/adapters/adapter-outcome.py" "$CONF_DIR/lib/adapters/adapter-budget.py" "$CONF_DIR/lib/adapters/vibe-worker.py" "$CONF_DIR/lib/adapters/perplexity-worker.py" "$CONF_DIR/lib/adapters/copilot-worker.py" "$CONF_DIR/lib/adapters/antigravity-worker.py"; do
+for adapters_file in "$CONF_DIR/lib/adapters/adapter-contract.py" "$CONF_DIR/lib/adapters/adapter-outcome.py" "$CONF_DIR/lib/adapters/adapter-budget.py" "$CONF_DIR/lib/adapters/vibe-worker.py" "$CONF_DIR/lib/adapters/perplexity-worker.py" "$CONF_DIR/lib/adapters/copilot-worker.py" "$CONF_DIR/lib/adapters/antigravity-worker.py"; do
   if [ -L "$adapters_file" ] || { [ -e "$adapters_file" ] && { [ ! -f "$adapters_file" ] || [ "$(stat -c '%h' -- "$adapters_file")" != 1 ]; }; }; then
     echo "unio: refusing unsafe adapter file: $adapters_file" >&2
     exit 1

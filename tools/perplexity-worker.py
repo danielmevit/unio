@@ -413,6 +413,15 @@ the lead's low-tier account. No paid API fallback or automatic retry is allowed.
 ''')
 
 
+def contract_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "unio_adapter_contract", str(Path(__file__).with_name("adapter-contract.py")))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='perplexity-worker.py', description=__doc__.split('\n')[0])
     parser.add_argument('--check', action='store_true')
@@ -457,26 +466,7 @@ def run_telemetry(record):
 
 
 def contract_validate(argv):
-    """Route-contract metadata mode: the real parser, no run, no import."""
-    import io
-    if any(flag in argv for flag in ('--check', '--child')):
-        return dict(schema_version=1, adapter='perplexity-worker', state='invalid',
-                    detail='adapter-internal flags are not valid in a route command')
-    parser = build_parser()
-    captured = io.StringIO()
-    original = sys.stderr
-    try:
-        sys.stderr = captured
-        args = parser.parse_args(argv)
-    except SystemExit:
-        return dict(schema_version=1, adapter='perplexity-worker', state='invalid',
-                    detail=(captured.getvalue() or 'unrecognized arguments').strip()[-400:])
-    finally:
-        sys.stderr = original
-    if args.model is None:
-        return dict(schema_version=1, adapter='perplexity-worker', state='invalid',
-                    detail='--model is required in a route command')
-    return dict(schema_version=1, adapter='perplexity-worker', state='valid', detail=None)
+    return contract_module().validate(build_parser(), None, argv, "perplexity")
 
 
 def main(argv=None):

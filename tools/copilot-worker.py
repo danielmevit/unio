@@ -459,6 +459,15 @@ def file_sha256(path):
     return digest.hexdigest()
 
 
+def contract_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "unio_adapter_contract", str(Path(__file__).with_name("adapter-contract.py")))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prompt-file", help="Regular UTF-8 task with all selected context inline; otherwise TASKFILE")
@@ -515,23 +524,7 @@ def run_telemetry(record, native_usage):
 
 
 def contract_validate(argv):
-    """Route-contract metadata mode: the real parser and bounds, no run."""
-    import io
-    parser = build_parser()
-    captured = io.StringIO()
-    original = sys.stderr
-    try:
-        sys.stderr = captured
-        args = parser.parse_args(argv)
-    except SystemExit:
-        return dict(schema_version=1, adapter="copilot-worker", state="invalid",
-                    detail=(captured.getvalue() or "unrecognized arguments").strip()[-400:])
-    finally:
-        sys.stderr = original
-    problems = check_bounds(args)
-    return dict(schema_version=1, adapter="copilot-worker",
-                state="valid" if not problems else "invalid",
-                detail="; ".join(problems) if problems else None)
+    return contract_module().validate(build_parser(), check_bounds, argv, "copilot")
 
 
 def main():
@@ -548,8 +541,9 @@ def main():
     started = time.monotonic()
     exit_code = 2
     try:
-        if check_bounds(args):
-            raise Refusal("invalid_bounds")
+        problems = check_bounds(args)
+        if problems:
+            raise Refusal("; ".join(problems))
         prompt = args.prompt_file or os.environ.get("TASKFILE")
         if not prompt:
             raise Refusal("missing_task")
