@@ -129,3 +129,42 @@ including finite enormous JSON integers; native/adapter exit and final receipt
 must survive. Added fake-CLI cases cover `10**200`, `10**400`, negative enormous
 integers, booleans, nonfinite values, malformed JSON and wrong shapes, and assert
 unknown token/USD meters, bounded notes and absence of raw usage/secrets.
+
+Item 1 continuation commit: `e31b965` (preserved WIP remains its ancestor).
+Item 2 continues the existing actual-parser `safe_integer_bounds` metadata;
+the safe dispatcher renders both numeric endpoints and the agents.conf remedy,
+without reading rejected user strings. Existing standalone parsing and accepted
+syntax/ranges are unchanged. Tests obtain native-dispatch bounds from that same
+parser metadata, avoiding duplicate range values, and cover below/above bounds,
+`nan`, `inf`, nonintegers and secret-like input. Native refusal is asserted before
+background start, provider marker, retry, policy and outcome artifacts. Adapter
+embeds were regenerated, including the standalone bundled contract.
+
+Preserved failed check: the first route-contract run returned 1 (7 tests,
+5.534 seconds): the WIP's new Perplexity fixture had not initialized a Perplexity
+worktree, so native dispatch correctly stopped with “no worktree” before parser
+validation. The fixture now configures and initializes that route; no production
+worktree or dispatch guard was changed. Corrected rerun: exit 0, 7 tests,
+24.144 seconds.
+
+Focused final checks (this continuation only):
+
+| Command | Result |
+| --- | --- |
+| `bash -n "unio-install.sh"` | passed |
+| `python3 -B "tools/embed-adapters.py" --check` | passed, byte-identical |
+| `python3 -B "tests/unio-copilot.py"` | exit 0, 16 tests, 146.650 seconds |
+| `python3 -B "tests/unio-perplexity.py"` | exit 0, 11 tests, 36.099 seconds |
+| `python3 -B "tests/unio-route-contract.py"` | corrected exit 0, 7 tests, 24.144 seconds |
+| `python3 -B "tests/unio-adapter-budget.py"` | exit 0, 7 tests |
+| `python3 -B "tests/unio-adapter-outcome.py"` | exit 0, 9 tests, 31.143 seconds |
+| `git diff --check` | passed |
+
+No full gate, live model canary, push, release, global install or other provider
+invocation. Local fake-CLI receipts assert native 0/adapter 0 for successful
+proposals with invalid usage; these are fixture observations, not the outer
+worker's Source/native exit. The latter remain Unknown inside this invocation.
+Both corrections are implementation plus focused validation, not lead acceptance.
+Three independent current-code reviews follow outside this task, per assignment.
+
+End receipt: `2026-10-19T10:59:56+02:00`; requested route remains ChatGPT subscription / Codex CLI 0.163.0 / `gpt-6.1-sol` LOW, effective settings Unknown.
