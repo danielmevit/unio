@@ -364,6 +364,23 @@ def regressions():
             return SimpleNamespace(project=str(self.root), worker='mock', session_action=action,
                                    after=0, limit=100, request_id='req', file=str(self.root / 'input'))
 
+        def test_missing_archived_suffix_keeps_validated_prefix(self):
+            d, meta = self.archive()
+            meta['output_cursor'] = 3
+            (d / 'sess-test.json').write_text(json.dumps(meta))
+            output = d / 'sess-test.output.jsonl'
+            for raw, expected in ((self.rec(1), [1]), (b'', []), (None, [])):
+                with self.subTest(raw=raw):
+                    if raw is None:
+                        output.unlink()
+                    else:
+                        output.write_bytes(raw); output.chmod(0o600)
+                    result = m['session_client'](self.args('output'))
+                    self.assertTrue(result['gap'] and result['truncated'])
+                    self.assertEqual([r['cursor'] for r in result['records']], expected)
+                    self.assertEqual(result['output_cursor'], len(expected))
+                    self.assertEqual(result['next_cursor'], len(expected))
+
         def test_cross_worker_binding_refuses_all_commands(self):
             d, meta = self.archive()
             meta['worker'] = 'other'

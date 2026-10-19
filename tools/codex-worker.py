@@ -762,6 +762,10 @@ def session_client(args):
             records, next_cursor, last_cursor, truncated, gap = [], after, 0, False, meta['output_cursor'] > 0
         else:
             records, next_cursor, last_cursor, truncated, gap = read_session_output(output_file, after=after, limit=limit)
+        # Metadata can precede this read while output appends, so a newer
+        # transcript is valid. A shorter validated prefix proves missing history.
+        if last_cursor < meta['output_cursor']:
+            gap = truncated = True
 
         return {
             'session_id': session_id,

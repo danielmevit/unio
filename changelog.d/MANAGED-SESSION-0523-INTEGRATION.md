@@ -6,3 +6,5 @@ conversations, start new turns, complete lead takeover/cooldown, establish Windo
 support, or change current-inference effort; effective inference remains Unknown.
 UNIO_VERSION remains 0.5.22 pending lead-owned release work. Integration checks and
 independent reviews/lead acceptance are separate; no acceptance is claimed here.
+Detect a missing archived suffix even when the remaining transcript ends at a
+valid record boundary; retain its validated cursor prefix and flag the gap.
