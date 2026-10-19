@@ -287,6 +287,18 @@ else:
         time.sleep(0.1)
     check('healthy background completed', marker.exists() and result.is_file()
           and json.loads(result.read_text())['process']['state'] == 'succeeded')
+    # A terminal result precedes EXIT cleanup. Wait for native ownership to
+    # release before removing the fixture under the detached background shell.
+    released = False
+    with (coord / '.locks' / 'mock.lock').open('a') as worker_lock:
+        while time.monotonic() < deadline:
+            try:
+                fcntl.flock(worker_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                released = True
+                break
+            except BlockingIOError:
+                time.sleep(0.1)
+        check('healthy background ownership released', released)
     check('no probe files left', not list(coord.rglob('.unio-disk-*')))
 
 print(f'unio-disk-preflight: {checks} checks passed')
