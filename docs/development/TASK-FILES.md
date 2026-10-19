@@ -55,9 +55,11 @@ Examples:
 
 Add the exact heading `## Outcome` followed by one plain value, `implementation`
 or `report-only`, on its own line. Fenced examples are ignored. Unknown values,
-empty/multiple values, malformed headings and duplicate sections refuse before
-provider admission. No declaration retains legacy behavior, including the existing
-empty-work failure; task intent is never inferred from prose.
+empty/multiple values, malformed section bodies and duplicate reserved sections
+refuse before provider admission. Only the exact line `## Outcome` is reserved;
+legacy headings such as `## Outcomes` and `## Outcome notes` remain ordinary
+task content and do not declare metadata. No declaration retains legacy behavior,
+including the existing empty-work failure; task intent is never inferred from prose.
 
 Explicit implementation on a recognized canonical Copilot or Perplexity proposal
 route refuses nonzero with `blocked_no_repo_access`, before admission or provider

@@ -54,14 +54,9 @@ def parse(text):
         if marker:
             fence = marker[1]
             continue
-        if re.match(r'^ {0,3}#{1,6}[ \t]*outcome\b', line, re.IGNORECASE) and line != HEADER:
-            raise OutcomeError("use the exact heading '## Outcome' and one plain value on the next line")
         heading = re.match(r'^ {0,3}(#{1,6})(?:[ \t]+(.*)|$)', line)
         if heading:
-            title = (heading[2] or '').strip()
-            if title.lower().startswith('outcome'):
-                if line != HEADER:
-                    raise OutcomeError("use the exact heading '## Outcome' and one plain value on the next line")
+            if line == HEADER:
                 in_section = True
                 headers += 1
             else:

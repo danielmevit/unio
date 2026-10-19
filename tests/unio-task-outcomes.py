@@ -24,12 +24,16 @@ class Metadata(unittest.TestCase):
         for mode in outcomes.MODES:
             self.assertEqual(outcomes.parse('## Outcome\n'+mode+'\n## Validate\n$ true\n'), mode)
 
+    def test_legacy_outcome_headings(self):
+        for heading in ('## Outcomes', '## Outcome notes', '## Outcome implementation',
+                        '### Outcome', '##Outcome', '## outcome', ' ## Outcome'):
+            with self.subTest(heading=heading):
+                self.assertIsNone(outcomes.parse(heading+'\nreport-only\n'))
+
     def test_malformed(self):
         for text in ('## Outcome\n', '## Outcome\nunknown', '## Outcome\n implementation',
                      '## Outcome\nimplementation\nreport-only',
-                     '## Outcome\nimplementation\n## Outcome\nimplementation',
-                     '## Outcome implementation\n', '### Outcome\nreport-only', '##Outcome\nreport-only',
-                     '## outcome\nreport-only', ' ## Outcome\nreport-only'):
+                     '## Outcome\nimplementation\n## Outcome\nimplementation'):
             with self.subTest(text=text), self.assertRaises(outcomes.OutcomeError):
                 outcomes.parse(text)
 
@@ -109,6 +113,18 @@ class Native(unittest.TestCase):
             tf.write_text('## Outcome\n'+text+'\n')
             self.call('run','mock',name,code=2)
             self.assertFalse((self.wt/'provider-called').exists())
+
+    def test_legacy_headings_reach_native_provider(self):
+        for index,heading in enumerate(('## Outcomes', '## Outcome notes')):
+            name='legacy-heading-'+str(index)
+            marker=self.base/('legacy-provider-'+str(index))
+            self.configure('touch '+shlex.quote(str(marker)))
+            tf=self.task(name,mode=None)
+            tf.write_text(tf.read_text()+'\n'+heading+'\nordinary legacy notes\n')
+            cp=self.call('run','mock',name)
+            self.assertTrue(marker.exists())
+            self.assertNotIn('task outcome:',cp.stdout+cp.stderr)
+            self.assertNotIn('outcome',self.data(name))
 
     def test_adapter_wrapped_guards(self):
         tf=self.task('wrapped','implementation')
