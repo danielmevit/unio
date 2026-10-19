@@ -73,3 +73,20 @@ complete cumulative requests nor model prices. Those unsupported meters stay
 null with a precise reason; no subscription allowance is inferred.
 
 Canonical route preflight uses the actual adapter parsers and bounds before native run admission or provider metadata. Review and review-set also check their routes. The engine bundles canonical sources so thin config overrides and standalone copies work without `lib/`; relocated sources must match the bundle exactly. Custom/wrapped or changed unknown sources are explicitly unvalidated and retain existing command behavior. This checks argument contracts only, not provider identity, allowance or acceptance. Invalid recognized options name the bound and recommend editing `agents.conf`; raw values are omitted.
+
+## Declared deliverable modes
+
+Task files may opt in with exact `## Outcome` and a single plain `implementation`
+or `report-only` value. Absence remains legacy; prose is never used to infer intent.
+Canonical proposal-only Copilot/Perplexity implementation routes refuse with
+`blocked_no_repo_access` before native Source/admission. A refused pre-dispatch
+request has no Source exit; adapter guards preserve actual Source exits when called.
+
+Report-only uses separate engine-owned native evidence under
+`coord/results/<worker>/<task>.outcomes/<run-id>/`, not the adapter stop-observation
+receipt described above. It requires Source0, an unchanged dispatch snapshot,
+nonempty bounded UTF-8 actual report, allowed scope and successful Validate checks.
+Native output is captured completely; canonical proposal adapters supply their
+actual answer through `UNIO_TASK_REPORT`. Missing or altered evidence invalidates
+readiness and review/handoff. See [task file rules](development/TASK-FILES.md) for
+bounds, provenance and legacy compatibility. No mode grants human acceptance.

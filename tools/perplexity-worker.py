@@ -563,6 +563,13 @@ def main(argv=None):
             return fail('receipt_failed')
     if state != 'ok':
         return fail(state)
+    if state == 'ok' and os.environ.get('UNIO_TASK_REPORT'):
+        try:
+            sources = ''.join(f'\n[{n}] ' + ' '.join(filter(None, (c['title'], c['url'])))
+                              for n, c in enumerate(citations, 1))
+            outcomes.publish_report(answer + ('\n\nSources:' + sources if sources else ''))
+        except (NameError, OSError, ValueError, UnicodeError):
+            return fail('receipt_failed')
     if args.proposal_dir:
         if args.json:
             print(json.dumps({'proposal_dir': str(run), 'status': 'draft_requires_review',

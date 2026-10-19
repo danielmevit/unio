@@ -168,3 +168,93 @@ Both corrections are implementation plus focused validation, not lead acceptance
 Three independent current-code reviews follow outside this task, per assignment.
 
 End receipt: `2026-10-19T10:59:56+02:00`; requested route remains ChatGPT subscription / Codex CLI 0.163.0 / `gpt-6.1-sol` LOW, effective settings Unknown.
+
+## Items 5–6 implementation worker receipt — 2026-10-19
+
+Start receipt: integrated base `2216704408395109c9427301e6b7c43e9200d562`,
+clean worktree at entry. Exact initial wall-clock time was not captured (Unknown).
+ChatGPT subscription / Codex CLI `0.163.0` (observed with `codex --version`) /
+requested `gpt-6.1-sol` / LOW. Effective model, effort and remaining allowance
+are Unknown. This is the dedicated implementation worker, not lead acceptance;
+no AI/subagent, live provider, paid fallback, push, release, global installation
+or owner auth/config/policy change was made. All installation/configuration and
+mock Source activity used disposable machine-test fixtures.
+
+Item 5 checkpoint: `44ddef5c34904cef74fd0d3a571ba6d24cff55c0`,
+`2026-10-19T11:23:48+02:00`. Corrected the preserved parser header comparison,
+validated exact optional metadata outside fences, and blocked recognized canonical
+Copilot/Perplexity implementation routes before admission/background start/Source.
+Wrapped adapters also refuse declared implementation. No Source success or exit
+is invented for those pre-dispatch refusals. Unknown custom commands stay
+unvalidated; absence retains legacy behavior. Five initial focused tests passed.
+
+Item 6 adds immutable, exclusive run evidence under
+`coord/results/<worker>/<task>.outcomes/<run-id>/`: actual bounded UTF-8 report,
+effective prompt and dispatch binding, with hashes in additive schema1 outcome
+provenance. Native output is captured completely; canonical proposal adapters
+publish the actual answer through `UNIO_TASK_REPORT`, never receipt pointers.
+Verification requires Source0, matching task/run/prompt/command/revision, unchanged
+repository since dispatch, scope and executable passing checks. Prior feature
+commits, including binary changes, do not become new report-only work or invalidate
+a diagnostic. Legacy empty-work still fails. Current result, review/review-set,
+review material and handoff recheck the report. Complete report/provenance enter
+bounded review material and `report.md` handoffs; size refusal never clips it.
+Strict revision keys and legacy result/review behavior are preserved. Copied
+standalone engines and thin configs use frozen embedded metadata code. Task
+examples are optional fenced metadata, so default tasks remain legacy.
+
+Preserved failed checks and corrections in this worker:
+
+- The first item 5 native suite exposed a missing Perplexity blocked-state entry
+  (`KeyError`); fixed, then the five-test suite passed before the item 5 commit.
+- A quoting typo in the newly added oversize-report fixture prevented test
+  collection during development; corrected before successful native runs.
+- Adapter-install tests initially found the preserved outcome helper preflight
+  emitted a different unsafe-directory diagnostic before the adapter preflight.
+  The directory refusal now preserves the adapter diagnostic; all three pass.
+- The added copied-engine fixture initially used a filename other than `unio`.
+  The existing ownership guard correctly refused before a provider. The fixture
+  now copies to a directory containing `unio`; its focused rerun passed. No
+  production ownership guard was changed.
+
+Focused validation uses the owner's machine-only fixture accelerator (normal
+uid1000, zero effective capabilities, disposable private tmpfs fixtures) for native
+machine suites. No real provider/authentication call ran inside those fixtures.
+The outer worker Source/native exit remains Unknown until its parent records this
+invocation's completion. Mock Source0/7 and adapter outcomes below are test
+observations, not worker acceptance or a new model-quality measurement.
+
+| Check | Result |
+| --- | --- |
+| `bash -n unio-install.sh` | passed |
+| `python3 -B tools/embed-adapters.py --check` | passed, byte-identical |
+| `python3 -B tools/embed-task-plan.py --check` | passed, byte-identical |
+| `python3 -B tools/embed-task-outcomes.py --check` | passed, byte-identical |
+| `python3 -B tests/unio-task-outcomes.py` | passed, 11 tests (198.142 seconds) |
+| `python3 -B tests/unio-route-contract.py` | passed, 7 tests |
+| `python3 -B tests/unio-adapter-outcome.py` | passed, 9 tests |
+| `python3 -B tests/unio-copilot.py` | passed, 16 tests |
+| `python3 -B tests/unio-perplexity.py` | passed, 11 tests |
+| `python3 -B tests/unio-adapters-install.py` | passed, 3 tests |
+| `python3 -B tests/unio-thin-config.py` | passed, 1 test |
+| `bash tests/unio-quality.sh` | passed: 16 shell + 80 contract + 26 coverage checks |
+| `git diff --check` | passed |
+
+The report suite covers no-provider canonical/background refusals, malformed and
+fenced metadata, actual report success without an implementation commit, Source
+failure, empty/missing/invalid/oversize reports, code changes, missing Validate or
+scope, altered/disappeared report, stale task/prompt/run binding, receipt-pointer
+rejection, result/review-set/handoff integrity, prior binary feature commits,
+standalone/thin execution, material bounds and legacy empty-work compatibility.
+A final targeted metadata run also passed all three parser tests after tightening
+the refusal for a malformed heading without a space (`##Outcome`).
+
+No functional item 5–6 deferral. The full gate and independent current-code lab
+reviews remain the lead's integration/acceptance work per this frozen assignment.
+Unsigned local evidence retains the established same-user trust model; unknown
+custom wrapper capabilities remain unvalidated. Earlier metrics, tail, scope,
+disk and route/thinking bounds were retained. No version/UI/brand change.
+
+End receipt: `2026-10-19T11:39:58+02:00`. Requested route remains ChatGPT subscription /
+Codex CLI 0.163.0 / `gpt-6.1-sol` LOW; effective model/effort/allowance Unknown.
+Implementation plus focused machine checks returned for lead review, not acceptance.

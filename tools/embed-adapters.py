@@ -108,8 +108,11 @@ def main():
                  + '    if mode=="implementation" and route.get("adapter") in ("copilot-worker","perplexity-worker"):\n'
                  + '        print("blocked_no_repo_access: declared implementation requires repository access; use a repository route or declare report-only", file=sys.stderr)\n'
                  + '        raise SystemExit(2)\n'
+                 + 'if len(sys.argv)>4 and sys.argv[4]=="capture":\n'
+                 + '    print("channel" if check(sys.argv[1]).get("adapter") in ("copilot-worker","perplexity-worker") else "native")\n'
+                 + '    raise SystemExit(0)\n'
                  + 'raise SystemExit(main(sys.argv[1:2]))\n')
-    block = ('route_contract() {\n  python3 -I -S -B - "$1" "$CONF_DIR" "${2:-}" <<\'UNIO_ROUTE_CONTRACT_PY\'\n'
+    block = ('route_contract() {\n  python3 -I -S -B - "$1" "$CONF_DIR" "${2:-}" "${3:-}" <<\'UNIO_ROUTE_CONTRACT_PY\'\n'
              + contract + bootstrap + 'UNIO_ROUTE_CONTRACT_PY\n}\n')
     begin, end = '# BEGIN EMBEDDED ROUTE CONTRACT\n', '# END EMBEDDED ROUTE CONTRACT\n'
     left, rest = updated.split(begin, 1)

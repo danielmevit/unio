@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -27,7 +28,7 @@ class Metadata(unittest.TestCase):
         for text in ('## Outcome\n', '## Outcome\nunknown', '## Outcome\n implementation',
                      '## Outcome\nimplementation\nreport-only',
                      '## Outcome\nimplementation\n## Outcome\nimplementation',
-                     '## Outcome implementation\n', '### Outcome\nreport-only',
+                     '## Outcome implementation\n', '### Outcome\nreport-only', '##Outcome\nreport-only',
                      '## outcome\nreport-only', ' ## Outcome\nreport-only'):
             with self.subTest(text=text), self.assertRaises(outcomes.OutcomeError):
                 outcomes.parse(text)
@@ -96,6 +97,9 @@ class Native(unittest.TestCase):
             self.conf.write_text(route+'='+command+'\n')
             cp=self.call('run',route,name,code=2)
             self.assertIn('blocked_no_repo_access',cp.stderr)
+            bg=self.call('run','-b',route,name,code=2)
+            self.assertIn('blocked_no_repo_access',bg.stderr)
+            self.assertNotIn('started in background',bg.stdout)
             for path in ('results/'+route+'/'+name+'.json','retries/'+name,'reports/'+name+'.log'):
                 self.assertFalse((self.root/'coord'/path).exists(),path)
         self.conf.write_text('mock=touch provider-called\n')
@@ -111,6 +115,177 @@ class Native(unittest.TestCase):
         for route,args in [('copilot',['--receipt-dir','/missing-private']),('perplexity',['--model','glm53'])]:
             cp=self.raw(['python3',ROOT/'tools'/(route+'-worker.py'),'--prompt-file',tf,*args],code=2)
             self.assertIn('blocked_no_repo_access',cp.stdout+cp.stderr)
+
+    def configure(self,source='printf "native diagnostic\\n"'):
+        self.conf.write_text('mock=bash -c '+shlex.quote(source)+'\n'+
+                            'rev=bash -c '+shlex.quote('grep -q "COMPLETE SOURCE REPORT" "$TASKFILE" && printf "VERDICT: APPROVE\\n"')+'\n')
+
+    def data(self,name):
+        return json.loads(self.call('result','mock',name).stdout)
+
+    def artifact(self,name):
+        o=self.data(name)['outcome']
+        return self.root/'coord/results/mock'/(name+'.outcomes')/o['run_id']/'report.txt'
+
+    def test_report_success_prior_commits_review_handoff_and_freshness(self):
+        self.configure()
+        (self.wt/'earlier.txt').write_bytes(b'earlier binary feature\0\xff')
+        self.raw(['git','add','earlier.txt'],cwd=self.wt)
+        self.raw(['git','commit','-qm','earlier feature'],cwd=self.wt)
+        head=self.raw(['git','rev-parse','HEAD'],cwd=self.wt).stdout
+        name='report-success'
+        self.task(name,scope='- diagnostic-only')
+        self.call('run','mock',name)
+        self.assertEqual(head,self.raw(['git','rev-parse','HEAD'],cwd=self.wt).stdout)
+        self.call('verify','mock',name)
+        self.call('review','mock',name,'rev')
+        reviewer=self.conf.read_text().splitlines()[1].replace('rev=','revother=',1)
+        with self.conf.open('a') as f: f.write(reviewer+'\n')
+        self.call('review-set','mock',name,'rev','revother')
+        self.assertTrue(self.data(name)['ready_for_human_review'])
+        artifact=self.artifact(name)
+        original=artifact.read_bytes()
+        self.assertEqual(original,b'native diagnostic\n')
+        packet=Path(self.call('handoff','mock',name).stdout.strip())
+        report=(packet/'report.md').read_text()
+        self.assertIn('native diagnostic',report)
+        self.assertIn(self.data(name)['outcome']['run_id'],report)
+        self.assertEqual(set(self.data(name)['revision']),{'candidate_commit','base_commit','task_sha256','worktree_sha256'})
+        artifact.chmod(0o600)
+        artifact.write_text('tampered\n')
+        self.assertFalse(self.data(name)['ready_for_human_review'])
+        self.assertEqual(self.data(name)['outcome_current']['state'],'invalid')
+        self.call('review','mock',name,'rev',code=2)
+        self.call('review-set','mock',name,'rev','revother',code=2)
+        self.call('handoff','mock',name,code=2)
+        self.call('verify','mock',name,code=1)
+        artifact.write_bytes(original)
+        self.call('verify','mock',name)
+        self.call('review','mock',name,'rev')
+        artifact.unlink()
+        self.assertFalse(self.data(name)['ready_for_human_review'])
+        self.call('verify','mock',name,code=1)
+
+    def test_reports_fail_closed_and_legacy_empty_stays_failed(self):
+        cases=[('no-artifact','true',0),('empty-artifact','printf "  "',0),
+               ('failed-source','echo diagnostic; exit 7',7),
+               ('changed-code','echo diagnostic; echo new > forbidden.txt',0),
+               ('invalid-utf8',"printf '\\377'",0),
+               ('oversize',shlex.join(['python3','-c','print("x"*262145)']),0)]
+        for name,source,rc in cases:
+            with self.subTest(name=name):
+                self.configure(source)
+                self.task(name)
+                self.call('run','mock',name,code=rc)
+                self.call('verify','mock',name,code=1)
+                self.assertFalse(self.data(name)['ready_for_human_review'])
+                self.assertEqual(self.data(name)['process']['exit_code'],rc)
+                if (self.wt/'forbidden.txt').exists(): (self.wt/'forbidden.txt').unlink()
+        self.configure('true')
+        self.task('legacy-empty',mode=None)
+        # Separate clean-base worker proves the existing empty-work gate.
+        self.conf.write_text('copilot=true\n')
+        self.call('run','copilot','legacy-empty')
+        self.call('verify','copilot','legacy-empty',code=1)
+
+    def test_missing_checks_scope_task_stale_and_binding_tamper(self):
+        self.configure()
+        for name,validate,scope in [('missing-validate','','- *'),('missing-scope','$ true','')]:
+            self.task(name,validate=validate,scope=scope)
+            self.call('run','mock',name)
+            self.call('verify','mock',name,code=2)
+        name='stale-binding'
+        tf=self.task(name)
+        self.call('run','mock',name)
+        self.call('verify','mock',name)
+        artifact=self.artifact(name)
+        binding=artifact.with_name('binding.json')
+        old=binding.read_bytes()
+        binding.chmod(0o600)
+        doc=json.loads(old); doc['task']='another-task'
+        binding.write_text(json.dumps(doc))
+        self.call('verify','mock',name,code=1)
+        binding.write_bytes(old)
+        prompt=artifact.with_name('prompt.md'); saved=prompt.read_bytes()
+        prompt.chmod(0o600); prompt.write_text('stale prompt')
+        self.call('verify','mock',name,code=1)
+        prompt.write_bytes(saved)
+        tf.write_text(tf.read_text()+'\nchanged task\n')
+        self.call('verify','mock',name,code=1)
+        self.assertTrue(self.data(name)['stale'])
+
+    def test_engine_channel_contains_answer_not_stdout_pointer(self):
+        name='answer-channel'
+        self.configure('printf "complete actual answer" > "$UNIO_TASK_REPORT"; printf "receipt: /private/pointer"')
+        self.task(name)
+        self.call('run','mock',name)
+        self.call('verify','mock',name)
+        self.assertEqual(self.artifact(name).read_text(),'complete actual answer')
+
+
+    def test_canonical_channel_cannot_accept_pointer_and_old_run_cannot_rebind(self):
+        # Exercise engine capture directly with frozen definitions, without a
+        # provider. The public tests above cover the native lifecycle; this
+        # models a canonical adapter that returned a pointer but lost its answer.
+        engine=(ROOT/'unio-install.sh').read_text().split(" <<'QUALITY_PY'\n",1)[1].split('\nQUALITY_PY\n',1)[0]
+        definitions=engine.rsplit('\ntry:\n    cmd,*a=sys.argv[1:]',1)[0]
+        ns={'__name__':'offline_quality_fixture'}
+        exec(compile(definitions,'QUALITY_PY','exec'),ns)
+        name='channel-missing'
+        tf=self.task(name)
+        rev=ns['snapshot'](str(self.root),'mock',name)
+        root=str(self.root)
+        o=ns['outcome_start'](root,'mock',name,rev,'canonical proposal',str(tf),'channel')
+        d=dict(outcome=o,dispatch_revision=rev,process=dict(state='succeeded',exit_code=0,revision=rev))
+        (self.root/'coord/reports'/(name+'.log')).write_text('receipt: /private/pointer')
+        ns['outcome_finish'](root,'mock',name,d)
+        self.assertIsNotNone(o['error'])
+        with self.assertRaises(ValueError): ns['report_evidence'](root,'mock',name,d,rev)
+        previous=None
+        for _ in range(2):
+            o=ns['outcome_start'](root,'mock',name,rev,'canonical proposal',str(tf),'channel')
+            directory=Path(ns['outcome_directory'](root,'mock',name,o['run_id']))
+            (directory/'incoming.txt').write_text('identical actual report')
+            d=dict(outcome=o,dispatch_revision=rev,process=dict(state='succeeded',exit_code=0,revision=rev))
+            ns['outcome_finish'](root,'mock',name,d)
+            ns['report_evidence'](root,'mock',name,d,rev)
+            if previous:
+                binding=directory/'binding.json'; binding.chmod(0o600); binding.write_bytes(previous)
+                with self.assertRaises(ValueError): ns['report_evidence'](root,'mock',name,d,rev)
+            previous=(directory/'binding.json').read_bytes()
+
+
+    def test_standalone_thin_report_mode_and_material_bounds(self):
+        saved_at,saved_conf=self.at,self.env['UNIO_CONF_DIR']
+        thin=self.base/'thin outcomes conf'
+        thin.mkdir()
+        shutil.copytree(self.base/'conf/templates',thin/'templates')
+        engine=self.base/'copied standalone engine'/'unio'
+        engine.parent.mkdir()
+        shutil.copyfile(self.at,engine); engine.chmod(0o700)
+        self.at=engine
+        self.env['UNIO_CONF_DIR']=str(thin)
+        try:
+            (thin/'agents.conf').write_text('mock=printf "thin native report"\nrev=printf "VERDICT: APPROVE\\n"\n')
+            name='standalone-thin'
+            self.task(name)
+            self.call('run','mock',name)
+            self.call('verify','mock',name)
+            self.call('review','mock',name,'rev')
+            self.assertTrue(self.data(name)['ready_for_human_review'])
+            self.assertFalse((thin/'lib').exists())
+        finally:
+            self.at=saved_at
+            self.env['UNIO_CONF_DIR']=saved_conf
+        self.configure(shlex.join(['python3','-c','import sys; sys.stdout.write("x"*262144)']))
+        name='material-bound'
+        tf=self.task(name)
+        tf.write_text(tf.read_text()+'\n## Additional context\n'+'a'*50000+'\n')
+        self.call('run','mock',name)
+        self.call('verify','mock',name)
+        cp=self.call('review','mock',name,'rev',code=2)
+        self.assertIn('exceeds 300000 bytes',cp.stdout+cp.stderr)
+
 
 
 if __name__=='__main__':

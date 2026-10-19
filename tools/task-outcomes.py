@@ -44,7 +44,7 @@ def parse(text):
     values = []
     in_section = False
     fence = None
-    for line in text.split('\n'):
+    for line in text.splitlines():
         stripped = line.strip()
         marker = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line)
         if fence:
@@ -54,6 +54,8 @@ def parse(text):
         if marker:
             fence = marker[1]
             continue
+        if re.match(r'^ {0,3}#{1,6}[ \t]*outcome\b', line, re.IGNORECASE) and line != HEADER:
+            raise OutcomeError("use the exact heading '## Outcome' and one plain value on the next line")
         heading = re.match(r'^ {0,3}(#{1,6})(?:[ \t]+(.*)|$)', line)
         if heading:
             title = (heading[2] or '').strip()
@@ -110,6 +112,24 @@ def read_task(path):
         return data.decode('utf-8')
     except UnicodeError:
         raise OutcomeError('task file must be valid UTF-8') from None
+
+
+def publish_report(data):
+    """Optional engine-owned channel for actual proposal text, never a pointer.
+
+    No channel means a standalone/legacy invocation. The engine creates a fresh
+    private run directory; exclusive creation refuses replacement or symlinks.
+    """
+    path = os.environ.get('UNIO_TASK_REPORT')
+    if not path:
+        return
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    if not 0 < len(data) <= 262144 or not data.decode('utf-8').strip() or b'\0' in data:
+        raise OutcomeError('native report must be nonempty UTF-8 text of at most 262144 bytes')
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'wb') as stream:
+        stream.write(data)
 
 
 def main(argv):

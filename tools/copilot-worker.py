@@ -683,6 +683,8 @@ def main():
                 blob = b""
             if blob.strip():
                 private_file(proposal, blob)
+                helper = outcome_module()
+                if helper is not None: helper.publish_report(blob)
                 record["proposal_bytes"] = len(blob)
                 record["proposal_source"] = "assistant.message"
                 record["outcome"], exit_code = "proposal_recorded", 0

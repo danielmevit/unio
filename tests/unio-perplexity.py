@@ -305,8 +305,10 @@ class PerplexityWorker(unittest.TestCase):
         context.write_text('def selected_function():\n    return 42\n')
         original = context.read_bytes()
         proposals = self.private_dir('proposals')
+        channel = self.base / 'engine-report.txt'
         result, events = self.run_worker('--model', 'gpt6_sol', '--prompt-file', str(self.prompt),
-                                         '--context-file', str(context), '--proposal-dir', str(proposals), '--json')
+                                         '--context-file', str(context), '--proposal-dir', str(proposals), '--json',
+                                         env={'UNIO_TASK_REPORT': str(channel)})
         self.assertEqual(result.returncode, 0, result.stderr)
         packet = json.loads(result.stdout)
         self.assertEqual(packet['status'], 'draft_requires_review')
@@ -316,6 +318,8 @@ class PerplexityWorker(unittest.TestCase):
         self.assertEqual(context.read_bytes(), original)
         self.assertEqual((run / 'task.md').read_bytes(), self.prompt.read_bytes())
         self.assertIn('Findings', (run / 'proposal.md').read_text())
+        self.assertIn('Findings', channel.read_text())
+        self.assertNotIn('proposal_dir', channel.read_text())
         self.assertIn('https://example.invalid/a', (run / 'proposal.md').read_text())
         self.assertIn('bounded Unio task', (run / 'handoff.md').read_text())
         record = json.loads((run / 'receipt.json').read_text())

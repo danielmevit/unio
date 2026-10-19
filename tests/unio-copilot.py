@@ -208,7 +208,8 @@ class CopilotTests(unittest.TestCase):
                        if p.is_file() and p.name not in private)
 
     def test_balanced_route_stdin_task_and_private_receipt(self):
-        p = self.invoke()
+        channel = self.root / "engine-report.txt"
+        p = self.invoke(UNIO_TASK_REPORT=str(channel))
         r = self.receipt()
         self.assertEqual(p.returncode, 0, p.stderr + Path(r["stderr_path"]).read_text())
         self.assertEqual(r["outcome"], "proposal_recorded")
@@ -222,6 +223,7 @@ class CopilotTests(unittest.TestCase):
         self.assertEqual(r["task_sha256"], self.env["EXPECT_SHA"])
         proposal = Path(r["proposal_path"]).read_bytes()
         self.assertEqual(proposal, b"Proposal: rename the helper.")
+        self.assertEqual(channel.read_bytes(), proposal)
         self.assertEqual(r["proposal_source"], "assistant.message")
         self.assertEqual(r["output_transport"], "copilot_jsonl_1.0.95")
         raw = Path(r["raw_stdout_path"]).read_bytes()
