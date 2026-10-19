@@ -1,4 +1,4 @@
-# Unio0.5.22 — clearer runs and route contracts
+# Unio 0.5.22 — clearer runs and route contracts
 
 Release candidate. Implementation is complete; final gate, lead acceptance,
 artifact checks, installation and publication are recorded separately. This

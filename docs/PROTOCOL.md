@@ -232,7 +232,7 @@ unio run [-b] <w> <task>  execute coord/tasks/<task>.md as worker <w>
                                in wt/<w>; -b = background; per-worker lock;
                                writes report+log+ledger+structured result;
                                a failed worker's own exit code wins
-unio tail [task]          follow a run's live log (default: newest)
+unio tail [task] [-f]     print log tail (default 40 lines; -f to follow)
 unio kill <task>          terminate a background run (whole session,
                                including the agent under `timeout`)
 unio report <task> [n]    print the last n (default 60) lines of a
