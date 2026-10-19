@@ -17921,6 +17921,32 @@ review text but capture/stream failures remain separate from approval. See the
 [dated scoreboard](MODEL-SCOREBOARD.md#operator-reliability-observations--2026-10-19).
 No model's quota or effective identity can be inferred from another's result.
 
+## GPT-OSS delivery qualification — 2026-10-19 follow-up
+
+The AGY1.4.2 / `gpt-oss-120b-medium` trial's expected report was missing.
+A later inspection recovered a report in Antigravity's internal artifact
+directory: the model had used tools and written to the wrong destination.
+The recovered approval still fails review: it claimed successful tests while
+the recorded command returned `pytest: command not found`, and did not establish
+the requested full-code coverage. Original failure receipts remain unchanged.
+
+A separate documentation-inventory session returned only a task acknowledgement
+and a promise to proceed, with no requested report. These are two observed
+incomplete deliveries, not proof that this model cannot use tools or a universal
+ranking. Effective identity, effort and remaining allowance remain Unknown.
+
+For this exact route, defer autonomous repository audits and final code approval
+until a bounded completion task establishes actual delivery and evidence quality.
+Any future inline-answer qualification must assess its real output; it is not
+already proven by catalog presence or process exit0. Preserve each attempt.
+
+For report workers, request the completed deliverable in the same invocation,
+use the native `report-only` outcome and an adapter that publishes the actual
+bounded artifact, and verify its exact binding before acceptance. A heading that
+merely says "read-only report" does not select the native outcome. CLI success,
+file creation, a valid report and an accepted review are separate facts. Do not
+repair an acknowledgement into a report or infer account policy from its text.
+
 ## Make each assignment visible
 
 Follow the [mandatory reporting rule](LEAD-ROUTING.md#name-the-model-route-in-every-work-summary).
@@ -36088,6 +36114,23 @@ Native experience profiles keep model, route, effort and task type separate;
 private receipts retain the actual calls, corrections and report-capture failures.
 Unlisted routes have no new observation in this round; do not treat that as
 unavailability or start unrelated benchmark work.
+
+## Managed sessions and delivery follow-up — 2026-10-19
+
+These are separate dated observations, not replacements for the original attempts.
+
+| Subscription route / CLI | Requested model / effort | Task and observed result |
+| --- | --- | --- |
+| ChatGPT / Codex CLI0.163.0 | GPT-6.1 Sol LOW | Preserved managed-session integration plus a missing-transcript-suffix correction: Source0 in311seconds, native0, current scopeOK and7/7 native checks PASS. Automatic saves exceeded their60s capture budgets; early commits retained work. Independent acceptance remains separate. |
+| Antigravity / agy1.4.2 | GPT-OSS120B fixed MEDIUM | Follow-up recovered the previously missing report at a different internal artifact path after13 tool steps. The report claims tests passed, but its recorded pytest command failed as unavailable; full-code coverage was not established. Original missing-delivery failure remains; recovered approval is unaccepted. A second field task returned only an acknowledgement and no required audit. This exact route needs bounded delivery qualification before autonomous audits/final approval; see the fleet guide. |
+| Antigravity / agy1.4.2 | Claude Opus4.6 fixed Thinking | Managed-session review stopped with quota429/native3 after134.519seconds. Partial analysis is not a verdict. The provider stated162h21m8s to reset; this is an estimate, not restored capacity or another route's limit. |
+| Mistral subscription / Vibe2.26.1 | GLM5.3 HIGH, labZ.ai | Managed-session review returned infrastructure2 after237.439seconds,539214/12M reported tokens andUSD0.7894446/10 reported. No cap exhaustion, accepted report or model-quality conclusion. |
+| Antigravity / agy1.4.2 | Gemini3.8Flash HIGH | A stale packaged helper pin1.3.5 refused before inference; this setup failure made no model call. Corrected frozen1.4.2 helper produced full current-code APPROVE/no findings, CLI/adapter0, terminalSUCCESS,281.383seconds. Parallel collection remains incomplete because its other route failed authentication. |
+| OpenCode Go / OpenCode1.18.35 | Qwen3.8 Max MEDIUM | Current exact ID opencode-go/qwen3.8-max exposes low/medium/xhigh, nohigh; supported middle selected. Request failed401 with an expired saved credential, no review. No authentication changes, paid Zen fallback or quality conclusion. |
+
+Full release acceptance and the complete offline gate remain pending for this
+unreleased slice. CLI/model/effort requests do not prove effective identity or
+remaining allowance. Operational failure and reasoning quality stay separate.
 
 ## Continuous-delegation observations — 2026-10-16
 
