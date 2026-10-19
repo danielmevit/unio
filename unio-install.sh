@@ -21987,7 +21987,7 @@ def outcome_start(root,worker,task,rev,command,prompt,capture):
     mode=task_mode(root,worker,task)
     if mode is None: return None
     o=dict(schema_version=1,mode=mode,worker=worker,task=task,run_id=uuid.uuid4().hex,
-           dispatch_revision=rev,command=command,command_sha256=hashlib.sha256(command.encode()).hexdigest(),
+           dispatch_revision=rev,command_sha256=hashlib.sha256(command.encode()).hexdigest(),
            prompt_sha256=hashlib.sha256(regular(prompt)).hexdigest(),capture=capture,
            report_sha256=None,report_bytes=None,error=None)
     if mode=='report-only':
@@ -22029,8 +22029,6 @@ def report_evidence(root,worker,task,d,rev):
         fail('report-only repository or task changed since dispatch')
     if d['process']['state']!='succeeded' or d['process']['exit_code']!=0 or d['process']['revision']!=rev or d['process'].get('post_run_snapshot'):
         fail('report-only requires a current successful Source')
-    if o.get('command_sha256')!=hashlib.sha256(o['command'].encode()).hexdigest():
-        fail('report-only command binding mismatch')
     directory=outcome_directory(root,worker,task,o.get('run_id'))
     binding=outcome_read(os.path.join(directory,'binding.json'))
     if hashlib.sha256(binding).hexdigest()!=o.get('binding_sha256'):
@@ -22116,7 +22114,7 @@ def valid_document(d, worker, task):
         fail('malformed acceptance state')
     if 'outcome' in d:
         o=d['outcome']
-        fields={'schema_version','mode','worker','task','run_id','dispatch_revision','command',
+        fields={'schema_version','mode','worker','task','run_id','dispatch_revision',
                 'command_sha256','prompt_sha256','capture','report_sha256','report_bytes','error'}
         if not isinstance(o,dict) or o.get('mode') not in ('implementation','report-only'):
             fail('malformed declared outcome')
@@ -22124,7 +22122,7 @@ def valid_document(d, worker, task):
         if (set(o)!=fields or o['schema_version']!=1 or o['worker']!=worker or o['task']!=task
                 or not isinstance(o['run_id'],str) or not re.fullmatch('[0-9a-f]{32}',o['run_id'])
                 or not revision(o['dispatch_revision']) or o['capture'] not in ('native','channel')
-                or not isinstance(o['command'],str) or (o['error'] is not None and not isinstance(o['error'],str))):
+                or (o['error'] is not None and not isinstance(o['error'],str))):
             fail('malformed outcome provenance')
         for key in ('command_sha256','prompt_sha256','binding_sha256','report_sha256'):
             if key not in o or (key=='report_sha256' and o[key] is None): continue

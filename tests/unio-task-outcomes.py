@@ -2,6 +2,7 @@
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
 """Declared metadata and mock-only native outcome contracts. No provider calls."""
+import hashlib
 import importlib.util
 import json
 import os
@@ -181,6 +182,51 @@ class Native(unittest.TestCase):
         artifact.unlink()
         self.assertFalse(self.data(name)['ready_for_human_review'])
         self.call('verify','mock',name,code=1)
+
+    def test_private_command_hash_only_provenance(self):
+        name='private-command'
+        canary='mock-api-key=harmless-private-canary'
+        self.configure('printf "private command report" # '+canary)
+        command=self.conf.read_text().splitlines()[0].split('=',1)[1]
+        material=self.base/'private-review-material'
+        reviewer='cp "$TASKFILE" '+shlex.quote(str(material))+'; printf "VERDICT: APPROVE\\n"'
+        with self.conf.open('a') as f:
+            f.write('privacyrev=bash -c '+shlex.quote(reviewer)+'\n')
+        self.task(name)
+        self.call('run','mock',name)
+        self.call('verify','mock',name)
+        result=self.call('result','mock',name)
+        self.assertNotIn(canary,result.stdout+result.stderr)
+        o=json.loads(result.stdout)['outcome']
+        self.assertNotIn('command',o)
+        self.assertEqual(o['command_sha256'],hashlib.sha256(command.encode()).hexdigest())
+        binding=self.artifact(name).with_name('binding.json').read_text()
+        self.assertNotIn(canary,binding)
+        self.call('review','mock',name,'privacyrev')
+        self.assertNotIn(canary,material.read_text())
+        self.assertIn(o['command_sha256'],material.read_text())
+        packet=Path(self.call('handoff','mock',name).stdout.strip())
+        for path in packet.rglob('*'):
+            if path.is_file(): self.assertNotIn(canary.encode(),path.read_bytes())
+        receipt=self.root/'coord/results/mock'/(name+'.json')
+        original=receipt.read_bytes()
+        doc=json.loads(original)
+        doc['outcome']['command_sha256']='0'*64
+        receipt.write_text(json.dumps(doc))
+        self.call('verify','mock',name,code=1)
+        receipt.write_bytes(original)
+        self.call('verify','mock',name)
+        # Pre-release records with raw commands fail closed without echoing them.
+        doc=json.loads(original)
+        doc['outcome']['command']=command
+        receipt.write_text(json.dumps(doc))
+        try:
+            for args in [('result','mock',name),('review','mock',name,'privacyrev'),
+                         ('handoff','mock',name)]:
+                cp=self.call(*args,code=2)
+                self.assertNotIn(canary,cp.stdout+cp.stderr)
+        finally:
+            receipt.write_bytes(original)
 
     def test_reports_fail_closed_and_legacy_empty_stays_failed(self):
         cases=[('no-artifact','true',0),('empty-artifact','printf "  "',0),

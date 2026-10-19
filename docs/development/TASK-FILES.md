@@ -79,7 +79,11 @@ Native report evidence lives under
 `coord/results/<worker>/<task>.outcomes/<run-id>/`. The schema1 result adds optional
 `outcome` provenance and `outcome_current` freshness; revision keys and old evidence
 remain unchanged. The exclusive report, dispatch binding and effective prompt are
-hashed and rechecked by result/review/handoff. The complete report and provenance
+hashed and rechecked by result/review/handoff. Command provenance stores only the
+SHA-256 frozen from the configured dispatch command, never its raw arguments.
+Pre-release outcome records containing a raw command fail closed and require a
+new run; normal schema1 receipts without outcome metadata remain unchanged.
+The complete report and provenance
 enter bounded review material and `report.md` in handoffs; overflow refuses rather
 than clipping. Verify/result/handoff never invoke a provider. Local unsigned
 evidence remains subject to the existing same-user trust model.
