@@ -9,6 +9,7 @@
 
 import os
 import signal
+import selectors
 import subprocess
 import sys
 import tempfile
@@ -34,8 +35,59 @@ def run_cmd(cmd, env=None, cwd=None, check=True):
     return p
 
 
+def stop_child(proc):
+    if proc.poll() is None:
+        proc.kill()
+    proc.wait(timeout=3)
+
+
+def read_follow_line(proc, timeout=5):
+    """Read through newline with one deadline, including partial output."""
+    deadline = time.monotonic() + timeout
+    line = bytearray()
+    with selectors.DefaultSelector() as selector:
+        selector.register(proc.stdout, selectors.EVENT_READ)
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0 or not selector.select(left):
+                stop_child(proc)
+                raise AssertionError('follow output deadline expired')
+            chunk = os.read(proc.stdout.fileno(), 1)
+            if not chunk:
+                return line.decode('utf-8')
+            line += chunk
+            if chunk == b'\n':
+                return line.decode('utf-8')
+
+
+def check_follow_deadline():
+    # Both silence and a missing appended line must fail and reap the child.
+    for initial in ('', 'initial\n'):
+        proc = subprocess.Popen(
+            [sys.executable, '-c',
+             'import sys,time;sys.stdout.write(sys.argv[1]);sys.stdout.flush();time.sleep(60)', initial],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        started = time.monotonic()
+        try:
+            if initial:
+                assert read_follow_line(proc) == initial
+            try:
+                read_follow_line(proc, timeout=0.2)
+            except AssertionError as exc:
+                assert 'deadline expired' in str(exc)
+            else:
+                raise AssertionError('silent follower did not hit its deadline')
+            assert proc.returncode is not None, 'deadline did not reap child'
+            assert time.monotonic() - started < 4
+        finally:
+            stop_child(proc)
+            proc.stdout.close()
+            proc.stderr.close()
+
+
 def main():
     print("running unio tail regression suite...")
+    check_follow_deadline()
     with tempfile.TemporaryDirectory(prefix="unio tail test ") as td:
         sb = Path(td)
         bin_dir = sb / "bin dir"
@@ -203,11 +255,11 @@ def main():
 
         try:
             # Read header and initial lines
-            header = proc.stdout.readline()
+            header = read_follow_line(proc)
             assert f">> {follow_log}" in header
-            line1 = proc.stdout.readline()
+            line1 = read_follow_line(proc)
             assert "initial follow line 1" in line1
-            line2 = proc.stdout.readline()
+            line2 = read_follow_line(proc)
             assert "initial follow line 2" in line2
 
             # Now append a new line to simulate live work
@@ -216,16 +268,16 @@ def main():
                 f.flush()
 
             # The follower should pick it up
-            line3 = proc.stdout.readline()
+            line3 = read_follow_line(proc)
             assert "live followed line 3" in line3, f"expected live followed line 3, got: {repr(line3)}"
 
             # Safely stop with SIGTERM
             proc.send_signal(signal.SIGTERM)
             proc.wait(timeout=3.0)
         finally:
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait()
+            stop_child(proc)
+            proc.stdout.close()
+            proc.stderr.close()
 
         # Also test --follow with practical option ordering
         proc2 = subprocess.Popen(
@@ -237,16 +289,16 @@ def main():
             cwd=str(repo_dir)
         )
         try:
-            hdr = proc2.stdout.readline()
+            hdr = read_follow_line(proc2)
             assert f">> {follow_log}" in hdr
-            l = proc2.stdout.readline()
+            l = read_follow_line(proc2)
             assert "live followed line 3" in l
             proc2.send_signal(signal.SIGINT)
             proc2.wait(timeout=3.0)
         finally:
-            if proc2.poll() is None:
-                proc2.kill()
-                proc2.wait()
+            stop_child(proc2)
+            proc2.stdout.close()
+            proc2.stderr.close()
         print("  ✓ explicit follow waits for appends and stops cleanly")
 
         # -------------------------------------------------------------
