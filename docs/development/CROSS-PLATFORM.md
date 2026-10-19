@@ -11,13 +11,41 @@ remain unassigned; continue the existing 0.5.x sequence.
 | macOS | Not supported yet | Native runtime on Apple Silicon and Intel, with actual host checks. |
 | Windows without WSL | Not supported yet | Native installation and execution from PowerShell, after a backend feasibility checkpoint. |
 
-Owner ordering update, 2026-10-14: prioritize native Windows before native macOS. The proposed releases are 0.5.23 for Windows and 0.5.24 for macOS, subject to feasibility and actual host checks.
+Owner ordering update: prioritize native Windows before native macOS. The current
+[version plan](../VERSION-PLAN.md) provisionally places Windows in 0.5.25 and
+macOS in 0.5.26, following managed sessions/continuity and scoped phone access.
+These are planning checkpoints, subject to feasibility and actual host checks.
 
 One engine should serve the CLI and the existing dashboard. A desktop window
 can eventually host the same interface. Native platform support does not
 require replacing the dashboard or building a second orchestration system.
 The separate [interactive session workspace](SESSION-WORKSPACE.md) covers live
 AI terminals and a possible desktop shell.
+
+## Desktop shell and orchestration engine
+
+Architecture clarification, 2026-10-19: the desktop shell displays the interface;
+the orchestration engine owns tasks, agent processes, account admission, saves
+and review evidence. Keep that engine shared by the CLI and desktop app.
+
+Tauri 2 is the lead's first candidate for the desktop shell, not a selected
+dependency or committed backend language. Its web frontend can reuse the
+dashboard, and its official documentation covers Microsoft Store distribution.
+Choose the shell after a small Windows prototype exercises a real agent process,
+terminal input/output, shutdown, installation and upgrade behavior. Revisit the
+candidate if those results favor another framework.
+
+The current engine uses Bash and Python with Linux-specific facilities. A
+desktop shell alone does not make that engine native on Windows. The feasibility
+assessment must decide which portable code to retain and which Windows host
+operations need a different implementation before committing to a language or
+large rewrite. Preserve task/report contracts and shared-account protections.
+Store packaging, localization and [app-managed trial expiry](WINDOWS-TRIALS.md)
+remain separate deliverables.
+
+References checked: [Tauri overview](https://v2.tauri.app/start/) and
+[Microsoft Store distribution](https://v2.tauri.app/distribute/microsoft-store/).
+These establish framework capabilities, not Unio compatibility or Store approval.
 
 ## 1. Audit the runtime and define platform contracts
 

@@ -116,3 +116,19 @@ The runtime remains Linux/WSL. Real lead-limit restart remains experimental and
 unobserved; do not silently upgrade its supported-CLI contract. Existing browser
 test flakiness is separate, deferred work. No work is lost or rolled back merely
 to satisfy a reviewer or a proposed version number.
+
+## Active next milestone — 2026-10-19
+
+The managed-session integration is a new, unreleased first CLI slice. Dedicated
+ChatGPT subscription / Codex CLI0.163.0 / requested gpt-6.1-sol LOW worker
+`codex-managed-session-integration-low-20261019` actually started at21:48:53+02:00,
+using installed Unio0.5.22. Its branch preserves candidate04c51ee on current main.
+An early integration commit is not acceptance. Check current private receipts in
+`tmp/unio-next/managed-session-0523-20261019` before inferring the live state.
+Focused native checks, two blind reviews from different labs and lead assessment
+remain required. Estimate20–60min Source,2–4h for this complete slice.
+
+Windows architecture remains a feasibility decision. Tauri2 is a provisional
+desktop-shell candidate; the shared orchestration engine still needs native
+Windows process/locking/path/terminal operations. No backend language or desktop
+framework has been selected. See [the platform plan](CROSS-PLATFORM.md).
