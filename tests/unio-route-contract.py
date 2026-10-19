@@ -60,6 +60,23 @@ class Parsers(unittest.TestCase):
         for suffix in (['--check'],['--child'],['--receipt-dir','/x','--proposal-dir','/y']):
             self.assertEqual(c.check(command('perplexity',basics['perplexity']+suffix))['state'],'invalid')
 
+    def test_perplexity_safe_numeric_bounds_from_actual_parser(self):
+        spec = importlib.util.spec_from_file_location('perplexity_bounds', ROOT/'tools/perplexity-worker.py')
+        worker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(worker)
+        for flag, bounds in (('--timeout', worker.TIMEOUT_RANGE),
+                             ('--max-output', worker.OUTPUT_RANGE)):
+            for value in ('nan', 'inf', '2.5', 'SECRET-value', str(bounds[0]-1), str(bounds[1]+1)):
+                with self.subTest(flag=flag, value=value):
+                    result = c.check(command('perplexity', ['--model', 'glm53', flag, value]))
+                    self.assertEqual(result['state'], 'invalid')
+                    self.assertIn(flag, result['detail'])
+                    self.assertIn('[' + ', '.join(map(str, bounds)) + ']', result['detail'])
+                    self.assertIn('edit the agents.conf route', result['detail'])
+                    self.assertNotIn('SECRET-value', json.dumps(result))
+            for value in bounds:
+                self.assertEqual(c.check(command('perplexity', ['--model', 'glm53', flag, str(value)]))['state'], 'valid')
+
     def test_safe_diagnostics_and_no_provider_in_metadata(self):
         for route,args in [('vibe',['--model','SECRET']),('copilot',['--time-limit','SECRET']),
                            ('antigravity',['--selector','SECRET']),('perplexity',['--timeout','SECRET'])]:
@@ -173,6 +190,20 @@ class Native(unittest.TestCase):
                     self.assertIn('Route contract: invalid',cp.stdout+cp.stderr)
                     self.assertNotIn('SECRET',cp.stdout+cp.stderr)
                     self.assertNotIn('started in background',cp.stdout+cp.stderr)
+                    self.assertFalse((b/'marker').exists())
+                    self.assertFalse((root/'coord/retries'/name).exists())
+                    self.assertFalse((root/'coord/reports'/(name+'.policy.json')).exists())
+                    self.assertFalse((root/'coord/reports/.outcomes').exists())
+            for flag, bounds in (('--timeout', (2, 3600)), ('--max-output', (4096, 16777216))):
+                for value in ('nan', 'inf', '2.5', 'SECRET-value'):
+                    name = 'PERPLEXITYBAD';task(name)
+                    conf.write_text('perplexity='+command('perplexity', ['--model', 'glm53', flag, value], adapters)+'\n')
+                    cp = unio('run', '-b', 'perplexity', name, codes=(2,))
+                    text = cp.stdout + cp.stderr
+                    self.assertIn(flag, text)
+                    self.assertIn('[' + ', '.join(map(str, bounds)) + ']', text)
+                    self.assertNotIn('SECRET-value', text)
+                    self.assertNotIn('started in background', text)
                     self.assertFalse((b/'marker').exists())
                     self.assertFalse((root/'coord/retries'/name).exists())
                     self.assertFalse((root/'coord/reports'/(name+'.policy.json')).exists())

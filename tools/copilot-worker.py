@@ -510,10 +510,11 @@ def run_telemetry(record, native_usage):
     notes = ["the native CLI reports premium requests and durations, not tokens or USD; "
              "token and USD usage are unknown, not zero"]
     premium = native_usage.get("premiumRequests") if isinstance(native_usage, dict) else None
-    if (isinstance(premium, (int, float)) and not isinstance(premium, bool)
-            and math.isfinite(premium) and premium >= 0):
-        notes.append("the native usage file reported " + str(premium)
-                     + " premium request(s); this is not a token or USD measurement")
+    if finite_number(premium) and premium >= 0:
+        note = ("the native usage file reported " + str(premium)
+                + " premium request(s); this is not a token or USD measurement")
+        if len(note) <= module.MAX_NOTE_CHARS:
+            notes.append(note)
     completed = record.get("outcome") == "proposal_recorded"
     if completed:
         notes.append("turns count the single root assistant completion required by the proposal protocol")
@@ -627,8 +628,7 @@ def main():
             code, _, _ = owned_call(argv, env, args.time_limit, work, data, (out, err))
         record["native_exit"] = code
         try:
-            read_regular(usage, META_BYTES)
-            native_usage = strict_json(usage.read_bytes())
+            native_usage = strict_json(read_regular(usage, META_BYTES))
             record["usage_state"] = "recorded_not_remaining_allowance"
         except (OSError, ValueError, UnicodeError, Refusal, RecursionError):
             record["usage_state"] = "invalid_or_missing"

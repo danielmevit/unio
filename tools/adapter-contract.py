@@ -34,7 +34,10 @@ class SafeParser(argparse.ArgumentParser):
         flag = match.group(1) if match else None
         action = self._option_string_actions.get(flag)
         if action is not None:
-            if action.choices:
+            bounds = getattr(action, 'safe_integer_bounds', None)
+            if bounds is not None:
+                accepted = 'an integer in [' + ', '.join(str(v) for v in bounds) + ']'
+            elif action.choices:
                 accepted = 'one of ' + ', '.join(str(v) for v in action.choices)
             elif action.type is int:
                 accepted = 'an integer within the adapter bounds'
