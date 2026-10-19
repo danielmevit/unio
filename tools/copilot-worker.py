@@ -502,6 +502,35 @@ def budget_module():
         return None
 
 
+def outcome_module():
+    """Load the shared declared-outcome helper installed beside this adapter."""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "unio_task_outcomes", str(Path(__file__).with_name("task-outcomes.py")))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception:
+        return None
+
+
+def declared_outcome(data):
+    """None (legacy), 'implementation' or 'report-only'; Refusal when malformed.
+
+    Covers explicit declarations when this canonical proposal-only adapter is
+    invoked through a wrapper the engine could not recognize. A missing helper
+    keeps legacy behavior; arbitrary model prose is never classified.
+    """
+    module = outcome_module()
+    if module is None:
+        return None
+    try:
+        return module.parse(data.decode("utf-8"))
+    except ValueError as error:
+        raise Refusal("invalid_outcome_declaration: " + str(error)) from error
+
+
 def run_telemetry(record, native_usage):
     """Premium requests are real native data; tokens and USD stay unknown."""
     module = budget_module()
@@ -548,6 +577,14 @@ def main():
         if not prompt:
             raise Refusal("missing_task")
         data = read_regular(prompt, PROMPT_BYTES)
+        # Declared-mode guard: this proposal-only route has no repository
+        # access, so an explicit implementation declaration is refused before
+        # any native CLI call. No provider invocation, retry or account change.
+        outcome_declaration = declared_outcome(data)
+        if outcome_declaration == "implementation":
+            print("Copilot adapter: this proposal-only route cannot implement; declare "
+                  "'## Outcome report-only' or use an implementation route", file=sys.stderr)
+            raise Refusal("blocked_no_repo_access")
         parent = Path(args.receipt_dir).absolute()
         info = parent.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
@@ -572,6 +609,7 @@ def main():
         record = dict(schema_version=1, started_at=date(), role="routine_proposal",
                       transport="GitHub Copilot CLI", cli_version=VERSION, cli_sha256=file_sha256(cli),
                       task_sha256=hashlib.sha256(data).hexdigest(), task_bytes=len(data), prompt_transport="stdin",
+                      declared_outcome=outcome_declaration,
                       output_transport="copilot_jsonl_1.0.95",
                       budget_group="copilot", subscription="owner_reported_free", remaining_allowance="unknown",
                       requested_route=dict(name="Balanced", model="auto", auto_tier="balance"),

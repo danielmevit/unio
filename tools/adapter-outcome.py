@@ -211,8 +211,12 @@ def classify(r, record):
         return {'terminal_success': 'completed', 'terminal_error': 'terminal_error',
                 'success_with_error': 'terminal_error'}.get(record.get('outcome'), 'unknown')
     if r == 'copilot':
+        if record.get('outcome') == 'blocked_no_repo_access':
+            return 'blocked_no_repo_access'
         return 'completed' if record.get('outcome') == 'proposal_recorded' else 'unknown'
     if r == 'perplexity':
+        if record.get('outcome') == 'blocked_no_repo_access':
+            return 'blocked_no_repo_access'
         return {'ok': 'completed', 'rate_limited': 'provider_limit', 'auth_missing': 'auth',
                 'auth_denied': 'auth', 'dependency_missing': 'setup', 'dependency_version': 'setup',
                 'dependency_broken': 'setup', 'unsupported_model': 'setup',
@@ -354,6 +358,14 @@ def status_all(root, adapters, config):
 def main(a):
     if a[:1] == ['status-all'] and len(a) == 4:
         status_all(*a[1:])
+        return
+    if a[:1] == ['route'] and len(a) == 3:
+        # Recognition only, shared with the declared-outcome preflight; a
+        # command that is not a simple canonical argv is unsupported.
+        try:
+            print(route(a[1], a[2]))
+        except (OSError, ValueError, TypeError, RecursionError, subprocess.SubprocessError):
+            print('unsupported')
         return
     mode, root, worker, task, command, adapters, *extra = a
     if mode == 'prepare':
