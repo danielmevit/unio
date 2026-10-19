@@ -18,7 +18,7 @@ remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The comp
 | Version | Included work | State |
 | --- | --- | --- |
 | 0.5.21 | Bounded continuous delegation for existing approved jobs | [Released and installed 2026-10-17](https://github.com/danielmevit/unio/releases/tag/v0.5.21); complete gate, independent Gemini and Mistral/Vibe GLM reviews, reproducible assets, upgrade/rollback and six official download hashes passed. |
-| 0.5.22 | Seven operator-reliability improvements | Candidate: implementation committed; gate/review and delivery remain. See [scope and limits](RELEASE-0.5.22.md). |
+| 0.5.22 | Seven operator-reliability improvements | [Released and installed2026-10-19](https://github.com/danielmevit/unio/releases/tag/v0.5.22); independent reviews, complete gate, reproducible assets, upgrade/rollback and six official download hashes passed. See [scope and limits](RELEASE-0.5.22.md). |
 | 0.5.23 | Managed live CLI sessions and lead continuity | Preserved first slice; 2–4 working days for the first complete supported route. |
 | 0.5.24 | Session-scoped phone access | Proposed; 2–4 working days after managed session ownership. |
 | 0.5.25 | Native Windows | Proposed; 1–3 working weeks after feasibility assessment; split if required. Include [app-managed trial expiry](development/WINDOWS-TRIALS.md) and expiry/restart/offline acceptance. Owner 2026-10-17: once a Windows installer exists, list it on winget (`damt.Unio`, PR to microsoft/winget-pkgs, like Eqho's `damt.Eqho`). |

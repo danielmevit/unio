@@ -1,9 +1,12 @@
 # Unio 0.5.22 — clearer runs and route contracts
 
-The seven reliability changes passed independent current-code reviews and the
-complete quality gate. Artifact checks, upgrade/rollback, installation before
-publication and official download verification are separate delivery evidence.
-Consult the GitHub release for publication status.
+Published and installed on2026-10-19 from
+`b459cc02cd4a49f78243028a790c62e1150bb89f`; installation preceded publication.
+The versioned full gate passed at81a3f40. Final prose retains identical runtime
+and test bytes. Reproducible artifacts, all40 isolated selftests,0.5.21
+upgrade/rollback, configuration and owner-template preservation, installed
+payload/dashboard identity and all six official download hashes passed.
+Prior release tags are unchanged.
 
 This reliability round addresses seven problems observed in a heavy Vecto
 session: operators could not see why runs stopped, route bounds disagreed,
@@ -45,7 +48,8 @@ effort and remaining allowance remain Unknown.
 
 The complete `bash tools/quality-check.sh` passed0 at81a3f40 on2026-10-19
 from17:31:25 to18:08:56UTC+02 in2225.171seconds. Final prose retains identical
-runtime and test bytes. Delivery checks follow this code acceptance.
+runtime and test bytes. Delivery checks passed after code acceptance; no extra provider call was made
+for packaging, installation or publication.
 The [round report](development/OPERATOR-LEGIBILITY-2026-10-19.md)
 records actual attempts, focused checks and review capture failures. Prior failed
 runs are retained rather than recast as successful validation.

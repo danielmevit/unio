@@ -4,9 +4,11 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.22 — clearer runs and route contracts — 2026-10-19 (unreleased)
+## 0.5.22 — clearer runs and route contracts — 2026-10-19
 
-Seven reliability improvements from a heavy real-world operator session.
+Published and installed. Seven reliability improvements from a heavy real-world
+operator session; independent reviews, full gate, artifact/upgrade checks and
+all six official download hashes passed.
 See [scope, evidence and limits](docs/RELEASE-0.5.22.md).
 
 - Record tokens, turns and estimated/reported USD against per-run caps, with

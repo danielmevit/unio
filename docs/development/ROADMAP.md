@@ -1,5 +1,14 @@
 # Unio roadmap and development priorities
 
+Current delivery,2026-10-19: [v0.5.22](https://github.com/danielmevit/unio/releases/tag/v0.5.22)
+is published and installed. All seven operator-reliability improvements passed
+independent code reviews, the complete gate and artifact/upgrade/install/download
+checks. Next: resume the preserved managed live-session candidate and lead
+continuity, then scoped phone access, native Windows before macOS. Windows
+includes [app-managed trial expiry](WINDOWS-TRIALS.md), staged localization and
+planned Store/winget distribution. Version numbers after22 remain provisional.
+
+
 Current update, 2026-10-17: [v0.5.21](https://github.com/danielmevit/unio/releases/tag/v0.5.21)
 adds a bounded scheduler for finite approved batches. It is published and installed,
 with two independent current-code reviews, the full gate and download verification.

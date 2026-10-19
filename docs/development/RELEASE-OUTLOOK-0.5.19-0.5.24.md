@@ -17,7 +17,7 @@ can add elapsed time. Re-estimate after each bounded technical assessment.
 | 0.5.19 | Owned stopping, measured save validation and Copilot compatibility | 2–4 hours for a focused slice; 4–8 hours if deeper changes are needed |
 | 0.5.20 | Shared-lead budget protection, interrupted-work WIP, plain stop reasons and development/release push safety | Roughly 1–2 focused working days for the minimal bundle; hardening estimated separately |
 | 0.5.21 | Optional continuous delegation within explicit owner-approved bounds | 1–3 working days |
-| 0.5.22 | Seven operator-reliability fixes: budget visibility, route contracts, tail, scope, outcomes and storage diagnostics | Implementation complete; remaining review, release and installation estimated1–2 hours if final checks find no new defect |
+| 0.5.22 | Seven operator-reliability fixes: budget visibility, route contracts, tail, scope, outcomes and storage diagnostics | Published/installed2026-10-19; gate, independent reviews and all delivery checks passed |
 | 0.5.23 | Managed live CLI sessions and reliable lead continuity | Preserved first slice; first integration estimated2–4 hours, complete supported route2–4 working days |
 | 0.5.24 | Phone access paired to a selected Unio session | 2–4 working days after session ownership works |
 | 0.5.25 | Native Windows execution and Microsoft Store desktop app, including staged localization | Runtime estimate: 1–3 working weeks after feasibility; desktop UX, localization and certification estimated separately |
@@ -87,8 +87,8 @@ these as one coherent reliability release before adding more managed-session
 features. The [round report](OPERATOR-LEGIBILITY-2026-10-19.md) records additive
 budget telemetry, actual dispatch parser checks, nonblocking tail, annotated
 scope handling, explicit blocked/report-only outcomes and early storage checks.
-Implementation is committed; gate, review, installation and publication are
-separate acceptance steps. The existing managed-session candidate is preserved,
+Implementation, gate, review, installation and publication completed for22;
+retain separate evidence for each step. The existing managed-session candidate is preserved,
 not discarded. Later version numbers remain provisional.
 
 ## 0.5.23 — Managed live sessions and lead continuity

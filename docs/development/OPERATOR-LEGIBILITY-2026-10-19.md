@@ -12,8 +12,9 @@ Two independent blind correction-delta reviews approved81a3f40: Antigravity/agy1
 Gemini3.8Flash HIGH and ChatGPT/Codex GPT-6.1 Sol LOW, each with Source0, native0
 and artifact verification0. The lead inspected the actual corrections and
 findings. The versioned full gate81a3f40 passed0 on2026-10-19,18:08:56UTC+02,
-in2225.171seconds. Artifact checks, installation and publication remain separate
-pending delivery steps; no publication is claimed yet.
+in2225.171seconds. The complete batch shipped in [v0.5.22](https://github.com/danielmevit/unio/releases/tag/v0.5.22)
+on2026-10-19. Artifact and upgrade/rollback checks passed, installation preceded
+publication, and all six official downloads matched their hashes.
 New receipt fields are additive; legacy tasks and route command shapes remain.
 
 | Item | Implemented behavior | Evidence and remaining acceptance |
@@ -110,7 +111,8 @@ managed-session candidate and lead-continuity scope. Phone access follows;
 native Windows remains before macOS. Further CodeGraph work stays deferred.
 
 The existing website, dashboard, brand and owner projects are outside this round.
-The planned delivery is one v0.5.22 reliability release, using focused checks and
-the real full gate, followed by isolated artifact/upgrade checks, installation
-before publication and official-download verification. These are planned steps,
-not a claim that publication or installation has already happened.
+All seven items were delivered together in v0.5.22 after focused checks, the
+complete gate, independent reviews and lead assessment. Artifact/upgrade checks,
+installation before publication and official-download verification passed.
+The Windows trial requirement is documented for its later milestone; no Windows
+runtime or trial restriction was added to this release.
