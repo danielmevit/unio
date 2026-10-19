@@ -455,16 +455,17 @@ def budget_module():
 
 
 def run_telemetry(record):
-    """One ask is an exact adapter-transport fact; tokens and USD stay unknown."""
+    """Count only established asks; possible asks and usage stay unknown."""
     module = budget_module()
     if module is None:
         return None
-    asked = bool(record.get('ask_may_have_run'))
+    turns = (1 if record.get('outcome') == 'ok' else
+             0 if record.get('ask_may_have_run') is False else None)
     return module.telemetry(
         tokens=module.meter(None, None, 'unknown'),
-        turns=module.meter(1 if asked else 0, None, 'reported'),
+        turns=module.meter(turns, None, 'reported' if turns is not None else 'unknown'),
         usd=module.meter(None, None, 'unknown'),
-        notes=('turns count the single ask this adapter makes; the pinned library '
+        notes=('turns count only transport-established asks; uncertain asks remain unknown; the pinned library '
                'reports no token or USD usage, so those meters are unknown, not zero',))
 
 

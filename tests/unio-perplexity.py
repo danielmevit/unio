@@ -416,6 +416,24 @@ class PerplexityWorker(unittest.TestCase):
         result, _ = self.run_worker('--model', 'glm53', '--max-output', '4096', '--prompt-file', str(self.prompt), mode='huge')
         self.assertEqual((result.returncode, result.stdout), (8, ''))
 
+    def test_turn_telemetry_requires_established_transport(self):
+        spec = importlib.util.spec_from_file_location('telemetry_fixture', WORKER)
+        worker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(worker)
+        for state, possible, expected in (
+                ('ok', True, 1), ('auth_missing', False, 0),
+                ('dependency_broken', False, 0), ('timeout', True, None),
+                ('output_overflow', True, None), ('invalid_output', True, None),
+                ('interrupted', True, None), ('internal_error', True, None),
+                ('auth_denied', True, None), ('upstream_error', True, None)):
+            with self.subTest(state=state):
+                telemetry = worker.run_telemetry(dict(outcome=state, ask_may_have_run=possible))
+                self.assertEqual(telemetry['turns']['used'], expected)
+                self.assertEqual(telemetry['turns']['provenance'],
+                                 'unknown' if expected is None else 'reported')
+                for name in ('tokens', 'usd'):
+                    self.assertIsNone(telemetry[name]['used'])
+
     def test_transport_parser_is_strict(self):
         spec = importlib.util.spec_from_file_location('perplexity_worker', WORKER)
         worker = importlib.util.module_from_spec(spec)
