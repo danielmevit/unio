@@ -429,8 +429,10 @@ def build_parser():
     parser.add_argument('--model', choices=sorted(MODELS))
     parser.add_argument('--source', choices=('none', 'web'), default='web')
     parser.add_argument('--prompt-file')
-    parser.add_argument('--timeout', type=lambda v: bounded_int(v, *TIMEOUT_RANGE), default=600)
-    parser.add_argument('--max-output', type=lambda v: bounded_int(v, *OUTPUT_RANGE), default=1024 * 1024)
+    timeout = parser.add_argument('--timeout', type=lambda v: bounded_int(v, *TIMEOUT_RANGE), default=600)
+    timeout.safe_integer_bounds = TIMEOUT_RANGE
+    output = parser.add_argument('--max-output', type=lambda v: bounded_int(v, *OUTPUT_RANGE), default=1024 * 1024)
+    output.safe_integer_bounds = OUTPUT_RANGE
     parser.add_argument('--receipt-dir')
     parser.add_argument('--context-file', action='append', default=[])
     parser.add_argument('--proposal-dir', help='existing private directory for a new draft handoff packet')

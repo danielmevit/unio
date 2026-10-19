@@ -62,7 +62,7 @@ assert set(vals('--excluded-tools='))>={'task','list_agents','read_agent','write
 task=sys.stdin.buffer.read()
 assert hashlib.sha256(task).hexdigest()==e['EXPECT_SHA'],len(task)
 assert task.decode() not in ' '.join(a) and max(map(len,a))<4096
-pathlib.Path(get('--usage-output-file')).write_text(json.dumps({'totalNanoAiu':5,'note':'not remaining allowance'}))
+pathlib.Path(get('--usage-output-file')).write_text(e.get('FAKE_USAGE', json.dumps({'totalNanoAiu':5,'note':'not remaining allowance'})))
 print('NEVER-IN-RECEIPT',file=sys.stderr)
 if mode in ('orphan','hang'):
  kid=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -402,6 +402,42 @@ class CopilotTests(unittest.TestCase):
         saved = Path(r["proposal_path"]).read_text(encoding="utf-8")
         self.assertEqual(saved, content)
         self.assertEqual(json.loads(saved)["large_number"], 10**400)
+
+    def test_invalid_native_usage_preserves_success_and_receipt(self):
+        cases = [json.dumps({'premiumRequests': value}) for value in
+                 (10**400, 10**200, -10**400, True, False, float('nan'),
+                  float('inf'), -float('inf'), 'NEVER-IN-RECEIPT')]
+        cases += ['{"premiumRequests":', '[]']
+        for raw in cases:
+            with self.subTest(raw=raw):
+                result = self.invoke(FAKE_USAGE=raw)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                record = self.receipt()
+                self.assertEqual(record['outcome'], 'proposal_recorded')
+                self.assertEqual((record['native_exit'], record['adapter_exit']), (0, 0))
+                self.assertIn('finished_at', record)
+                telemetry = record['budget_telemetry']
+                self.assertEqual(telemetry['tokens']['provenance'], 'unknown')
+                self.assertEqual(telemetry['usd']['provenance'], 'unknown')
+                self.assertFalse(any('premium request(s)' in n for n in telemetry['notes']))
+                self.assertTrue(all(len(n) <= 240 for n in telemetry['notes']))
+                self.assertNotIn(SECRET, json.dumps(record))
+                self.assertNotIn('premiumRequests', json.dumps(record))
+                import shutil
+                for run in self.receipts.glob('copilot-run-*'):
+                    shutil.rmtree(run)
+
+    def test_telemetry_ignores_invalid_premium_numbers(self):
+        for value in (10**400, -10**400, True, float('nan'), float('inf'),
+                      'NEVER-IN-RECEIPT', None, 10**200):
+            with self.subTest(value=value):
+                telemetry = worker.run_telemetry({'outcome': 'proposal_recorded'},
+                                                 {'premiumRequests': value})
+                self.assertEqual(telemetry['turns']['used'], 1)
+                self.assertFalse(any('premium request(s)' in n for n in telemetry['notes']))
+                self.assertTrue(all(len(n) <= 240 for n in telemetry['notes']))
+        self.assertTrue(any('2 premium request(s)' in n for n in
+                            worker.run_telemetry({}, {'premiumRequests': 2})['notes']))
 
     def test_unit_regressions_three_defects(self):
         base = {'timestamp': '2026-10-14T08:00:00.000Z', 'parentId': None,
