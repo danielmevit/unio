@@ -22998,8 +22998,11 @@ try:
         safe(a[0],'coord','.locks',a[1]+'.lock')
     else: fail('unknown quality command')
 except OSError as exc:
-    print('UNIO_STORAGE_ERROR storage/disk/permissions: '+str(exc),file=sys.stderr)
-    sys.exit(3)
+    if sys.argv[1:2] == ['disk-preflight']:
+        print('UNIO_STORAGE_ERROR storage/disk/permissions: '+str(exc),file=sys.stderr)
+        sys.exit(3)
+    print('unio quality: '+str(exc),file=sys.stderr)
+    sys.exit(2)
 except (ValueError,KeyError,TypeError) as exc:
     print('unio quality: '+str(exc),file=sys.stderr)
     sys.exit(2)
@@ -28564,6 +28567,7 @@ cmd_run() {
   is_off "$agent" && die "agent '$agent' is OFF ($(off_desc "$agent")) — reassign the task or: unio on $agent"
   conf=$(conf_for_root "$root")
   cmdline=$(agent_cmd "$agent" "$conf") || die "no agents.conf entry for '$agent' in $conf"
+  command -v python3 >/dev/null || die "Python 3 is required before run/verify/review/smoke/agents/result/handoff"
   # Validate recognized canonical argv before admission/retry/start or CLI metadata.
   python3 -I -S -B "$CONF_DIR/lib/adapters/adapter-contract.py" "$cmdline" || return 2
 
