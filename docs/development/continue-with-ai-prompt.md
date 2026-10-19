@@ -119,14 +119,42 @@ to satisfy a reviewer or a proposed version number.
 
 ## Active next milestone — 2026-10-19
 
-The managed-session integration is a new, unreleased first CLI slice. Dedicated
-ChatGPT subscription / Codex CLI0.163.0 / requested gpt-6.1-sol LOW worker
-`codex-managed-session-integration-low-20261019` actually started at21:48:53+02:00,
-using installed Unio0.5.22. Its branch preserves candidate04c51ee on current main.
-An early integration commit is not acceptance. Check current private receipts in
-`tmp/unio-next/managed-session-0523-20261019` before inferring the live state.
-Focused native checks, two blind reviews from different labs and lead assessment
-remain required. Estimate20–60min Source,2–4h for this complete slice.
+The managed-session first CLI slice remains unreleased. Dedicated ChatGPT
+subscription / Codex CLI0.163.0 / requested gpt-6.1-sol LOW completed Source0
+at21:54:04+02:00; native0 at21:57:53 and current verification7/7 PASS at22:00:56.
+Worker `codex-managed-session-integration-low-20261019` retains preserved candidate
+04c51ee and main in mergef84a085, plus real missing-archive-suffix correction
+ec21e0728033d07b094b785cee8caf0d3c89ff2e. Nine protected operator helpers remain
+byte-identical. Automatic saves timed out at60s on the Windows-mounted workspace;
+early commits preserve the actual work. Original failures remain.
+
+Integration37f7baf has exactly the same runtime/tests as ec21, plus architecture
+and handoff prose. The complete offline gate started22:03:47 on an isolated exact
+clone of37f7baf; actual result is pending, never infer PASS. Current lead docs add
+3393ea8's GPT-OSS delivery qualification without changing product code. Main,
+latest release and global installation remain0.5.22.
+
+Review evidence is pending. Initial blind native collection: Antigravity/agy1.4.2
+Opus4.6 fixedThinking returned quota3, stated162h21m8s reset estimate, not approval;
+Mistral/Vibe2.26.1 GLM5.3 HIGH returned infrastructure2 under12M/$10 caps, no verdict.
+A Gemini setup used canonical adapter pin1.3.5 against CLI1.4.2 and refused before
+inference; preserve it as zero-provider-call setup failure. Corrected blind pair
+started22:15:34: AGY/Gemini3.8FlashHIGH with the previously successful frozen1.4.2
+helper, plus OpenCodeGo/OpenCode1.18.35/Qwen3.8MaxMEDIUM. Exact native ID is
+`opencode-go/qwen3.8-max`; current catalog exposes low/medium/xhigh, no high. Both
+primary and helper models are pinned to that Go route; no paid Zen fallback.
+Use actual private receipts under `tmp/unio-next/managed-session-0523-20261019`,
+especially `reviews-ready`, before claiming live state, verdict or acceptance.
+
+Owner-requested GPT-OSS diagnosis is saved privately in
+`tmp/unio-next/gptoss-delivery-diagnosis-20261019`. The earlier Unio report actually
+exists at an internal AGY artifact path, but claims tests passed despite recorded
+pytest command-not-found and lacks the requested full-code coverage. Original
+missing-delivery failure remains unchanged; recovered approval is unaccepted.
+A separate field session ended with acknowledgement-only output and no audit.
+No new GPT-OSS call or other-project mutation occurred. The fleet guide records
+this exact route as needing bounded delivery qualification before autonomous
+audits/final reviews; this is not a universal model ranking or no-tools claim.
 
 Windows architecture remains a feasibility decision. Tauri2 is a provisional
 desktop-shell candidate; the shared orchestration engine still needs native
