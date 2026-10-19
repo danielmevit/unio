@@ -422,6 +422,10 @@ with tempfile.TemporaryDirectory(prefix='work-policy-guard-') as directory:
         unsafe_dir.symlink_to('target_unsafe')
 
         out_unsafe = unio('run', 'mock3', 'task3')
+        # Route preflight may diagnose the mock command before storage refuses it.
+        expected_route_diagnostic = (
+            'Route contract: unvalidated: custom/wrapped command; '
+            'no discoverable canonical argument contract\n')
         check('unsafe admission path rejection',
               out_unsafe.returncode == 2 and
               'storage refused' in out_unsafe.stderr and
@@ -429,7 +433,7 @@ with tempfile.TemporaryDirectory(prefix='work-policy-guard-') as directory:
               'budget refused' not in out_unsafe.stderr and
               unsafe_dir.name in out_unsafe.stderr and
               unsafe_dir.is_symlink() and
-              out_unsafe.stdout == '' and
+              out_unsafe.stdout == expected_route_diagnostic and
               not marker.exists() and
               sentinel.read_bytes() == sentinel_bytes and
               sorted(path.name for path in unsafe_target.iterdir()) == target_names,
