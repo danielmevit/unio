@@ -1,8 +1,9 @@
 # Unio 0.5.22 — clearer runs and route contracts
 
-Release candidate. Implementation is complete; final gate, lead acceptance,
-artifact checks, installation and publication are recorded separately. This
-page does not claim that a release has already been published.
+The seven reliability changes passed independent current-code reviews and the
+complete quality gate. Artifact checks, upgrade/rollback, installation before
+publication and official download verification are separate delivery evidence.
+Consult the GitHub release for publication status.
 
 This reliability round addresses seven problems observed in a heavy Vecto
 session: operators could not see why runs stopped, route bounds disagreed,

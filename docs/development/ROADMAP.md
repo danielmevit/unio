@@ -45,6 +45,14 @@ Keep useful milestones bundled with one final combined gate. Further dashboard,
 website and brand redesign remains lower priority than functional protections.
 Earlier dated sections retain their historical context.
 
+## Windows trial requirement — 2026-10-19
+
+The Windows milestone includes [Unio-managed trial expiry](WINDOWS-TRIALS.md),
+based on the owner's report that a one-day Store trial stayed usable after its
+24-hour period. Enforce the selected trial policy at app/backend boundaries,
+preserve work and test expiry/restart/reinstall/offline cases. This is planned
+Windows work, not a shipped restriction in the current tool.
+
 ## Current focus: finish the functional core
 
 Local save-store recovery is complete: 34 snapshots passed deep validation; only

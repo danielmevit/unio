@@ -183,6 +183,14 @@ Checked official sources on 2026-10-14:
 - [Store policy 7.19](https://learn.microsoft.com/en-us/windows/apps/publish/store-policy-archive/store-policy-7-19): current effective policy at this checkpoint; disclose non-integrated dependencies and provide a testable, responsive product.
 - [Published policy 7.20](https://learn.microsoft.com/en-us/windows/apps/publish/store-policies): effective 2026-10-22, so recheck the version in force when submitting.
 
+### App-managed trial expiry
+
+Owner update, 2026-10-19: a configured one-day Store trial reportedly continued
+to allow use after24 hours. Plan Unio-managed activation/expiry checks in the
+Windows backend and UI, preserving work at expiry. Test restart, reinstall,
+offline use, clock changes and actual Store entitlement behavior; do not rely
+on the Store flag alone. See the [requirements and estimate](WINDOWS-TRIALS.md).
+
 ### Windows app languages
 
 The owner requests major languages, Balkan languages, Czech and Slovak.
