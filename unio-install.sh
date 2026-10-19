@@ -14490,6 +14490,8 @@ import argparse
 import contextlib
 import importlib.util
 import io
+import os
+import stat
 from pathlib import Path
 import re
 import shlex
@@ -14589,8 +14591,21 @@ def check(command):
     try:
         argv = simple_argv(command)
     except ValueError:
-        # An unfinished quote after a canonical prefix must not reach a shell.
-        if any(path in command for path in targets):
+        # Recover only complete leading tokens. Recognize the interpreter and
+        # canonical source normally; a wrapper containing a path is not proof.
+        lexer = shlex.shlex(command, posix=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ''
+        prefix = []
+        try:
+            while True:
+                token = lexer.get_token()
+                if token is None:
+                    break
+                prefix.append(token)
+        except ValueError:
+            pass
+        if prefix and check(shlex.join(prefix))['state'] != 'unvalidated':
             return dict(state='invalid', detail='malformed quoting in canonical adapter arguments; close the quote')
         argv = None
     if not argv or Path(argv[0]).name not in ('python', 'python3'):
@@ -14608,10 +14623,17 @@ def check(command):
         route = candidate.name.removesuffix('-worker.py')
         if candidate.name == route + '-worker.py' and route in bundled:
             try:
-                with candidate.open('rb') as source:
-                    actual = source.read(len(bundled[route].encode()) + 1)
-                if actual == bundled[route].encode():
-                    targets[str(candidate)] = route
+                expected = bundled[route].encode()
+                # O_NONBLOCK prevents FIFO/device opens from stalling preflight;
+                # O_NOFOLLOW refuses a final symlink. Inspect the opened fd to
+                # avoid a pathname race and read only a bounded regular file.
+                flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
+                with os.fdopen(os.open(candidate, flags), 'rb') as source:
+                    info = os.fstat(source.fileno())
+                    if stat.S_ISREG(info.st_mode) and info.st_size == len(expected):
+                        actual = source.read(len(expected) + 1)
+                        if actual == expected:
+                            targets[str(candidate)] = route
             except OSError:
                 pass
     if not argv or argv[0] not in targets:
@@ -28584,6 +28606,8 @@ import argparse
 import contextlib
 import importlib.util
 import io
+import os
+import stat
 from pathlib import Path
 import re
 import shlex
@@ -28683,8 +28707,21 @@ def check(command):
     try:
         argv = simple_argv(command)
     except ValueError:
-        # An unfinished quote after a canonical prefix must not reach a shell.
-        if any(path in command for path in targets):
+        # Recover only complete leading tokens. Recognize the interpreter and
+        # canonical source normally; a wrapper containing a path is not proof.
+        lexer = shlex.shlex(command, posix=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ''
+        prefix = []
+        try:
+            while True:
+                token = lexer.get_token()
+                if token is None:
+                    break
+                prefix.append(token)
+        except ValueError:
+            pass
+        if prefix and check(shlex.join(prefix))['state'] != 'unvalidated':
             return dict(state='invalid', detail='malformed quoting in canonical adapter arguments; close the quote')
         argv = None
     if not argv or Path(argv[0]).name not in ('python', 'python3'):
@@ -28702,10 +28739,17 @@ def check(command):
         route = candidate.name.removesuffix('-worker.py')
         if candidate.name == route + '-worker.py' and route in bundled:
             try:
-                with candidate.open('rb') as source:
-                    actual = source.read(len(bundled[route].encode()) + 1)
-                if actual == bundled[route].encode():
-                    targets[str(candidate)] = route
+                expected = bundled[route].encode()
+                # O_NONBLOCK prevents FIFO/device opens from stalling preflight;
+                # O_NOFOLLOW refuses a final symlink. Inspect the opened fd to
+                # avoid a pathname race and read only a bounded regular file.
+                flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
+                with os.fdopen(os.open(candidate, flags), 'rb') as source:
+                    info = os.fstat(source.fileno())
+                    if stat.S_ISREG(info.st_mode) and info.st_size == len(expected):
+                        actual = source.read(len(expected) + 1)
+                        if actual == expected:
+                            targets[str(candidate)] = route
             except OSError:
                 pass
     if not argv or argv[0] not in targets:

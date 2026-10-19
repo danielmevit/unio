@@ -87,6 +87,35 @@ class Parsers(unittest.TestCase):
             cp=subprocess.run([sys.executable,str(p),'--help'],capture_output=True,text=True,timeout=10)
             self.assertEqual(cp.returncode,0,cp.stderr)
 
+    def test_bundled_relocated_recognition_is_bounded_and_literal(self):
+        # Run in a child with a deadline so a FIFO regression cannot hang tests.
+        script = r"""
+import importlib.util, json, os, pathlib, shlex, sys
+root = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location('contract', root/'tools/adapter-contract.py')
+c = importlib.util.module_from_spec(spec); spec.loader.exec_module(c)
+c.BUNDLED_ADAPTERS = {'vibe': (root/'tools/vibe-worker.py').read_text()}
+b = pathlib.Path(sys.argv[2]); p = b/'vibe-worker.py'
+def check():
+    return c.check(shlex.join(['python3', str(p), '--max-tokens', '16000001']))['state']
+os.mkfifo(p)
+assert check() == 'unvalidated'
+p.unlink(); p.symlink_to(root/'tools/vibe-worker.py')
+assert check() == 'unvalidated'
+p.unlink(); p.mkdir()
+assert check() == 'unvalidated'
+p.rmdir(); p.write_text(c.BUNDLED_ADAPTERS['vibe'] + '# changed')
+assert check() == 'unvalidated'
+p.write_text(c.BUNDLED_ADAPTERS['vibe'])
+assert check() == 'invalid'
+assert c.check(shlex.join(['python3', str(p)]) + " --model 'unfinished")['state'] == 'invalid'
+assert c.check('env ' + shlex.join(['python3', str(p)]) + " --model 'unfinished")['state'] == 'unvalidated'
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            cp = subprocess.run([sys.executable, '-B', '-c', script, str(ROOT), tmp],
+                                capture_output=True, text=True, timeout=10)
+            self.assertEqual(cp.returncode, 0, cp.stdout + cp.stderr)
+
 
 VIBE = '''#!/usr/bin/env python3
 import json,os,pathlib,sys
@@ -153,7 +182,8 @@ class Native(unittest.TestCase):
             # metadata/provider/admission markers; custom commands still run.
             thin=b/'thin';thin.mkdir()
             thin_conf=thin/'agents.conf'
-            copied=b/'copied-engine';shutil.copyfile(b/'bin/unio',copied)
+            standalone=b/'standalone';standalone.mkdir()
+            copied=standalone/'unio';shutil.copyfile(b/'bin/unio',copied)
             copied.chmod(0o700)
             env['UNIO_CONF_DIR']=str(thin)
             for engine in (b/'bin/unio',copied):
@@ -180,6 +210,19 @@ class Native(unittest.TestCase):
             self.assertIn('Route contract: unvalidated',cp.stdout)
             self.assertIn('Stop reason: Unknown',cp.stdout)
             self.assertIn('Run budget: Unknown',cp.stdout)
+            # Review dispatch must refuse the same invalid canonical contract
+            # before provider/version or review admission, including a batch.
+            task('REVIEWBASE')
+            conf.write_text('custom=printf changed >> file\n')
+            unio('run','custom','REVIEWBASE')
+            unio('verify','custom','REVIEWBASE')
+            conf.write_text('custom=echo custom; exit 7\nvibe='+command('vibe',valid+['--max-tokens','16000001'],adapters)+'\nother=echo other\n')
+            marker_before=(b/'marker').read_text()
+            for args in [('review','custom','REVIEWBASE','vibe'),
+                         ('review-set','custom','REVIEWBASE','vibe','other')]:
+                cp=unio(*args,codes=(2,))
+                self.assertIn('Route contract: invalid',cp.stdout+cp.stderr)
+                self.assertEqual((b/'marker').read_text(),marker_before)
 
 
 if __name__=='__main__':
