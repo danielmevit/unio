@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import shlex
 import sys
+import types
 
 ROUTES = ('vibe', 'antigravity', 'copilot', 'perplexity')
 
@@ -119,13 +120,36 @@ def check(command):
     argv = argv[1:]
     while argv and argv[0] in ('-B', '-I', '-S'):
         argv = argv[1:]
+    bundled = globals().get('BUNDLED_ADAPTERS', {})
+    if bundled:
+        targets = {}
+    if argv and bundled:
+        # Recognize relocated canonical sources by exact bytes, never by a
+        # route-supplied module name. Execute only our frozen bundled source.
+        candidate = Path(argv[0])
+        route = candidate.name.removesuffix('-worker.py')
+        if candidate.name == route + '-worker.py' and route in bundled:
+            try:
+                with candidate.open('rb') as source:
+                    actual = source.read(len(bundled[route].encode()) + 1)
+                if actual == bundled[route].encode():
+                    targets[str(candidate)] = route
+            except OSError:
+                pass
     if not argv or argv[0] not in targets:
         return dict(state='unvalidated', detail='custom/wrapped command; no discoverable canonical argument contract')
     route = targets[argv[0]]
     # Crucially use OUR path, never an import path extracted from shell text.
-    spec = importlib.util.spec_from_file_location('unio_contract_'+route, base/(route+'-worker.py'))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    if bundled:
+        # The engine's bundle is generated from the same canonical sources as
+        # installed adapter execution, including every parser and bound check.
+        module = types.ModuleType('unio_contract_'+route)
+        module.__file__ = str(base/(route+'-worker.py'))
+        exec(compile(bundled[route], module.__file__, 'exec'), module.__dict__)
+    else:
+        spec = importlib.util.spec_from_file_location('unio_contract_'+route, base/(route+'-worker.py'))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
     return validate(module.build_parser(), getattr(module, 'check_bounds', None), argv[1:], route)
 
 

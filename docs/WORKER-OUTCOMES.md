@@ -71,3 +71,5 @@ is an estimated turn. Perplexity counts its one transport ask, but its library
 exposes no cumulative model context or prices. Antigravity exposes neither
 complete cumulative requests nor model prices. Those unsupported meters stay
 null with a precise reason; no subscription allowance is inferred.
+
+Canonical route preflight uses the actual adapter parsers and bounds before native run admission or provider metadata. Review and review-set also check their routes. The engine bundles canonical sources so thin config overrides and standalone copies work without `lib/`; relocated sources must match the bundle exactly. Custom/wrapped or changed unknown sources are explicitly unvalidated and retain existing command behavior. This checks argument contracts only, not provider identity, allowance or acceptance. Invalid recognized options name the bound and recommend editing `agents.conf`; raw values are omitted.

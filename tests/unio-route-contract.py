@@ -148,6 +148,27 @@ class Native(unittest.TestCase):
                     self.assertFalse((root/'coord/retries'/name).exists())
                     self.assertFalse((root/'coord/reports'/(name+'.policy.json')).exists())
                     self.assertFalse((root/'coord/reports/.outcomes').exists())
+            # Same canonical route through an override with no lib/, and a
+            # copied standalone engine. Invalid bounds must still precede all
+            # metadata/provider/admission markers; custom commands still run.
+            thin=b/'thin';thin.mkdir()
+            thin_conf=thin/'agents.conf'
+            copied=b/'copied-engine';shutil.copyfile(b/'bin/unio',copied)
+            copied.chmod(0o700)
+            env['UNIO_CONF_DIR']=str(thin)
+            for engine in (b/'bin/unio',copied):
+                thin_conf.write_text('vibe='+command('vibe',valid+['--max-tokens','16000001'],adapters)+'\n')
+                task('THINBAD')
+                cp=run([str(engine),'run','-b','vibe','THINBAD'],repo,codes=(2,))
+                self.assertIn('Route contract: invalid',cp.stdout+cp.stderr)
+                self.assertIn('16000000',cp.stdout+cp.stderr)
+                self.assertFalse((b/'marker').exists())
+                thin_conf.write_text('custom=echo custom; exit 7\n')
+                task('THINCUSTOM')
+                cp=run([str(engine),'run','custom','THINCUSTOM'],repo,codes=(7,))
+                self.assertIn('Route contract: unvalidated',cp.stdout+cp.stderr)
+            self.assertFalse((thin/'lib').exists())
+            env['UNIO_CONF_DIR']=str(b/'conf')
             task('VALID');conf.write_text('vibe='+command('vibe',valid,adapters)+'\n')
             cp=unio('run','vibe','VALID',codes=(3,))
             self.assertIn('Route contract: valid',cp.stdout)

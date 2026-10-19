@@ -9,6 +9,10 @@ exact reviewed bytes: it installs no external dependency and invokes no
 model, provider or interpreter for them.
 """
 from pathlib import Path
+import base64
+import json
+import textwrap
+import zlib
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -84,6 +88,24 @@ def main():
         marker = '# END EMBEDDED DASHBOARD\n'
         assert marker in old
         updated = old.replace(marker, marker + block, 1)
+    # A copied engine or per-run thin config must retain offline contracts.
+    # Bundle only reviewed canonical bytes, never import a route-selected file.
+    sources = {route: (ROOT / ('tools/' + route + '-worker.py')).read_text()
+               for route in ('vibe', 'antigravity', 'copilot', 'perplexity')}
+    payload = base64.b64encode(zlib.compress(json.dumps(sources).encode())).decode()
+    contract = (ROOT / 'tools/adapter-contract.py').read_text()
+    contract = contract[:contract.index("if __name__ == '__main__':")]
+    bootstrap = ('import base64, json, zlib\n'
+                 + 'BUNDLED_ADAPTERS = json.loads(zlib.decompress(base64.b64decode(\n'
+                 + ''.join(repr(line) + '\n' for line in textwrap.wrap(payload, 100)) + ')))\n'
+                 + '__file__ = str(Path(sys.argv[2]) / "lib/adapters/adapter-contract.py")\n'
+                 + 'raise SystemExit(main(sys.argv[1:2]))\n')
+    block = ('route_contract() {\n  python3 -I -S -B - "$1" "$CONF_DIR" <<\'UNIO_ROUTE_CONTRACT_PY\'\n'
+             + contract + bootstrap + 'UNIO_ROUTE_CONTRACT_PY\n}\n')
+    begin, end = '# BEGIN EMBEDDED ROUTE CONTRACT\n', '# END EMBEDDED ROUTE CONTRACT\n'
+    left, rest = updated.split(begin, 1)
+    _, right = rest.split(end, 1)
+    updated = left + begin + block + end + right
     helper = (ROOT / 'tools/wip-worker.py').read_text()
     begin, end = '# BEGIN EMBEDDED WIP\n', '# END EMBEDDED WIP\n'
     left, rest = updated.split(begin, 1)
