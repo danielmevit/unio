@@ -20,8 +20,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def run_cmd(cmd, env=None, cwd=None, check=True):
-    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                       text=True, env=env, cwd=cwd)
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          text=True, env=env, cwd=cwd, start_new_session=True) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate(timeout=3)
+            raise AssertionError(f"Command timed out after 15 seconds: {cmd}")
+        p = subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
     if check and p.returncode != 0:
         raise AssertionError(f"Command failed (exit {p.returncode}): {cmd}\nstdout: {p.stdout}\nstderr: {p.stderr}")
     return p
