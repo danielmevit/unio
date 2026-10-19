@@ -17901,6 +17901,22 @@ CLI version. Do not pretend new catalog entries automatically enable that
 adapter. Use an explicit task-frozen custom route with truthful receipts, or
 implement/review an adapter extension separately. Preserve existing routes.
 
+### Observed Antigravity controls and trials — 2026-10-19
+
+agy1.4.2 rejected `--effort high` with `claude-opus-4-6-thinking` before
+inference. Select that fixed Thinking model without an effort flag; record
+requested thinking and effective effort Unknown. Likewise GPT-OSS uses the
+fixed `gpt-oss-120b-medium` selector. Generic help flags do not establish
+per-model controls. Keep the packaged Gemini adapter's supported surface intact.
+
+Opus completed a real full-code review; a later bounded delta call hit a genuine
+quota response with a stated reset wait. That observation applies to that route
+at that time, not every Antigravity model. GPT-OSS returned CLI0 but failed to
+deliver its claimed report file, so the trial was unaccepted. Gemini delivered
+review text but capture/stream failures remain separate from approval. See the
+[dated scoreboard](MODEL-SCOREBOARD.md#operator-reliability-observations--2026-10-19).
+No model's quota or effective identity can be inferred from another's result.
+
 ## Make each assignment visible
 
 Follow the [mandatory reporting rule](LEAD-ROUTING.md#name-the-model-route-in-every-work-summary).
@@ -17925,7 +17941,7 @@ remaining account allowance.
 | Existing Codex lead | Plan, delegate, inspect actual changes, integrate and preserve handoffs | Keep one existing lead session. Low tier does not permit another independent Codex job on that account. |
 | Claude Code / Opus 5.5 | Substantial implementation, UI interaction, stateful corrections and bounded architecture work | High normally; supported xhigh only when justified. Check owner holds and current account availability. |
 | Grok | Nuanced control logic, security reasoning and precise failure analysis | Owner-preferred reasoning worker when available; high normally. A historical quota failure is dated evidence. |
-| Antigravity / Gemini 3.1 Pro | Mechanical implementation with clear inputs, outputs and checks | Pin the high model and high effort. This route exposes high/low, not xhigh. Recent work needed lead corrections; keep assignments bounded. |
+| Antigravity / Gemini3.8Flash | Bounded implementation or independent code inspection with clear artifacts | agy1.4.2 lists low/medium/high selectors. Pin the exact selector; verify controls for that route rather than borrowing Gemini3.1Pro settings. Preserve stream errors and correction burden. |
 | Mistral Vibe / GLM 5.3 | Implementation from a concrete contract, including more involved code | Explicit GLM/high pin. Use existing monthly subscription; task estimates do not measure remaining allowance. |
 | Mistral Vibe / Medium 3.5 | Smaller implementation or mechanical corrections when GLM is busy or unsuitable | Same Mistral budget as GLM: queue behind it in low tier. No fair checked ranking between the two yet. |
 | Perplexity Pro / GLM 5.3 Thinking | Research, integration plans and supplementary code analysis using selected public context | Proposal only. Its matched plan separated occupied slots from quota more clearly; this is a small sample. |
@@ -18001,12 +18017,15 @@ models come from the same AI lab.
 5. Update the scoreboard with task, route, settings, observed outcome and
    rework. Keep operational failures separate from code-quality findings.
 
-Start at high or the supported middle; xhigh is the ceiling. No max/ultra,
+Workers sharing the lead model/subscription start at the lowest supported effort;
+other routes start at high or the supported middle. xhigh is this workspace's ceiling. No max/ultra,
 paid fallback, topups or billing changes. Thinking is a route switch, not
 an adjustable effort scale. Auto Balance does not pin the underlying lab,
 so it cannot establish independent cross-lab review by itself. If a worker
-struggles, use one suitable replacement, then the existing lead finishes;
-never loop through weaker workers or duplicate the lead's account session.
+struggles, preserve its evidence and use a suitable replacement. Follow the
+current owner LOW-Sol correction rule in LEAD-ROUTING.md: one focused shared-
+budget worker beside the lead requires the real account reservation, narrow
+consent and temporary coordination tier only as needed. No blind retry loops.
 
 ## Setup and evidence
 
@@ -18861,6 +18880,21 @@ Read [lead routing and spending](LEAD-ROUTING.md) and [task budgets](TASK-TIME-B
 A listed model is an inventory entry, not authorization to use a paid route.
 
 
+## Current owner override and Antigravity controls — 2026-10-19
+
+Workers sharing the lead's model or subscription start at the lowest supported
+effort: Codex CLI / GPT-6.1 Sol uses LOW. Increase one supported step only after
+a demonstrated reasoning gap; quota, network and authentication failures do
+not justify escalation. Other approved routes retain their high/middle defaults.
+This overrides older blanket high defaults below. Coordination tier is separate.
+
+agy1.4.2 lists Gemini3.8Flash low/medium/high, Claude Opus4.6 Thinking and
+GPT-OSS120B Medium. The Opus fixed Thinking selector rejects `--effort high`:
+use `claude-opus-4-6-thinking` without that flag and record thinking/requested,
+effective Unknown. GPT-OSS uses fixed `gpt-oss-120b-medium`. Catalog presence
+is not current capacity, a privacy guarantee or proof of separate allowance.
+See [actual route trials](AGENT-FLEET.md#observed-antigravity-controls-and-trials--2026-10-19).
+
 ## Current selector check — 2026-10-13
 
 Antigravity / agy 1.3.4 currently advertises `gemini-3.8-flash-high`,
@@ -18887,8 +18921,8 @@ can accompany YOLO, Balanced or Thorough. The owner can switch any axis for
 future assignments; preserve the other two, record the choice in the project's
 instructions/handoff, and map only verified supported model controls.
 
-Low is the economical default, starting at supported middle/high with max
-off. Owner-selected Medium adapts effort and can use supported max for hard
+Low is the economical default, using LOW for workers sharing the lead
+model/subscription and supported middle/high for other routes, with max off. Owner-selected Medium adapts effort and can use supported max for hard
 reasoning; Max requests each route's highest permitted setting for new tasks.
 These profile names are lead instructions, not universal native effort flags
 or an implemented `unio effort` command. Explicit project route holds and
@@ -18901,10 +18935,10 @@ No profile changes account concurrency, role restrictions or actual allowance.
 
 ## Default and escalation
 
-Start with **high**, or the supported **middle level** for a model whose
+Apply the current shared-model/subscription LOW override first. For other
+routes start with **high**, or the supported **middle level** for a model whose
 scale differs. Use medium for routine documentation, coordination and
-well-understood edits when the model supports it. Do not default to low,
-maximum effort or a model's more expensive implicit default. The route
+well-understood edits when the model supports it. Do not default to maximum effort or a model's more expensive implicit default. The route
 table below identifies exceptions where a middle setting is unavailable.
 
 Increase effort when evidence points to reasoning difficulty: an agent
@@ -18948,7 +18982,7 @@ come from `opencode models opencode-go --verbose` and
 
 | Agent / exact route | Exposed controls | Starting choice | Escalation and limits |
 | --- | --- | --- | --- |
-| Codex / `gpt-6.1-sol` | Model: low, medium, high, xhigh, max; CLI configuration `model_reasoning_effort` | high; medium for routine work | xhigh ceiling; max is forbidden by owner policy. Do not infer ultra support from another model or client. |
+| Codex / `gpt-6.1-sol` | Model: low, medium, high, xhigh, max; CLI configuration `model_reasoning_effort` | low when sharing the lead model/subscription; otherwise current owner-approved default | xhigh ceiling; max is forbidden by owner policy. Do not infer ultra support from another model or client. |
 | Claude / `claude-opus-5-5` | low, medium, high, xhigh, max; installed Claude Code accepts `--effort` | high; medium for routine coordination or writing | xhigh ceiling; max is forbidden by owner policy. The model's API default is medium; pin the chosen level explicitly. |
 | Antigravity / `gemini-3.1-pro-high`, `gemini-3.1-pro-low` | Native `agy models` exposes High and Low for Gemini 3.1 Pro | `gemini-3.1-pro-high`; omit `--effort` on agy 1.3.4 | High is the top exposed level. Match the low model with low only when deliberately chosen. Generic CLI medium/xhigh/max flags do not create Pro variants; high/xhigh was rejected before inference. |
 | Antigravity / `claude-opus-4-6-thinking` | Native catalog lists the Thinking model; `--effort high` was rejected before inference on2026-10-07 | Exact model default; omit `--effort` | Effective reasoning level remains Unknown. This route is separate from Claude Code Opus5.5 and does not expose its effort scale. |
@@ -21756,7 +21790,7 @@ cat > "$BIN_DIR/unio" <<'UNIO_BIN_EOF'
 #   PROJECT/coord/    board.md, base, docs/, tasks/, reports/, blockers.md, STOP
 set -euo pipefail
 
-UNIO_VERSION="0.5.21"
+UNIO_VERSION="0.5.22"
 CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
 CONF_FILE="$CONF_DIR/agents.conf"
 TPL_DIR="$CONF_DIR/templates"
@@ -35422,11 +35456,32 @@ LEAD_ESCALATION_TPL_EOF
 cat > "$TPL_DIR/MODEL-SCOREBOARD.md" <<'MODEL_SCOREBOARD_TPL_EOF'
 # Model scoreboard and delegation guide
 
-Updated 2026-10-16 from real Unio work. Read this before delegation, alongside
+Updated 2026-10-19 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start workers sharing the lead model/subscription at the lowest
 supported effort; other approved defaults remain, including GLM high.
+
+## Operator reliability observations — 2026-10-19
+
+Task-specific observations, with failures retained separately. Requested settings
+are not proof of effective serving identity, effort or remaining allowance.
+
+| Subscription route / CLI | Requested model and effort | Task and observed result |
+| --- | --- | --- |
+| ChatGPT / Codex CLI 0.163.0 | GPT-6.1 Sol LOW | Completed telemetry, dispatch contracts, task outcomes and storage integration with focused checks. Lead found compatibility/privacy and test-assertion gaps; dedicated LOW corrections preserved original attempts. Genuine quota interruptions are operational failures, not evidence that LOW reasoning was insufficient. Final six-line guard-test correction: Source0, native0, both native checks passed, 141 seconds of Source time. |
+| Mistral subscription / Vibe 2.26.1 | GLM5.3 HIGH, AI lab Z.ai | Preserved partial implementation. Two later calls failed on backend name resolution/connection errors below16M tokens. Their reported/estimated usage and failures remain; no token-cap exhaustion or reasoning ranking established. |
+| Mistral subscription / Vibe 2.26.1 | Mistral Medium3.5 HIGH, AI lab Mistral | Full current-code review APPROVE: Source0/native0/artifact verification0. Separate six-line test-delta review also APPROVE with all three exits0. This is review evidence, not a fair implementation benchmark against GLM. |
+| Antigravity / agy1.4.2 | Gemini3.8Flash MEDIUM | Implemented tail/scope changes with native checks; lead reproduced an unbounded regression subprocess and literal-parenthesis broadening, subsequently corrected. Later current-test review produced a complete approval report, but terminal stream ERROR made the adapter/native exit2; no clean approval claimed. |
+| Antigravity / agy1.4.2 | Gemini3.8Flash HIGH | Genuine full-code CLI0 approval report, followed by a private report-format capture failure/native1. Useful supporting content, not clean native approval; capture setup is distinct from model reasoning. |
+| Antigravity / agy1.4.2 | Claude Opus4.6 fixed Thinking | Generic --effort high refused before inference; use the fixed thinking selector without that flag. Genuine full-code CLI0 approval report completed in five minutes, then private capture/native1. A subsequent test-delta call returned RESOURCE_EXHAUSTED/quota, CLI3. Preserve each separately; Claude Code remains a different held route. |
+| Antigravity / agy1.4.2 | GPT-OSS120B fixed MEDIUM | One bounded current-code trial: CLI0 after66 seconds, but the claimed report file was absent and wrapper/native1. No usable verdict or acceptance. Hosted model selection is not evidence of local/private execution. |
+
+These small samples do not establish universal model rankings or token savings.
+Native experience profiles keep model, route, effort and task type separate;
+private receipts retain the actual calls, corrections and report-capture failures.
+Unlisted routes have no new observation in this round; do not treat that as
+unavailability or start unrelated benchmark work.
 
 ## Continuous-delegation observations — 2026-10-16
 

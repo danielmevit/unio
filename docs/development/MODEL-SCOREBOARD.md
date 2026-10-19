@@ -1,10 +1,31 @@
 # Model scoreboard and delegation guide
 
-Updated 2026-10-16 from real Unio work. Read this before delegation, alongside
+Updated 2026-10-19 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a
 fallback. Start workers sharing the lead model/subscription at the lowest
 supported effort; other approved defaults remain, including GLM high.
+
+## Operator reliability observations — 2026-10-19
+
+Task-specific observations, with failures retained separately. Requested settings
+are not proof of effective serving identity, effort or remaining allowance.
+
+| Subscription route / CLI | Requested model and effort | Task and observed result |
+| --- | --- | --- |
+| ChatGPT / Codex CLI 0.163.0 | GPT-6.1 Sol LOW | Completed telemetry, dispatch contracts, task outcomes and storage integration with focused checks. Lead found compatibility/privacy and test-assertion gaps; dedicated LOW corrections preserved original attempts. Genuine quota interruptions are operational failures, not evidence that LOW reasoning was insufficient. Final six-line guard-test correction: Source0, native0, both native checks passed, 141 seconds of Source time. |
+| Mistral subscription / Vibe 2.26.1 | GLM5.3 HIGH, AI lab Z.ai | Preserved partial implementation. Two later calls failed on backend name resolution/connection errors below16M tokens. Their reported/estimated usage and failures remain; no token-cap exhaustion or reasoning ranking established. |
+| Mistral subscription / Vibe 2.26.1 | Mistral Medium3.5 HIGH, AI lab Mistral | Full current-code review APPROVE: Source0/native0/artifact verification0. Separate six-line test-delta review also APPROVE with all three exits0. This is review evidence, not a fair implementation benchmark against GLM. |
+| Antigravity / agy1.4.2 | Gemini3.8Flash MEDIUM | Implemented tail/scope changes with native checks; lead reproduced an unbounded regression subprocess and literal-parenthesis broadening, subsequently corrected. Later current-test review produced a complete approval report, but terminal stream ERROR made the adapter/native exit2; no clean approval claimed. |
+| Antigravity / agy1.4.2 | Gemini3.8Flash HIGH | Genuine full-code CLI0 approval report, followed by a private report-format capture failure/native1. Useful supporting content, not clean native approval; capture setup is distinct from model reasoning. |
+| Antigravity / agy1.4.2 | Claude Opus4.6 fixed Thinking | Generic --effort high refused before inference; use the fixed thinking selector without that flag. Genuine full-code CLI0 approval report completed in five minutes, then private capture/native1. A subsequent test-delta call returned RESOURCE_EXHAUSTED/quota, CLI3. Preserve each separately; Claude Code remains a different held route. |
+| Antigravity / agy1.4.2 | GPT-OSS120B fixed MEDIUM | One bounded current-code trial: CLI0 after66 seconds, but the claimed report file was absent and wrapper/native1. No usable verdict or acceptance. Hosted model selection is not evidence of local/private execution. |
+
+These small samples do not establish universal model rankings or token savings.
+Native experience profiles keep model, route, effort and task type separate;
+private receipts retain the actual calls, corrections and report-capture failures.
+Unlisted routes have no new observation in this round; do not treat that as
+unavailability or start unrelated benchmark work.
 
 ## Continuous-delegation observations — 2026-10-16
 

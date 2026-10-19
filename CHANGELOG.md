@@ -4,6 +4,24 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.22 — clearer runs and route contracts — 2026-10-19 (unreleased)
+
+Seven reliability improvements from a heavy real-world operator session.
+See [scope, evidence and limits](docs/RELEASE-0.5.22.md).
+
+- Record tokens, turns and estimated/reported USD against per-run caps, with
+  explicit provenance and supported stop reasons; unsupported usage stays Unknown.
+- Check known adapter arguments against their actual parsers before dispatch,
+  including valid Vibe12M-token routes and unchanged thinking controls.
+- Make `unio tail` print the last40 lines and exit; use `-f` to follow.
+- Warn about supported scope annotations while preserving literal paths.
+- Refuse declared implementation work on known proposal-only routes with a
+  distinct blocked reason; add explicit, Source-bound report-only verification.
+- Detect unwritable run-record storage before admission, with storage-specific
+  errors and preserved legacy exit behavior.
+- Document observed Antigravity Opus/GPT-OSS routes and per-model effort controls,
+  keeping actual artifacts, operational failures and approval separate.
+
 ## 0.5.21 — bounded continuous delegation — 2026-10-17
 
 Published and installed; see [evidence and limits](docs/RELEASE-0.5.21.md).

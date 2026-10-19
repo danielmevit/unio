@@ -10,6 +10,21 @@ Read [lead routing and spending](LEAD-ROUTING.md) and [task budgets](TASK-TIME-B
 A listed model is an inventory entry, not authorization to use a paid route.
 
 
+## Current owner override and Antigravity controls — 2026-10-19
+
+Workers sharing the lead's model or subscription start at the lowest supported
+effort: Codex CLI / GPT-6.1 Sol uses LOW. Increase one supported step only after
+a demonstrated reasoning gap; quota, network and authentication failures do
+not justify escalation. Other approved routes retain their high/middle defaults.
+This overrides older blanket high defaults below. Coordination tier is separate.
+
+agy1.4.2 lists Gemini3.8Flash low/medium/high, Claude Opus4.6 Thinking and
+GPT-OSS120B Medium. The Opus fixed Thinking selector rejects `--effort high`:
+use `claude-opus-4-6-thinking` without that flag and record thinking/requested,
+effective Unknown. GPT-OSS uses fixed `gpt-oss-120b-medium`. Catalog presence
+is not current capacity, a privacy guarantee or proof of separate allowance.
+See [actual route trials](AGENT-FLEET.md#observed-antigravity-controls-and-trials--2026-10-19).
+
 ## Current selector check — 2026-10-13
 
 Antigravity / agy 1.3.4 currently advertises `gemini-3.8-flash-high`,
@@ -36,8 +51,8 @@ can accompany YOLO, Balanced or Thorough. The owner can switch any axis for
 future assignments; preserve the other two, record the choice in the project's
 instructions/handoff, and map only verified supported model controls.
 
-Low is the economical default, starting at supported middle/high with max
-off. Owner-selected Medium adapts effort and can use supported max for hard
+Low is the economical default, using LOW for workers sharing the lead
+model/subscription and supported middle/high for other routes, with max off. Owner-selected Medium adapts effort and can use supported max for hard
 reasoning; Max requests each route's highest permitted setting for new tasks.
 These profile names are lead instructions, not universal native effort flags
 or an implemented `unio effort` command. Explicit project route holds and
@@ -50,10 +65,10 @@ No profile changes account concurrency, role restrictions or actual allowance.
 
 ## Default and escalation
 
-Start with **high**, or the supported **middle level** for a model whose
+Apply the current shared-model/subscription LOW override first. For other
+routes start with **high**, or the supported **middle level** for a model whose
 scale differs. Use medium for routine documentation, coordination and
-well-understood edits when the model supports it. Do not default to low,
-maximum effort or a model's more expensive implicit default. The route
+well-understood edits when the model supports it. Do not default to maximum effort or a model's more expensive implicit default. The route
 table below identifies exceptions where a middle setting is unavailable.
 
 Increase effort when evidence points to reasoning difficulty: an agent
@@ -97,7 +112,7 @@ come from `opencode models opencode-go --verbose` and
 
 | Agent / exact route | Exposed controls | Starting choice | Escalation and limits |
 | --- | --- | --- | --- |
-| Codex / `gpt-6.1-sol` | Model: low, medium, high, xhigh, max; CLI configuration `model_reasoning_effort` | high; medium for routine work | xhigh ceiling; max is forbidden by owner policy. Do not infer ultra support from another model or client. |
+| Codex / `gpt-6.1-sol` | Model: low, medium, high, xhigh, max; CLI configuration `model_reasoning_effort` | low when sharing the lead model/subscription; otherwise current owner-approved default | xhigh ceiling; max is forbidden by owner policy. Do not infer ultra support from another model or client. |
 | Claude / `claude-opus-5-5` | low, medium, high, xhigh, max; installed Claude Code accepts `--effort` | high; medium for routine coordination or writing | xhigh ceiling; max is forbidden by owner policy. The model's API default is medium; pin the chosen level explicitly. |
 | Antigravity / `gemini-3.1-pro-high`, `gemini-3.1-pro-low` | Native `agy models` exposes High and Low for Gemini 3.1 Pro | `gemini-3.1-pro-high`; omit `--effort` on agy 1.3.4 | High is the top exposed level. Match the low model with low only when deliberately chosen. Generic CLI medium/xhigh/max flags do not create Pro variants; high/xhigh was rejected before inference. |
 | Antigravity / `claude-opus-4-6-thinking` | Native catalog lists the Thinking model; `--effort high` was rejected before inference on2026-10-07 | Exact model default; omit `--effort` | Effective reasoning level remains Unknown. This route is separate from Claude Code Opus5.5 and does not expose its effort scale. |

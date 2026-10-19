@@ -8,8 +8,8 @@ of work each route could perform. The external report remains unchanged.
 ## Current acceptance
 
 All seven items have implementation commits on the isolated integration branch.
-They are not yet accepted, pushed, released or installed globally. Independent
-current-code reviews, lead assessment and the final frozen-candidate gate remain.
+They are not yet accepted, pushed, released or installed globally. The final frozen-candidate gate and clean second independent review are running;
+lead assessment and delivery follow their actual results.
 New receipt fields are additive; legacy tasks and route command shapes remain.
 
 | Item | Implemented behavior | Evidence and remaining acceptance |
@@ -51,7 +51,7 @@ Effective model/effort and remaining allowance stay Unknown unless evidenced.
 ## Independent review
 
 The complete diff exceeds native review-set's300000-byte material bound. That
-preparation was retired before any reviewer call. Reviewers will inspect the
+preparation was retired before any reviewer call. Reviewers inspect the
 complete frozen local checkout through separate native report-only Source tasks;
 no patch is clipped, bound raised or native review APPROVE fabricated. Preserve
 separate blind verdicts, actual Source exits, artifact verification and the lead
@@ -69,4 +69,7 @@ managed-session candidate and lead-continuity scope. Phone access follows;
 native Windows remains before macOS. Further CodeGraph work stays deferred.
 
 The existing website, dashboard, brand and owner projects are outside this round.
-There is no version bump, global installation or release in this task.
+The planned delivery is one v0.5.22 reliability release, using focused checks and
+the real full gate, followed by isolated artifact/upgrade checks, installation
+before publication and official-download verification. These are planned steps,
+not a claim that publication or installation has already happened.

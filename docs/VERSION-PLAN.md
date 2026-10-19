@@ -18,10 +18,11 @@ remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The comp
 | Version | Included work | State |
 | --- | --- | --- |
 | 0.5.21 | Bounded continuous delegation for existing approved jobs | [Released and installed 2026-10-17](https://github.com/danielmevit/unio/releases/tag/v0.5.21); complete gate, independent Gemini and Mistral/Vibe GLM reviews, reproducible assets, upgrade/rollback and six official download hashes passed. |
-| 0.5.22 | Managed live CLI sessions and lead continuity | Proposed; 2–4 working days for the first supported route. |
-| 0.5.23 | Session-scoped phone access | Proposed; 2–4 working days after managed session ownership. |
-| 0.5.24 | Native Windows | Proposed; 1–3 working weeks after feasibility assessment; split if required. Owner 2026-10-17: once a Windows installer exists, list it on winget (`damt.Unio`, PR to microsoft/winget-pkgs, like Eqho's `damt.Eqho`). |
-| 0.5.25 | Native macOS | Proposed; 3–6 working days, subject to actual host checks. |
+| 0.5.22 | Seven operator-reliability improvements | Candidate: implementation committed; gate/review and delivery remain. See [scope and limits](RELEASE-0.5.22.md). |
+| 0.5.23 | Managed live CLI sessions and lead continuity | Preserved first slice; 2–4 working days for the first complete supported route. |
+| 0.5.24 | Session-scoped phone access | Proposed; 2–4 working days after managed session ownership. |
+| 0.5.25 | Native Windows | Proposed; 1–3 working weeks after feasibility assessment; split if required. Owner 2026-10-17: once a Windows installer exists, list it on winget (`damt.Unio`, PR to microsoft/winget-pkgs, like Eqho's `damt.Eqho`). |
+| 0.5.26 | Native macOS | Proposed; 3–6 working days, subject to actual host checks. |
 | 0.5.20 | Shared-lead budget consent, eligible WIP commits, worker stop outcomes and safe publication remotes | [Released and installed 2026-10-16](https://github.com/danielmevit/unio/releases/tag/v0.5.20); complete gate, reproducible assets, upgrade/rollback, configuration preservation and six official download hashes passed. |
 | 0.5.19 | Owned Source cleanup, native verification identity, measured saving and Copilot compatibility | [Released and installed 2026-10-16](https://github.com/danielmevit/unio/releases/tag/v0.5.19); complete gate, isolated install/upgrade checks and official download verification passed. |
 | 0.5.18 | Worker reliability: Vibe live progress, Antigravity structured outcomes and exact Copilot JSONL proposals | [Released and installed 2026-10-14](https://github.com/danielmevit/unio/releases/tag/v0.5.18); full gate, artifacts, upgrade/restore, installation, dashboard identity and six official download hashes passed. |
@@ -95,12 +96,14 @@ Publication requires owner authorization. On 2026-10-06 the owner authorized
 completed 0.5.x releases, unattended sequential browser 0.5.3 and checkpoint
 0.5.4 work, and installation of the latest verified release on this machine.
 The current sequence under the newest owner YOLO+low policy uses one independent
-workflow per shared provider/account including lead, focused native validation and
-personal lead review without extra model reviewer jobs for this session, with a
-full required release gate before publication. This supersedes the earlier
-current-session requirement for two AI-lab reviews on every slice. Independent
-reviews remain available under other owner-selected policies. Frozen checks and
-owner authority remain in force. Exact pushes remain required. It does
+workflow per shared provider/account including lead, focused native validation,
+and one full required release gate before publication. The owner update of
+2026-10-16 requires at least two independent current-code worker reviews from
+different AI labs, followed by lead assessment; earlier personal-review-only
+exceptions are superseded. Standing LOW-Sol companion work retains the actual
+shared budget, narrow consent and temporary coordination tier as documented in
+[lead routing](development/LEAD-ROUTING.md). Frozen checks, owner authority and
+exact pushes remain required. This does
 not authorize billing changes or publication of unfinished milestones.
 
 The approved 0.5.0 installation preserved agent settings, left the original

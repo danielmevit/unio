@@ -38,6 +38,22 @@ CLI version. Do not pretend new catalog entries automatically enable that
 adapter. Use an explicit task-frozen custom route with truthful receipts, or
 implement/review an adapter extension separately. Preserve existing routes.
 
+### Observed Antigravity controls and trials — 2026-10-19
+
+agy1.4.2 rejected `--effort high` with `claude-opus-4-6-thinking` before
+inference. Select that fixed Thinking model without an effort flag; record
+requested thinking and effective effort Unknown. Likewise GPT-OSS uses the
+fixed `gpt-oss-120b-medium` selector. Generic help flags do not establish
+per-model controls. Keep the packaged Gemini adapter's supported surface intact.
+
+Opus completed a real full-code review; a later bounded delta call hit a genuine
+quota response with a stated reset wait. That observation applies to that route
+at that time, not every Antigravity model. GPT-OSS returned CLI0 but failed to
+deliver its claimed report file, so the trial was unaccepted. Gemini delivered
+review text but capture/stream failures remain separate from approval. See the
+[dated scoreboard](MODEL-SCOREBOARD.md#operator-reliability-observations--2026-10-19).
+No model's quota or effective identity can be inferred from another's result.
+
 ## Make each assignment visible
 
 Follow the [mandatory reporting rule](LEAD-ROUTING.md#name-the-model-route-in-every-work-summary).
@@ -62,7 +78,7 @@ remaining account allowance.
 | Existing Codex lead | Plan, delegate, inspect actual changes, integrate and preserve handoffs | Keep one existing lead session. Low tier does not permit another independent Codex job on that account. |
 | Claude Code / Opus 5.5 | Substantial implementation, UI interaction, stateful corrections and bounded architecture work | High normally; supported xhigh only when justified. Check owner holds and current account availability. |
 | Grok | Nuanced control logic, security reasoning and precise failure analysis | Owner-preferred reasoning worker when available; high normally. A historical quota failure is dated evidence. |
-| Antigravity / Gemini 3.1 Pro | Mechanical implementation with clear inputs, outputs and checks | Pin the high model and high effort. This route exposes high/low, not xhigh. Recent work needed lead corrections; keep assignments bounded. |
+| Antigravity / Gemini3.8Flash | Bounded implementation or independent code inspection with clear artifacts | agy1.4.2 lists low/medium/high selectors. Pin the exact selector; verify controls for that route rather than borrowing Gemini3.1Pro settings. Preserve stream errors and correction burden. |
 | Mistral Vibe / GLM 5.3 | Implementation from a concrete contract, including more involved code | Explicit GLM/high pin. Use existing monthly subscription; task estimates do not measure remaining allowance. |
 | Mistral Vibe / Medium 3.5 | Smaller implementation or mechanical corrections when GLM is busy or unsuitable | Same Mistral budget as GLM: queue behind it in low tier. No fair checked ranking between the two yet. |
 | Perplexity Pro / GLM 5.3 Thinking | Research, integration plans and supplementary code analysis using selected public context | Proposal only. Its matched plan separated occupied slots from quota more clearly; this is a small sample. |
@@ -138,12 +154,15 @@ models come from the same AI lab.
 5. Update the scoreboard with task, route, settings, observed outcome and
    rework. Keep operational failures separate from code-quality findings.
 
-Start at high or the supported middle; xhigh is the ceiling. No max/ultra,
+Workers sharing the lead model/subscription start at the lowest supported effort;
+other routes start at high or the supported middle. xhigh is this workspace's ceiling. No max/ultra,
 paid fallback, topups or billing changes. Thinking is a route switch, not
 an adjustable effort scale. Auto Balance does not pin the underlying lab,
 so it cannot establish independent cross-lab review by itself. If a worker
-struggles, use one suitable replacement, then the existing lead finishes;
-never loop through weaker workers or duplicate the lead's account session.
+struggles, preserve its evidence and use a suitable replacement. Follow the
+current owner LOW-Sol correction rule in LEAD-ROUTING.md: one focused shared-
+budget worker beside the lead requires the real account reservation, narrow
+consent and temporary coordination tier only as needed. No blind retry loops.
 
 ## Setup and evidence
 

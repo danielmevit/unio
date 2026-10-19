@@ -1,6 +1,6 @@
-# Release outlook after v0.5.19
+# Release outlook after v0.5.21
 
-Planning checkpoint, 2026-10-14. These are recommended scopes and rough active
+Planning checkpoint, updated 2026-10-19. These are recommended scopes and rough active
 engineering estimates, not shipped capabilities or fixed release commitments.
 Owner update, 2026-10-14: native Windows precedes native macOS.
 v0.5.19 has passed its complete quality gate and lead code assessment; see its
@@ -17,10 +17,11 @@ can add elapsed time. Re-estimate after each bounded technical assessment.
 | 0.5.19 | Owned stopping, measured save validation and Copilot compatibility | 2–4 hours for a focused slice; 4–8 hours if deeper changes are needed |
 | 0.5.20 | Shared-lead budget protection, interrupted-work WIP, plain stop reasons and development/release push safety | Roughly 1–2 focused working days for the minimal bundle; hardening estimated separately |
 | 0.5.21 | Optional continuous delegation within explicit owner-approved bounds | 1–3 working days |
-| 0.5.22 | Managed live CLI sessions and reliable lead continuity | 2–4 working days for the first supported route |
-| 0.5.23 | Phone access paired to a selected Unio session | 2–4 working days after session ownership works |
-| 0.5.24 | Native Windows execution and Microsoft Store desktop app, including staged localization | Runtime estimate: 1–3 working weeks after feasibility; desktop UX, localization and certification estimated separately |
-| 0.5.25 | Native macOS support | 3–6 working days, subject to host checks |
+| 0.5.22 | Seven operator-reliability fixes: budget visibility, route contracts, tail, scope, outcomes and storage diagnostics | Implementation complete; remaining review, release and installation estimated1–2 hours if final checks find no new defect |
+| 0.5.23 | Managed live CLI sessions and reliable lead continuity | Preserved first slice; first integration estimated2–4 hours, complete supported route2–4 working days |
+| 0.5.24 | Phone access paired to a selected Unio session | 2–4 working days after session ownership works |
+| 0.5.25 | Native Windows execution and Microsoft Store desktop app, including staged localization | Runtime estimate: 1–3 working weeks after feasibility; desktop UX, localization and certification estimated separately |
+| 0.5.26 | Native macOS support | 3–6 working days, subject to host checks |
 
 ## 0.5.19 — Owned stopping and measured saving
 
@@ -79,7 +80,18 @@ allowance is not available quota. Keep review policy, reasoning effort and
 coordination tier independent. Test restart, dependency failures and occupied
 shared accounts with offline workers before a bounded real workflow.
 
-## 0.5.22 — Managed live sessions and lead continuity
+## 0.5.22 — Operator reliability
+
+A heavy Vecto production session exposed seven related operational gaps. Close
+these as one coherent reliability release before adding more managed-session
+features. The [round report](OPERATOR-LEGIBILITY-2026-10-19.md) records additive
+budget telemetry, actual dispatch parser checks, nonblocking tail, annotated
+scope handling, explicit blocked/report-only outcomes and early storage checks.
+Implementation is committed; gate, review, installation and publication are
+separate acceptance steps. The existing managed-session candidate is preserved,
+not discarded. Later version numbers remain provisional.
+
+## 0.5.23 — Managed live sessions and lead continuity
 
 Launch the first supported interactive CLI through Unio with owned terminal
 and process identities. Connect its session to the existing task, worktree,
@@ -106,7 +118,7 @@ Choose an authenticated transport explicitly; keep local loopback defaults and
 do not expose a general PC terminal or automatically open a public port.
 Remote control of arbitrary desktop applications is outside this milestone.
 
-## 0.5.24 — Native Windows
+## 0.5.25 — Native Windows
 
 Begin with a 4–8-hour feasibility assessment of the Bash-led engine and shared
 host interface. Then implement PowerShell-facing installation, native agent
@@ -192,7 +204,7 @@ See the [source assessment, adaptation work and estimates](EQHO-VOICE-INTEGRATIO
 This is planned work after the native desktop foundation; a bounded 0.5.x
 follow-up can carry it without delaying that foundation.
 
-## 0.5.25 — Native macOS
+## 0.5.26 — Native macOS
 
 Complete the host-operation inventory and implement macOS equivalents for
 locking, process identity/cleanup, safe filesystem access and installer tools.

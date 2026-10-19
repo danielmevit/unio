@@ -1,5 +1,28 @@
 # Current priority — operator legibility, 2026-10-19T15:57:17+02:00
 
+## Operator reliability release preparation — 2026-10-19
+
+All seven Vecto operator items are committed through3f59d54. The exact full gate
+is running against that revision; no final PASS/acceptance yet. The one test-only
+correction preserves every refusal/sentinel/no-provider assertion. Current
+private receipts are under operator-legibility-20261019 in the existing workspace.
+Mistral/Vibe2.26.1/Medium3.5HIGH has clean independent full+test-delta approvals.
+A blind CodexCLI0.163.0/gpt-6.1-solLOW read-only review is admitted; inspect actual
+Source/artifact verification before counting it. Original launcher127 occurred
+before Codex invocation and is preserved separately. AGYOpus4.6Thinking and
+Gemini delivered supporting full-code reports but capture/stream failures are
+not clean approvals; Opus's later delta hit quota. GPT-OSS claimed a missing file,
+so no usable review. No Claude Code use; its owner hold remains.
+
+Prepared version0.5.22 metadata is marked unreleased. Close this reliability
+batch before adding managed-session features; use focused metadata checks and
+prove runtime/test equivalence to the gated revision. Then exact reviewed push,
+reproducible assets/upgrade/rollback, authorized install before publication, and
+official-download hash checks. Do not claim any pending step passed. The saved
+managed-session04c51ee remains unaccepted, next after delivery. Native Windows
+stays before macOS; CodeGraph/UI/site/brand work remains outside this round.
+This current entry supersedes stale scope/status in older checkpoint sections.
+
 Read the newest shared coord/AGENT-LOG.md and
 [the seven-item round](OPERATOR-LEGIBILITY-2026-10-19.md) first. All seven have
 source commits on agent/operator-legibility-20261019, latest code362c932.

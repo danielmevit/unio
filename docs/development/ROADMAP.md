@@ -6,6 +6,17 @@ with two independent current-code reviews, the full gate and download verificati
 Next: managed CLI session ownership and continuity; then session-scoped phone access,
 Windows before macOS. See [the version plan](../VERSION-PLAN.md).
 
+## Operator reliability priority — 2026-10-19
+
+Close the seven Vecto operator findings as one v0.5.22 reliability release:
+usage/cap visibility, real route-contract validation, nonblocking tail, scope
+annotations, blocked/report-only outcomes and early storage errors. All seven
+are implemented; final gate/review and delivery are separate pending steps.
+See the [round evidence](OPERATOR-LEGIBILITY-2026-10-19.md). Resume the preserved
+managed-session candidate afterward, then lead continuity, scoped phone access,
+Windows before macOS. The version table is provisional; no unfinished feature
+is claimed shipped.
+
 Your AIs, in sync.
 
 Previous update, 2026-10-16: [v0.5.20](https://github.com/danielmevit/unio/releases/tag/v0.5.20)
