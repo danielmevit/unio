@@ -14,6 +14,7 @@ import sys
 
 LIMIT = 8192
 ENV = 'UNIO_ADAPTER_OUTCOME'
+DELIVERY_ENV = 'UNIO_DELIVERY_DIR'
 ROUTES = ('vibe', 'antigravity', 'copilot', 'perplexity')
 LABELS = {
     'unknown': 'Unknown', 'completed': 'Completed',
@@ -31,10 +32,15 @@ OUT_KEYS = BIND_KEYS | {'label', 'adapter_exit', 'native_exit', 'finished_at'}
 # Additive per-run budget telemetry; absent in older evidence, strictly typed
 # when present, and never an acceptance, readiness or quota verdict.
 BUDGET_KEY = 'budget'
+# Required delivery artifact bounds
+MAX_DELIVERY_ARTIFACTS = 32
+MAX_DELIVERY_SIZE = 262144  # 256 KiB
 ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
 HEX = re.compile(r'[a-f0-9]{64}')
 RUN = re.compile(r'[a-f0-9]{32}')
 STAMP = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:Z|[+-]\d\d:\d\d)')
+# Safe relative path for artifacts
+SAFE_ARTIFACT = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$')
 
 
 def date():
@@ -110,6 +116,67 @@ def write(path, value):
         os.close(fd)
 
 
+def validate_artifact_name(name):
+    """Validate an artifact name as a safe relative path."""
+    if not isinstance(name, str) or not name:
+        raise ValueError('invalid artifact name')
+    if not SAFE_ARTIFACT.fullmatch(name):
+        raise ValueError('invalid artifact name: unsafe path')
+    if '..' in name or name.startswith('/') or name.endswith('/'):
+        raise ValueError('artifact name contains path traversal')
+    return name
+
+
+def validate_artifacts_list(artifacts):
+    """Validate a list of artifact names. Returns validated list or raises ValueError."""
+    if artifacts is None:
+        return None
+    if not isinstance(artifacts, list):
+        raise ValueError('artifacts must be a list')
+    if len(artifacts) > MAX_DELIVERY_ARTIFACTS:
+        raise ValueError('too many artifacts: ' + str(len(artifacts)) + ' > ' + str(MAX_DELIVERY_ARTIFACTS))
+    seen = set()
+    validated = []
+    for name in artifacts:
+        name = validate_artifact_name(name)
+        if name in seen:
+            raise ValueError('duplicate artifact: ' + name)
+        seen.add(name)
+        validated.append(name)
+    return validated
+
+
+def read_delivery_artifact(path, limit=MAX_DELIVERY_SIZE):
+    """Read and validate a delivery artifact file. Returns bytes."""
+    path = Path(path)
+    fd = directory(path.parent, True)
+    try:
+        f = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+        try:
+            s = os.fstat(f)
+            if not stat.S_ISREG(s.st_mode):
+                raise ValueError('artifact must be a regular file')
+            if s.st_nlink != 1:
+                raise ValueError('artifact must have exactly one hard link')
+            if s.st_uid != os.getuid():
+                raise ValueError('artifact must be owned by current user')
+            if s.st_mode & 0o777 != 0o600:
+                raise ValueError('artifact must have mode 0600')
+            if not 0 < s.st_size <= limit:
+                raise ValueError('artifact size out of bounds')
+            data = os.read(f, limit + 1)
+            if len(data) > limit:
+                raise ValueError('artifact exceeds size limit')
+            after = os.fstat(f)
+            if (s.st_size, s.st_mtime_ns, s.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                raise ValueError('artifact changed while reading')
+            return data
+        finally:
+            os.close(f)
+    finally:
+        os.close(fd)
+
+
 def timestamp(value):
     if type(value) is not str or not STAMP.fullmatch(value):
         raise ValueError('timestamp')
@@ -170,8 +237,72 @@ def current(root, worker, task, command, adapters):
                 command_sha256=sha(command.encode()), route=route(command, adapters))
 
 
+def parse_required_artifacts(task_text):
+    """Parse task text for ## Required artifacts section.
+
+    Returns None if no section (legacy), or a list of validated artifact names.
+    Raises ValueError for malformed declarations.
+    """
+    if not isinstance(task_text, str):
+        raise ValueError('task text must be a string')
+    if '\x00' in task_text:
+        raise ValueError('task text contains NUL bytes')
+
+    headers = 0
+    artifacts = []
+    in_section = False
+    fence = None
+
+    for line in task_text.splitlines():
+        stripped = line.strip()
+
+        # Skip fenced code blocks
+        marker = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line)
+        if fence:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
+                fence = None
+            continue
+        if marker:
+            fence = marker[1]
+            continue
+
+        # Check for section headers
+        heading = re.match(r'^ {0,3}(#{1,6})(?:[ \t]+(.*)|$)', line)
+        if heading:
+            if line == '## Required artifacts':
+                in_section = True
+                headers += 1
+            else:
+                in_section = False
+            continue
+
+        if not in_section:
+            continue
+
+        # Skip empty lines and comments
+        if not stripped or stripped.startswith('#'):
+            continue
+
+        # Validate and collect artifact name
+        artifacts.append(validate_artifact_name(stripped))
+
+    if headers > 1:
+        raise ValueError('duplicate Required artifacts section')
+
+    if headers == 0:
+        return None  # Legacy
+
+    # Validate the collected list
+    return validate_artifacts_list(artifacts)
+
+
 def destination(root, b):
     return Path(root).absolute() / 'coord/reports/.outcomes' / b['run']
+
+
+def delivery_destination(root, b):
+    """Return the engine-owned delivery directory for artifacts."""
+    return Path(root).absolute() / 'coord/results' / b['worker'] / (b['task'] + '.outcomes') / b['run']
 
 
 def prepare(root, worker, task, command, adapters, prompt):
@@ -179,6 +310,12 @@ def prepare(root, worker, task, command, adapters, prompt):
     b.update(schema_version=1, prompt_sha256=sha(read(prompt, 1048576, False)), started_at=date())
     if not valid_binding(b):
         raise ValueError('binding')
+    
+    # Parse required artifacts from task file
+    task_text = read(Path(root) / 'coord/tasks' / (task + '.md'), 1048576, False).decode('utf-8')
+    artifacts = parse_required_artifacts(task_text)
+    
+    # Create outcomes store
     store = Path(root).absolute() / 'coord/reports/.outcomes'
     fd = directory(store.parent)
     try:
@@ -195,6 +332,19 @@ def prepare(root, worker, task, command, adapters, prompt):
         os.close(fd)
     dest = destination(root, b)
     write(dest / 'binding.json', b)
+    
+    # Create delivery directory if artifacts are declared
+    if artifacts is not None:
+        b['artifacts'] = artifacts
+        delivery_dest = delivery_destination(root, b)
+        fd = directory(delivery_dest.parent, True)
+        try:
+            os.mkdir(delivery_dest.name, 0o700, dir_fd=fd)
+        finally:
+            os.close(fd)
+        # Update binding with artifacts
+        write(dest / 'binding.json', b)
+    
     return str(dest)
 
 
