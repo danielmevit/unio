@@ -23531,18 +23531,6 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
                        reasons=sorted(set(row['reasons']+['review_stream_changed'])))
             unresolved+=1
             extracted=[item for item in extracted if item['source']['receipt_id']!=row['receipt_id']]
-    try:
-        if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
-        if snapshot(root,worker,task)!=current_rev: observation.append('revision_changed')
-        if review_config_hash()!=config_hash: observation.append('config_changed')
-    except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
-    if observation:
-        for row in rows: row['current']=False
-        # Drift or a busy worker makes actionable findings unavailable.
-        extracted=[]
-    current_rows=[row for row,d in records if row['current']]
-    aliases=sorted({row['reviewer'] for row in current_rows if row['process_exit_code'] is not None})
-    groups=sorted({row['policy_group'] for row in current_rows if row['policy_group'] is not None})
     infer_expected=not expected
     # Current collection contracts supply expectations; never infer labs
     # from aliases or impose a global reviewer-count policy.
@@ -23565,6 +23553,18 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
                     observation.append('collection_incomplete')
         except (ValueError,OSError,KeyError,TypeError,UnicodeError,RecursionError):
             observation.append('invalid_collection_evidence')
+    try:
+        if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
+        if snapshot(root,worker,task)!=current_rev: observation.append('revision_changed')
+        if review_config_hash()!=config_hash: observation.append('config_changed')
+    except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
+    if observation:
+        for row in rows: row['current']=False
+        # Drift or a busy worker makes actionable findings unavailable.
+        extracted=[]
+    current_rows=[row for row,d in records if row['current']]
+    aliases=sorted({row['reviewer'] for row in current_rows if row['process_exit_code'] is not None})
+    groups=sorted({row['policy_group'] for row in current_rows if row['policy_group'] is not None})
     missing=sorted(set(expected)-set(aliases))
     counts={state:sum(row['state']==state for row in current_rows) for state in ('approved','changes_requested','unknown','failed')}
     counts.update(stale=sum(row['stale'] for row in rows),unresolved=unresolved,recorded=len(rows),current=len(current_rows))

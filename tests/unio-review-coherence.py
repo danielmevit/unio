@@ -124,6 +124,12 @@ class Coherence(unittest.TestCase):
         d=self.result();self.assertEqual(d['review_current']['counts']['stale'],2)
         self.assertFalse(d['ready_for_human_review'])
         self.call(['git','reset','--hard','HEAD~1'])
+        task=self.task.read_bytes()
+        race=json.loads(self.unio('reviews','mock','evidence','--expect','revone,revtwo','--json',
+            code=2,env=f.ReviewFindings.hook_env(self,'collection')).stdout)
+        self.assertIn('revision_changed',race['reasons'])
+        self.assertEqual(race['counts']['current'],0)
+        self.task.write_bytes(task)
         manifest=next((self.coord/'reports').glob('evidence.review-set.*/collection.json'))
         manifest.write_text('{')
         d=self.result();self.assertIn('invalid_collection_evidence',d['review_current']['reasons'])
