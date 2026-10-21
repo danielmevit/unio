@@ -24301,6 +24301,9 @@ Credentials, agents.conf, ignored files, raw logs and home folders are not copie
 Process: {p['state']} (exit {p['exit_code']}).
 Validation: {v['state']}, scope {v['scope']}, {v['checks_run']} run / {v['checks_failed']} failed.
 Current recorded review: {d['review_current']['verdict_decision']}; findings extraction complete: {d['review_current']['extraction_complete']}.
+Current receipt counts (including stale history): {d['review_current']['counts']}.
+Expected reviewers: {d['review_current']['expected_reviewers']}; missing: {d['review_current']['missing_reviewers']}.
+AI lab independence: unknown. See result.json for each actual reviewer exit.
 Legacy review: {r['state']} (reviewer {r['reviewer']}, exit {r['process_exit_code']}).
 Human: pending. Integration: not_attempted.
 Stale: {d['stale']}. Ready for human review: {d['ready_for_human_review']}.

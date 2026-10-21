@@ -41,6 +41,11 @@ class Coherence(unittest.TestCase):
         d=self.result();p=d['review_current']
         self.assertEqual(p['verdict_decision'],'all_recorded_approved')
         self.assertEqual(p['counts']['current'],2)
+        summary=json.loads(self.unio('reviews','mock','evidence','--json').stdout)
+        self.assertEqual(summary['decision'],p['verdict_decision'])
+        self.assertEqual(summary['extraction_complete'],p['extraction_complete'])
+        self.assertEqual(summary['machine_review_ready'],p['machine_review_ready'])
+        self.assertEqual(summary['entries'],p['evidence'])
         self.assertEqual(p['expected_reviewers'],['revone','revtwo'])
         self.assertTrue(p['extraction_complete']);self.assertTrue(d['ready_for_human_review'],d)
         self.assertEqual(d['review']['state'],'not_run')
