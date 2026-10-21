@@ -28879,14 +28879,14 @@ policy_refuse_report() { # $1=root $2=worker $3=task $4=kind $5=agent $6=reason
   case "$reason" in
     *"budget group "*" at cap "*) advice="Wait for the running workflow or inspect the lead reservation; no provider was started, queued or retried.";;
   esac
-  mkdir -p "$root/coord/reports"
+  printf 'unio: budget refused (%s %s/%s): %s\n' "$kind" "$worker" "$task" "$(printf '%s' "$reason" | head -1)" >&2
+  mkdir -p "$root/coord/reports" || true
   {
     echo
     echo "## budget-refused $(date -Is) — kind=$kind worker=$worker agent=$agent task=$task"
     printf '%s\n' "$reason" | head -5 | sed 's/^/  /'
     printf '  %s\n' "$advice"
-  } >> "$report"
-  printf 'unio: admission refused (%s %s/%s): %s\n' "$kind" "$worker" "$task" "$(printf '%s' "$reason" | head -1)" >&2
+  } >> "$report" || true
 }
 
 policy_text_label() { # $1=label; same rejection rules as the policy checker
@@ -29144,20 +29144,24 @@ policy_fail_admission() { # $1=root $2=worker $3=task $4=kind $5=agent $6=reason
   POLICY_HOLDER_PID=""
 }
 
+policy_validate_admission_timeout() {
+  local value="${UNIO_ADMISSION_TIMEOUT-30}"
+  # Bound length before arithmetic; reject empty, signed and fractional values.
+  if ! [[ "$value" =~ ^[0-9]{1,3}$ ]] \
+    || [ "$((10#$value))" -lt 1 ] || [ "$((10#$value))" -gt 300 ]; then
+    echo 'UNIO_ADMISSION_CONFIG UNIO_ADMISSION_TIMEOUT must be whole seconds 1..300 (default 30); no admission opened or grant consumed' >&2
+    return 2
+  fi
+  POLICY_ADMISSION_TIMEOUT=$((10#$value))
+}
+
 policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   local root="$1" agent="$2" worker="$3" task="$4" kind="$5" orig="$6"
   POLICY_SLOT=""; POLICY_EFFECTIVE=""; POLICY_GROUP=""; POLICY_PID=""
   POLICY_HOLDER_PID=""; POLICY_RD=""; POLICY_WR=""; POLICY_IN=""; POLICY_IPC=""
   POLICY_PROVIDER_PID=""
-  local admission_timeout="${UNIO_ADMISSION_TIMEOUT-30}"
-  # Bound length before arithmetic; reject empty, signed and fractional values.
-  if ! [[ "$admission_timeout" =~ ^[0-9]{1,3}$ ]] \
-    || [ "$((10#$admission_timeout))" -lt 1 ] || [ "$((10#$admission_timeout))" -gt 300 ]; then
-    policy_refuse_report "$root" "$worker" "$task" "$kind" "$agent" \
-      "UNIO_ADMISSION_CONFIG UNIO_ADMISSION_TIMEOUT must be whole seconds 1..300 (default 30); no admission opened or grant consumed"
-    return 2
-  fi
-  admission_timeout=$((10#$admission_timeout))
+  policy_validate_admission_timeout || return 2
+  local admission_timeout="$POLICY_ADMISSION_TIMEOUT"
   local lock="$root/coord/.locks/work-policy.lock"
   if [ -L "$root/coord" ] || [ -L "$root/coord/.locks" ] || [ -L "$lock" ]; then
     policy_refuse_report "$root" "$worker" "$task" "$kind" "$agent" \
@@ -29201,7 +29205,15 @@ policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   set -m
   coproc POLICY_HELD {
     exec {POLICY_IN}>&- 9>&-
-    policy "$root" _admit_hold "$agent" "$worker" "$task" "$kind" "$orig" "$in_fifo" "${7:-$task}" 2>"$err"
+    policy "$root" _admit_hold "$agent" "$worker" "$task" "$kind" "$orig" "$in_fifo" "${7:-$task}" 2>"$err" || {
+      holder_rc=$?
+      if [ "$holder_rc" -gt 128 ] || [ ! -s "$err" ]; then
+        # Bash signal diagnostics can echo the embedded heredoc. Publish only
+        # the exit status, never raw source or policy material.
+        printf 'UNIO_ADMISSION_HOLDER_EXIT status=%s\n' "$holder_rc" >"$err"
+      fi
+      exit "$holder_rc"
+    }
   }
   [ "$had_monitor" = 1 ] || set +m
   POLICY_PID=${POLICY_HELD_PID:-}
@@ -29236,7 +29248,13 @@ policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   broker=$(policy_broker_reason "$err" || true)
   if [ "${#reply[@]}" -ne 5 ] || [ "${reply[4]:-}" != "COMPLETE" ]; then
     if [ -n "$broker" ]; then
-      why="$broker (deadline=${admission_timeout}s phase=holder-refusal)"
+      case "$broker" in
+        UNIO_STORAGE_ERROR*) phase="storage";;
+        *"budget group "*" at cap "*) phase="capacity";;
+        UNIO_ADMISSION_HOLDER_EXIT*) phase="holder-exit";;
+        *) phase="holder-refusal";;
+      esac
+      why="$broker (deadline=${admission_timeout}s phase=$phase)"
     else
       [ "$phase" != reply ] || phase="partial"
       why="UNIO_ADMISSION_${phase^^} admission handshake phase=$phase deadline=${admission_timeout}s complete_lines=${#reply[@]}/5; no provider started. Inspect holder startup/IPC; do not infer budget capacity or a filesystem cause."
@@ -30400,6 +30418,7 @@ cmd_run() {
   local worker="${1:-}" task="${2:-}"
   [ -n "$worker" ] && [ -n "$task" ] || die "usage: unio run [-b] <worker> <task-id>"
   check_id "$worker" worker; check_id "$task" task
+  policy_validate_admission_timeout || return 2
   local root; root=$(find_root) || die "not inside a Unio project"
   [ -f "$root/coord/STOP" ] && die "STOP is active (unio resume to clear)"
   task="${task%.md}"
@@ -31110,6 +31129,7 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   local worker="${1:-}" task="${2:-}" reviewer="${3:-}"
   [ -n "$worker" ] && [ -n "$task" ] || die "usage: unio review <worker> <task-id> [reviewer-agent]"
   check_id "$worker" worker; check_id "$task" task
+  policy_validate_admission_timeout || return 2
   local root; root=$(find_root) || die "not inside a Unio project"
   task="${task%.md}"
   local tf="$root/coord/tasks/$task.md"; [ -f "$tf" ] || die "no task file: $tf"
@@ -31394,6 +31414,7 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   if printf '%s\n' "$@" | sort | uniq -d | grep -q .; then
     echo 'unio review-set: duplicate reviewer alias' >&2; return 2
   fi
+  policy_validate_admission_timeout || return 2
   local root
   root=$(find_root) || { echo 'unio review-set: not inside a Unio project' >&2; return 2; }
   local tf="$root/coord/tasks/$task.md"
@@ -33710,6 +33731,7 @@ appears during a run, run keeps the worker's real exit, marks the result
 post_run_snapshot=failed (stale, never ready) and returns nonzero.
 Env: UNIO_TIMEOUT (3600s)  UNIO_VERIFY_TIMEOUT (900s)
      UNIO_REVIEW_TIMEOUT (900s)  UNIO_ALLOW_SECRETS=1 (init override)
+     UNIO_ADMISSION_TIMEOUT (whole seconds 1..300; default 30; admission handshake only)
      UNIO_SAVE_CAPTURE_TIMEOUT (whole seconds 1–300; default 30; save capture only)
      UNIO_AUTO_OFF (accepted for compatibility, no effect: worker output
                     never benches an agent; bench only via 'unio off/on')

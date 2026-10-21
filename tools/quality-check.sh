@@ -83,6 +83,7 @@ python3 -B tests/unio-lead-budget.py
 python3 -B tests/unio-disk-preflight.py
 python3 -B tests/unio-work-policy.py
 python3 -B tests/unio-work-policy-guard.py
+python3 -B tests/unio-admission-deadline.py
 python3 -B tests/unio-remote-guard.py
 python3 -B tests/unio-project-root.py
 python3 -B tests/unio-save-walk.py
