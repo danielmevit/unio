@@ -22870,6 +22870,20 @@ def current(d, rev, root=None):
     d['current_revision'] = rev
     return d
 
+def observed_result(root,worker,task,rev=None,missing=False):
+    # Deliberately outside current(): material/gate callers use current() and
+    # must never recursively request a receipt projection.
+    rev=rev if rev is not None else snapshot(root,worker,task)
+    d=current(load(root,worker,task,missing=missing),rev,root)
+    projection=reviews(root,worker,task,'','projection',rev)
+    d['review_current']=projection
+    bound=revision(d.get('dispatch_revision')) and d['dispatch_revision']['task_sha256']==rev['task_sha256']
+    d['ready_for_human_review']=bool(bound and not d['stale']
+        and all(d[k]['state']==state and d[k]['revision']==rev
+                for k,state in (('process','succeeded'),('validation','passed')))
+        and projection['machine_review_ready'])
+    return d
+
 def sweep(directory, prefix):
     # Callers hold the worker lock, so scratch left here is from a killed writer.
     for name in os.listdir(directory):
@@ -23383,21 +23397,27 @@ def findings_group(extracted):
         group['sources'].sort(key=lambda s:(s['receipt_id'],s['finding_index']))
     return [groups[key] for key in order]
 
-def reviews(root,worker,task,expected,mode):
+def reviews(root,worker,task,expected,mode,rev=None):
     expected=review_expect(worker,task,expected)
     locations(root,worker,task)
-    findings_mode=mode in ('--findings','--findings-json')
+    findings_mode=mode in ('--findings','--findings-json','projection')
     as_json=mode in ('--json','--findings-json')
     current_rev=None; material_hashes={1:None,2:None}; observation=[]
     try:
         if observed_lock(root,worker)=='held': observation.append('worker_busy')
-        current_rev=snapshot(root,worker,task)
+        current_rev=rev if rev is not None else snapshot(root,worker,task)
         # Each protocol's material is computed independently: a protocol-2
         # size refusal must not invalidate a current legacy receipt, and a
         # legacy refusal must not fabricate currentness for schema-2 receipts.
-        for protocol,build in ((1,material_bytes),(2,material_bytes_v2)):
-            try: material_hashes[protocol]=hashlib.sha256(build(root,worker,task)).hexdigest()
-            except (ValueError,OSError,KeyError,TypeError): pass
+        body=material_body(root,worker,task)
+        for protocol,payload in ((1,body+REVIEW_VERDICT_FOOTER),
+                                 (2,body+FINDINGS_INSTRUCTIONS+REVIEW_VERDICT_FOOTER)):
+            limit_data=body if protocol==1 else payload
+            try:
+                if len(limit_data)>300000: continue
+                limit_data.decode('utf-8')
+                material_hashes[protocol]=hashlib.sha256(payload).hexdigest()
+            except UnicodeError: pass
         if material_hashes[1] is None and material_hashes[2] is None:
             observation.append('current_evidence_unavailable')
     except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
@@ -23494,6 +23514,28 @@ def reviews(root,worker,task,expected,mode):
     current_rows=[row for row,d in records if row['current']]
     aliases=sorted({row['reviewer'] for row in current_rows if row['process_exit_code'] is not None})
     groups=sorted({row['policy_group'] for row in current_rows if row['policy_group'] is not None})
+    if mode=='projection':
+        # Current collection contracts supply expectations; never infer labs
+        # from aliases or impose a global reviewer-count policy.
+        collections=[]
+        if os.path.exists(reports):
+            with os.scandir(reports) as files:
+                for entry in files:
+                    if re.fullmatch(re.escape(task)+r'\.review-set\.[A-Za-z0-9]{8}',entry.name):
+                        collections.append(entry.name)
+                        if len(collections)>256:
+                            observation.append('collection_folder_bound'); break
+        for name in sorted(collections[:256]):
+            try:
+                c=collection_read(safe(root,'coord','reports',name,'collection.json'))
+                if c['worker']!=worker: continue
+                if c['task']!=task: fail('collection task mismatch')
+                if c['before']==current_rev and c['material_sha256'] in material_hashes.values():
+                    expected=sorted(set(expected)|set(c['reviewers']))
+                    if c['state']!='completed' or c['after']!=current_rev:
+                        observation.append('collection_incomplete')
+            except (ValueError,OSError,KeyError,TypeError,UnicodeError,RecursionError):
+                observation.append('invalid_collection_evidence')
     missing=sorted(set(expected)-set(aliases))
     counts={state:sum(row['state']==state for row in current_rows) for state in ('approved','changes_requested','unknown','failed')}
     counts.update(stale=sum(row['stale'] for row in rows),unresolved=unresolved,recorded=len(rows),current=len(current_rows))
@@ -23504,6 +23546,8 @@ def reviews(root,worker,task,expected,mode):
     elif incomplete: decision='incomplete'; exit_code=2
     else: decision='all_recorded_approved'; exit_code=0
     material_sha256=material_hashes[2] or material_hashes[1]
+    verdict_decision=decision
+    verdict_incomplete=incomplete
     if not findings_mode:
         out=dict(schema_version=1,worker=worker,task=task,current_revision=current_rev,material_sha256=material_sha256,
                  decision=decision,incomplete=incomplete,expected_reviewers=expected,missing_reviewers=missing,
@@ -23554,6 +23598,12 @@ def reviews(root,worker,task,expected,mode):
              missing_reviewers=missing,distinct_reviewers=aliases,policy_groups=groups,
              ai_lab_independence='unknown',human_acceptance=False,verdict_disagreement=verdict_disagreement,
              counts=counts,reasons=sorted(set(observation)|notes),evidence=rows,findings=grouped)
+    if mode=='projection':
+        out.update(verdict_decision=verdict_decision,verdict_incomplete=verdict_incomplete,
+                   extraction_complete=not findings_incomplete,
+                   machine_review_ready=(verdict_decision=='all_recorded_approved'
+                                         and not findings_incomplete and not grouped))
+        return out
     if as_json:
         encoded=json.dumps(out,ensure_ascii=True,indent=2)
         if len(encoded.encode('utf-8'))+1>FINDINGS_OUTPUT_LIMIT:
@@ -24183,7 +24233,7 @@ def watch(root, conf, offdir, *args):
 def handoff(root,worker,task):
     before=snapshot(root,worker,task)
     wt,tf,_=locations(root,worker,task)
-    d=current(load(root,worker,task,missing=True),before,root)
+    d=observed_result(root,worker,task,before,missing=True)
     ch=changed(root,worker,task)
     parent=safe(root,'coord','handoffs',worker,task)
     os.makedirs(parent,exist_ok=True)
@@ -24215,7 +24265,8 @@ Credentials, agents.conf, ignored files, raw logs and home folders are not copie
 
 Process: {p['state']} (exit {p['exit_code']}).
 Validation: {v['state']}, scope {v['scope']}, {v['checks_run']} run / {v['checks_failed']} failed.
-Review: {r['state']} (reviewer {r['reviewer']}, exit {r['process_exit_code']}).
+Current recorded review: {d['review_current']['verdict_decision']}; findings extraction complete: {d['review_current']['extraction_complete']}.
+Legacy review: {r['state']} (reviewer {r['reviewer']}, exit {r['process_exit_code']}).
 Human: pending. Integration: not_attempted.
 Stale: {d['stale']}. Ready for human review: {d['ready_for_human_review']}.
 
@@ -24267,7 +24318,7 @@ try:
     elif cmd=='update': update(*a)
     elif cmd=='retry': retry(*a)
     elif cmd=='gate': gate(*a)
-    elif cmd=='result': print(json.dumps(current(load(*a),snapshot(*a),a[0]),indent=2))
+    elif cmd=='result': print(json.dumps(observed_result(*a),indent=2))
     elif cmd=='changed':
         ch=changed(*a)
         sys.stdout.buffer.write(b''.join(os.fsencode(p)+b'\0' for p in sorted(set(sum(ch.values(),[])))))
