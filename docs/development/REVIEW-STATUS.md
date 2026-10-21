@@ -45,3 +45,15 @@ that owned lock. Ordinary result/reviews calls still refuse readiness while a
 worker holds the lock. Current verdict and extraction fields in `reviews --json`
 use the same verified stream observation as the result projection. Existing
 verdict decision/exit semantics remain unchanged by findings-format completeness.
+
+Observed on 2026-10-21 in the supplied offline tmpfs harness (UID 1000, no
+effective capabilities), three `result` calls with two current mock receipts took
+1.86, 2.00 and 1.94 seconds, during concurrent focused checks. These are fixture
+observations, not an isolated benchmark or a Windows-mount latency guarantee.
+Per stream the existing 16 MiB evidence bound remains; receipt JSON is 64 KiB,
+collection JSON 64 KiB and findings output retains its existing bounds. A full
+256-folder history can require substantial bounded I/O. Observation uses existing
+Git snapshot helpers, which have no new enclosing wall-clock deadline in this
+change. Configuration hashes are read once at observation start and again at the
+closing check. Corrupt collection evidence fails closed even with explicit
+`--expect`; explicit expectations still control the reviewer list.
