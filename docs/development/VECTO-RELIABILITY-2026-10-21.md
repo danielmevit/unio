@@ -38,3 +38,16 @@ Private baseline-review.json records new exact-revision mock reproduction. No re
 P1A implementation at a4ca22f is staged on the private integration branch, pending the final current-code lab reviews and combined gate. Source0/native0; native scopeOK and3/3checks passed. Installed admission36cases, existing lead-budget52cases and policy-guard36cases passed. Earlier test failures and automatic-save failures are retained privately. Exact new delta is five assigned files; no main push/global install/release.
 
 The helper inventory in [admission deadlines](ADMISSION-DEADLINES.md) identifies a separate high-priority follow-up: native result/snapshot Git work has no enclosing deadline, and experience recording observes native result for a fixed30seconds. Save capture already has a1..300-second option. The admission fix does not promise to resolve these other latency paths or establish their filesystem root cause.
+
+## Prioritized follow-up backlog
+
+These are estimates for separate scoped work with regression checks and reviews, not new healthy-worker time limits. Refresh estimates from actual implementation evidence. No deferred feature is claimed shipped.
+
+1. Native result/Git/metadata deadlines and experience observation configuration:4–8hours for a first bounded slice. Measure the real Windows-drive path; preserve atomic results, original exits and Unknown on incomplete observation. The current review projection adds metadata reads, so slow-storage cost needs an explicit check rather than a constant-runtime claim.
+2. Adopt the additive current-review observation in remaining status/dashboard consumers:2–4hours. Preserve the legacy record for readers that need history; this is functional status plumbing, not visual redesign.
+3. Effort capability reason codes and startup/live/pending/effective separation:2–4hours. Retain successful legacyexec medium construction and keep coordination tier separate.
+4. Explicit analysis/asset types and bounded opt-in binary/ignored artifact preservation:1–2working days. The P1 text-delivery contract is a foundation only; retain strict implementation commits/no-op gate and never globally include ignored folders.
+5. Explicit bounded review context/enclosing code with exact material hashes:4–8hours. Never silently truncate or treat old review material as current.
+6. Cross-workspace visibility and model-history family normalization:1–2working days for an honest first slice. Keep exact requested strings/CLI/revision/task/effort and model-family keys separate; no automatic global-account visibility claim.
+
+After the reliability foundation: full managed lead-session ownership/continuity, session-scoped phone access, nativeWindows, then macOS. Version numbers in [the version plan](../VERSION-PLAN.md) are provisional: reliability now occupies0.5.23, so full session ownership is planned before phone access rather than silently skipped. Windows retains app-managed trial expiry, localization and selected Eqho logic as later bounded requirements. CodeGraph extension, competitor strategy and decorative UI work are outside this round.
