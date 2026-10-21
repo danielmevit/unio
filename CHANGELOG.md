@@ -4,6 +4,18 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.23 — reliability and managed-session CLI — unreleased
+
+Candidate preparation only; no publication is authorized in the current round.
+
+- Configure the admission handshake with `UNIO_ADMISSION_TIMEOUT` (1–300 seconds,
+  default30), distinguish deadline/EOF/partial/holder/storage failures and retain
+  atomic slots, owner grants, STOP and zero provider calls after refusal.
+- Preserve the reviewed first managed-session CLI slice: inspect recorded output
+  and deliberately steer an existing authorized active Codex turn. Full multi-turn
+  lead ownership, phone access and native desktop support remain later work.
+
+
 ## 0.5.22 — clearer runs and route contracts — 2026-10-19
 
 Published and installed. Seven reliability improvements from a heavy real-world

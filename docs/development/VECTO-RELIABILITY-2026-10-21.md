@@ -32,3 +32,9 @@ Private baseline-review.json records new exact-revision mock reproduction. No re
 ## Current local startup observation
 
 2026-10-21T19:49:11+02:00: native workflow admitted, result-start helper spent time in Windows-mount I/O; automatic baseline save then exceeded configured60s and retained previous save. Actual provider receipt absent at observation. The five-second handshake is not the whole startup path. A larger handshake budget alone is not claimed to fix save/result/helper latency or prove a filesystem root cause.
+
+## Checked admission candidate
+
+P1A implementation at a4ca22f is staged on the private integration branch, pending the final current-code lab reviews and combined gate. Source0/native0; native scopeOK and3/3checks passed. Installed admission36cases, existing lead-budget52cases and policy-guard36cases passed. Earlier test failures and automatic-save failures are retained privately. Exact new delta is five assigned files; no main push/global install/release.
+
+The helper inventory in [admission deadlines](ADMISSION-DEADLINES.md) identifies a separate high-priority follow-up: native result/snapshot Git work has no enclosing deadline, and experience recording observes native result for a fixed30seconds. Save capture already has a1..300-second option. The admission fix does not promise to resolve these other latency paths or establish their filesystem root cause.
