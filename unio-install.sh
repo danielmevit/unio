@@ -23543,28 +23543,28 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
     current_rows=[row for row,d in records if row['current']]
     aliases=sorted({row['reviewer'] for row in current_rows if row['process_exit_code'] is not None})
     groups=sorted({row['policy_group'] for row in current_rows if row['policy_group'] is not None})
-    if not expected:
-        # Current collection contracts supply expectations; never infer labs
-        # from aliases or impose a global reviewer-count policy.
-        collections=[]
-        if os.path.exists(reports):
-            with os.scandir(reports) as files:
-                for entry in files:
-                    if re.fullmatch(re.escape(task)+r'\.review-set\.[A-Za-z0-9_-]{8}',entry.name):
-                        collections.append(entry.name)
-                        if len(collections)>256:
-                            observation.append('collection_folder_bound'); break
-        for name in sorted(collections[:256]):
-            try:
-                c=collection_read(safe(root,'coord','reports',name,'collection.json'))
-                if c['worker']!=worker: continue
-                if c['task']!=task: fail('collection task mismatch')
-                if c['before']==current_rev and c['material_sha256'] in material_hashes.values():
-                    expected=sorted(set(expected)|set(c['reviewers']))
-                    if c['state']!='completed' or c['after']!=current_rev:
-                        observation.append('collection_incomplete')
-            except (ValueError,OSError,KeyError,TypeError,UnicodeError,RecursionError):
-                observation.append('invalid_collection_evidence')
+    infer_expected=not expected
+    # Current collection contracts supply expectations; never infer labs
+    # from aliases or impose a global reviewer-count policy.
+    collections=[]
+    if os.path.exists(reports):
+        with os.scandir(reports) as files:
+            for entry in files:
+                if re.fullmatch(re.escape(task)+r'\.review-set\.[A-Za-z0-9_-]{8}',entry.name):
+                    collections.append(entry.name)
+                    if len(collections)>256:
+                        observation.append('collection_folder_bound'); break
+    for name in sorted(collections[:256]):
+        try:
+            c=collection_read(safe(root,'coord','reports',name,'collection.json'))
+            if c['worker']!=worker: continue
+            if c['task']!=task: fail('collection task mismatch')
+            if c['before']==current_rev and c['material_sha256'] in material_hashes.values():
+                if infer_expected: expected=sorted(set(expected)|set(c['reviewers']))
+                if c['state']!='completed' or c['after']!=current_rev:
+                    observation.append('collection_incomplete')
+        except (ValueError,OSError,KeyError,TypeError,UnicodeError,RecursionError):
+            observation.append('invalid_collection_evidence')
     missing=sorted(set(expected)-set(aliases))
     counts={state:sum(row['state']==state for row in current_rows) for state in ('approved','changes_requested','unknown','failed')}
     counts.update(stale=sum(row['stale'] for row in rows),unresolved=unresolved,recorded=len(rows),current=len(current_rows))

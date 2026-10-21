@@ -128,5 +128,7 @@ class Coherence(unittest.TestCase):
         manifest.write_text('{')
         d=self.result();self.assertIn('invalid_collection_evidence',d['review_current']['reasons'])
         self.assertFalse(d['ready_for_human_review'])
+        summary=json.loads(self.unio('reviews','mock','evidence','--expect','revone,revtwo','--json',code=2).stdout)
+        self.assertIn('invalid_collection_evidence',summary['reasons'])
 
 if __name__=='__main__':unittest.main(verbosity=2)
