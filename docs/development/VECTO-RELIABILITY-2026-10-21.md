@@ -51,3 +51,21 @@ These are estimates for separate scoped work with regression checks and reviews,
 6. Cross-workspace visibility and model-history family normalization:1–2working days for an honest first slice. Keep exact requested strings/CLI/revision/task/effort and model-family keys separate; no automatic global-account visibility claim.
 
 After the reliability foundation: full managed lead-session ownership/continuity, session-scoped phone access, nativeWindows, then macOS. Version numbers in [the version plan](../VERSION-PLAN.md) are provisional: reliability now occupies0.5.23, so full session ownership is planned before phone access rather than silently skipped. Windows retains app-managed trial expiry, localization and selected Eqho logic as later bounded requirements. CodeGraph extension, competitor strategy and decorative UI work are outside this round.
+
+## Checked review-coherence checkpoint
+
+The committed review change54beed5 passed a fresh native verification on
+2026-10-22: scopeOK, five required checks passed (syntax, coherence, collections,
+receipts and findings). This validates saved code, not the original provider run.
+The CodexCLI0.163.0 / GPT6.1SolLOW Source exited1 at its usage limit after committing
+the change; the original Source/native failure is retained. Current requests for
+changes remain blocking even when a collection is incomplete. Result/handoff add
+`review_current` while preserving the legacy review record and stale history.
+Configuration currentness, verdicts, findings completeness, readiness and acceptance
+remain distinct; complete readiness requires current configuration evidence.
+
+The required-delivery enhancement is still in progress. Its first
+Mistral/Vibe2.26.1/GLM5.3HIGH invocation exited2 infrastructure_failure after8975
+reported tokens, below its12M cap, without edits. A bounded Medium3.5HIGH
+replacement is a separate invocation, not a rewritten success or effort escalation.
+Final current-code independent reviews and the full candidate gate are pending.

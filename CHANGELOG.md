@@ -16,6 +16,9 @@ Candidate preparation only; no publication is authorized in the current round.
   lead ownership, phone access and native desktop support remain later work.
 
 
+- Add an additive current review observation to result and handoff, keeping legacy records, current/stale receipts, findings completeness and acceptance distinct. Current change requests remain blocking alongside incomplete review collections.
+- Document the highest permitted free-worker effort default, exact current route variants and the continuing role/spending restrictions.
+
 ## 0.5.22 — clearer runs and route contracts — 2026-10-19
 
 Published and installed. Seven reliability improvements from a heavy real-world
