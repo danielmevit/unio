@@ -28,6 +28,33 @@ Refuse missing/conflicting/nonzero prices. Pin both the primary and helper
 `small_model` to the eligible route and disable paid fallback. Do not
 silently switch a failed free call onto its paid model counterpart.
 
+## Current route snapshot — 2026-10-21
+
+OpenCode CLI 1.19.3 now exposes additional free routes. The official
+[model pricing table](https://opencode.ai/v2/docs/console/models/#pricing)
+and native catalog agree on zero input/output/cache prices for the three below.
+Free access is promotional and must be rechecked before a new assignment.
+These are configured routes, not proof of usable allowance or effective identity.
+Earlier dated inventories and trials below remain historical evidence.
+
+| Exact verified-free route | Exposed variants | Requested setting under the current ceiling | Supporting work |
+| --- | --- | --- | --- |
+| `opencode/glm-5.3-flash-free` | low, high, max | high | Supplied-context documentation checks and mechanical inventories |
+| `opencode/deepseek-v4.1-flash-free` | low, high, max | high | Bounded predefined checks and supplementary observations |
+| `opencode/minimax-m3.1-flash-free` | low, medium, high, xhigh, max | xhigh | Documentation consistency, formatting and inventories |
+
+The owner's default is now the highest supported **permitted** effort for free
+workers. This workspace still excludes max/ultra; xhigh is the ceiling. A route
+with no exposed override stays Unknown. Pin primary and helper models to the
+same eligible free ID. Calls already frozen retain their original settings.
+Free workers keep the supporting role defined above.
+
+The corresponding `opencode-go/glm-5.3-flash` and
+`opencode-go/deepseek-v4.1-flash` are different subscription routes with nonzero
+catalog prices. They may use the owner's included Go allowance, never an extra
+pay-as-you-go fallback. Model names alone do not establish shared-account
+capacity. Native/catalog availability is not a successful provider call.
+
 ## Inventory and routine assignments
 
 These task suggestions are routing guidance, not established quality rankings.

@@ -302,6 +302,22 @@ Identical replay adds no sample; conflicting assessments are refused unchanged.
 This command is a local record, not a new review, human acceptance or dispatch.
 See the [frozen first-slice boundaries](https://github.com/danielmevit/unio/blob/main/docs/development/MODEL-EXPERIENCE-CONTRACT.md).
 
+## Free supporting workers use their highest permitted effort
+
+Owner update, 2026-10-21: for new verified-free worker assignments, select the
+highest effort supported by the exact installed route within the owner's current
+ceiling. In this Unio development workspace the ceiling remains xhigh; max and
+ultra are disabled. For example, MiniMax M3.1 Flash Free exposes xhigh below max;
+GLM 5.3 Flash Free and DeepSeek V4.1 Flash Free expose high below max. Use those
+settings, not a guessed generic effort flag. If no override is exposed, record
+requested and effective effort as Unknown. Recheck variants and zero prices
+before admission. This overrides the earlier routine-middle default for free
+workers; other subscription routes keep their own settings and frozen calls
+retain theirs. Highest effort does not promote a free model to lead, main
+implementation or final acceptance, establish effective reasoning, increase
+account concurrency or authorize paid fallback. An explicit later owner choice
+can change the ceiling for future assignments.
+
 ## No extra token charges by default
 
 Use the owner's existing funded subscriptions. OpenCode subscription models

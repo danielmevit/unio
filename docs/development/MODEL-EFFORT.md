@@ -210,3 +210,15 @@ does not replace verification or guarantee that every mistake is caught.
 Provider documentation describes capabilities; local metadata describes the
 exposed route; actual run receipts describe what was requested and observed.
 Keep those three kinds of evidence distinct.
+
+## Free worker override — 2026-10-21
+
+For verified-free supporting workers, use the exact route's highest supported
+setting within the current Unio development ceiling (xhigh, no max/ultra).
+MiniMax M3.1 Flash Free currently maps to xhigh; GLM 5.3 Flash Free and DeepSeek
+V4.1 Flash Free map to high. Empty variant metadata means no exposed override,
+so requested/effective effort remain Unknown. Recheck native variants and all
+zero prices for each assignment; don't infer effort from a model's name.
+This supersedes routine-medium suggestions for future free workers. Existing
+frozen assignments and subscription-worker defaults remain unchanged. See
+[the routing rule](LEAD-ROUTING.md#free-supporting-workers-use-their-highest-permitted-effort).
