@@ -29,3 +29,19 @@ runtime promise on slow filesystems. At most 256 receipt and 256 collection fold
 are inspected; overflow, invalid evidence, busy workers and drift fail closed.
 The legacy `reviews` and findings CLI shapes/decisions remain compatible; their
 explicit `--expect` remains authoritative for those invocations.
+
+New review invocations capture `context.json` before admission, containing only a
+schema version and SHA-256 of the bounded (1 MiB) agents.conf. Receipt schemas and
+material protocols do not change. Observation checks the context as a bounded
+4096-byte regular, singly linked file and closes its replacement window alongside
+the streams. Configuration drift makes those receipts stale. Historical receipts
+without this sidecar retain verdict/freshness visibility but have
+`config_current: null` and cannot establish machine readiness. No old receipt is
+rewritten. This binds agents.conf, not every host environment or provider setting;
+effective provider identity and remaining allowance are still Unknown.
+
+Handoff already owns the worker lock; its internal observer explicitly recognizes
+that owned lock. Ordinary result/reviews calls still refuse readiness while a
+worker holds the lock. Current verdict and extraction fields in `reviews --json`
+use the same verified stream observation as the result projection. Existing
+verdict decision/exit semantics remain unchanged by findings-format completeness.

@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
 """Offline canonical result/handoff observation, using installed real Git fixtures."""
 import fcntl
+import hashlib
+import shlex
 import importlib.util
 import json
 from pathlib import Path
@@ -13,7 +15,9 @@ f=importlib.util.module_from_spec(spec);spec.loader.exec_module(f)
 
 class Coherence(unittest.TestCase):
     setUpClass=classmethod(f.ReviewFindings.setUpClass.__func__)
-    setUp=f.ReviewFindings.setUp
+    def setUp(self):
+        f.fixture.ReviewReceipts.setUp(self)
+        (self.root/'provider.py').write_text(f.PROVIDER)
     call=f.ReviewFindings.call
     unio=f.ReviewFindings.unio
     controls=f.ReviewFindings.controls
@@ -38,7 +42,7 @@ class Coherence(unittest.TestCase):
         self.assertEqual(p['verdict_decision'],'all_recorded_approved')
         self.assertEqual(p['counts']['current'],2)
         self.assertEqual(p['expected_reviewers'],['revone','revtwo'])
-        self.assertTrue(p['extraction_complete']);self.assertTrue(d['ready_for_human_review'])
+        self.assertTrue(p['extraction_complete']);self.assertTrue(d['ready_for_human_review'],d)
         self.assertEqual(d['review']['state'],'not_run')
         packet=Path(self.unio('handoff','mock','evidence').stdout.strip())
         self.assertEqual(json.loads((packet/'result.json').read_text())['review_current'],p)
@@ -64,7 +68,7 @@ class Coherence(unittest.TestCase):
 
     def test_busy_and_drift_fail_closed(self):
         self.controls(revone='empty');self.unio('review','mock','evidence','revone')
-        self.assertTrue(self.result()['ready_for_human_review'])
+        d=self.result();self.assertTrue(d['ready_for_human_review'],d)
         with (self.coord/'.locks/mock.lock').open('r') as lock:
             fcntl.flock(lock,fcntl.LOCK_EX)
             d=self.result();self.assertFalse(d['ready_for_human_review'])
@@ -78,5 +82,46 @@ class Coherence(unittest.TestCase):
         (wt/'hello.txt').write_bytes(b'x'*300001)
         self.call(['git','add','hello.txt'],cwd=wt);self.call(['git','commit','-qm','oversized'],cwd=wt)
         self.assertFalse(self.result()['ready_for_human_review'])
+
+    def test_legacy_and_report_only_provenance(self):
+        self.controls(revone='empty');self.unio('review','mock','evidence','revone')
+        receipt=self.receipts()[0]
+        base=json.loads(receipt.read_text())
+        body=f.ReviewFindings.legacy_body(self,base['before'])
+        legacy=dict(base,schema_version=1,material_sha256=hashlib.sha256(body+
+            b'\nEnd with exactly one standalone line: VERDICT: APPROVE or VERDICT: REQUEST-CHANGES\n').hexdigest())
+        del legacy['material_protocol']
+        # A synthetic legacy receipt deliberately lacks the new context sidecar.
+        f.ReviewFindings.synthetic(self,legacy,'Legacy01',b'VERDICT: APPROVE\n')
+        d=self.result();self.assertEqual(d['review_current']['counts']['current'],2)
+        self.assertFalse(d['review_current']['extraction_complete'])
+        self.assertFalse(d['ready_for_human_review'])
+        conf=self.root/'conf/agents.conf'
+        lines=conf.read_text().splitlines()
+        lines[0]='mock='+shlex.join(['bash','-c','printf "offline report\\n"'])
+        conf.write_text('\n'.join(lines)+'\n')
+        self.task.write_text('# Task\n## Outcome\nreport-only\n## Allowed scope\n- report.txt\n## Validate\n$ true\n')
+        self.unio('run','mock','evidence');self.unio('verify','mock','evidence')
+        self.unio('review-set','mock','evidence','revone','revtwo')
+        d=self.result();self.assertEqual(d['outcome_current']['state'],'current')
+        self.assertTrue(d['ready_for_human_review'],d)
+        packet=Path(self.unio('handoff','mock','evidence').stdout.strip())
+        self.assertIn('offline report',(packet/'report.md').read_text())
+        report=self.coord/'results/mock/evidence.outcomes'/d['outcome']['run_id']/'report.txt'
+        report.chmod(0o600);report.write_text('tampered')
+        d=self.result();self.assertFalse(d['ready_for_human_review'])
+        self.assertEqual(d['outcome_current']['state'],'invalid')
+
+    def test_base_drift_and_collection_contract_corruption(self):
+        self.controls(revone='empty',revtwo='empty')
+        self.unio('review-set','mock','evidence','revone','revtwo')
+        self.call(['git','commit','--allow-empty','-qm','advance base'])
+        d=self.result();self.assertEqual(d['review_current']['counts']['stale'],2)
+        self.assertFalse(d['ready_for_human_review'])
+        self.call(['git','reset','--hard','HEAD~1'])
+        manifest=next((self.coord/'reports').glob('evidence.review-set.*/collection.json'))
+        manifest.write_text('{')
+        d=self.result();self.assertIn('invalid_collection_evidence',d['review_current']['reasons'])
+        self.assertFalse(d['ready_for_human_review'])
 
 if __name__=='__main__':unittest.main(verbosity=2)
