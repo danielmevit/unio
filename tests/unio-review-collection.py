@@ -106,7 +106,7 @@ class ReviewCollection(unittest.TestCase):
         self.controls(revone='barrier',revtwo='barrier')
         p=self.collect(code=1) # older same-revision request must survive new approvals
         self.assertNotIn('PRIVATE_COLLECTION',p.stdout)
-        self.assertEqual(self.unio('result','mock','evidence').stdout,old_result)
+        self.assertEqual(json.loads(self.unio('result','mock','evidence').stdout)['review'],json.loads(old_result)['review'])
         self.assertEqual(old_receipt.read_bytes(),old_bytes)
         manifest=self.manifest();records=self.attempts()
         self.assertEqual(manifest['state'],'completed')

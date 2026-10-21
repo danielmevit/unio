@@ -589,7 +589,9 @@ def trace(frame,event,arg):
         else:
             lock=(root/'project/coord/.locks/mock.lock').open('rb')
             fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);held.append(lock)
-    elif event=='return' and name=='material_bytes' and action=='material':
+    elif event=='return' and name=='collection_read' and action=='collection':
+        (root/'project/coord/tasks/evidence.md').write_text('changed during collection read')
+    elif event=='return' and name=='material_body' and action=='material':
         p=root/'project/coord/tasks/evidence.md';p.write_text(p.read_text()+'\\nChanged during hashing.\\n')
     else:return trace
     fired=True;(root/'race-fired').write_text(action)

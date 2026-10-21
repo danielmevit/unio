@@ -22870,6 +22870,20 @@ def current(d, rev, root=None):
     d['current_revision'] = rev
     return d
 
+def observed_result(root,worker,task,rev=None,missing=False,owned_lock=False):
+    # Deliberately outside current(): material/gate callers use current() and
+    # must never recursively request a receipt projection.
+    rev=rev if rev is not None else snapshot(root,worker,task)
+    d=current(load(root,worker,task,missing=missing),rev,root)
+    projection=reviews(root,worker,task,'','projection',rev,owned_lock)
+    d['review_current']=projection
+    bound=revision(d.get('dispatch_revision')) and d['dispatch_revision']['task_sha256']==rev['task_sha256']
+    d['ready_for_human_review']=bool(bound and not d['stale']
+        and all(d[k]['state']==state and d[k]['revision']==rev
+                for k,state in (('process','succeeded'),('validation','passed')))
+        and projection['machine_review_ready'])
+    return d
+
 def sweep(directory, prefix):
     # Callers hold the worker lock, so scratch left here is from a killed writer.
     for name in os.listdir(directory):
@@ -23216,6 +23230,17 @@ def receipt_protocol(d):
     # review_record_valid already restricted the schema/protocol combinations.
     return 1 if d['schema_version']==1 else d['material_protocol']
 
+def review_config_hash():
+    conf=os.environ.get('UNIO_CONF_DIR',os.path.expanduser('~/.config/unio'))
+    return review_digest(os.path.join(conf,'agents.conf'),1048576)['sha256']
+
+def review_context(raw):
+    # Captured before admission/provider invocation; no credentials copied.
+    path=os.path.join(raw,'context.json')
+    with open(path,'x') as stream:
+        json.dump(dict(schema_version=1,config_sha256=review_config_hash()),stream)
+
+
 def review_receipt(root,worker,task,reviewer,state,code,complete,reasons,before,after,pf,raw,group,material_hash):
     locations(root,worker,task); ident(reviewer)
     name=os.path.basename(raw)
@@ -23383,21 +23408,30 @@ def findings_group(extracted):
         group['sources'].sort(key=lambda s:(s['receipt_id'],s['finding_index']))
     return [groups[key] for key in order]
 
-def reviews(root,worker,task,expected,mode):
+def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
     expected=review_expect(worker,task,expected)
     locations(root,worker,task)
-    findings_mode=mode in ('--findings','--findings-json')
+    findings_mode=True
+    findings_view=mode in ('--findings','--findings-json','projection')
     as_json=mode in ('--json','--findings-json')
     current_rev=None; material_hashes={1:None,2:None}; observation=[]
+    config_hash=None
     try:
-        if observed_lock(root,worker)=='held': observation.append('worker_busy')
-        current_rev=snapshot(root,worker,task)
+        if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
+        config_hash=review_config_hash()
+        current_rev=rev if rev is not None else snapshot(root,worker,task)
         # Each protocol's material is computed independently: a protocol-2
         # size refusal must not invalidate a current legacy receipt, and a
         # legacy refusal must not fabricate currentness for schema-2 receipts.
-        for protocol,build in ((1,material_bytes),(2,material_bytes_v2)):
-            try: material_hashes[protocol]=hashlib.sha256(build(root,worker,task)).hexdigest()
-            except (ValueError,OSError,KeyError,TypeError): pass
+        body=material_body(root,worker,task)
+        for protocol,payload in ((1,body+REVIEW_VERDICT_FOOTER),
+                                 (2,body+FINDINGS_INSTRUCTIONS+REVIEW_VERDICT_FOOTER)):
+            limit_data=body if protocol==1 else payload
+            try:
+                if len(limit_data)>300000: continue
+                limit_data.decode('utf-8')
+                material_hashes[protocol]=hashlib.sha256(payload).hexdigest()
+            except UnicodeError: pass
         if material_hashes[1] is None and material_hashes[2] is None:
             observation.append('current_evidence_unavailable')
     except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
@@ -23425,7 +23459,19 @@ def reviews(root,worker,task,expected,mode):
             if d['id'] in receipt_ids: fail('duplicate review receipt ID')
             receipt_ids.add(d['id'])
             protocol=receipt_protocol(d)
+            context_path=safe(root,'coord','reports',name,'context.json')
+            config_current=None
+            if os.path.lexists(context_path):
+                context_bytes,_,context_identity=review_stream(context_path,4096)
+                context=review_json(context_bytes.decode('utf-8'))
+                if (not isinstance(context,dict) or set(context)!={'schema_version','config_sha256'}
+                        or type(context['schema_version']) is not int or context['schema_version']!=1
+                        or not isinstance(context['config_sha256'],str)
+                        or not re.fullmatch('[0-9a-f]{64}',context['config_sha256'])):
+                    fail('invalid review context')
+                config_current=context['config_sha256']==config_hash
             streams={}; identities=[]
+            if config_current is not None: identities.append((context_path,context_identity))
             for stream in ('stdout','stderr'):
                 target=safe(root,'coord','reports',name,stream+'.log')
                 if findings_mode:
@@ -23434,13 +23480,15 @@ def reviews(root,worker,task,expected,mode):
                     streams[stream]=data
                     identities.append((target,identity))
                 elif review_digest(target)!=d[stream]: fail('review stream mismatch')
-            bound=d['before']==d['after']==current_rev and d['material_sha256']==material_hashes[protocol]
+            bound=(d['before']==d['after']==current_rev and d['material_sha256']==material_hashes[protocol]
+                   and config_current is not False)
             row.update(receipt_id=d['id'],reviewer=d['reviewer'],policy_group=d['policy_group'],state=d['state'],
                        stale=not bound,current=bound and not observation,process_exit_code=d['process_exit_code'],
                        reasons=d['reasons'] if bound else sorted(set(d['reasons']+['stale_evidence'])))
             if d['after'] is None and d['before']==current_rev and d['material_sha256']==material_hashes[protocol]:
                 row.update(current=False,stale=False,reasons=sorted(set(d['reasons']+['review_outcome_unknown'])))
                 unresolved+=1
+            row['config_current']=config_current
             records.append((row,d))
             if findings_mode:
                 stream_observations.append((row,identities))
@@ -23483,11 +23531,37 @@ def reviews(root,worker,task,expected,mode):
                        reasons=sorted(set(row['reasons']+['review_stream_changed'])))
             unresolved+=1
             extracted=[item for item in extracted if item['source']['receipt_id']!=row['receipt_id']]
+    infer_expected=not expected
+    # Current collection contracts supply expectations; never infer labs
+    # from aliases or impose a global reviewer-count policy.
+    collections=[]
+    if os.path.exists(reports):
+        with os.scandir(reports) as files:
+            for entry in files:
+                if re.fullmatch(re.escape(task)+r'\.review-set\.[A-Za-z0-9_-]{8}',entry.name):
+                    collections.append(entry.name)
+                    if len(collections)>256:
+                        observation.append('collection_folder_bound'); break
+    for name in sorted(collections[:256]):
+        try:
+            c=collection_read(safe(root,'coord','reports',name,'collection.json'))
+            if c['worker']!=worker: continue
+            if c['task']!=task: fail('collection task mismatch')
+            if c['before']==current_rev and c['material_sha256'] in material_hashes.values():
+                if infer_expected: expected=sorted(set(expected)|set(c['reviewers']))
+                if c['state']!='completed' or c['after']!=current_rev:
+                    observation.append('collection_incomplete')
+        except (ValueError,OSError,KeyError,TypeError,UnicodeError,RecursionError):
+            observation.append('invalid_collection_evidence')
     try:
-        if observed_lock(root,worker)=='held': observation.append('worker_busy')
+        if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
         if snapshot(root,worker,task)!=current_rev: observation.append('revision_changed')
+        if review_config_hash()!=config_hash: observation.append('config_changed')
     except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
-    if observation:
+    # A collection failure limits completeness, not independently verified
+    # receipt freshness. Keep a current refusal blocking alongside partial sets.
+    if any(reason not in ('collection_folder_bound','collection_incomplete',
+                          'invalid_collection_evidence') for reason in observation):
         for row in rows: row['current']=False
         # Drift or a busy worker makes actionable findings unavailable.
         extracted=[]
@@ -23504,11 +23578,18 @@ def reviews(root,worker,task,expected,mode):
     elif incomplete: decision='incomplete'; exit_code=2
     else: decision='all_recorded_approved'; exit_code=0
     material_sha256=material_hashes[2] or material_hashes[1]
-    if not findings_mode:
+    verdict_decision=decision
+    verdict_incomplete=incomplete
+    if not findings_view:
+        extraction_complete=bool(not incomplete and not extraction_notes and current_rows
+            and all(row['findings_state'] in ('empty','findings') for row in current_rows))
         out=dict(schema_version=1,worker=worker,task=task,current_revision=current_rev,material_sha256=material_sha256,
                  decision=decision,incomplete=incomplete,expected_reviewers=expected,missing_reviewers=missing,
                  distinct_reviewers=aliases,policy_groups=groups,ai_lab_independence='unknown',counts=counts,
-                 reasons=sorted(set(observation)),entries=rows,human_acceptance=False)
+                 reasons=sorted(set(observation)),entries=rows,human_acceptance=False,
+                 extraction_complete=extraction_complete,
+                 machine_review_ready=(decision=='all_recorded_approved' and extraction_complete and not extracted
+                                       and all(row.get('config_current') is True for row in current_rows)))
         if as_json: print(json.dumps(out,ensure_ascii=True,indent=2))
         else:
             print('Recorded reviews: '+decision+(' (incomplete)' if incomplete else ''))
@@ -23554,6 +23635,13 @@ def reviews(root,worker,task,expected,mode):
              missing_reviewers=missing,distinct_reviewers=aliases,policy_groups=groups,
              ai_lab_independence='unknown',human_acceptance=False,verdict_disagreement=verdict_disagreement,
              counts=counts,reasons=sorted(set(observation)|notes),evidence=rows,findings=grouped)
+    if mode=='projection':
+        out.update(verdict_decision=verdict_decision,verdict_incomplete=verdict_incomplete,
+                   extraction_complete=not findings_incomplete,
+                   machine_review_ready=(verdict_decision=='all_recorded_approved'
+                                         and not findings_incomplete and not grouped
+                                         and all(row.get('config_current') is True for row in current_rows)))
+        return out
     if as_json:
         encoded=json.dumps(out,ensure_ascii=True,indent=2)
         if len(encoded.encode('utf-8'))+1>FINDINGS_OUTPUT_LIMIT:
@@ -24183,7 +24271,7 @@ def watch(root, conf, offdir, *args):
 def handoff(root,worker,task):
     before=snapshot(root,worker,task)
     wt,tf,_=locations(root,worker,task)
-    d=current(load(root,worker,task,missing=True),before,root)
+    d=observed_result(root,worker,task,before,missing=True,owned_lock=True)
     ch=changed(root,worker,task)
     parent=safe(root,'coord','handoffs',worker,task)
     os.makedirs(parent,exist_ok=True)
@@ -24215,7 +24303,11 @@ Credentials, agents.conf, ignored files, raw logs and home folders are not copie
 
 Process: {p['state']} (exit {p['exit_code']}).
 Validation: {v['state']}, scope {v['scope']}, {v['checks_run']} run / {v['checks_failed']} failed.
-Review: {r['state']} (reviewer {r['reviewer']}, exit {r['process_exit_code']}).
+Current recorded review: {d['review_current']['verdict_decision']}; findings extraction complete: {d['review_current']['extraction_complete']}.
+Current receipt counts (including stale history): {d['review_current']['counts']}.
+Expected reviewers: {d['review_current']['expected_reviewers']}; missing: {d['review_current']['missing_reviewers']}.
+AI lab independence: unknown. See result.json for each actual reviewer exit.
+Legacy review: {r['state']} (reviewer {r['reviewer']}, exit {r['process_exit_code']}).
 Human: pending. Integration: not_attempted.
 Stale: {d['stale']}. Ready for human review: {d['ready_for_human_review']}.
 
@@ -24267,11 +24359,12 @@ try:
     elif cmd=='update': update(*a)
     elif cmd=='retry': retry(*a)
     elif cmd=='gate': gate(*a)
-    elif cmd=='result': print(json.dumps(current(load(*a),snapshot(*a),a[0]),indent=2))
+    elif cmd=='result': print(json.dumps(observed_result(*a),indent=2))
     elif cmd=='changed':
         ch=changed(*a)
         sys.stdout.buffer.write(b''.join(os.fsencode(p)+b'\0' for p in sorted(set(sum(ch.values(),[])))))
     elif cmd=='material': material(*a)
+    elif cmd=='review-context': review_context(*a)
     elif cmd=='review-receipt': review_receipt(*a)
     elif cmd=='review-material-hash': print(review_digest(a[0],400000)['sha256'])
     elif cmd=='reviews-arguments': review_expect(*a)
@@ -31177,6 +31270,7 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   raw=$(mktemp -d "$root/coord/reports/$task.review.XXXXXXXX") || { rm -rf "$nd"; return 2; }
   stdout="$raw/stdout.log"; stderr="$raw/stderr.log"
   : > "$stdout"; : > "$stderr"
+  quality review-context "$raw" || return 2
   host_warning || return $?
   # Native guard: the independent reviewer is its own workflow in the
   # reviewer's budget group. Admit before the reviewer provider starts; a
@@ -31455,6 +31549,7 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   for r in "${reviewers[@]}"; do
     raw=$(mktemp -d "$root/coord/reports/$task.review.XXXXXXXX") || { rm -rf -- "$nd" "${raws[@]}"; return 2; }
     : > "$raw/stdout.log"; : > "$raw/stderr.log"
+    quality review-context "$raw" || return 2
     raws+=("$raw")
   done
   local reviewers_csv raws_csv out cid cdir
