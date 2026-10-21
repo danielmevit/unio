@@ -23521,7 +23521,7 @@ def reviews(root,worker,task,expected,mode,rev=None):
         if os.path.exists(reports):
             with os.scandir(reports) as files:
                 for entry in files:
-                    if re.fullmatch(re.escape(task)+r'\.review-set\.[A-Za-z0-9]{8}',entry.name):
+                    if re.fullmatch(re.escape(task)+r'\.review-set\.[A-Za-z0-9_-]{8}',entry.name):
                         collections.append(entry.name)
                         if len(collections)>256:
                             observation.append('collection_folder_bound'); break
