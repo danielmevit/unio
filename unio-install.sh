@@ -28875,15 +28875,18 @@ policy_refuse_report() { # $1=root $2=worker $3=task $4=kind $5=agent $6=reason
       return 0;;
   esac
   local report="$root/coord/reports/$task.md"
+  local advice="Inspect admission configuration and holder startup; no provider was started, queued or retried."
+  case "$reason" in
+    *"budget group "*" at cap "*) advice="Wait for the running workflow or inspect the lead reservation; no provider was started, queued or retried.";;
+  esac
   mkdir -p "$root/coord/reports"
   {
     echo
     echo "## budget-refused $(date -Is) — kind=$kind worker=$worker agent=$agent task=$task"
     printf '%s\n' "$reason" | head -5 | sed 's/^/  /'
-    echo "  No provider was started; nothing was queued or retried. Free the group"
-    echo "  (wait for the running workflow, or clear the lead reservation) and run again."
+    printf '  %s\n' "$advice"
   } >> "$report"
-  printf 'unio: budget refused (%s %s/%s): %s\n' "$kind" "$worker" "$task" "$(printf '%s' "$reason" | head -1)" >&2
+  printf 'unio: admission refused (%s %s/%s): %s\n' "$kind" "$worker" "$task" "$(printf '%s' "$reason" | head -1)" >&2
 }
 
 policy_text_label() { # $1=label; same rejection rules as the policy checker
@@ -29146,6 +29149,15 @@ policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   POLICY_SLOT=""; POLICY_EFFECTIVE=""; POLICY_GROUP=""; POLICY_PID=""
   POLICY_HOLDER_PID=""; POLICY_RD=""; POLICY_WR=""; POLICY_IN=""; POLICY_IPC=""
   POLICY_PROVIDER_PID=""
+  local admission_timeout="${UNIO_ADMISSION_TIMEOUT-30}"
+  # Bound length before arithmetic; reject empty, signed and fractional values.
+  if ! [[ "$admission_timeout" =~ ^[0-9]{1,3}$ ]] \
+    || [ "$((10#$admission_timeout))" -lt 1 ] || [ "$((10#$admission_timeout))" -gt 300 ]; then
+    policy_refuse_report "$root" "$worker" "$task" "$kind" "$agent" \
+      "UNIO_ADMISSION_CONFIG UNIO_ADMISSION_TIMEOUT must be whole seconds 1..300 (default 30); no admission opened or grant consumed"
+    return 2
+  fi
+  admission_timeout=$((10#$admission_timeout))
   local lock="$root/coord/.locks/work-policy.lock"
   if [ -L "$root/coord" ] || [ -L "$root/coord/.locks" ] || [ -L "$lock" ]; then
     policy_refuse_report "$root" "$worker" "$task" "$kind" "$agent" \
@@ -29185,7 +29197,7 @@ policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   }
   local had_monitor=0 deadline=0
   case $- in *m*) had_monitor=1;; esac
-  deadline=$((SECONDS + 5))
+  deadline=$((SECONDS + admission_timeout))
   set -m
   coproc POLICY_HELD {
     exec {POLICY_IN}>&- 9>&-
@@ -29199,17 +29211,23 @@ policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   fi
   if [ -z "${POLICY_PID:-}" ] || [ -z "${POLICY_RD:-}" ] || [ -z "${POLICY_WR:-}" ]; then
     policy_fail_admission "$root" "$worker" "$task" "$kind" "$agent" \
-      "unio: admission holder did not start"
+      "UNIO_ADMISSION_STARTUP holder did not start (deadline=${admission_timeout}s phase=startup)"
     return 2
   fi
   local -a reply=()
-  local line="" remain=0
+  local line="" remain=0 read_rc=0 phase="reply"
   while [ "${#reply[@]}" -lt 5 ]; do
     remain=$((deadline - SECONDS))
     if [ "$remain" -le 0 ]; then
+      phase="deadline"
       break
     fi
-    if ! IFS= read -r -t "$remain" -u "$POLICY_RD" line; then
+    line=""
+    IFS= read -r -t "$remain" -u "$POLICY_RD" line && read_rc=0 || read_rc=$?
+    if [ "$read_rc" -ne 0 ]; then
+      if [ "$read_rc" -gt 128 ]; then phase="deadline"
+      elif [ -n "$line" ] || [ "${#reply[@]}" -gt 0 ]; then phase="partial"
+      else phase="eof"; fi
       break
     fi
     reply+=("$line")
@@ -29218,9 +29236,10 @@ policy_admit_hold() { # $1=root $2=agent $3=worker $4=task $5=kind $6=origfile
   broker=$(policy_broker_reason "$err" || true)
   if [ "${#reply[@]}" -ne 5 ] || [ "${reply[4]:-}" != "COMPLETE" ]; then
     if [ -n "$broker" ]; then
-      why="$broker"
+      why="$broker (deadline=${admission_timeout}s phase=holder-refusal)"
     else
-      why="admission handshake failed (timeout, EOF, or partial reply; no provider started)"
+      [ "$phase" != reply ] || phase="partial"
+      why="UNIO_ADMISSION_${phase^^} admission handshake phase=$phase deadline=${admission_timeout}s complete_lines=${#reply[@]}/5; no provider started. Inspect holder startup/IPC; do not infer budget capacity or a filesystem cause."
     fi
     policy_fail_admission "$root" "$worker" "$task" "$kind" "$agent" "$why"
     return 2
