@@ -23558,7 +23558,10 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
         if snapshot(root,worker,task)!=current_rev: observation.append('revision_changed')
         if review_config_hash()!=config_hash: observation.append('config_changed')
     except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
-    if observation:
+    # A collection failure limits completeness, not independently verified
+    # receipt freshness. Keep a current refusal blocking alongside partial sets.
+    if any(reason not in ('collection_folder_bound','collection_incomplete',
+                          'invalid_collection_evidence') for reason in observation):
         for row in rows: row['current']=False
         # Drift or a busy worker makes actionable findings unavailable.
         extracted=[]
