@@ -118,12 +118,12 @@ def parse(text):
             "malformed '## Required artifacts' section: section declares no artifacts; "
             "list at least one artifact or omit the section")
 
-    if len(artifacts) > MAX_ARTIFACT_COUNT:
+    if not artifacts or len(artifacts) > MAX_ARTIFACT_COUNT:
         raise DeliveryError(
             "too many artifacts (" + str(len(artifacts)) +
             "); count exceeds bound of " + str(MAX_ARTIFACT_COUNT))
 
-    return artifacts
+    return validate_artifacts(artifacts)
 
 
 def read_task(path):
@@ -162,6 +162,8 @@ def validate_artifact_path(name):
             raise DeliveryError("invalid artifact name: " + _shown(name) + "; must be a safe relative path")
         if not re.fullmatch(r'[A-Za-z0-9_.-]+', part):
             raise DeliveryError("invalid artifact name: " + _shown(name))
+    if name.split('/')[0].casefold() in ('binding.json', 'prompt.md'):
+        raise DeliveryError('reserved engine metadata name: ' + name)
     return name
 
 
@@ -176,7 +178,7 @@ def validate_artifacts(artifacts):
     if not isinstance(artifacts, list):
         raise DeliveryError('artifacts must be a list')
 
-    if len(artifacts) > MAX_ARTIFACT_COUNT:
+    if not artifacts or len(artifacts) > MAX_ARTIFACT_COUNT:
         raise DeliveryError(
             "too many artifacts (" + str(len(artifacts)) +
             "); count exceeds bound of " + str(MAX_ARTIFACT_COUNT))
@@ -187,67 +189,87 @@ def validate_artifacts(artifacts):
         name = validate_artifact_path(name)
         if name in seen:
             raise DeliveryError("duplicate artifact name: " + _shown(name))
+        if any(name.casefold() == v.casefold() or name.casefold().startswith(v.casefold() + '/') or v.casefold().startswith(name.casefold() + '/') for v in seen):
+            raise DeliveryError('artifact path collision: ' + name)
         seen.add(name)
         validated.append(name)
 
     return validated
 
 
-def read_artifact(path, limit=MAX_ARTIFACT_SIZE):
-    """Read and validate an artifact file.
-
-    Returns the file contents as bytes.
-    Raises DeliveryError if the file is unsafe or invalid.
-    """
-    path = Path(path)
-
-    # Validate path is within delivery directory (no symlink traversal)
-    fd = os.open(str(path.parent), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+def directory_fd(path):
+    """Walk every component without following symlinks, including ancestors."""
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        # Open the file with O_NOFOLLOW and O_NONBLOCK
-        f = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
-        try:
-            info = os.fstat(f)
-            # Must be a regular file
-            if not stat.S_ISREG(info.st_mode):
-                raise DeliveryError('artifact must be a regular file')
-            # Must have exactly one hard link
-            if info.st_nlink != 1:
-                raise DeliveryError('artifact must have exactly one hard link')
-            # Must be owned by current user
-            if info.st_uid != os.getuid():
-                raise DeliveryError('artifact must be owned by current user')
-            # Size must be within bounds
-            if not 0 < info.st_size <= limit:
-                raise DeliveryError(
-                    'artifact size ' + str(info.st_size) +
-                    ' out of bounds (1..' + str(limit) + ')')
-
-            # Read the file
-            data = os.read(f, limit + 1)
-            if len(data) > limit:
-                raise DeliveryError('artifact exceeds size limit')
-
-            # Check that file didn't change during read
-            after = os.fstat(f)
-            if (info.st_size, info.st_mtime_ns, info.st_ctime_ns) != \
-               (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
-                raise DeliveryError('artifact changed while reading')
-
-            # Must be valid UTF-8
-            try:
-                data.decode('utf-8')
-            except UnicodeError:
-                raise DeliveryError('artifact must be valid UTF-8') from None
-
-            if b'\x00' in data:
-                raise DeliveryError('artifact contains NUL bytes')
-
-            return data
-        finally:
-            os.close(f)
-    finally:
+        for part in os.path.abspath(path).split('/')[1:]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
         os.close(fd)
+        raise
+
+
+def identity(info):
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+
+def read_evidence(path, limit=MAX_ARTIFACT_SIZE):
+    path = Path(path)
+    parent = directory_fd(path.parent)
+    try:
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid != os.getuid() or not 0 < info.st_size <= limit):
+                raise DeliveryError('evidence must be bounded, owned, singly-linked regular text')
+            data = b''
+            while len(data) <= limit:
+                chunk = os.read(fd, limit + 1 - len(data))
+                if not chunk:
+                    break
+                data += chunk
+            after = os.fstat(fd)
+            named = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+            # Reopen the full path as well: an ancestor may have been replaced.
+            again = directory_fd(path.parent)
+            try:
+                current = os.stat(path.name, dir_fd=again, follow_symlinks=False)
+            finally:
+                os.close(again)
+            if any(identity(x) != identity(info) for x in (after, named, current)) or len(data) != info.st_size:
+                raise DeliveryError('evidence changed during read')
+            data.decode('utf-8')
+            if b'\0' in data:
+                raise DeliveryError('evidence contains NUL')
+            return data, identity(info)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(parent)
+
+
+def read_artifact(path, limit=MAX_ARTIFACT_SIZE):
+    try:
+        return read_evidence(path, limit)[0]
+    except UnicodeError:
+        raise DeliveryError('artifact must be valid UTF-8') from None
+
+
+def write_metadata(directory, name, data):
+    parent = directory_fd(directory)
+    try:
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK, 0o400, dir_fd=parent)
+        try:
+            view = memoryview(data)
+            while view:
+                view = view[os.write(fd, view):]
+        finally:
+            os.close(fd)
+    finally:
+        os.close(parent)
 
 
 def validate_artifact(path, expected_hash, limit=MAX_ARTIFACT_SIZE):

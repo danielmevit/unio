@@ -18,6 +18,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = Path(os.environ.get('TMPDIR', str(ROOT / 'tmp')))
+FIXTURES.mkdir(parents=True, exist_ok=True)
 
 
 class RequiredDeliveryContract(unittest.TestCase):
@@ -99,7 +101,7 @@ class RequiredDeliveryIntegration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='required-delivery-', dir='/dev/shm')
+        cls.tmp = tempfile.TemporaryDirectory(prefix='required-delivery-', dir=FIXTURES)
         cls.base = Path(cls.tmp.name)
         cls.env = {k: v for k, v in os.environ.items()
                    if not k.startswith(('UNIO_', 'GIT_', 'PYTHON')) and k != 'BASH_ENV'}
@@ -237,7 +239,7 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         self.configure(source)
         self.task('incomplete-delivery', artifacts=['report.txt', 'summary.md'])
         self.call('run', 'mock', 'incomplete-delivery')
-        self.call('verify', 'mock', 'incomplete-delivery')
+        self.call('verify', 'mock', 'incomplete-delivery', code=1)
         result = self.data('incomplete-delivery')
         # Delivery should be incomplete
         self.assertIn('delivery', result)
@@ -397,7 +399,7 @@ class RequiredDeliveryBinding(unittest.TestCase):
         d = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(d)
 
-        with tempfile.TemporaryDirectory(prefix='hash-test-', dir='/dev/shm') as tmp:
+        with tempfile.TemporaryDirectory(prefix='hash-test-', dir=FIXTURES) as tmp:
             tmp = Path(tmp)
             delivery_dir = tmp / 'delivery'
             delivery_dir.mkdir()
