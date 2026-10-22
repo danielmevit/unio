@@ -14,12 +14,27 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = Path(os.environ.get('TMPDIR',str(ROOT/'tmp')))
+FIXTURES.mkdir(parents=True,exist_ok=True)
 spec = importlib.util.spec_from_file_location('outcomes', ROOT/'tools/task-outcomes.py')
 outcomes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(outcomes)
 
 
 class Metadata(unittest.TestCase):
+    def test_report_channel_refuses_symlink_ancestors(self):
+        with tempfile.TemporaryDirectory(dir=FIXTURES) as tmp:
+            root=Path(tmp); (root/'outside/sub').mkdir(parents=True)
+            (root/'linked').symlink_to(root/'outside',target_is_directory=True)
+            prior=os.environ.get('UNIO_TASK_REPORT')
+            os.environ['UNIO_TASK_REPORT']=str(root/'linked/sub/incoming.txt')
+            try:
+                with self.assertRaises(OSError): outcomes.publish_report('native report')
+            finally:
+                if prior is None: os.environ.pop('UNIO_TASK_REPORT')
+                else: os.environ['UNIO_TASK_REPORT']=prior
+            self.assertFalse((root/'outside/sub/incoming.txt').exists())
+
     def test_modes_and_legacy(self):
         self.assertIsNone(outcomes.parse('# task\nimplementation prose\n'))
         for mode in outcomes.MODES:
@@ -52,7 +67,7 @@ class Metadata(unittest.TestCase):
 class Native(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='unio-outcomes-', dir=os.environ.get('TMPDIR',str(ROOT/'tmp')))
+        cls.tmp = tempfile.TemporaryDirectory(prefix='unio-outcomes-', dir=FIXTURES)
         cls.base = Path(cls.tmp.name)
         cls.env = {k:v for k,v in os.environ.items() if not k.startswith(('UNIO_', 'GIT_', 'PYTHON')) and k!='BASH_ENV'}
         cls.env.update(UNIO_BIN_DIR=str(cls.base/'bin'), UNIO_CONF_DIR=str(cls.base/'conf'),

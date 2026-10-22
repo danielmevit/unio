@@ -256,7 +256,7 @@ class RequiredDeliveryIntegration(unittest.TestCase):
                   'printf "partial report" > "$UNIO_DELIVERY_DIR/report.txt" && '
                   'exit 7')
         self.configure(source)
-        self.task('failed-source', artifacts=['report.txt', 'summary.md'])
+        self.task('failed-source', artifacts=['report.txt', 'summary.md'], mode=None)
         cp = self.call('run', 'mock', 'failed-source', code=7)
         self.call('verify', 'mock', 'failed-source', code=1)
         result = self.data('failed-source')
@@ -266,6 +266,11 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         self.assertIn('delivery', result)
         self.assertEqual(result['delivery']['state'], 'incomplete')
         self.assertEqual(result['delivery']['artifact_count'], 1)
+        packet=Path(self.call('handoff','mock','failed-source').stdout.strip())
+        partial=json.loads((packet/'result.json').read_text())
+        self.assertEqual(partial['delivery']['state'],'incomplete')
+        self.assertEqual((packet/'delivery/report.txt').read_bytes(),b'partial report')
+        self.assertIn('Delivery: incomplete',(packet/'HANDOFF.md').read_text())
 
     def test_artifact_bounds_oversized(self):
         """Oversized artifact fails validation."""
@@ -394,6 +399,18 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         self.assertFalse(marker.exists())
         self.call('handoff','mock',name,code=2)
 
+    def test_source_metadata_symlink_never_written_through(self):
+        outside=self.base/'outside-binding.txt'; outside.write_text('untouched outside bytes')
+        self.configure('printf "artifact" > "$UNIO_DELIVERY_DIR/report.txt"; '
+                       'rm "$UNIO_DELIVERY_BINDING"; ln -s '+shlex.quote(str(outside))+
+                       ' "$UNIO_DELIVERY_BINDING"; printf "native report"')
+        name='source-binding-link'; self.task(name,artifacts=['report.txt'])
+        self.call('run','mock',name)
+        self.assertEqual(outside.read_text(),'untouched outside bytes')
+        d=self.data(name); self.assertEqual(d['process']['exit_code'],0)
+        self.assertEqual(d['delivery']['state'],'stale')
+        self.call('verify','mock',name,code=1)
+
     def test_timeout_retains_source_exit_and_partial_delivery(self):
         self.configure('printf "partial" > "$UNIO_DELIVERY_DIR/report.txt"; printf "native report"; sleep 5')
         name='delivery-timeout'; self.task(name,artifacts=['report.txt','missing.txt'])
@@ -426,7 +443,7 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         directory=self.root/'coord/results/mock'/ (name+'.outcomes')/original['delivery']['run_id']/'delivery'
         for key,value in (('run_id','../../outside'),('task','other'),('worker','other'),
                           ('command_sha256','0'*64),('schema_version',True),('artifact_count',99),
-                          ('artifact_hashes',{}),('artifacts',['../unsafe']),('binding_sha256','bad')):
+                          ('artifact_hashes',{}),('unexpected',1),('artifact_count',True),('artifacts',['../unsafe']),('artifacts',None),('binding_sha256','bad')):
             with self.subTest(key=key):
                 d=json.loads(saved); d['delivery'][key]=value; result_path.write_text(json.dumps(d))
                 cp=subprocess.run([self.at,'result','mock',name],cwd=self.repo,env=self.env,
@@ -436,6 +453,8 @@ class RequiredDeliveryIntegration(unittest.TestCase):
                     self.assertFalse(observed['ready_for_human_review'])
                     self.assertTrue(observed['stale'])
                 else: self.assertNotEqual(cp.returncode,0)
+        d=json.loads(saved); d.pop('delivery'); result_path.write_text(json.dumps(d))
+        missing=self.data(name); self.assertTrue(missing['stale']); self.assertFalse(missing['ready_for_human_review'])
         result_path.write_bytes(saved)
         # Each independent mutation starts from the original saved observation.
         for filename,contents in (('binding.json',b'{}'),('prompt.md',b'unrelated prompt'),('report.txt',b'changed artifact')):
@@ -458,6 +477,9 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         directory=self.root/'coord/results/mock'/(name+'.outcomes')/current['delivery']['run_id']/'delivery'
         (directory/'report.txt').unlink()
         self.assertTrue(self.data(name)['stale'])
+        self.call('run','mock',name)
+        tf=self.root/'coord/tasks'/(name+'.md'); tf.write_text(tf.read_text()+'\nchanged task bytes\n')
+        self.assertTrue(self.data(name)['stale'])
 
     def test_fresh_runs_verify_environment_and_no_replay(self):
         source='printf "delivered" > "$UNIO_DELIVERY_DIR/report.txt"; printf "native report"'
@@ -470,6 +492,7 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         finally:
             self.env.pop('UNIO_DELIVERY_DIR'); self.env.pop('UNIO_DELIVERY_BINDING')
         self.configure('printf "native report only"')
+        self.assertTrue(self.data(name)['stale'])
         self.call('run','mock',name)
         d=self.data(name); self.assertNotEqual(first,d['delivery']['run_id'])
         self.assertEqual(d['delivery']['artifact_count'],0)
@@ -485,6 +508,7 @@ class RequiredDeliveryIntegration(unittest.TestCase):
     def test_unsafe_nested_artifacts_never_delivered(self):
         outside=self.base/'outside'; outside.mkdir(exist_ok=True)
         (outside/'report.txt').write_text('must not be captured')
+        (outside/'sub').mkdir(exist_ok=True); (outside/'sub/report.txt').write_text('outside nested report')
         cases=[('linked/sub/report.txt','mkdir -p '+shlex.quote(str(outside/'sub'))+'; ln -s '+shlex.quote(str(outside))+' "$UNIO_DELIVERY_DIR/linked"'),
                ('report.txt','mkfifo "$UNIO_DELIVERY_DIR/report.txt"'),
                ('report.txt','ln '+shlex.quote(str(outside/'report.txt'))+' "$UNIO_DELIVERY_DIR/report.txt"'),
