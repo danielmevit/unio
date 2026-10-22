@@ -453,6 +453,8 @@ class RequiredDeliveryIntegration(unittest.TestCase):
                     self.assertFalse(observed['ready_for_human_review'])
                     self.assertTrue(observed['stale'])
                 else: self.assertNotEqual(cp.returncode,0)
+        d=json.loads(saved); d['schema_version']=True; result_path.write_text(json.dumps(d))
+        self.call('result','mock',name,code=2)
         d=json.loads(saved); d.pop('delivery'); result_path.write_text(json.dumps(d))
         missing=self.data(name); self.assertTrue(missing['stale']); self.assertFalse(missing['ready_for_human_review'])
         result_path.write_bytes(saved)
@@ -551,6 +553,16 @@ class RequiredDeliveryBinding(unittest.TestCase):
         self.assertEqual(binding['run'], 'a' * 32)
         self.assertEqual(binding['artifacts'], ['report.txt', 'summary.md'])
         self.assertEqual(binding['schema_version'], 1)
+
+    def test_metadata_write_refuses_ancestor_symlink(self):
+        spec=importlib.util.spec_from_file_location('delivery',ROOT/'tools/required-delivery.py')
+        d=importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
+        with tempfile.TemporaryDirectory(dir=FIXTURES) as tmp:
+            root=Path(tmp); (root/'outside/sub').mkdir(parents=True)
+            (root/'linked').symlink_to(root/'outside',target_is_directory=True)
+            with self.assertRaises(OSError):
+                d.write_metadata(root/'linked/sub','binding.json',b'{}')
+            self.assertFalse((root/'outside/sub/binding.json').exists())
 
     def test_all_component_nofollow_reader(self):
         spec=importlib.util.spec_from_file_location('delivery',ROOT/'tools/required-delivery.py')

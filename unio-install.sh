@@ -23823,12 +23823,12 @@ def delivery_schema(v, worker, task):
     for name, digest in hashes.items():
         if not isinstance(digest,str) or not re.fullmatch('[a-f0-9]{64}',digest): fail('malformed artifact hash')
         ident = identities[name]
-        if not isinstance(ident,list) or len(ident)!=5 or any(type(x) is not int or x<0 for x in ident): fail('malformed artifact identity')
+        if not isinstance(ident,list) or len(ident)!=5 or any(type(x) is not int for x in ident) or any(x<0 for x in ident[:3]): fail('malformed artifact identity')
         if not 0 < ident[2] <= 262144: fail('malformed artifact size')
     mi=v['metadata_identities']
     if not isinstance(mi,dict) or set(mi)!={'binding.json','prompt.md'}: fail('malformed metadata identities')
     for ident in mi.values():
-        if not isinstance(ident,list) or len(ident)!=5 or any(type(x) is not int or x<0 for x in ident): fail('malformed metadata identity')
+        if not isinstance(ident,list) or len(ident)!=5 or any(type(x) is not int for x in ident) or any(x<0 for x in ident[:3]): fail('malformed metadata identity')
     di=v['directory_identity']
     if not isinstance(di,list) or len(di)!=2 or any(type(x) is not int or x<0 for x in di): fail('malformed directory identity')
     if v['state']=='complete' and missing: fail('inconsistent complete delivery')
@@ -24041,6 +24041,7 @@ def valid_document(d, worker, task):
     if 'lead' in d and d['lead'] != {'state': 'Unknown'}:
         fail('malformed lead acceptance state')
     if 'delivery' in d:
+        if type(d['schema_version']) is not int: fail('malformed delivery result schema')
         delivery_schema(d['delivery'],worker,task)
     if 'outcome' in d:
         o=d['outcome']
@@ -25569,9 +25570,10 @@ def handoff(root,worker,task):
                 if os.path.exists(art_src):
                     art_data = delivery_ns['read_artifact'](art_src,1048576 if a in ('binding.json','prompt.md') else 262144)
                     art_dst = os.path.join(deliv_tmp, a)
-                    os.makedirs(os.path.dirname(art_dst), exist_ok=True)
-                    with open(art_dst, 'xb') as f:
-                        f.write(art_data)
+                    destination = os.path.dirname(art_dst)
+                    parent_fd = storage_directory(destination, create=True)
+                    os.close(parent_fd)
+                    delivery_ns['write_metadata'](destination, os.path.basename(art_dst), art_data)
         v=d['validation']; r=d['review']; p=d['process']
         summary=json.dumps(ch,ensure_ascii=True,indent=2)
         text=f'''# Same-checkout AI handoff: {worker} / {task}
