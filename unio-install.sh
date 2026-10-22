@@ -32313,6 +32313,7 @@ cmd_verify() {
     echo "### verify $(date -Is) — worker=$worker scope=$scope validate=$((vrun-vfail))/$vrun empty=$empty verdict=$verdict"
     [ -z "$reasons" ] || echo "reasons: $reasons"
     [ "$tampered" = 1 ] && echo "!! task file changed since the run — the scope being enforced is not the scope that was dispatched"
+    [ "$delivery_failed" = 1 ] && echo "!! DELIVERY FAILED — $delivery_error"
     if [ ${#scope_warnings[@]} -gt 0 ]; then
       local w
       for w in "${scope_warnings[@]:0:10}"; do
