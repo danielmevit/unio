@@ -81,7 +81,7 @@ class RequiredDeliveryContract(unittest.TestCase):
 
         # Empty name
         with self.assertRaises(d.DeliveryError):
-            d.parse('## Required artifacts\n\nreport.txt\n')
+            d.validate_artifact_path('')
 
     def test_parse_multiple_sections(self):
         """Duplicate sections are refused."""
@@ -167,7 +167,7 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         return tf
 
     def configure(self, source='printf "native report"'):
-        self.conf.write_text('mock=' + shlex.quote(source) + '\n')
+        self.conf.write_text('mock=' + source + '\n')
 
     def data(self, name):
         return json.loads(self.call('result', 'mock', name).stdout)
@@ -216,7 +216,8 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         artifact_dir = self.wt / 'delivery'
         source = ('mkdir -p "$UNIO_DELIVERY_DIR" && '
                   'printf "report content" > "$UNIO_DELIVERY_DIR/report.txt" && '
-                  'printf "summary content" > "$UNIO_DELIVERY_DIR/summary.md"')
+                  'printf "summary content" > "$UNIO_DELIVERY_DIR/summary.md" && '
+                  'printf "native report"')
         self.configure(source)
         self.task('complete-delivery', artifacts=['report.txt', 'summary.md'])
         self.call('run', 'mock', 'complete-delivery')
@@ -231,7 +232,8 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         """Source exits zero but missing artifact => incomplete delivery, not ready."""
         # Configure mock to write only one artifact
         source = ('mkdir -p "$UNIO_DELIVERY_DIR" && '
-                  'printf "report content" > "$UNIO_DELIVERY_DIR/report.txt"')
+                  'printf "report content" > "$UNIO_DELIVERY_DIR/report.txt" && '
+                  'printf "acknowledged"')
         self.configure(source)
         self.task('incomplete-delivery', artifacts=['report.txt', 'summary.md'])
         self.call('run', 'mock', 'incomplete-delivery')
@@ -267,7 +269,7 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         """Oversized artifact fails validation."""
         # Write an oversized artifact (262145 bytes > 262144 limit)
         source = ('mkdir -p "$UNIO_DELIVERY_DIR" && '
-                  'python3 -c "import sys; sys.stdout.buffer.write(b\"x\" * 262145)" > "$UNIO_DELIVERY_DIR/report.txt"')
+                  'python3 -c "print(chr(120)*262145, end=\\"\\")" > "$UNIO_DELIVERY_DIR/report.txt"')
         self.configure(source)
         self.task('oversized-artifact', artifacts=['report.txt'])
         self.call('run', 'mock', 'oversized-artifact')
@@ -293,7 +295,8 @@ class RequiredDeliveryIntegration(unittest.TestCase):
     def test_artifact_tamper_stale_delivery(self):
         """Artifact modification after verification makes delivery stale."""
         source = ('mkdir -p "$UNIO_DELIVERY_DIR" && '
-                  'printf "original content" > "$UNIO_DELIVERY_DIR/report.txt"')
+                  'printf "original content" > "$UNIO_DELIVERY_DIR/report.txt" && '
+                  'printf "native report"')
         self.configure(source)
         self.task('tamper-test', artifacts=['report.txt'])
         self.call('run', 'mock', 'tamper-test')
@@ -302,13 +305,15 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         self.assertEqual(result['delivery']['state'], 'complete')
 
         # Tamper with the artifact
-        delivery_dir = self.wt / 'coord' / 'results' / 'mock' / ('tamper-test.outcomes')
+        delivery_dir = self.root / 'coord' / 'results' / 'mock' / ('tamper-test.outcomes')
+        if not delivery_dir.exists():
+            delivery_dir = self.wt / 'coord' / 'results' / 'mock' / ('tamper-test.outcomes')
         for run_dir in delivery_dir.iterdir():
             if run_dir.is_dir():
-                artifact = run_dir / 'report.txt'
-                if artifact.exists():
-                    artifact.write_text('tampered content')
-                    break
+                for artifact in (run_dir / 'delivery' / 'report.txt', run_dir / 'report.txt'):
+                    if artifact.exists():
+                        artifact.write_text('tampered content')
+                        break
 
         # Re-verify should show stale
         self.call('verify', 'mock', 'tamper-test', code=1)
@@ -350,15 +355,10 @@ class RequiredDeliveryIntegration(unittest.TestCase):
 
     def test_implementation_with_artifacts(self):
         """Implementation task with required artifacts."""
-        # Implementation tasks require repository access
-        # For mock, we just test the artifact validation
-        source = ('mkdir -p "$UNIO_DELIVERY_DIR" && '
-                  'printf "implementation report" > "$UNIO_DELIVERY_DIR/report.txt"')
-        self.configure(source)
+        adapters = self.base / 'conf' / 'lib' / 'adapters'
+        self.configure('python3 ' + shlex.quote(str(adapters / 'copilot-worker.py')))
         self.task('impl-artifacts', artifacts=['report.txt'], mode='implementation')
-        # Mock doesn't have repo access, but we test the artifact part
         cp = self.call('run', 'mock', 'impl-artifacts', code=2)
-        # Should fail due to implementation requiring repo access for mock
         self.assertIn('blocked', cp.stderr.lower())
 
 

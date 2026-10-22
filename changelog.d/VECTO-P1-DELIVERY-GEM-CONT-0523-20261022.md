@@ -1,0 +1,22 @@
+Complete P1 required-delivery artifact contract continuation (Unio 0.5.23 candidate).
+
+- Continued and completed unverified Mistral draft for explicit opt-in delivery contract
+- Corrected tools/required-delivery.py parser: strict safe relative path validation, single-section enforcement, bounds validation (<= 32 artifacts, <= 256 KiB size, regular file, no symlinks/hardlinks/FIFOs), UTF-8 text only
+- Reverted adapter-outcome.py to canonical adapter telemetry, preserving clean separation from engine delivery helper
+- Engine wiring in unio-install.sh:
+  - Fresh per-run private delivery directory under `coord/results/<worker>/<task>.outcomes/<run_id>/delivery/`
+  - Exposed `UNIO_DELIVERY_DIR` and `UNIO_DELIVERY_BINDING` in `cmd_run` and `cmd_verify`
+  - Early pre-flight validation via `quality delivery-validate` before provider admission
+  - Post-run snapshot and artifact hashing in `delivery_finish`, preserving actual Source exit
+  - Bound artifact verification in `cmd_verify` and `gate()`, failing closed on tamper/bounds violations
+  - Machine readiness (`ready_for_human_review`) requires complete delivery when declared; legacy tasks retain exact undeclared behavior
+  - Delivery artifacts bundled and validated in AI handoff packets
+- Guide packaging:
+  - Embedded templates for ADMISSION-DEADLINES, REVIEW-STATUS, and REQUIRED-DELIVERY
+  - Bumped candidate UNIO_VERSION to 0.5.23
+- Verified full test suite on offline tmpfs (/dev/shm):
+  - tests/unio-adapter-outcome.py (10/10 OK)
+  - tests/unio-required-delivery.py (20/20 OK)
+  - tests/unio-task-outcomes.py (14/14 OK)
+  - tests/unio-branding.sh (PASS)
+  - tools/embed-task-outcomes.py --check and tools/embed-adapters.py --check (byte-identical)

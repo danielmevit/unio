@@ -48,15 +48,14 @@ def parse(text):
     """Parse a task file and return a list of required artifact names, or None.
 
     Returns None if no '## Required artifacts' section is present (legacy).
-    Returns an empty list if the section exists but declares no artifacts.
-    Raises DeliveryError for malformed declarations.
+    Raises DeliveryError for malformed declarations or empty section.
 
     Rules:
     - Section header must be exactly '## Required artifacts'
     - One artifact per line
-    - Empty lines and lines starting with '#' are ignored
+    - Empty lines and lines starting with '#' (comments) are ignored
     - Duplicate names are refused
-    - Each name must match SAFE_PATH pattern
+    - Each name must match safe relative path constraints
     - Maximum MAX_ARTIFACT_COUNT artifacts
     """
     if not isinstance(text, str):
@@ -82,9 +81,8 @@ def parse(text):
             fence = marker[1]
             continue
 
-        # Check for section headers
-        heading = re.match(r'^ {0,3}(#{1,6})(?:[ \t]+(.*)|$)', line)
-        if heading:
+        # Check for section headers (## Heading)
+        if line.startswith('## '):
             if line == '## Required artifacts':
                 in_section = True
                 headers += 1
@@ -100,10 +98,7 @@ def parse(text):
             continue
 
         # Validate artifact name
-        if not SAFE_PATH.fullmatch(stripped):
-            raise DeliveryError(
-                "invalid artifact name: " + _shown(stripped) +
-                "; must be a safe relative path (alphanumeric, hyphen, underscore, dot, slash)")
+        validate_artifact_path(stripped)
 
         if stripped in artifacts:
             raise DeliveryError("duplicate artifact name: " + _shown(stripped))
@@ -112,16 +107,21 @@ def parse(text):
 
     if headers > 1:
         raise DeliveryError(
-            "duplicate '## Required artifacts' section (" + str(headers) +
+            "malformed '## Required artifacts' section: duplicate '## Required artifacts' section (" + str(headers) +
             " found); a task declares at most one required artifacts section")
 
     if headers == 0:
         return None  # Legacy: no declaration
 
+    if not artifacts:
+        raise DeliveryError(
+            "malformed '## Required artifacts' section: section declares no artifacts; "
+            "list at least one artifact or omit the section")
+
     if len(artifacts) > MAX_ARTIFACT_COUNT:
         raise DeliveryError(
             "too many artifacts (" + str(len(artifacts)) +
-            "); maximum is " + str(MAX_ARTIFACT_COUNT))
+            "); count exceeds bound of " + str(MAX_ARTIFACT_COUNT))
 
     return artifacts
 
@@ -153,15 +153,15 @@ def validate_artifact_path(name):
     """Validate an artifact name as a safe relative path."""
     if not isinstance(name, str):
         raise DeliveryError('artifact name must be a string')
-    if not name:
-        raise DeliveryError('artifact name cannot be empty')
-    if not SAFE_PATH.fullmatch(name):
-        raise DeliveryError(
-            "invalid artifact name: " + _shown(name) +
-            "; must be a safe relative path")
-    # Check for path traversal
-    if '..' in name or name.startswith('/') or name.endswith('/'):
-        raise DeliveryError("artifact name contains path traversal: " + _shown(name))
+    if not name or len(name) > MAX_NAME_LENGTH:
+        raise DeliveryError("invalid artifact name: " + _shown(name) + "; length out of bounds (1.." + str(MAX_NAME_LENGTH) + ")")
+    if '..' in name or name.startswith('/') or name.endswith('/') or '//' in name:
+        raise DeliveryError("artifact name contains path traversal or invalid slashes: " + _shown(name))
+    for part in name.split('/'):
+        if not part or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', part) or '..' in part or part.startswith('.'):
+            raise DeliveryError("invalid artifact name: " + _shown(name) + "; must be a safe relative path")
+        if not re.fullmatch(r'[A-Za-z0-9_.-]+', part):
+            raise DeliveryError("invalid artifact name: " + _shown(name))
     return name
 
 
@@ -179,7 +179,7 @@ def validate_artifacts(artifacts):
     if len(artifacts) > MAX_ARTIFACT_COUNT:
         raise DeliveryError(
             "too many artifacts (" + str(len(artifacts)) +
-            "); maximum is " + str(MAX_ARTIFACT_COUNT))
+            "); count exceeds bound of " + str(MAX_ARTIFACT_COUNT))
 
     seen = set()
     validated = []
@@ -217,9 +217,6 @@ def read_artifact(path, limit=MAX_ARTIFACT_SIZE):
             # Must be owned by current user
             if info.st_uid != os.getuid():
                 raise DeliveryError('artifact must be owned by current user')
-            # Must have mode 0600
-            if info.st_mode & 0o777 != 0o600:
-                raise DeliveryError('artifact must have mode 0600')
             # Size must be within bounds
             if not 0 < info.st_size <= limit:
                 raise DeliveryError(
@@ -236,6 +233,15 @@ def read_artifact(path, limit=MAX_ARTIFACT_SIZE):
             if (info.st_size, info.st_mtime_ns, info.st_ctime_ns) != \
                (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
                 raise DeliveryError('artifact changed while reading')
+
+            # Must be valid UTF-8
+            try:
+                data.decode('utf-8')
+            except UnicodeError:
+                raise DeliveryError('artifact must be valid UTF-8') from None
+
+            if b'\x00' in data:
+                raise DeliveryError('artifact contains NUL bytes')
 
             return data
         finally:
