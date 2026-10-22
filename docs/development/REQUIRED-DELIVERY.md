@@ -38,8 +38,11 @@ Source and a later, separate `verify` receive:
 - `UNIO_DELIVERY_BINDING`: its immutable `binding.json` path.
 
 Both values are cleared for undeclared tasks, including inherited values.
-Validation commands may read the current artifacts; changing observed output
-invalidates it. Source must create nested artifact directories itself.
+Verify checks required delivery before exporting these paths or running
+validation commands. Unsafe, changed or incomplete evidence blocks validation;
+its counters remain zero and the report records the delivery reason. A second
+check detects validation-time mutations. Validation commands may read current
+artifacts; changing observed output invalidates it. Source must create nested artifact directories itself.
 
 The engine writes a read-only dispatch binding and prompt using exclusive,
 non-following opens. It never rewrites them at finalization. The binding records
