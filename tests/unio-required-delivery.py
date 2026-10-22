@@ -404,12 +404,15 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         self.configure('printf "artifact" > "$UNIO_DELIVERY_DIR/report.txt"; '
                        'rm "$UNIO_DELIVERY_BINDING"; ln -s '+shlex.quote(str(outside))+
                        ' "$UNIO_DELIVERY_BINDING"; printf "native report"')
-        name='source-binding-link'; self.task(name,artifacts=['report.txt'])
+        leaked=self.base/'validation-leaked-binding'
+        name='source-binding-link'; self.task(name,artifacts=['report.txt'],
+            validate='$ cat "$UNIO_DELIVERY_BINDING" > '+shlex.quote(str(leaked)))
         self.call('run','mock',name)
         self.assertEqual(outside.read_text(),'untouched outside bytes')
         d=self.data(name); self.assertEqual(d['process']['exit_code'],0)
         self.assertEqual(d['delivery']['state'],'stale')
         self.call('verify','mock',name,code=1)
+        self.assertFalse(leaked.exists(), 'unsafe binding must refuse before validation')
 
     def test_timeout_retains_source_exit_and_partial_delivery(self):
         self.configure('printf "partial" > "$UNIO_DELIVERY_DIR/report.txt"; printf "native report"; sleep 5')

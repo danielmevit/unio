@@ -32218,15 +32218,23 @@ cmd_verify() {
 
   # validate: every "$ cmd" line under "## Validate" must exit 0, run in wt
   export UNIO_DELIVERY_DIR="" UNIO_DELIVERY_BINDING=""
+  local delivery_failed=0 delivery_error=""
+  if delivery_error=$(quality delivery-check "$root" "$worker" "$task" 2>&1); then
+    :
+  else
+    delivery_failed=1
+    printf '%s\n' "$delivery_error" >&2
+  fi
   local deliv_dest deliv_binding=""
   deliv_dest=$(quality delivery-dir "$root" "$worker" "$task") || deliv_dest=""
-  if [ -n "$deliv_dest" ]; then
+  if [ "$delivery_failed" = 0 ] && [ -n "$deliv_dest" ]; then
     deliv_binding="$deliv_dest/binding.json"
     export UNIO_DELIVERY_DIR="$deliv_dest"
     export UNIO_DELIVERY_BINDING="$deliv_binding"
   fi
   local vrun=0 vfail=0 vout="" cmd out rc
   while IFS= read -r line; do
+    [ "$delivery_failed" = 0 ] || break
     case "$line" in '$ '*) ;; *) continue;; esac
     cmd="${line#\$ }"
     vrun=$((vrun+1))
@@ -32256,7 +32264,6 @@ cmd_verify() {
       printf '%s\n' "$report_error" >&2
     fi
   fi
-  local delivery_failed=0 delivery_error=""
   if delivery_error=$(quality delivery-check "$root" "$worker" "$task" 2>&1); then
     :
   else
