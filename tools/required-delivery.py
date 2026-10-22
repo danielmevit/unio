@@ -97,6 +97,9 @@ def parse(text):
         if not stripped or stripped.startswith('#'):
             continue
 
+        if line != stripped:
+            raise DeliveryError('artifact declaration must be one plain portable path per line')
+
         # Validate artifact name
         validate_artifact_path(stripped)
 
@@ -127,26 +130,8 @@ def parse(text):
 
 
 def read_task(path):
-    """Bounded regular UTF-8 read; no symlink, FIFO or oversized task."""
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    try:
-        info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= LIMIT:
-            raise DeliveryError('task file must be a regular file of at most 1 MiB')
-        data = b''
-        while len(data) <= LIMIT:
-            chunk = os.read(fd, LIMIT + 1 - len(data))
-            if not chunk:
-                break
-            data += chunk
-    finally:
-        os.close(fd)
-    if len(data) > LIMIT:
-        raise DeliveryError('task file exceeds the 1 MiB bound')
-    try:
-        return data.decode('utf-8')
-    except UnicodeError:
-        raise DeliveryError('task file must be valid UTF-8') from None
+    """Bounded owned regular UTF-8 task, with no symlink ancestors."""
+    return read_artifact(path, LIMIT).decode('utf-8')
 
 
 def validate_artifact_path(name):
@@ -158,6 +143,8 @@ def validate_artifact_path(name):
     if '..' in name or name.startswith('/') or name.endswith('/') or '//' in name:
         raise DeliveryError("artifact name contains path traversal or invalid slashes: " + _shown(name))
     for part in name.split('/'):
+        if part.endswith('.') or part.split('.')[0].casefold() in {'con','prn','aux','nul',*(f'com{i}' for i in range(1,10)),*(f'lpt{i}' for i in range(1,10))}:
+            raise DeliveryError('nonportable artifact name: ' + name)
         if not part or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', part) or '..' in part or part.startswith('.'):
             raise DeliveryError("invalid artifact name: " + _shown(name) + "; must be a safe relative path")
         if not re.fullmatch(r'[A-Za-z0-9_.-]+', part):
@@ -339,10 +326,10 @@ def validate_binding(binding, require_artifacts=False):
                      'task_sha256', 'command_sha256', 'prompt_sha256',
                      'route', 'started_at'}
 
-    if not required_keys <= set(binding):
+    if not required_keys <= set(binding) or not set(binding) <= required_keys | {'artifacts'}:
         return False
 
-    if binding.get('schema_version') != 1:
+    if type(binding.get('schema_version')) is not int or binding.get('schema_version') != 1:
         return False
 
     if not all(isinstance(binding.get(k), str) for k in required_keys - {'schema_version'}):
@@ -363,7 +350,7 @@ def validate_binding(binding, require_artifacts=False):
     if not STAMP.fullmatch(binding.get('started_at')):
         return False
 
-    if require_artifacts:
+    if require_artifacts or 'artifacts' in binding:
         if 'artifacts' not in binding:
             return False
         if not isinstance(binding['artifacts'], list):

@@ -1,28 +1,12 @@
-# Required delivery — explicit artifact contract (Unio 0.5.23)
+# Required delivery — explicit artifact contract (0.5.23 unreleased)
 
-Status: P1 candidate for Unio 0.5.23; additive opt-in contract, no change to legacy behavior.
-
-## Overview
-
-An optional `## Required artifacts` section in a task file declares an explicit
-delivery contract: a bounded set of text artifacts that must be present for the
-delivery to be considered complete. This is an opt-in enhancement that preserves
-existing behavior for tasks without this declaration.
-
-The contract is strictly additive: it does not modify Source exit semantics,
-provider outcomes, or acceptance authority. A Source that exits zero without
-declared artifacts yields an incomplete delivery, clearly visible in result and
-report, never accepted or ready. Required-artifact validation and human acceptance
-remain separate facts.
+This opt-in P1 contract observes explicit text artifacts. It does not establish
+provider identity, effective reasoning effort, lead acceptance, or human approval.
+Tasks without a declaration retain their existing behavior and gates.
 
 ## Declaration
 
-A `## Required artifacts` section contains a list of portable relative logical
-names, one per line. Each name must be a valid identifier (alphanumeric, hyphen,
-underscore, dot; 1–128 characters). Empty lines and lines starting with `#` are
-ignored. Duplicate names are refused before any provider call.
-
-Example:
+Use exactly one section with one plain portable relative path per line:
 
 ```markdown
 ## Required artifacts
@@ -31,120 +15,105 @@ summary.md
 data/results.json
 ```
 
-## Contract
+Blank lines and comment lines beginning with `#` are ignored; fenced examples
+are ignored. Empty, duplicate, malformed and unsafe declarations refuse before
+Source invocation. There are at most 32 names, each at most 128 characters.
+Components begin with an ASCII alphanumeric character and otherwise contain only
+ASCII alphanumerics, dots, underscores and hyphens. Traversal, hidden components,
+Windows device names and trailing dots are refused. Names must be distinct even
+without case, and no name may be another name's directory prefix.
+`binding.json` and `prompt.md` at the delivery root, including their directory
+prefixes and case variants, are reserved for engine metadata. Metadata never
+satisfies required output.
 
-- **Opt-in only**: Tasks without a `## Required artifacts` section retain exact
-  legacy behavior with Unknown/undeclared delivery.
-- **Bounded metadata**: Artifact names are validated before any provider call;
-  malformed, duplicate, or unsafe metadata refuses early.
-- **Engine-owned directory**: A fresh per-run private delivery directory is created
-  and exposed to authorized Source via the `UNIO_DELIVERY_DIR` environment variable.
-  This directory is bound to the exact task/worker/run/dispatch command and revision.
-- **Text artifacts only**: For this P1, only regular UTF-8 text files are supported.
-  Binary assets are deferred to follow-up.
-- **Strict bounds**: Each artifact is validated as a regular file with:
-  - Maximum size: 262144 bytes (256 KiB)
-  - No symlinks, FIFOs, hardlinks, or path traversal
-  - UTF-8 encoding
-  - Single linkage (nlink == 1)
-  - Owned by current UID with mode 0600
-- **Count bounds**: Maximum 32 declared artifacts per task.
-- **No fabrication**: Missing data is never fabricated; incomplete delivery is
-  explicitly visible.
+## Dispatch and environment
 
-## Lifecycle
+The engine exclusively creates a fresh private per-run directory. Precreated
+or populated delivery destinations are refused. Only declared artifacts in that
+directory are observed; ignored repository files are not globally captured.
 
-1. **Prepare**: Before Source invocation, the engine creates a fresh private
-   delivery directory and validates the declared artifact metadata. Any
-   validation failure refuses before the provider call.
-2. **Source execution**: The Source receives `UNIO_DELIVERY_DIR` and may write
-   artifacts to this directory. The Source must create files directly; the engine
-   does not interpret stdout or arbitrary paths.
-3. **Observation**: After Source exit, the engine validates that all declared
-   artifacts exist in the delivery directory with correct bounds. Partial
-   artifacts are preserved; nonzero/timeout exits retain original failure evidence.
-4. **Verification**: The `verify` command checks artifact presence, bounds, and
-   hash consistency against the binding. Artifact mutation/disappearance makes
-   delivery stale/incomplete.
-5. **Review/Handoff**: Complete bounded artifacts and provenance are included in
-   reviewer material or the handoff refuses bounds. No clipping occurs.
+Source and a later, separate `verify` receive:
 
-## Environment
+- `UNIO_DELIVERY_DIR`: the current run's delivery directory.
+- `UNIO_DELIVERY_BINDING`: its immutable `binding.json` path.
 
-- `UNIO_DELIVERY_DIR`: Engine-created current run directory for artifacts.
-  Exposed to Source and validation. Read-only for observation/validation.
-- `UNIO_DELIVERY_BINDING`: Path to the binding.json for the current run.
-  Contains task/worker/run/command/revision hashes for verification.
+Both values are cleared for undeclared tasks, including inherited values.
+Validation commands may read the current artifacts; changing observed output
+invalidates it. Source must create nested artifact directories itself.
 
-## Validation rules
+The engine writes a read-only dispatch binding and prompt using exclusive,
+non-following opens. It never rewrites them at finalization. The binding records
+task, worker, run, command and prompt hashes, declared paths, dispatch revision,
+and directory identity. The dispatch revision includes the original task hash.
+The result additionally records binding hash, metadata identities, artifact
+hashes and identities, counts and missing paths. Optional delivery evidence
+extends result schema 1; undeclared legacy documents need no delivery field.
+Incomplete or malformed declared evidence cannot establish completeness.
 
-- **Binding validation**: Artifacts are bound to exact task/worker/run/dispatch
-  command and revision. Hash drift or tampering makes delivery stale.
-- **Source exit preservation**: Actual Source exit is preserved; nonzero exits
-  retain original reason with partial artifacts counted but not complete.
-- **Adapter evidence separation**: Source/adapter/timeout/provider-limit evidence
-  must be distinct. Unknown for unexported/custom routes.
-- **No provider calls from validation**: Observation and validation perform no
-  provider calls; they only inspect the engine-owned delivery directory.
-- **No shell evaluation**: Declarations are parsed as structured metadata; no
-  arbitrary shell evaluation is performed.
+## Observation and freshness
 
-## Outcomes
+Artifacts must be nonempty UTF-8 text without NUL, regular files owned by the
+current UID with exactly one hard link. Every path component is walked with
+non-following directory descriptors. Symlinks (including ancestor symlinks),
+FIFOs, devices, sockets, directories and hardlinks cannot become delivered files.
+Reads are nonblocking and bounded to 262144 bytes per artifact; 32 artifacts
+bound the total artifact content to 8 MiB. Prompt reads are bounded to 1 MiB.
+The contract does not require worker file mode 0600.
 
-- **Complete**: All declared artifacts present with valid bounds and matching
-  hashes. Delivery state is "complete" but not automatically "ready" or "accepted".
-- **Incomplete**: Any declared artifact missing, oversized, or invalid. Delivery
-  state is "incomplete". Source exit zero with incomplete delivery is not ready.
-- **Stale**: Artifact mutation, disappearance, or binding drift after verification.
-  Delivery state becomes "stale".
-- **Unknown**: No declaration (legacy), malformed metadata, or validation failure.
-  Delivery state is "Unknown/undeclared".
+The engine detects inode/path replacement and size/time changes during reads.
+It records file identity and hashes at Source completion, then rechecks current
+bytes and identity on result, verify, review material and handoff. It also
+rechecks immutable metadata, task declaration/hash, current Source command,
+dispatch binding, Source revision, and any declared outcome's run, binding,
+prompt and available report provenance. Evidence is never upgraded by dropping
+a hash or by writing a missing artifact after Source completion.
 
-## Compatibility
+Malformed delivery fields/types, counts, paths, hashes or identities refuse
+before evidence paths are used. Observational failures are reported in
+`delivery_current`; delivery readiness remains false. These observations do not
+write through artifact paths or convert arbitrary metadata into coordination
+paths.
 
-- **Legacy tasks**: Tasks without `## Required artifacts` have delivery state
-  "Unknown/undeclared" and retain exact existing behavior.
-- **Report-only tasks**: A report-only task with required artifacts must still
-  supply a nonempty bounded UTF-8 report via the engine channel. Required artifacts
-  are additional; the report channel is separate.
-- **Implementation tasks**: Implementation tasks may declare required artifacts
-  in addition to code changes. The repository must remain unchanged for report-only
-  verification; implementation tasks follow their existing commit gates.
-- **Empty work refusal**: The existing empty_work refusal remains correct and
-  unchanged. Nonempty acknowledgement stdout is not proof of required artifacts.
+## States and exits
 
-## Security
+- `complete`: successful Source with every declared artifact safely observed.
+- `incomplete`: missing/unsafe output or a nonzero/timeout Source. Bounded partial
+  output is retained with exact observed hashes and count.
+- `stale`: previously observed evidence changed, disappeared, or no longer binds
+  the current task/run/command/revision. A new dispatch is required.
+- Undeclared: delivery evidence is absent; legacy behavior applies.
 
-- **No path traversal**: Artifact names are validated as safe relative paths;
-  absolute paths, `..`, and symlinks are refused.
-- **No arbitrary writes**: The delivery directory is created fresh with mode 0700;
-  only the Source (running as the same UID) may write to it.
-- **No privilege escalation**: All operations use current UID with no effective
-  capabilities. Ordinary UID/no effective caps.
-- **No global state**: The delivery directory is per-run and private; it does
-  not affect repository contents or global ignored-file capture.
+A missing artifact does not change the actual Source exit. Source 0 remains 0
+in process evidence and the native run exit; `verify` fails the required contract
+independently and reports the delivery reason. Nonzero and timeout Source exits
+remain their original exits. Delivery failure is not a provider failure.
+Adapter outcomes and provider-limit observations remain separate; facts not
+exported by a route remain Unknown.
 
-## Testing
+## Review and handoff
 
-Tests cover:
-- Installed fake Source0 acknowledgement with missing file => process succeeded
-  and delivery incomplete, not ready
-- Real complete artifact + explicit validation
-- Source nonzero/timeout retains original reason with partial artifacts
-- Legacy/report-only/implementation no-op unchanged
-- Invalid metadata refuses before call
-- Artifact/task/revision/command drift and tamper
-- Path/type/bounds validation
-- Separate verify exposes current artifact env
-- Review/handoff complete/hash-bound or refuse
+Review material contains complete artifact bytes, saved dispatch binding/prompt
+bytes and delivery provenance, with repeated freshness checks. The existing
+300000-byte complete review payload limit refuses oversized material before a
+reviewer invocation; content is never clipped. Handoff copies bounded observed
+artifacts plus metadata and result state, or refuses. Report-only handoffs also
+retain the existing complete report bound and can refuse incomplete delivery.
+An incomplete partial packet must retain its incomplete state.
 
-## Implementation notes
+Report-only tasks still require their existing nonempty native report and no
+repository changes. Implementation tasks retain commit, no-op and empty-work
+gates. Current review projection and reviewer configuration freshness remain
+required. Delivery adds no semantic prose checking, retries, automatic approval
+or acceptance. Lead acceptance remains Unknown/not recorded and human pending
+until separately recorded by their authorities.
 
-- The smallest compatible design is chosen: explicit per-run text artifact
-  directory with strict metadata validation.
-- No general binary asset backups or globally captured ignored files.
-- Validation can inspect the delivery directory by the documented
-  `UNIO_DELIVERY_DIR` variable bound to current run.
-- A strict structured observer in canonical `tools/adapter-outcome.py` is within
-  scope for exposing existing actual adapter evidence.
-- Optional budget telemetry and old schemas are preserved.
+## Validation
+
+`tests/unio-required-delivery.py` installs only private mock engines and is
+included in `tools/quality-check.sh`. Fixtures use supplied `TMPDIR` or project
+`tmp`; subprocess calls have parent time bounds. No inference calls are needed.
+Regressions cover reserved metadata, nested symlinks and unsafe types, immutable
+binding/prompt and schema drift, complete/missing/partial output, timeout exits,
+post-run mutation/disappearance, fresh-run isolation, separate verify environments,
+and complete reviewer/handoff bytes or bounded refusal. Check the correction
+receipt for actual executed checks and remaining limitations.

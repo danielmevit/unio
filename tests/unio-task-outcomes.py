@@ -52,7 +52,7 @@ class Metadata(unittest.TestCase):
 class Native(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='unio-outcomes-', dir=os.environ.get('TMPDIR'))
+        cls.tmp = tempfile.TemporaryDirectory(prefix='unio-outcomes-', dir=os.environ.get('TMPDIR',str(ROOT/'tmp')))
         cls.base = Path(cls.tmp.name)
         cls.env = {k:v for k,v in os.environ.items() if not k.startswith(('UNIO_', 'GIT_', 'PYTHON')) and k!='BASH_ENV'}
         cls.env.update(UNIO_BIN_DIR=str(cls.base/'bin'), UNIO_CONF_DIR=str(cls.base/'conf'),
@@ -61,7 +61,7 @@ class Native(unittest.TestCase):
                        GIT_CONFIG_GLOBAL='/dev/null', GIT_CONFIG_NOSYSTEM='1',
                        GIT_AUTHOR_NAME='fixture', GIT_COMMITTER_NAME='fixture',
                        GIT_AUTHOR_EMAIL='fixture@example.invalid', GIT_COMMITTER_EMAIL='fixture@example.invalid')
-        subprocess.run(['bash',str(ROOT/'unio-install.sh')],env=cls.env,capture_output=True,check=True)
+        subprocess.run(['bash',str(ROOT/'unio-install.sh')],env=cls.env,capture_output=True,check=True,timeout=100)
         cls.at = cls.base/'bin/unio'
         cls.root = cls.base/'project'
         cls.repo = cls.root/'repo'

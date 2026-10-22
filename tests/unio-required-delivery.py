@@ -121,20 +121,20 @@ class RequiredDeliveryIntegration(unittest.TestCase):
             GIT_COMMITTER_EMAIL='fixture@example.invalid',
             PYTHONDONTWRITEBYTECODE='1')
         subprocess.run(['bash', str(ROOT / 'unio-install.sh')],
-                       env=cls.env, capture_output=True, check=True)
+                       env=cls.env, capture_output=True, check=True, timeout=100)
         cls.at = cls.base / 'bin' / 'unio'
         cls.root = cls.base / 'project'
         cls.repo = cls.root / 'repo'
         cls.repo.mkdir(parents=True)
         subprocess.run(['git', 'init', '-q', '-b', 'main'],
                        cwd=cls.repo, env=cls.env,
-                       capture_output=True, check=True)
+                       capture_output=True, check=True, timeout=100)
         subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'initial'],
                        cwd=cls.repo, env=cls.env,
-                       capture_output=True, check=True)
+                       capture_output=True, check=True, timeout=100)
         subprocess.run([cls.at, 'init', 'mock'],
                        cwd=cls.repo, env=cls.env,
-                       capture_output=True, check=True)
+                       capture_output=True, check=True, timeout=100)
         cls.wt = cls.root / 'wt' / 'mock'
         cls.conf = cls.base / 'conf' / 'agents.conf'
 
@@ -363,6 +363,142 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         cp = self.call('run', 'mock', 'impl-artifacts', code=2)
         self.assertIn('blocked', cp.stderr.lower())
 
+    def test_complete_material_and_handoff_or_bounded_refusal(self):
+        source='printf "START complete artifact END" > "$UNIO_DELIVERY_DIR/report.txt"; printf "native report"'
+        self.configure(source)
+        material=self.base/'delivery-review-material'
+        marker=self.base/'review-called'
+        answer='```unio-findings-v1\n{"schema_version":1,"findings":[]}\n```\nVERDICT: APPROVE\n'
+        reviewer=('cp "$TASKFILE" '+shlex.quote(str(material))+'; touch '+shlex.quote(str(marker))+
+                  '; printf %b '+shlex.quote(answer.replace('\n',r'\n')))
+        with self.conf.open('a') as stream: stream.write('rev='+reviewer+'\n')
+        name='material-complete'; self.task(name,artifacts=['report.txt'])
+        self.call('run','mock',name); self.call('verify','mock',name)
+        self.call('review','mock',name,'rev')
+        payload=material.read_bytes()
+        self.assertIn(b'START complete artifact END',payload)
+        self.assertIn(b'DISPATCH binding.json',payload); self.assertIn(b'DISPATCH prompt.md',payload)
+        self.assertTrue(self.data(name)['ready_for_human_review'])
+        packet=Path(self.call('handoff','mock',name).stdout.strip())
+        self.assertEqual((packet/'delivery/report.txt').read_bytes(),b'START complete artifact END')
+        self.assertEqual(json.loads((packet/'delivery/binding.json').read_text())['task'],name)
+        marker.unlink()
+        script=self.base/'write-bounded.py'
+        script.write_text('import os\nfrom pathlib import Path\np=Path(os.environ["UNIO_DELIVERY_DIR"])\nfor n in ("one.txt","two.txt"): (p/n).write_text("x"*160000)\nprint("native report")\n')
+        self.configure('python3 '+shlex.quote(str(script)))
+        with self.conf.open('a') as stream: stream.write('rev='+reviewer+'\n')
+        name='material-too-large'; self.task(name,artifacts=['one.txt','two.txt'])
+        self.call('run','mock',name); self.call('verify','mock',name)
+        self.assertEqual(self.data(name)['delivery']['state'],'complete')
+        self.call('review','mock',name,'rev',code=2)
+        self.assertFalse(marker.exists())
+        self.call('handoff','mock',name,code=2)
+
+    def test_timeout_retains_source_exit_and_partial_delivery(self):
+        self.configure('printf "partial" > "$UNIO_DELIVERY_DIR/report.txt"; printf "native report"; sleep 5')
+        name='delivery-timeout'; self.task(name,artifacts=['report.txt','missing.txt'])
+        self.env['UNIO_TIMEOUT']='1'
+        try: self.call('run','mock',name,code=124)
+        finally: self.env['UNIO_TIMEOUT']='30'
+        d=self.data(name)
+        self.assertEqual(d['process']['exit_code'],124)
+        self.assertEqual(d['delivery']['state'],'incomplete')
+        self.assertEqual(d['delivery']['artifact_count'],1)
+        self.call('verify','mock',name,code=1)
+
+    def test_reserved_and_prefix_collisions_refused_before_source(self):
+        marker=self.base/'reserved-source-called'
+        self.configure('touch '+shlex.quote(str(marker)))
+        for i,arts in enumerate((['prompt.md'],['binding.json'],['prompt.md/sub'],
+                                 ['data','data/report.txt'],['A.txt','a.txt'],['CON.txt'])):
+            with self.subTest(arts=arts):
+                name='reserved-'+str(i); self.task(name,artifacts=arts)
+                self.call('run','mock',name,code=2)
+                self.assertFalse(marker.exists())
+
+    def test_current_evidence_mutations_fail_closed(self):
+        self.configure('printf "artifact body" > "$UNIO_DELIVERY_DIR/report.txt"; printf "native report"')
+        name='current-evidence'; self.task(name,artifacts=['report.txt'])
+        self.call('run','mock',name); self.call('verify','mock',name)
+        original=self.data(name)
+        result_path=self.root/'coord/results/mock'/ (name+'.json')
+        saved=result_path.read_bytes()
+        directory=self.root/'coord/results/mock'/ (name+'.outcomes')/original['delivery']['run_id']/'delivery'
+        for key,value in (('run_id','../../outside'),('task','other'),('worker','other'),
+                          ('command_sha256','0'*64),('schema_version',True),('artifact_count',99),
+                          ('artifact_hashes',{}),('artifacts',['../unsafe']),('binding_sha256','bad')):
+            with self.subTest(key=key):
+                d=json.loads(saved); d['delivery'][key]=value; result_path.write_text(json.dumps(d))
+                cp=subprocess.run([self.at,'result','mock',name],cwd=self.repo,env=self.env,
+                                  capture_output=True,text=True,timeout=100)
+                if cp.returncode==0:
+                    observed=json.loads(cp.stdout)
+                    self.assertFalse(observed['ready_for_human_review'])
+                    self.assertTrue(observed['stale'])
+                else: self.assertNotEqual(cp.returncode,0)
+        result_path.write_bytes(saved)
+        # Each independent mutation starts from the original saved observation.
+        for filename,contents in (('binding.json',b'{}'),('prompt.md',b'unrelated prompt'),('report.txt',b'changed artifact')):
+            with self.subTest(filename=filename):
+                if filename!='binding.json':
+                    self.call('run','mock',name)
+                    current=self.data(name)
+                    directory=self.root/'coord/results/mock'/(name+'.outcomes')/current['delivery']['run_id']/'delivery'
+                path=directory/filename; old=path.read_bytes(); path.chmod(0o600); path.write_bytes(contents)
+                d=self.data(name)
+                self.assertTrue(d['stale']); self.assertEqual(d['delivery']['state'],'stale')
+                self.assertFalse(d['ready_for_human_review'])
+                path.write_bytes(old)
+        # New run is required after bytes/inode metadata change: no re-blessing.
+        self.call('verify','mock',name,code=1)
+        self.assertIn('DELIVERY FAILED',(self.root/'coord/reports'/ (name+'.md')).read_text())
+        result_path.write_bytes(saved)
+        self.call('run','mock',name)
+        current=self.data(name)
+        directory=self.root/'coord/results/mock'/(name+'.outcomes')/current['delivery']['run_id']/'delivery'
+        (directory/'report.txt').unlink()
+        self.assertTrue(self.data(name)['stale'])
+
+    def test_fresh_runs_verify_environment_and_no_replay(self):
+        source='printf "delivered" > "$UNIO_DELIVERY_DIR/report.txt"; printf "native report"'
+        self.configure(source)
+        name='fresh-run-env'
+        self.task(name,artifacts=['report.txt'],validate='$ test -s "$UNIO_DELIVERY_DIR/report.txt" && test -s "$UNIO_DELIVERY_BINDING"')
+        self.call('run','mock',name); first=self.data(name)['delivery']['run_id']
+        self.env['UNIO_DELIVERY_DIR']='/inherited/wrong'; self.env['UNIO_DELIVERY_BINDING']='/inherited/wrong'
+        try: self.call('verify','mock',name)
+        finally:
+            self.env.pop('UNIO_DELIVERY_DIR'); self.env.pop('UNIO_DELIVERY_BINDING')
+        self.configure('printf "native report only"')
+        self.call('run','mock',name)
+        d=self.data(name); self.assertNotEqual(first,d['delivery']['run_id'])
+        self.assertEqual(d['delivery']['artifact_count'],0)
+        self.assertEqual(d['process']['exit_code'],0)
+        self.call('verify','mock',name,code=1)
+        self.task('legacy-clear-env',validate='$ test -z "$UNIO_DELIVERY_DIR" && test -z "$UNIO_DELIVERY_BINDING"')
+        self.call('run','mock','legacy-clear-env')
+        self.env['UNIO_DELIVERY_DIR']='bad'; self.env['UNIO_DELIVERY_BINDING']='bad'
+        try: self.call('verify','mock','legacy-clear-env')
+        finally:
+            self.env.pop('UNIO_DELIVERY_DIR'); self.env.pop('UNIO_DELIVERY_BINDING')
+
+    def test_unsafe_nested_artifacts_never_delivered(self):
+        outside=self.base/'outside'; outside.mkdir(exist_ok=True)
+        (outside/'report.txt').write_text('must not be captured')
+        cases=[('linked/sub/report.txt','mkdir -p '+shlex.quote(str(outside/'sub'))+'; ln -s '+shlex.quote(str(outside))+' "$UNIO_DELIVERY_DIR/linked"'),
+               ('report.txt','mkfifo "$UNIO_DELIVERY_DIR/report.txt"'),
+               ('report.txt','ln '+shlex.quote(str(outside/'report.txt'))+' "$UNIO_DELIVERY_DIR/report.txt"'),
+               ('report.txt','mkdir "$UNIO_DELIVERY_DIR/report.txt"')]
+        for i,(artifact,command) in enumerate(cases):
+            with self.subTest(kind=i):
+                name='unsafe-nested-'+str(i)
+                self.configure(command+'; printf "native report"'); self.task(name,artifacts=[artifact])
+                self.call('run','mock',name); self.call('verify','mock',name,code=1)
+                d=self.data(name)
+                self.assertEqual(d['delivery']['state'],'incomplete')
+                self.assertEqual(d['delivery']['artifact_count'],0)
+
+
 
 class RequiredDeliveryBinding(unittest.TestCase):
     """Binding and hash validation for required artifacts."""
@@ -391,6 +527,16 @@ class RequiredDeliveryBinding(unittest.TestCase):
         self.assertEqual(binding['run'], 'a' * 32)
         self.assertEqual(binding['artifacts'], ['report.txt', 'summary.md'])
         self.assertEqual(binding['schema_version'], 1)
+
+    def test_all_component_nofollow_reader(self):
+        spec=importlib.util.spec_from_file_location('delivery',ROOT/'tools/required-delivery.py')
+        d=importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
+        with tempfile.TemporaryDirectory(dir=FIXTURES) as tmp:
+            root=Path(tmp); (root/'outside/sub').mkdir(parents=True)
+            (root/'outside/sub/report.txt').write_text('outside')
+            (root/'delivery').mkdir(); (root/'delivery/linked').symlink_to(root/'outside',target_is_directory=True)
+            with self.assertRaises((OSError,d.DeliveryError)):
+                d.read_artifact(root/'delivery/linked/sub/report.txt')
 
     def test_artifact_hash_validation(self):
         """Artifact hashes are validated against binding."""

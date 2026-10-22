@@ -12851,6 +12851,9 @@ def parse(text):
         if not stripped or stripped.startswith('#'):
             continue
 
+        if line != stripped:
+            raise DeliveryError('artifact declaration must be one plain portable path per line')
+
         # Validate artifact name
         validate_artifact_path(stripped)
 
@@ -12881,26 +12884,8 @@ def parse(text):
 
 
 def read_task(path):
-    """Bounded regular UTF-8 read; no symlink, FIFO or oversized task."""
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    try:
-        info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= LIMIT:
-            raise DeliveryError('task file must be a regular file of at most 1 MiB')
-        data = b''
-        while len(data) <= LIMIT:
-            chunk = os.read(fd, LIMIT + 1 - len(data))
-            if not chunk:
-                break
-            data += chunk
-    finally:
-        os.close(fd)
-    if len(data) > LIMIT:
-        raise DeliveryError('task file exceeds the 1 MiB bound')
-    try:
-        return data.decode('utf-8')
-    except UnicodeError:
-        raise DeliveryError('task file must be valid UTF-8') from None
+    """Bounded owned regular UTF-8 task, with no symlink ancestors."""
+    return read_artifact(path, LIMIT).decode('utf-8')
 
 
 def validate_artifact_path(name):
@@ -12912,6 +12897,8 @@ def validate_artifact_path(name):
     if '..' in name or name.startswith('/') or name.endswith('/') or '//' in name:
         raise DeliveryError("artifact name contains path traversal or invalid slashes: " + _shown(name))
     for part in name.split('/'):
+        if part.endswith('.') or part.split('.')[0].casefold() in {'con','prn','aux','nul',*(f'com{i}' for i in range(1,10)),*(f'lpt{i}' for i in range(1,10))}:
+            raise DeliveryError('nonportable artifact name: ' + name)
         if not part or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', part) or '..' in part or part.startswith('.'):
             raise DeliveryError("invalid artifact name: " + _shown(name) + "; must be a safe relative path")
         if not re.fullmatch(r'[A-Za-z0-9_.-]+', part):
@@ -13093,10 +13080,10 @@ def validate_binding(binding, require_artifacts=False):
                      'task_sha256', 'command_sha256', 'prompt_sha256',
                      'route', 'started_at'}
 
-    if not required_keys <= set(binding):
+    if not required_keys <= set(binding) or not set(binding) <= required_keys | {'artifacts'}:
         return False
 
-    if binding.get('schema_version') != 1:
+    if type(binding.get('schema_version')) is not int or binding.get('schema_version') != 1:
         return False
 
     if not all(isinstance(binding.get(k), str) for k in required_keys - {'schema_version'}):
@@ -13117,7 +13104,7 @@ def validate_binding(binding, require_artifacts=False):
     if not STAMP.fullmatch(binding.get('started_at')):
         return False
 
-    if require_artifacts:
+    if require_artifacts or 'artifacts' in binding:
         if 'artifacts' not in binding:
             return False
         if not isinstance(binding['artifacts'], list):
@@ -13254,6 +13241,9 @@ def parse(text):
         if not stripped or stripped.startswith('#'):
             continue
 
+        if line != stripped:
+            raise DeliveryError('artifact declaration must be one plain portable path per line')
+
         # Validate artifact name
         validate_artifact_path(stripped)
 
@@ -13284,26 +13274,8 @@ def parse(text):
 
 
 def read_task(path):
-    """Bounded regular UTF-8 read; no symlink, FIFO or oversized task."""
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    try:
-        info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= LIMIT:
-            raise DeliveryError('task file must be a regular file of at most 1 MiB')
-        data = b''
-        while len(data) <= LIMIT:
-            chunk = os.read(fd, LIMIT + 1 - len(data))
-            if not chunk:
-                break
-            data += chunk
-    finally:
-        os.close(fd)
-    if len(data) > LIMIT:
-        raise DeliveryError('task file exceeds the 1 MiB bound')
-    try:
-        return data.decode('utf-8')
-    except UnicodeError:
-        raise DeliveryError('task file must be valid UTF-8') from None
+    """Bounded owned regular UTF-8 task, with no symlink ancestors."""
+    return read_artifact(path, LIMIT).decode('utf-8')
 
 
 def validate_artifact_path(name):
@@ -13315,6 +13287,8 @@ def validate_artifact_path(name):
     if '..' in name or name.startswith('/') or name.endswith('/') or '//' in name:
         raise DeliveryError("artifact name contains path traversal or invalid slashes: " + _shown(name))
     for part in name.split('/'):
+        if part.endswith('.') or part.split('.')[0].casefold() in {'con','prn','aux','nul',*(f'com{i}' for i in range(1,10)),*(f'lpt{i}' for i in range(1,10))}:
+            raise DeliveryError('nonportable artifact name: ' + name)
         if not part or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', part) or '..' in part or part.startswith('.'):
             raise DeliveryError("invalid artifact name: " + _shown(name) + "; must be a safe relative path")
         if not re.fullmatch(r'[A-Za-z0-9_.-]+', part):
@@ -13496,10 +13470,10 @@ def validate_binding(binding, require_artifacts=False):
                      'task_sha256', 'command_sha256', 'prompt_sha256',
                      'route', 'started_at'}
 
-    if not required_keys <= set(binding):
+    if not required_keys <= set(binding) or not set(binding) <= required_keys | {'artifacts'}:
         return False
 
-    if binding.get('schema_version') != 1:
+    if type(binding.get('schema_version')) is not int or binding.get('schema_version') != 1:
         return False
 
     if not all(isinstance(binding.get(k), str) for k in required_keys - {'schema_version'}):
@@ -13520,7 +13494,7 @@ def validate_binding(binding, require_artifacts=False):
     if not STAMP.fullmatch(binding.get('started_at')):
         return False
 
-    if require_artifacts:
+    if require_artifacts or 'artifacts' in binding:
         if 'artifacts' not in binding:
             return False
         if not isinstance(binding['artifacts'], list):
@@ -20214,31 +20188,15 @@ UNIO_REVIEW_STATUS_MD
 fi
 if [ ! -e "$TPL_DIR/REQUIRED-DELIVERY.md" ] && [ ! -L "$TPL_DIR/REQUIRED-DELIVERY.md" ]; then
 cat > "$TPL_DIR/REQUIRED-DELIVERY.md" <<'UNIO_REQUIRED_DELIVERY_MD'
-# Required delivery — explicit artifact contract (Unio 0.5.23)
+# Required delivery — explicit artifact contract (0.5.23 unreleased)
 
-Status: P1 candidate for Unio 0.5.23; additive opt-in contract, no change to legacy behavior.
-
-## Overview
-
-An optional `## Required artifacts` section in a task file declares an explicit
-delivery contract: a bounded set of text artifacts that must be present for the
-delivery to be considered complete. This is an opt-in enhancement that preserves
-existing behavior for tasks without this declaration.
-
-The contract is strictly additive: it does not modify Source exit semantics,
-provider outcomes, or acceptance authority. A Source that exits zero without
-declared artifacts yields an incomplete delivery, clearly visible in result and
-report, never accepted or ready. Required-artifact validation and human acceptance
-remain separate facts.
+This opt-in P1 contract observes explicit text artifacts. It does not establish
+provider identity, effective reasoning effort, lead acceptance, or human approval.
+Tasks without a declaration retain their existing behavior and gates.
 
 ## Declaration
 
-A `## Required artifacts` section contains a list of portable relative logical
-names, one per line. Each name must be a valid identifier (alphanumeric, hyphen,
-underscore, dot; 1–128 characters). Empty lines and lines starting with `#` are
-ignored. Duplicate names are refused before any provider call.
-
-Example:
+Use exactly one section with one plain portable relative path per line:
 
 ```markdown
 ## Required artifacts
@@ -20247,123 +20205,108 @@ summary.md
 data/results.json
 ```
 
-## Contract
+Blank lines and comment lines beginning with `#` are ignored; fenced examples
+are ignored. Empty, duplicate, malformed and unsafe declarations refuse before
+Source invocation. There are at most 32 names, each at most 128 characters.
+Components begin with an ASCII alphanumeric character and otherwise contain only
+ASCII alphanumerics, dots, underscores and hyphens. Traversal, hidden components,
+Windows device names and trailing dots are refused. Names must be distinct even
+without case, and no name may be another name's directory prefix.
+`binding.json` and `prompt.md` at the delivery root, including their directory
+prefixes and case variants, are reserved for engine metadata. Metadata never
+satisfies required output.
 
-- **Opt-in only**: Tasks without a `## Required artifacts` section retain exact
-  legacy behavior with Unknown/undeclared delivery.
-- **Bounded metadata**: Artifact names are validated before any provider call;
-  malformed, duplicate, or unsafe metadata refuses early.
-- **Engine-owned directory**: A fresh per-run private delivery directory is created
-  and exposed to authorized Source via the `UNIO_DELIVERY_DIR` environment variable.
-  This directory is bound to the exact task/worker/run/dispatch command and revision.
-- **Text artifacts only**: For this P1, only regular UTF-8 text files are supported.
-  Binary assets are deferred to follow-up.
-- **Strict bounds**: Each artifact is validated as a regular file with:
-  - Maximum size: 262144 bytes (256 KiB)
-  - No symlinks, FIFOs, hardlinks, or path traversal
-  - UTF-8 encoding
-  - Single linkage (nlink == 1)
-  - Owned by current UID with mode 0600
-- **Count bounds**: Maximum 32 declared artifacts per task.
-- **No fabrication**: Missing data is never fabricated; incomplete delivery is
-  explicitly visible.
+## Dispatch and environment
 
-## Lifecycle
+The engine exclusively creates a fresh private per-run directory. Precreated
+or populated delivery destinations are refused. Only declared artifacts in that
+directory are observed; ignored repository files are not globally captured.
 
-1. **Prepare**: Before Source invocation, the engine creates a fresh private
-   delivery directory and validates the declared artifact metadata. Any
-   validation failure refuses before the provider call.
-2. **Source execution**: The Source receives `UNIO_DELIVERY_DIR` and may write
-   artifacts to this directory. The Source must create files directly; the engine
-   does not interpret stdout or arbitrary paths.
-3. **Observation**: After Source exit, the engine validates that all declared
-   artifacts exist in the delivery directory with correct bounds. Partial
-   artifacts are preserved; nonzero/timeout exits retain original failure evidence.
-4. **Verification**: The `verify` command checks artifact presence, bounds, and
-   hash consistency against the binding. Artifact mutation/disappearance makes
-   delivery stale/incomplete.
-5. **Review/Handoff**: Complete bounded artifacts and provenance are included in
-   reviewer material or the handoff refuses bounds. No clipping occurs.
+Source and a later, separate `verify` receive:
 
-## Environment
+- `UNIO_DELIVERY_DIR`: the current run's delivery directory.
+- `UNIO_DELIVERY_BINDING`: its immutable `binding.json` path.
 
-- `UNIO_DELIVERY_DIR`: Engine-created current run directory for artifacts.
-  Exposed to Source and validation. Read-only for observation/validation.
-- `UNIO_DELIVERY_BINDING`: Path to the binding.json for the current run.
-  Contains task/worker/run/command/revision hashes for verification.
+Both values are cleared for undeclared tasks, including inherited values.
+Validation commands may read the current artifacts; changing observed output
+invalidates it. Source must create nested artifact directories itself.
 
-## Validation rules
+The engine writes a read-only dispatch binding and prompt using exclusive,
+non-following opens. It never rewrites them at finalization. The binding records
+task, worker, run, command and prompt hashes, declared paths, dispatch revision,
+and directory identity. The dispatch revision includes the original task hash.
+The result additionally records binding hash, metadata identities, artifact
+hashes and identities, counts and missing paths. Optional delivery evidence
+extends result schema 1; undeclared legacy documents need no delivery field.
+Incomplete or malformed declared evidence cannot establish completeness.
 
-- **Binding validation**: Artifacts are bound to exact task/worker/run/dispatch
-  command and revision. Hash drift or tampering makes delivery stale.
-- **Source exit preservation**: Actual Source exit is preserved; nonzero exits
-  retain original reason with partial artifacts counted but not complete.
-- **Adapter evidence separation**: Source/adapter/timeout/provider-limit evidence
-  must be distinct. Unknown for unexported/custom routes.
-- **No provider calls from validation**: Observation and validation perform no
-  provider calls; they only inspect the engine-owned delivery directory.
-- **No shell evaluation**: Declarations are parsed as structured metadata; no
-  arbitrary shell evaluation is performed.
+## Observation and freshness
 
-## Outcomes
+Artifacts must be nonempty UTF-8 text without NUL, regular files owned by the
+current UID with exactly one hard link. Every path component is walked with
+non-following directory descriptors. Symlinks (including ancestor symlinks),
+FIFOs, devices, sockets, directories and hardlinks cannot become delivered files.
+Reads are nonblocking and bounded to 262144 bytes per artifact; 32 artifacts
+bound the total artifact content to 8 MiB. Prompt reads are bounded to 1 MiB.
+The contract does not require worker file mode 0600.
 
-- **Complete**: All declared artifacts present with valid bounds and matching
-  hashes. Delivery state is "complete" but not automatically "ready" or "accepted".
-- **Incomplete**: Any declared artifact missing, oversized, or invalid. Delivery
-  state is "incomplete". Source exit zero with incomplete delivery is not ready.
-- **Stale**: Artifact mutation, disappearance, or binding drift after verification.
-  Delivery state becomes "stale".
-- **Unknown**: No declaration (legacy), malformed metadata, or validation failure.
-  Delivery state is "Unknown/undeclared".
+The engine detects inode/path replacement and size/time changes during reads.
+It records file identity and hashes at Source completion, then rechecks current
+bytes and identity on result, verify, review material and handoff. It also
+rechecks immutable metadata, task declaration/hash, current Source command,
+dispatch binding, Source revision, and any declared outcome's run, binding,
+prompt and available report provenance. Evidence is never upgraded by dropping
+a hash or by writing a missing artifact after Source completion.
 
-## Compatibility
+Malformed delivery fields/types, counts, paths, hashes or identities refuse
+before evidence paths are used. Observational failures are reported in
+`delivery_current`; delivery readiness remains false. These observations do not
+write through artifact paths or convert arbitrary metadata into coordination
+paths.
 
-- **Legacy tasks**: Tasks without `## Required artifacts` have delivery state
-  "Unknown/undeclared" and retain exact existing behavior.
-- **Report-only tasks**: A report-only task with required artifacts must still
-  supply a nonempty bounded UTF-8 report via the engine channel. Required artifacts
-  are additional; the report channel is separate.
-- **Implementation tasks**: Implementation tasks may declare required artifacts
-  in addition to code changes. The repository must remain unchanged for report-only
-  verification; implementation tasks follow their existing commit gates.
-- **Empty work refusal**: The existing empty_work refusal remains correct and
-  unchanged. Nonempty acknowledgement stdout is not proof of required artifacts.
+## States and exits
 
-## Security
+- `complete`: successful Source with every declared artifact safely observed.
+- `incomplete`: missing/unsafe output or a nonzero/timeout Source. Bounded partial
+  output is retained with exact observed hashes and count.
+- `stale`: previously observed evidence changed, disappeared, or no longer binds
+  the current task/run/command/revision. A new dispatch is required.
+- Undeclared: delivery evidence is absent; legacy behavior applies.
 
-- **No path traversal**: Artifact names are validated as safe relative paths;
-  absolute paths, `..`, and symlinks are refused.
-- **No arbitrary writes**: The delivery directory is created fresh with mode 0700;
-  only the Source (running as the same UID) may write to it.
-- **No privilege escalation**: All operations use current UID with no effective
-  capabilities. Ordinary UID/no effective caps.
-- **No global state**: The delivery directory is per-run and private; it does
-  not affect repository contents or global ignored-file capture.
+A missing artifact does not change the actual Source exit. Source 0 remains 0
+in process evidence and the native run exit; `verify` fails the required contract
+independently and reports the delivery reason. Nonzero and timeout Source exits
+remain their original exits. Delivery failure is not a provider failure.
+Adapter outcomes and provider-limit observations remain separate; facts not
+exported by a route remain Unknown.
 
-## Testing
+## Review and handoff
 
-Tests cover:
-- Installed fake Source0 acknowledgement with missing file => process succeeded
-  and delivery incomplete, not ready
-- Real complete artifact + explicit validation
-- Source nonzero/timeout retains original reason with partial artifacts
-- Legacy/report-only/implementation no-op unchanged
-- Invalid metadata refuses before call
-- Artifact/task/revision/command drift and tamper
-- Path/type/bounds validation
-- Separate verify exposes current artifact env
-- Review/handoff complete/hash-bound or refuse
+Review material contains complete artifact bytes, saved dispatch binding/prompt
+bytes and delivery provenance, with repeated freshness checks. The existing
+300000-byte complete review payload limit refuses oversized material before a
+reviewer invocation; content is never clipped. Handoff copies bounded observed
+artifacts plus metadata and result state, or refuses. Report-only handoffs also
+retain the existing complete report bound and can refuse incomplete delivery.
+An incomplete partial packet must retain its incomplete state.
 
-## Implementation notes
+Report-only tasks still require their existing nonempty native report and no
+repository changes. Implementation tasks retain commit, no-op and empty-work
+gates. Current review projection and reviewer configuration freshness remain
+required. Delivery adds no semantic prose checking, retries, automatic approval
+or acceptance. Lead acceptance remains Unknown/not recorded and human pending
+until separately recorded by their authorities.
 
-- The smallest compatible design is chosen: explicit per-run text artifact
-  directory with strict metadata validation.
-- No general binary asset backups or globally captured ignored files.
-- Validation can inspect the delivery directory by the documented
-  `UNIO_DELIVERY_DIR` variable bound to current run.
-- A strict structured observer in canonical `tools/adapter-outcome.py` is within
-  scope for exposing existing actual adapter evidence.
-- Optional budget telemetry and old schemas are preserved.
+## Validation
+
+`tests/unio-required-delivery.py` installs only private mock engines and is
+included in `tools/quality-check.sh`. Fixtures use supplied `TMPDIR` or project
+`tmp`; subprocess calls have parent time bounds. No inference calls are needed.
+Regressions cover reserved metadata, nested symlinks and unsafe types, immutable
+binding/prompt and schema drift, complete/missing/partial output, timeout exits,
+post-run mutation/disappearance, fresh-run isolation, separate verify environments,
+and complete reviewer/handoff bytes or bounded refusal. Check the correction
+receipt for actual executed checks and remaining limitations.
 UNIO_REQUIRED_DELIVERY_MD
 fi
 # END EMBEDDED ADAPTERS
@@ -23522,12 +23465,12 @@ quality() {
   # watch is long-lived: replace its shell so signals reach the observer.
   local -a quality_runner=(python3)
   [ "${1:-}" != watch ] || quality_runner=(exec python3)
-  "${quality_runner[@]}" - "$@" <<'QUALITY_PY'
+  UNIO_QUALITY_CONF="$CONF_DIR" "${quality_runner[@]}" - "$@" <<'QUALITY_PY'
 # BEGIN QUALITY OUTCOME PARSER
 outcome_ns = {"__name__": "unio_task_outcomes"}
 exec('#!/usr/bin/env python3\n# Unio — Copyright (C) 2026 Daniel Mitev\n# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.\n"""Declared task outcome metadata (docs/development/REPORT-OUTCOME-CONTRACT.md).\n\nAn optional \'## Outcome\' section in a task file declares exactly one plain\nvalue: \'implementation\' or \'report-only\'. Absence means legacy behavior.\nDuplicate, malformed or unknown declarations are actionable refusals, and\nfenced examples are ignored while parsing. parse() never classifies arbitrary\nmodel prose and performs no I/O.\n"""\nimport os\nimport re\nimport stat\nimport sys\n\nMODES = (\'implementation\', \'report-only\')\nLIMIT = 1048576\nHEADER = \'## Outcome\'\nSHOWN = 80\n\n\nclass OutcomeError(ValueError):\n    """Actionable refusal for malformed declared outcome metadata."""\n\n\ndef _shown(line):\n    text = \'\'.join(c if c >= \' \' or c in \'\\t\' else \'?\' for c in line)\n    return text[:SHOWN] + (\'…\' if len(text) > SHOWN else \'\')\n\n\ndef parse(text):\n    """Return None (legacy), \'implementation\' or \'report-only\'.\n\n    Raises OutcomeError with an actionable message for a duplicate section,\n    an empty declaration, multiple values or unrecognized content. Fenced\n    code blocks anywhere in the task are examples, never declarations.\n    """\n    if not isinstance(text, str):\n        raise OutcomeError(\'task text must be a string\')\n    if \'\\x00\' in text:\n        raise OutcomeError(\'task text contains NUL bytes\')\n    headers = 0\n    values = []\n    in_section = False\n    fence = None\n    for line in text.splitlines():\n        stripped = line.strip()\n        marker = re.match(r\'^ {0,3}(`{3,}|~{3,})(.*)$\', line)\n        if fence:\n            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():\n                fence = None\n            continue\n        if marker:\n            fence = marker[1]\n            continue\n        heading = re.match(r\'^ {0,3}(#{1,6})(?:[ \\t]+(.*)|$)\', line)\n        if heading:\n            if line == HEADER:\n                in_section = True\n                headers += 1\n            else:\n                in_section = False\n            continue\n        if not in_section or not stripped:\n            continue\n        if stripped in MODES and line == stripped:\n            values.append(stripped)\n        else:\n            raise OutcomeError("the \'## Outcome\' section must contain exactly one plain "\n                                \'value, \' + \' or \'.join(MODES)\n                                + "; unrecognized line: " + _shown(stripped))\n    if headers > 1:\n        raise OutcomeError("duplicate \'## Outcome\' section (" + str(headers)\n                           + \' found); a task declares at most one outcome\')\n    if headers == 0:\n        if values:\n            raise OutcomeError(\'outcome values found outside a \' + HEADER + \' section\')\n        return None\n    if not values:\n        raise OutcomeError("the \'## Outcome\' section declares no value; use exactly one of "\n                            + \' or \'.join(MODES))\n    if len(values) > 1:\n        raise OutcomeError("the \'## Outcome\' section declares multiple values ("\n                            + \', \'.join(values) + \'); use exactly one\')\n    return values[0]\n\n\ndef read_task(path):\n    """Bounded regular UTF-8 read; no symlink, FIFO or oversized task."""\n    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)\n    try:\n        info = os.fstat(fd)\n        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= LIMIT:\n            raise OutcomeError(\'task file must be a regular file of at most 1 MiB\')\n        data = b\'\'\n        while len(data) <= LIMIT:\n            chunk = os.read(fd, LIMIT + 1 - len(data))\n            if not chunk:\n                break\n            data += chunk\n    finally:\n        os.close(fd)\n    if len(data) > LIMIT:\n        raise OutcomeError(\'task file exceeds the 1 MiB bound\')\n    try:\n        return data.decode(\'utf-8\')\n    except UnicodeError:\n        raise OutcomeError(\'task file must be valid UTF-8\') from None\n\n\ndef publish_report(data):\n    """Optional engine-owned channel for actual proposal text, never a pointer.\n\n    No channel means a standalone/legacy invocation. The engine creates a fresh\n    private run directory; exclusive creation refuses replacement or symlinks.\n    """\n    path = os.environ.get(\'UNIO_TASK_REPORT\')\n    if not path:\n        return\n    if isinstance(data, str):\n        data = data.encode(\'utf-8\')\n    if not 0 < len(data) <= 262144 or not data.decode(\'utf-8\').strip() or b\'\\0\' in data:\n        raise OutcomeError(\'native report must be nonempty UTF-8 text of at most 262144 bytes\')\n    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)\n    with os.fdopen(fd, \'wb\') as stream:\n        stream.write(data)\n\n\ndef main(argv):\n    if len(argv) != 2 or argv[0] != \'mode\':\n        print(\'usage: task-outcomes.py mode <task-file>\', file=sys.stderr)\n        return 2\n    try:\n        mode = parse(read_task(argv[1]))\n    except (OutcomeError, OSError) as error:\n        print(\'task outcome: \' + str(error), file=sys.stderr)\n        return 2\n    print(mode if mode is not None else \'legacy\')\n    return 0\n\n\nif __name__ == \'__main__\':\n    raise SystemExit(main(sys.argv[1:]))\n', outcome_ns)
 delivery_ns = {"__name__": "unio_required_delivery"}
-exec('#!/usr/bin/env python3\n# Unio — Copyright (C) 2026 Daniel Mitev\n# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.\n"""Required delivery artifact contract.\n\nAn optional \'## Required artifacts\' section in a task file declares an explicit\ndelivery contract: a bounded set of text artifacts that must be present for\nthe delivery to be considered complete.\n\nThis is an opt-in enhancement that preserves existing behavior for tasks\nwithout this declaration. The contract is strictly additive: it does not modify\nSource exit semantics, provider outcomes, or acceptance authority.\n"""\nimport hashlib\nimport os\nimport re\nimport stat\nfrom pathlib import Path\n\n# Bounds\nMAX_ARTIFACT_COUNT = 32\nMAX_ARTIFACT_SIZE = 262144  # 256 KiB\nMAX_NAME_LENGTH = 128\nLIMIT = 1048576  # 1 MiB for task file reading\n\n# Patterns\nID = re.compile(r\'[A-Za-z0-9][A-Za-z0-9_.-]{0,\' + str(MAX_NAME_LENGTH - 1) + r\'}\')\nHEX = re.compile(r\'[a-f0-9]{64}\')\nRUN = re.compile(r\'[a-f0-9]{32}\')\nSTAMP = re.compile(r\'\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:Z|[+-]\\d\\d:\\d\\d)\')\n\n# Safe relative path: alphanumeric, hyphen, underscore, dot, forward slash\n# Must not start or end with slash, no consecutive slashes, no ..\nSAFE_PATH = re.compile(r\'[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$\')\n\n\nclass DeliveryError(ValueError):\n    """Actionable refusal for malformed required delivery metadata."""\n\n\ndef _shown(line):\n    """Show a line safely for error messages."""\n    text = \'\'.join(c if c >= \' \' or c in \'\\t\' else \'?\' for c in line)\n    return text[:80] + (\'…\' if len(text) > 80 else \'\')\n\n\ndef parse(text):\n    """Parse a task file and return a list of required artifact names, or None.\n\n    Returns None if no \'## Required artifacts\' section is present (legacy).\n    Raises DeliveryError for malformed declarations or empty section.\n\n    Rules:\n    - Section header must be exactly \'## Required artifacts\'\n    - One artifact per line\n    - Empty lines and lines starting with \'#\' (comments) are ignored\n    - Duplicate names are refused\n    - Each name must match safe relative path constraints\n    - Maximum MAX_ARTIFACT_COUNT artifacts\n    """\n    if not isinstance(text, str):\n        raise DeliveryError(\'task text must be a string\')\n    if \'\\x00\' in text:\n        raise DeliveryError(\'task text contains NUL bytes\')\n\n    headers = 0\n    artifacts = []\n    in_section = False\n    fence = None\n\n    for line in text.splitlines():\n        stripped = line.strip()\n\n        # Skip fenced code blocks\n        marker = re.match(r\'^ {0,3}(`{3,}|~{3,})(.*)$\', line)\n        if fence:\n            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():\n                fence = None\n            continue\n        if marker:\n            fence = marker[1]\n            continue\n\n        # Check for section headers (## Heading)\n        if line.startswith(\'## \'):\n            if line == \'## Required artifacts\':\n                in_section = True\n                headers += 1\n            else:\n                in_section = False\n            continue\n\n        if not in_section:\n            continue\n\n        # Skip empty lines and comments\n        if not stripped or stripped.startswith(\'#\'):\n            continue\n\n        # Validate artifact name\n        validate_artifact_path(stripped)\n\n        if stripped in artifacts:\n            raise DeliveryError("duplicate artifact name: " + _shown(stripped))\n\n        artifacts.append(stripped)\n\n    if headers > 1:\n        raise DeliveryError(\n            "malformed \'## Required artifacts\' section: duplicate \'## Required artifacts\' section (" + str(headers) +\n            " found); a task declares at most one required artifacts section")\n\n    if headers == 0:\n        return None  # Legacy: no declaration\n\n    if not artifacts:\n        raise DeliveryError(\n            "malformed \'## Required artifacts\' section: section declares no artifacts; "\n            "list at least one artifact or omit the section")\n\n    if not artifacts or len(artifacts) > MAX_ARTIFACT_COUNT:\n        raise DeliveryError(\n            "too many artifacts (" + str(len(artifacts)) +\n            "); count exceeds bound of " + str(MAX_ARTIFACT_COUNT))\n\n    return validate_artifacts(artifacts)\n\n\ndef read_task(path):\n    """Bounded regular UTF-8 read; no symlink, FIFO or oversized task."""\n    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)\n    try:\n        info = os.fstat(fd)\n        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= LIMIT:\n            raise DeliveryError(\'task file must be a regular file of at most 1 MiB\')\n        data = b\'\'\n        while len(data) <= LIMIT:\n            chunk = os.read(fd, LIMIT + 1 - len(data))\n            if not chunk:\n                break\n            data += chunk\n    finally:\n        os.close(fd)\n    if len(data) > LIMIT:\n        raise DeliveryError(\'task file exceeds the 1 MiB bound\')\n    try:\n        return data.decode(\'utf-8\')\n    except UnicodeError:\n        raise DeliveryError(\'task file must be valid UTF-8\') from None\n\n\ndef validate_artifact_path(name):\n    """Validate an artifact name as a safe relative path."""\n    if not isinstance(name, str):\n        raise DeliveryError(\'artifact name must be a string\')\n    if not name or len(name) > MAX_NAME_LENGTH:\n        raise DeliveryError("invalid artifact name: " + _shown(name) + "; length out of bounds (1.." + str(MAX_NAME_LENGTH) + ")")\n    if \'..\' in name or name.startswith(\'/\') or name.endswith(\'/\') or \'//\' in name:\n        raise DeliveryError("artifact name contains path traversal or invalid slashes: " + _shown(name))\n    for part in name.split(\'/\'):\n        if not part or not re.fullmatch(r\'[A-Za-z0-9][A-Za-z0-9._-]*\', part) or \'..\' in part or part.startswith(\'.\'):\n            raise DeliveryError("invalid artifact name: " + _shown(name) + "; must be a safe relative path")\n        if not re.fullmatch(r\'[A-Za-z0-9_.-]+\', part):\n            raise DeliveryError("invalid artifact name: " + _shown(name))\n    if name.split(\'/\')[0].casefold() in (\'binding.json\', \'prompt.md\'):\n        raise DeliveryError(\'reserved engine metadata name: \' + name)\n    return name\n\n\ndef validate_artifacts(artifacts):\n    """Validate a list of artifact names.\n\n    Returns the validated list or raises DeliveryError.\n    """\n    if artifacts is None:\n        return None\n\n    if not isinstance(artifacts, list):\n        raise DeliveryError(\'artifacts must be a list\')\n\n    if not artifacts or len(artifacts) > MAX_ARTIFACT_COUNT:\n        raise DeliveryError(\n            "too many artifacts (" + str(len(artifacts)) +\n            "); count exceeds bound of " + str(MAX_ARTIFACT_COUNT))\n\n    seen = set()\n    validated = []\n    for name in artifacts:\n        name = validate_artifact_path(name)\n        if name in seen:\n            raise DeliveryError("duplicate artifact name: " + _shown(name))\n        if any(name.casefold() == v.casefold() or name.casefold().startswith(v.casefold() + \'/\') or v.casefold().startswith(name.casefold() + \'/\') for v in seen):\n            raise DeliveryError(\'artifact path collision: \' + name)\n        seen.add(name)\n        validated.append(name)\n\n    return validated\n\n\ndef directory_fd(path):\n    """Walk every component without following symlinks, including ancestors."""\n    fd = os.open(\'/\', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)\n    try:\n        for part in os.path.abspath(path).split(\'/\')[1:]:\n            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)\n            os.close(fd)\n            fd = child\n        return fd\n    except BaseException:\n        os.close(fd)\n        raise\n\n\ndef identity(info):\n    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]\n\n\ndef read_evidence(path, limit=MAX_ARTIFACT_SIZE):\n    path = Path(path)\n    parent = directory_fd(path.parent)\n    try:\n        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)\n        try:\n            info = os.fstat(fd)\n            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1\n                    or info.st_uid != os.getuid() or not 0 < info.st_size <= limit):\n                raise DeliveryError(\'evidence must be bounded, owned, singly-linked regular text\')\n            data = b\'\'\n            while len(data) <= limit:\n                chunk = os.read(fd, limit + 1 - len(data))\n                if not chunk:\n                    break\n                data += chunk\n            after = os.fstat(fd)\n            named = os.stat(path.name, dir_fd=parent, follow_symlinks=False)\n            # Reopen the full path as well: an ancestor may have been replaced.\n            again = directory_fd(path.parent)\n            try:\n                current = os.stat(path.name, dir_fd=again, follow_symlinks=False)\n            finally:\n                os.close(again)\n            if any(identity(x) != identity(info) for x in (after, named, current)) or len(data) != info.st_size:\n                raise DeliveryError(\'evidence changed during read\')\n            data.decode(\'utf-8\')\n            if b\'\\0\' in data:\n                raise DeliveryError(\'evidence contains NUL\')\n            return data, identity(info)\n        finally:\n            os.close(fd)\n    finally:\n        os.close(parent)\n\n\ndef read_artifact(path, limit=MAX_ARTIFACT_SIZE):\n    try:\n        return read_evidence(path, limit)[0]\n    except UnicodeError:\n        raise DeliveryError(\'artifact must be valid UTF-8\') from None\n\n\ndef write_metadata(directory, name, data):\n    parent = directory_fd(directory)\n    try:\n        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK, 0o400, dir_fd=parent)\n        try:\n            view = memoryview(data)\n            while view:\n                view = view[os.write(fd, view):]\n        finally:\n            os.close(fd)\n    finally:\n        os.close(parent)\n\n\ndef validate_artifact(path, expected_hash, limit=MAX_ARTIFACT_SIZE):\n    """Validate an artifact file against expected hash.\n\n    Returns True if valid, False otherwise.\n    Raises DeliveryError if the file is unsafe.\n    """\n    try:\n        data = read_artifact(path, limit)\n        actual_hash = hashlib.sha256(data).hexdigest()\n        return actual_hash == expected_hash\n    except (OSError, DeliveryError):\n        return False\n\n\ndef create_binding(task, worker, run, task_sha256, command_sha256, prompt_sha256,\n                   route, started_at, artifacts=None):\n    """Create a delivery binding dictionary.\n\n    All string values are validated. Artifacts is optional list of artifact names.\n    Returns a dictionary suitable for JSON serialization.\n    """\n    if not ID.fullmatch(task):\n        raise DeliveryError(\'invalid task identifier\')\n    if not ID.fullmatch(worker):\n        raise DeliveryError(\'invalid worker identifier\')\n    if not RUN.fullmatch(run):\n        raise DeliveryError(\'invalid run identifier\')\n    if not all(HEX.fullmatch(v) for v in (task_sha256, command_sha256, prompt_sha256)):\n        raise DeliveryError(\'invalid hash value\')\n    if not isinstance(route, str) or route not in (\'vibe\', \'antigravity\', \'copilot\', \'perplexity\', \'unsupported\'):\n        raise DeliveryError(\'invalid route\')\n    if not STAMP.fullmatch(started_at):\n        raise DeliveryError(\'invalid started_at timestamp\')\n\n    validated_artifacts = validate_artifacts(artifacts)\n\n    binding = {\n        \'schema_version\': 1,\n        \'task\': task,\n        \'worker\': worker,\n        \'run\': run,\n        \'task_sha256\': task_sha256,\n        \'command_sha256\': command_sha256,\n        \'prompt_sha256\': prompt_sha256,\n        \'route\': route,\n        \'started_at\': started_at,\n    }\n\n    if validated_artifacts is not None:\n        binding[\'artifacts\'] = validated_artifacts\n\n    return binding\n\n\ndef validate_binding(binding, require_artifacts=False):\n    """Validate a delivery binding dictionary.\n\n    If require_artifacts is True, the binding must have an \'artifacts\' key.\n    Returns True if valid, False otherwise.\n    """\n    if not isinstance(binding, dict):\n        return False\n\n    required_keys = {\'schema_version\', \'task\', \'worker\', \'run\',\n                     \'task_sha256\', \'command_sha256\', \'prompt_sha256\',\n                     \'route\', \'started_at\'}\n\n    if not required_keys <= set(binding):\n        return False\n\n    if binding.get(\'schema_version\') != 1:\n        return False\n\n    if not all(isinstance(binding.get(k), str) for k in required_keys - {\'schema_version\'}):\n        return False\n\n    if not all(ID.fullmatch(binding.get(k)) for k in (\'task\', \'worker\')):\n        return False\n\n    if not RUN.fullmatch(binding.get(\'run\')):\n        return False\n\n    if not all(HEX.fullmatch(binding.get(k)) for k in (\'task_sha256\', \'command_sha256\', \'prompt_sha256\')):\n        return False\n\n    if binding.get(\'route\') not in (\'vibe\', \'antigravity\', \'copilot\', \'perplexity\', \'unsupported\'):\n        return False\n\n    if not STAMP.fullmatch(binding.get(\'started_at\')):\n        return False\n\n    if require_artifacts:\n        if \'artifacts\' not in binding:\n            return False\n        if not isinstance(binding[\'artifacts\'], list):\n            return False\n        try:\n            validate_artifacts(binding[\'artifacts\'])\n        except DeliveryError:\n            return False\n\n    return True\n\n\ndef main(argv):\n    """Command-line interface for testing."""\n    import sys\n\n    if len(argv) != 2 or argv[0] != \'parse\':\n        print(\'usage: required-delivery.py parse <task-file>\', file=sys.stderr)\n        return 2\n\n    try:\n        text = read_task(argv[1])\n        artifacts = parse(text)\n        if artifacts is None:\n            print(\'legacy\')\n        else:\n            print(\'artifacts: \' + \', \'.join(artifacts))\n        return 0\n    except (DeliveryError, OSError) as error:\n        print(\'required delivery: \' + str(error), file=sys.stderr)\n        return 2\n\n\nif __name__ == \'__main__\':\n    raise SystemExit(main(sys.argv[1:]))\n', delivery_ns)
+exec('#!/usr/bin/env python3\n# Unio — Copyright (C) 2026 Daniel Mitev\n# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.\n"""Required delivery artifact contract.\n\nAn optional \'## Required artifacts\' section in a task file declares an explicit\ndelivery contract: a bounded set of text artifacts that must be present for\nthe delivery to be considered complete.\n\nThis is an opt-in enhancement that preserves existing behavior for tasks\nwithout this declaration. The contract is strictly additive: it does not modify\nSource exit semantics, provider outcomes, or acceptance authority.\n"""\nimport hashlib\nimport os\nimport re\nimport stat\nfrom pathlib import Path\n\n# Bounds\nMAX_ARTIFACT_COUNT = 32\nMAX_ARTIFACT_SIZE = 262144  # 256 KiB\nMAX_NAME_LENGTH = 128\nLIMIT = 1048576  # 1 MiB for task file reading\n\n# Patterns\nID = re.compile(r\'[A-Za-z0-9][A-Za-z0-9_.-]{0,\' + str(MAX_NAME_LENGTH - 1) + r\'}\')\nHEX = re.compile(r\'[a-f0-9]{64}\')\nRUN = re.compile(r\'[a-f0-9]{32}\')\nSTAMP = re.compile(r\'\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:Z|[+-]\\d\\d:\\d\\d)\')\n\n# Safe relative path: alphanumeric, hyphen, underscore, dot, forward slash\n# Must not start or end with slash, no consecutive slashes, no ..\nSAFE_PATH = re.compile(r\'[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$\')\n\n\nclass DeliveryError(ValueError):\n    """Actionable refusal for malformed required delivery metadata."""\n\n\ndef _shown(line):\n    """Show a line safely for error messages."""\n    text = \'\'.join(c if c >= \' \' or c in \'\\t\' else \'?\' for c in line)\n    return text[:80] + (\'…\' if len(text) > 80 else \'\')\n\n\ndef parse(text):\n    """Parse a task file and return a list of required artifact names, or None.\n\n    Returns None if no \'## Required artifacts\' section is present (legacy).\n    Raises DeliveryError for malformed declarations or empty section.\n\n    Rules:\n    - Section header must be exactly \'## Required artifacts\'\n    - One artifact per line\n    - Empty lines and lines starting with \'#\' (comments) are ignored\n    - Duplicate names are refused\n    - Each name must match safe relative path constraints\n    - Maximum MAX_ARTIFACT_COUNT artifacts\n    """\n    if not isinstance(text, str):\n        raise DeliveryError(\'task text must be a string\')\n    if \'\\x00\' in text:\n        raise DeliveryError(\'task text contains NUL bytes\')\n\n    headers = 0\n    artifacts = []\n    in_section = False\n    fence = None\n\n    for line in text.splitlines():\n        stripped = line.strip()\n\n        # Skip fenced code blocks\n        marker = re.match(r\'^ {0,3}(`{3,}|~{3,})(.*)$\', line)\n        if fence:\n            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():\n                fence = None\n            continue\n        if marker:\n            fence = marker[1]\n            continue\n\n        # Check for section headers (## Heading)\n        if line.startswith(\'## \'):\n            if line == \'## Required artifacts\':\n                in_section = True\n                headers += 1\n            else:\n                in_section = False\n            continue\n\n        if not in_section:\n            continue\n\n        # Skip empty lines and comments\n        if not stripped or stripped.startswith(\'#\'):\n            continue\n\n        if line != stripped:\n            raise DeliveryError(\'artifact declaration must be one plain portable path per line\')\n\n        # Validate artifact name\n        validate_artifact_path(stripped)\n\n        if stripped in artifacts:\n            raise DeliveryError("duplicate artifact name: " + _shown(stripped))\n\n        artifacts.append(stripped)\n\n    if headers > 1:\n        raise DeliveryError(\n            "malformed \'## Required artifacts\' section: duplicate \'## Required artifacts\' section (" + str(headers) +\n            " found); a task declares at most one required artifacts section")\n\n    if headers == 0:\n        return None  # Legacy: no declaration\n\n    if not artifacts:\n        raise DeliveryError(\n            "malformed \'## Required artifacts\' section: section declares no artifacts; "\n            "list at least one artifact or omit the section")\n\n    if not artifacts or len(artifacts) > MAX_ARTIFACT_COUNT:\n        raise DeliveryError(\n            "too many artifacts (" + str(len(artifacts)) +\n            "); count exceeds bound of " + str(MAX_ARTIFACT_COUNT))\n\n    return validate_artifacts(artifacts)\n\n\ndef read_task(path):\n    """Bounded owned regular UTF-8 task, with no symlink ancestors."""\n    return read_artifact(path, LIMIT).decode(\'utf-8\')\n\n\ndef validate_artifact_path(name):\n    """Validate an artifact name as a safe relative path."""\n    if not isinstance(name, str):\n        raise DeliveryError(\'artifact name must be a string\')\n    if not name or len(name) > MAX_NAME_LENGTH:\n        raise DeliveryError("invalid artifact name: " + _shown(name) + "; length out of bounds (1.." + str(MAX_NAME_LENGTH) + ")")\n    if \'..\' in name or name.startswith(\'/\') or name.endswith(\'/\') or \'//\' in name:\n        raise DeliveryError("artifact name contains path traversal or invalid slashes: " + _shown(name))\n    for part in name.split(\'/\'):\n        if part.endswith(\'.\') or part.split(\'.\')[0].casefold() in {\'con\',\'prn\',\'aux\',\'nul\',*(f\'com{i}\' for i in range(1,10)),*(f\'lpt{i}\' for i in range(1,10))}:\n            raise DeliveryError(\'nonportable artifact name: \' + name)\n        if not part or not re.fullmatch(r\'[A-Za-z0-9][A-Za-z0-9._-]*\', part) or \'..\' in part or part.startswith(\'.\'):\n            raise DeliveryError("invalid artifact name: " + _shown(name) + "; must be a safe relative path")\n        if not re.fullmatch(r\'[A-Za-z0-9_.-]+\', part):\n            raise DeliveryError("invalid artifact name: " + _shown(name))\n    if name.split(\'/\')[0].casefold() in (\'binding.json\', \'prompt.md\'):\n        raise DeliveryError(\'reserved engine metadata name: \' + name)\n    return name\n\n\ndef validate_artifacts(artifacts):\n    """Validate a list of artifact names.\n\n    Returns the validated list or raises DeliveryError.\n    """\n    if artifacts is None:\n        return None\n\n    if not isinstance(artifacts, list):\n        raise DeliveryError(\'artifacts must be a list\')\n\n    if not artifacts or len(artifacts) > MAX_ARTIFACT_COUNT:\n        raise DeliveryError(\n            "too many artifacts (" + str(len(artifacts)) +\n            "); count exceeds bound of " + str(MAX_ARTIFACT_COUNT))\n\n    seen = set()\n    validated = []\n    for name in artifacts:\n        name = validate_artifact_path(name)\n        if name in seen:\n            raise DeliveryError("duplicate artifact name: " + _shown(name))\n        if any(name.casefold() == v.casefold() or name.casefold().startswith(v.casefold() + \'/\') or v.casefold().startswith(name.casefold() + \'/\') for v in seen):\n            raise DeliveryError(\'artifact path collision: \' + name)\n        seen.add(name)\n        validated.append(name)\n\n    return validated\n\n\ndef directory_fd(path):\n    """Walk every component without following symlinks, including ancestors."""\n    fd = os.open(\'/\', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)\n    try:\n        for part in os.path.abspath(path).split(\'/\')[1:]:\n            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)\n            os.close(fd)\n            fd = child\n        return fd\n    except BaseException:\n        os.close(fd)\n        raise\n\n\ndef identity(info):\n    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]\n\n\ndef read_evidence(path, limit=MAX_ARTIFACT_SIZE):\n    path = Path(path)\n    parent = directory_fd(path.parent)\n    try:\n        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)\n        try:\n            info = os.fstat(fd)\n            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1\n                    or info.st_uid != os.getuid() or not 0 < info.st_size <= limit):\n                raise DeliveryError(\'evidence must be bounded, owned, singly-linked regular text\')\n            data = b\'\'\n            while len(data) <= limit:\n                chunk = os.read(fd, limit + 1 - len(data))\n                if not chunk:\n                    break\n                data += chunk\n            after = os.fstat(fd)\n            named = os.stat(path.name, dir_fd=parent, follow_symlinks=False)\n            # Reopen the full path as well: an ancestor may have been replaced.\n            again = directory_fd(path.parent)\n            try:\n                current = os.stat(path.name, dir_fd=again, follow_symlinks=False)\n            finally:\n                os.close(again)\n            if any(identity(x) != identity(info) for x in (after, named, current)) or len(data) != info.st_size:\n                raise DeliveryError(\'evidence changed during read\')\n            data.decode(\'utf-8\')\n            if b\'\\0\' in data:\n                raise DeliveryError(\'evidence contains NUL\')\n            return data, identity(info)\n        finally:\n            os.close(fd)\n    finally:\n        os.close(parent)\n\n\ndef read_artifact(path, limit=MAX_ARTIFACT_SIZE):\n    try:\n        return read_evidence(path, limit)[0]\n    except UnicodeError:\n        raise DeliveryError(\'artifact must be valid UTF-8\') from None\n\n\ndef write_metadata(directory, name, data):\n    parent = directory_fd(directory)\n    try:\n        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK, 0o400, dir_fd=parent)\n        try:\n            view = memoryview(data)\n            while view:\n                view = view[os.write(fd, view):]\n        finally:\n            os.close(fd)\n    finally:\n        os.close(parent)\n\n\ndef validate_artifact(path, expected_hash, limit=MAX_ARTIFACT_SIZE):\n    """Validate an artifact file against expected hash.\n\n    Returns True if valid, False otherwise.\n    Raises DeliveryError if the file is unsafe.\n    """\n    try:\n        data = read_artifact(path, limit)\n        actual_hash = hashlib.sha256(data).hexdigest()\n        return actual_hash == expected_hash\n    except (OSError, DeliveryError):\n        return False\n\n\ndef create_binding(task, worker, run, task_sha256, command_sha256, prompt_sha256,\n                   route, started_at, artifacts=None):\n    """Create a delivery binding dictionary.\n\n    All string values are validated. Artifacts is optional list of artifact names.\n    Returns a dictionary suitable for JSON serialization.\n    """\n    if not ID.fullmatch(task):\n        raise DeliveryError(\'invalid task identifier\')\n    if not ID.fullmatch(worker):\n        raise DeliveryError(\'invalid worker identifier\')\n    if not RUN.fullmatch(run):\n        raise DeliveryError(\'invalid run identifier\')\n    if not all(HEX.fullmatch(v) for v in (task_sha256, command_sha256, prompt_sha256)):\n        raise DeliveryError(\'invalid hash value\')\n    if not isinstance(route, str) or route not in (\'vibe\', \'antigravity\', \'copilot\', \'perplexity\', \'unsupported\'):\n        raise DeliveryError(\'invalid route\')\n    if not STAMP.fullmatch(started_at):\n        raise DeliveryError(\'invalid started_at timestamp\')\n\n    validated_artifacts = validate_artifacts(artifacts)\n\n    binding = {\n        \'schema_version\': 1,\n        \'task\': task,\n        \'worker\': worker,\n        \'run\': run,\n        \'task_sha256\': task_sha256,\n        \'command_sha256\': command_sha256,\n        \'prompt_sha256\': prompt_sha256,\n        \'route\': route,\n        \'started_at\': started_at,\n    }\n\n    if validated_artifacts is not None:\n        binding[\'artifacts\'] = validated_artifacts\n\n    return binding\n\n\ndef validate_binding(binding, require_artifacts=False):\n    """Validate a delivery binding dictionary.\n\n    If require_artifacts is True, the binding must have an \'artifacts\' key.\n    Returns True if valid, False otherwise.\n    """\n    if not isinstance(binding, dict):\n        return False\n\n    required_keys = {\'schema_version\', \'task\', \'worker\', \'run\',\n                     \'task_sha256\', \'command_sha256\', \'prompt_sha256\',\n                     \'route\', \'started_at\'}\n\n    if not required_keys <= set(binding) or not set(binding) <= required_keys | {\'artifacts\'}:\n        return False\n\n    if type(binding.get(\'schema_version\')) is not int or binding.get(\'schema_version\') != 1:\n        return False\n\n    if not all(isinstance(binding.get(k), str) for k in required_keys - {\'schema_version\'}):\n        return False\n\n    if not all(ID.fullmatch(binding.get(k)) for k in (\'task\', \'worker\')):\n        return False\n\n    if not RUN.fullmatch(binding.get(\'run\')):\n        return False\n\n    if not all(HEX.fullmatch(binding.get(k)) for k in (\'task_sha256\', \'command_sha256\', \'prompt_sha256\')):\n        return False\n\n    if binding.get(\'route\') not in (\'vibe\', \'antigravity\', \'copilot\', \'perplexity\', \'unsupported\'):\n        return False\n\n    if not STAMP.fullmatch(binding.get(\'started_at\')):\n        return False\n\n    if require_artifacts or \'artifacts\' in binding:\n        if \'artifacts\' not in binding:\n            return False\n        if not isinstance(binding[\'artifacts\'], list):\n            return False\n        try:\n            validate_artifacts(binding[\'artifacts\'])\n        except DeliveryError:\n            return False\n\n    return True\n\n\ndef main(argv):\n    """Command-line interface for testing."""\n    import sys\n\n    if len(argv) != 2 or argv[0] != \'parse\':\n        print(\'usage: required-delivery.py parse <task-file>\', file=sys.stderr)\n        return 2\n\n    try:\n        text = read_task(argv[1])\n        artifacts = parse(text)\n        if artifacts is None:\n            print(\'legacy\')\n        else:\n            print(\'artifacts: \' + \', \'.join(artifacts))\n        return 0\n    except (DeliveryError, OSError) as error:\n        print(\'required delivery: \' + str(error), file=sys.stderr)\n        return 2\n\n\nif __name__ == \'__main__\':\n    raise SystemExit(main(sys.argv[1:]))\n', delivery_ns)
 # END QUALITY OUTCOME PARSER
 import datetime, fcntl, hashlib, json, os, re, shlex, shutil, stat, subprocess, sys, tempfile, time, unicodedata, uuid
 
@@ -23754,15 +23697,10 @@ def outcome_directory(root, worker, task, run_id):
     return safe(root,'coord','results',worker,task+'.outcomes',run_id)
 
 def outcome_read(path):
-    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
-    with os.fdopen(fd,'rb') as f:
-        info=os.fstat(f.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or not 0<info.st_size<=262144:
-            fail('report evidence must be a nonempty regular file of at most 262144 bytes')
-        data=f.read(262145)
-    if len(data)>262144 or not data.decode('utf-8').strip() or b'\0' in data:
-        fail('report evidence must be nonempty bounded UTF-8 text without NUL')
+    data=delivery_ns['read_artifact'](path)
+    if not data.decode('utf-8').strip(): fail('report evidence must be nonempty text')
     return data
+
 
 def outcome_start(root,worker,task,rev,command,prompt,capture):
     mode=task_mode(root,worker,task)
@@ -23773,15 +23711,14 @@ def outcome_start(root,worker,task,rev,command,prompt,capture):
            report_sha256=None,report_bytes=None,error=None)
     if mode=='report-only':
         parent=safe(root,'coord','results',worker,task+'.outcomes')
-        os.makedirs(parent,mode=0o700,exist_ok=True)
+        fd=storage_directory(parent,create=True)
+        try: os.mkdir(o['run_id'],0o700,dir_fd=fd)
+        finally: os.close(fd)
         directory=outcome_directory(root,worker,task,o['run_id'])
-        os.mkdir(directory,0o700)
         binding=json.dumps(o,sort_keys=True,ensure_ascii=True).encode()
         o['binding_sha256']=hashlib.sha256(binding).hexdigest()
-        with open(os.path.join(directory,'binding.json'),'xb') as f: f.write(binding)
-        os.chmod(os.path.join(directory,'binding.json'),0o400)
-        with open(os.path.join(directory,'prompt.md'),'xb') as f: f.write(regular(prompt))
-        os.chmod(os.path.join(directory,'prompt.md'),0o400)
+        delivery_ns['write_metadata'](directory,'binding.json',binding)
+        delivery_ns['write_metadata'](directory,'prompt.md',regular(prompt))
     return o
 
 def outcome_finish(root,worker,task,d):
@@ -23795,8 +23732,7 @@ def outcome_finish(root,worker,task,d):
         source=incoming if os.path.lexists(incoming) or o['capture']=='channel' else safe(root,'coord','reports',task+'.log')
         data=outcome_read(source)
         path=os.path.join(directory,'report.txt')
-        with open(path,'xb') as f: f.write(data)
-        os.chmod(path,0o400)
+        delivery_ns['write_metadata'](directory,'report.txt',data)
         o.update(report_sha256=hashlib.sha256(data).hexdigest(),report_bytes=len(data))
     except (OSError,ValueError,UnicodeError) as e:
         o['error']='report_artifact_unavailable: '+str(e)[:300]
@@ -23818,7 +23754,7 @@ def report_evidence(root,worker,task,d,rev):
     for name in ('binding_sha256',): expected.pop(name,None)
     expected.update(report_sha256=None,report_bytes=None,error=None)
     if json.loads(binding)!=expected: fail('report-only run/task/command binding mismatch')
-    prompt=outcome_ns['read_task'](os.path.join(directory,'prompt.md')).encode('utf-8')
+    prompt=delivery_ns['read_artifact'](os.path.join(directory,'prompt.md'),1048576)
     if hashlib.sha256(prompt).hexdigest()!=o.get('prompt_sha256'):
         fail('report-only prompt binding mismatch')
     if o.get('error'): fail(o['error'])
@@ -23845,7 +23781,7 @@ def delivery_directory(root, worker, task, run_id):
 def delivery_schema(v, worker, task):
     fields = {'schema_version','state','worker','task','run_id','dispatch_revision',
               'command_sha256','prompt_sha256','binding_sha256','artifacts','artifact_count',
-              'artifact_hashes','artifact_identities','missing_artifacts','directory_identity'}
+              'artifact_hashes','artifact_identities','missing_artifacts','directory_identity','metadata_identities'}
     if not isinstance(v, dict) or set(v) != fields:
         fail('malformed delivery fields')
     if (type(v['schema_version']) is not int or v['schema_version'] != 1
@@ -23870,6 +23806,10 @@ def delivery_schema(v, worker, task):
         ident = identities[name]
         if not isinstance(ident,list) or len(ident)!=5 or any(type(x) is not int or x<0 for x in ident): fail('malformed artifact identity')
         if not 0 < ident[2] <= 262144: fail('malformed artifact size')
+    mi=v['metadata_identities']
+    if not isinstance(mi,dict) or set(mi)!={'binding.json','prompt.md'}: fail('malformed metadata identities')
+    for ident in mi.values():
+        if not isinstance(ident,list) or len(ident)!=5 or any(type(x) is not int or x<0 for x in ident): fail('malformed metadata identity')
     di=v['directory_identity']
     if not isinstance(di,list) or len(di)!=2 or any(type(x) is not int or x<0 for x in di): fail('malformed directory identity')
     if v['state']=='complete' and missing: fail('inconsistent complete delivery')
@@ -23907,20 +23847,45 @@ def delivery_start(root, worker, task, rev, command, prompt, run_id=None):
     v['binding_sha256']=hashlib.sha256(binding).hexdigest()
     delivery_ns['write_metadata'](directory,'binding.json',binding)
     delivery_ns['write_metadata'](directory,'prompt.md',prompt_data)
+    v['metadata_identities']={name:delivery_ns['read_evidence'](os.path.join(directory,name),1048576)[1] for name in ('binding.json','prompt.md')}
     return v
+
+
+def delivery_command(root,worker):
+    conf=safe(root,'coord','agents.conf')
+    if not os.path.lexists(conf): conf=os.path.join(os.environ['UNIO_QUALITY_CONF'],'agents.conf')
+    prefix=worker.split('-')[0]+'='
+    for line in delivery_ns['read_artifact'](conf,1048576).decode().splitlines():
+        if line.startswith(prefix): return hashlib.sha256(line[len(prefix):].encode()).hexdigest()
+    fail('delivery Source command unavailable')
 
 
 def delivery_binding(root,worker,task,d):
     v=d['delivery']; delivery_schema(v,worker,task)
     if v['dispatch_revision'] != d.get('dispatch_revision'): fail('delivery dispatch mismatch')
     if task_artifacts(root,worker,task) != v['artifacts']: fail('delivery declaration mismatch')
+    if delivery_command(root,worker)!=v['command_sha256']: fail('delivery Source command changed')
     rev=snapshot(root,worker,task)
     if rev['task_sha256'] != v['dispatch_revision']['task_sha256']: fail('delivery task changed')
     if d['process']['state']!='running' and (d['process']['revision'] != rev or d['process'].get('post_run_snapshot')):
         fail('delivery Source evidence is not current')
     o=d.get('outcome')
+    if task_mode(root,worker,task) is not None and not o: fail('delivery missing outcome provenance')
     if o and any(o.get(k)!=v[k] for k in ('worker','task','run_id','dispatch_revision','command_sha256','prompt_sha256')):
         fail('delivery outcome provenance mismatch')
+    if o and o.get('mode')=='report-only':
+        od=outcome_directory(root,worker,task,o['run_id'])
+        raw=outcome_read(os.path.join(od,'binding.json'))
+        expected_o=dict(o); expected_o.pop('binding_sha256',None)
+        expected_o.update(report_sha256=None,report_bytes=None,error=None)
+        if hashlib.sha256(raw).hexdigest()!=o['binding_sha256'] or json.loads(raw)!=expected_o:
+            fail('delivery outcome binding changed')
+        if hashlib.sha256(delivery_ns['read_artifact'](os.path.join(od,'prompt.md'),1048576)).hexdigest()!=o['prompt_sha256']:
+            fail('delivery outcome prompt changed')
+        if d['process']['state']!='running' and (o.get('report_sha256') or v['state']=='complete'):
+            raw=outcome_read(os.path.join(od,'report.txt'))
+            if hashlib.sha256(raw).hexdigest()!=o['report_sha256'] or len(raw)!=o['report_bytes']:
+                fail('delivery outcome report changed')
     directory=delivery_directory(root,worker,task,v['run_id'])
     fd=storage_directory(directory)
     try:
@@ -23929,7 +23894,9 @@ def delivery_binding(root,worker,task,d):
     finally: os.close(fd)
     binding=delivery_ns['read_artifact'](os.path.join(directory,'binding.json'))
     if hashlib.sha256(binding).hexdigest()!=v['binding_sha256']: fail('delivery immutable binding altered')
-    expected=dict(v); expected.pop('binding_sha256')
+    for name in ('binding.json','prompt.md'):
+        if delivery_ns['read_evidence'](os.path.join(directory,name),1048576)[1]!=v['metadata_identities'][name]: fail('delivery metadata replaced')
+    expected=dict(v); expected.pop('binding_sha256'); expected.pop('metadata_identities')
     expected.update(state='incomplete',artifact_count=0,artifact_hashes={},artifact_identities={},missing_artifacts=list(v['artifacts']))
     if json.loads(binding)!=expected: fail('delivery run/task/command binding mismatch')
     prompt=delivery_ns['read_artifact'](os.path.join(directory,'prompt.md'),1048576)
@@ -23976,6 +23943,9 @@ def delivery_material(root, worker, task, d):
     delivery_check(root,worker,task,d)
     v=d['delivery']; directory=delivery_directory(root,worker,task,v['run_id'])
     res=b'\nREQUIRED DELIVERY PROVENANCE\n'+json.dumps(v,sort_keys=True).encode()+b'\n'
+    for meta in ('binding.json','prompt.md'):
+        raw=delivery_ns['read_artifact'](os.path.join(directory,meta),1048576)
+        res+=b'DISPATCH '+meta.encode()+b'\n'+raw+b'\nEND DISPATCH\n'
     for name in v['artifacts']:
         data,identity=delivery_ns['read_evidence'](os.path.join(directory,name))
         if identity!=v['artifact_identities'][name] or hashlib.sha256(data).hexdigest()!=v['artifact_hashes'][name]: fail('delivery changed during material')
@@ -25573,10 +25543,10 @@ def handoff(root,worker,task):
             deliv_tmp = os.path.join(tmp, 'delivery')
             os.makedirs(deliv_tmp, mode=0o700, exist_ok=True)
             directory = delivery_directory(root, worker, task, deliv['run_id'])
-            for a in deliv['artifact_hashes']:
+            for a in ['binding.json','prompt.md']+list(deliv['artifact_hashes']):
                 art_src = os.path.join(directory, a)
                 if os.path.exists(art_src):
-                    art_data = delivery_ns['read_artifact'](art_src)
+                    art_data = delivery_ns['read_artifact'](art_src,1048576 if a in ('binding.json','prompt.md') else 262144)
                     art_dst = os.path.join(deliv_tmp, a)
                     os.makedirs(os.path.dirname(art_dst), exist_ok=True)
                     with open(art_dst, 'xb') as f:
