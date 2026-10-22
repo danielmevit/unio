@@ -32264,10 +32264,12 @@ cmd_verify() {
       printf '%s\n' "$report_error" >&2
     fi
   fi
-  if delivery_error=$(quality delivery-check "$root" "$worker" "$task" 2>&1); then
+  local final_delivery_error=""
+  if final_delivery_error=$(quality delivery-check "$root" "$worker" "$task" 2>&1); then
     :
   else
     delivery_failed=1
+    [ -n "$delivery_error" ] || delivery_error="$final_delivery_error"
     printf '%s\n' "$delivery_error" >&2
   fi
 
@@ -32275,7 +32277,7 @@ cmd_verify() {
   if [ "$scope" = "VIOLATION" ] || [ "$vfail" -gt 0 ] || [ "$empty" = 1 ] || [ "$tampered" = 1 ] || [ "$report_failed" = 1 ] || [ "$delivery_failed" = 1 ]; then verdict="FAIL"; ret=1; fi
   local reasons=""
   [ "$scope" != "UNCHECKED" ] || reasons="missing_scope"
-  [ "$vrun" -gt 0 ] || reasons="${reasons:+$reasons,}missing_validate"
+  [ "$vrun" -gt 0 ] || [ "$delivery_failed" = 1 ] || reasons="${reasons:+$reasons,}missing_validate"
   [ "$scope" != "VIOLATION" ] || reasons="${reasons:+$reasons,}scope_violation"
   [ "$vfail" -eq 0 ] || reasons="${reasons:+$reasons,}check_failed"
   [ "$empty" != 1 ] || reasons="${reasons:+$reasons,}empty_work"
@@ -32308,7 +32310,8 @@ cmd_verify() {
       echo "warning  : $w"
     done
   fi
-  if [ "$vrun" -eq 0 ]; then echo "validate : none — no '\$ ' command lines under '## Validate'"
+  if [ "$delivery_failed" = 1 ] && [ "$vrun" -eq 0 ]; then echo "validate : blocked — required delivery failed preflight"
+  elif [ "$vrun" -eq 0 ]; then echo "validate : none — no '\$ ' command lines under '## Validate'"
   else echo "validate : $((vrun-vfail))/$vrun passed"; printf '%s' "$vout"; fi
   echo "changes  : commits=$commits, paths touched=$pcount"
   [ "$empty" = 1 ] && echo "!! EMPTY — no commits and no uncommitted changes: no-op or overclaim"

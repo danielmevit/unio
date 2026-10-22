@@ -239,7 +239,9 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         self.configure(source)
         self.task('incomplete-delivery', artifacts=['report.txt', 'summary.md'])
         self.call('run', 'mock', 'incomplete-delivery')
-        self.call('verify', 'mock', 'incomplete-delivery', code=1)
+        verified=self.call('verify', 'mock', 'incomplete-delivery', code=1)
+        self.assertIn('blocked',verified.stdout)
+        self.assertNotIn('missing_validate',verified.stdout)
         result = self.data('incomplete-delivery')
         # Delivery should be incomplete
         self.assertIn('delivery', result)
