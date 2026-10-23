@@ -3,6 +3,13 @@
 Updated 2026-10-23T19:02:01+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
 ~/.config/unio/OWNER-WORKFLOW.md before acting.
 
+## Release delivery update — 2026-10-23T19:18:47+02:00
+
+Owner-authorized0.5.23 publication/install is now in progress. Operational receipts
+are under workspace tmp/unio-next/reliability-release-0523-20261023. Preserve current
+configuration, personal workflow and all earlier tags. Start new task invocations
+only after the installed0.5.23 engine and official artifact hashes are verified.
+
 ## Current outcome
 
 The 0.5.23 candidate is prepared and privately integrated on
@@ -11,9 +18,11 @@ subsequent changes are reports/handoff only. Read
 [the candidate report](RELIABILITY-0.5.23-CANDIDATE.md) and
 [field dispositions](VECTO-RELIABILITY-2026-10-21.md).
 
-No push to main, publication or global candidate installation is authorized.
-Official/global Unio remains0.5.22; main last checked9fd18f7. A plain continue is
-not explicit publication permission. Vecto is read-only evidence: do not modify
+The owner explicitly authorized main push,0.5.23 publication and installation on
+2026-10-23. Delivery is in progress; inspect actual release receipts before
+claiming publication or starting another installation.
+Official/global Unio remains0.5.22; main last checked9fd18f7. The explicit owner message authorizes this release; later plain continue messages
+do not authorize unrelated releases. Vecto is read-only evidence: do not modify
 that project or restart its workers. Its reporting window spans versions.
 
 ## Accepted evidence and exact revisions

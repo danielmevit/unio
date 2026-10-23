@@ -1,5 +1,12 @@
 # Unio 0.5.23 reliability candidate
 
+## Release preparation update
+
+The owner authorized0.5.23 publication and installation on2026-10-23 after this
+candidate checkpoint. See [release scope](../RELEASE-0.5.23.md) and the dated local
+delivery receipts for current completion. Earlier candidate statements below
+remain historical preparation evidence.
+
 ## Summary
 
 Prepared and integrated on the private `agent/vecto-reliability-20261021` branch.

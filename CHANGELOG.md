@@ -4,9 +4,10 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.23 — reliability and managed-session CLI — unreleased
+## 0.5.23 — clearer admission, reviews and delivery — 2026-10-23
 
-Candidate preparation only; no publication is authorized in the current round.
+Owner-authorized release; the complete quality gate and independent runtime review
+passed. See [scope, evidence and known limits](docs/RELEASE-0.5.23.md).
 
 - Configure the admission handshake with `UNIO_ADMISSION_TIMEOUT` (1–300 seconds,
   default30), distinguish deadline/EOF/partial/holder/storage failures and retain
