@@ -269,6 +269,9 @@ if len(sys.argv)>1 and sys.argv[1]=='review-context':sys.settrace(trace)
                 lambda x:x['review_current']['evidence'][0].update(config_current=False),
                 lambda x:x['review_current']['evidence'][0].update(state='changes_requested'),
                 lambda x:x.update(dispatch_revision=None),
+                lambda x:x['review_current']['evidence'][0].update(findings_count=False),
+                lambda x:x['review_current']['evidence'][0].pop('raw_directory'),
+                lambda x:x['review_current'].update(material_protocols={}),
             ):
                 forged=copy.deepcopy(d);mutate(forged)
                 with self.assertRaises(ValueError):execution._native_document(forged,'mock','evidence')

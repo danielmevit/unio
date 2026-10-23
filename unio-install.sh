@@ -3079,6 +3079,12 @@ def _current_review(projection, worker, task, current):
     if (not isinstance(counts, dict) or set(counts) != keys
             or any(type(v) is not int or not 0 <= v <= 256 for v in counts.values())):
         raise ValueError('invalid current review counts')
+    protocols = projection.get('material_protocols')
+    if (not isinstance(protocols, dict) or set(protocols) != {'1', '2'}
+            or any(value is not None and not _matches(HEX64, value) for value in protocols.values())
+            or (projection.get('material_sha256') is not None
+                and not _matches(HEX64, projection['material_sha256']))):
+        raise ValueError('invalid current review material')
     evidence = projection.get('evidence')
     findings = projection.get('findings')
     if (not isinstance(evidence, list) or len(evidence) > 256 or counts['recorded'] != len(evidence)
@@ -3089,7 +3095,18 @@ def _current_review(projection, worker, task, current):
         if (not isinstance(row, dict) or type(row.get('current')) is not bool
                 or type(row.get('stale')) is not bool
                 or row.get('state') not in ('approved', 'changes_requested', 'unknown', 'failed')
-                or not isinstance(row.get('reasons'), list)):
+                or not isinstance(row.get('reasons'), list)
+                or any(not isinstance(reason, str) or len(reason) > 160 for reason in row['reasons'])
+                or not _matches(re.compile(re.escape(task) + r'\.review\.[A-Za-z0-9]{8}'), row.get('raw_directory'))
+                or row.get('findings_state') not in ('not_extracted', 'empty', 'findings',
+                    'unstructured_legacy', 'missing_block', 'invalid_block', 'multiple_blocks',
+                    'oversized_block', 'overflow')
+                or (row.get('protocol') is not None and (type(row['protocol']) is not int
+                    or row['protocol'] not in (1, 2)))
+                or (row.get('findings_count') is not None and (type(row['findings_count']) is not int
+                    or not 0 <= row['findings_count'] <= 4096))
+                or (row.get('block_line') is not None and (type(row['block_line']) is not int
+                    or not 1 <= row['block_line'] <= 16 * 1024 * 1024))):
             raise ValueError('invalid current review row')
         if row['current']:
             receipt = row.get('receipt_id')
@@ -3118,6 +3135,7 @@ def _current_review(projection, worker, task, current):
         and all(r['state'] == 'approved' and r['process_exit_code'] == 0
                 and r.get('config_current') is True and r.get('protocol') == 2
                 and r.get('findings_state') == 'empty' and r.get('findings_count') == 0
+                and type(r.get('block_line')) is int and r['block_line'] > 0
                 and not r['reasons'] for r in active))
     if projection['machine_review_ready'] != ready:
         raise ValueError('inconsistent current review readiness')
