@@ -257,7 +257,7 @@ if len(sys.argv)>1 and sys.argv[1]=='review-context':sys.settrace(trace)
             binding=dict(worker='mock',task='evidence',task_sha256=d['current_revision']['task_sha256'],
                 startup=dict(engine=runner,config=str(self.root/'conf')),fingerprints=dict(engine=hashlib.sha256(Path(runner).read_bytes()).hexdigest()))
             planner=types.SimpleNamespace(read_regular=lambda path,limit:(Path(path).read_bytes(),None),parse_strict_json=json.loads)
-            store=types.SimpleNamespace(project=self.repo)
+            store=types.SimpleNamespace(project=self.repo.parent)
             item=dict(attempted=True,source='unknown',launcher='started')
             dispatch=types.SimpleNamespace(load_service=lambda:execution)
             self.assertEqual(scheduler.observe_source(planner,dispatch,store,dict(bindings={'job':binding},base=d['current_revision']['base_commit']),dict(jobs={'job':item}),'job',runner,5),('succeeded',0))
