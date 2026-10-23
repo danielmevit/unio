@@ -137,3 +137,31 @@ The dashboard result deadline is15seconds, so this concern is now investigated
 before final acceptance, rather than treated as a performance promise. No Vecto
 files/workers or global engine changed. Required review freshness and artifact
 checks must not be removed to make a timing result pass.
+
+## Consolidated disposition — 2026-10-23T14:24:50+02:00
+
+All statuses below concern the private candidate, not a released0.5.23. The first
+combined gate passed but the independent reviewer found real defects. Later fixes
+passed focused checks; the latest combined gate/review are still pending.
+
+| Field finding | Current disposition | Evidence or next action |
+| --- | --- | --- |
+| Five-second startup handshake | Confirmed; bounded fix implemented | a4ca22f adds1–300s/default30 and phase errors. Safety regressions pass; final candidate gate pending. |
+| Slow save/result/experience helpers | Confirmed symptoms; partly addressed, still open | Save deadlines still occur. A new owned result observation exceeded45s versus14–19s baseline. Separate focused efficiency task follows current verification; helper-specific deadline work remains. |
+| Canonical result versus separate review receipts | New owned reproduction confirmed; consistency fix implemented | Additive review_current separates freshness, verdict, findings and acceptance. b04aedc/ae2521c correct config/consumer integration. Historical Vecto approvals remain stale. |
+| Missing structured findings | Confirmed; explicit completeness implemented | Verdict stays visible; missing findings cannot establish machine readiness. |
+| Zero exit without required report | Confirmed; explicit delivery contract implemented | Required text artifacts bind to actual Source/task/command/revision, with partial evidence and original exits retained.148 focused tests passed on ae2521c; final gate pending. |
+| Medium startup effort on legacy exec | Not a defect | Constructed request selected medium. Unsupported live control is a route limitation. |
+| Startup/live/pending/effective effort and tier | Enhancement deferred | Capability reason codes and UI/status separation are a bounded follow-up; tier remains coordination, not reasoning. |
+| Ignored analysis/asset output fails implementation no-op gate | Expected safety behavior; enhancement deferred | Explicit analysis/binary/ignored-artifact contract is later work; no global capture or weakened implementation gate. |
+| Insufficient enclosing review context | Historical gap confirmed; enhancement deferred | Explicit bounded context and exact material hashes remain planned. Current complete-checkout audits do not silently clip oversized native material. |
+| Cross-workspace shared accounts | Known limitation; enhancement deferred | Native counts remain workspace-local; no fabricated global quota or enforcement. |
+| Model-history normalization | Enhancement deferred | Preserve exact route/model strings; normalize families separately. Auto Balance does not prove model or AI lab. |
+| Streaming failure, quota and poor task quality | Separate evidence classes | Neither exit0 nor raised effort proves delivery or repairs infrastructure. Original failures retained. |
+| Old tail/scope/report-only friction | Already shipped in0.5.22 | No fresh field regression established; reuse existing regression checks. |
+
+Priority remains: finish the focused result-observation correction, freeze and gate
+the coherent candidate, obtain one independent current-code Opus5.5 XHIGH review,
+and perform the existing lead assessment. No main push/release/global candidate
+installation is authorized. A failed process, timeout, incomplete output and a
+negative code review are recorded independently rather than combined into success.
