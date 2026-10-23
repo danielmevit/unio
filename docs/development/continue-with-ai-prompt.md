@@ -1,39 +1,127 @@
-# Continue Unio0.5.23 reliability update
+# Continue Unio 0.5.23 reliability work
 
-Updated 2026-10-23T10:29:17+02:00. Read current workspace AGENTS/MASTER, newestcoord/AGENT-LOG.md and global~/.config/unio/OWNER-WORKFLOW.md first. No push to main, release or global candidate installation is authorized. Vecto is read-only evidence; never edit it or restart its workers. Main/origin lastchecked9fd18f7, latestpublished/globalengine0.5.22; candidate0.5.23 remainsunreleased. Own lead branch agent/vecto-reliability-20261021, currentlystaged4a332e8 beforethishandoffcommit.
+Updated 2026-10-23T14:07:42+02:00. Read applicable AGENTS.md, the newest workspace
+coord/AGENT-LOG.md and ~/.config/unio/OWNER-WORKFLOW.md before assigning work.
 
-## Current owner workflow across ALL Unio projects
+## Authority and current state
 
-One independent external reviewer plus alreadyactivelead, TWO reviewers total. This supersedesOct16'stwoexternal-plus-lead default. Codexlead->eligibleClaudeCode/Opus5.5xhigh; Claudelead->eligibleCodexreviewer (supportedhigh, xhighwhencomplex). Additionalexternalrevieweronlyconcreteunresolvedgap/ownerrequest; preservecurrentproject/CI/human approvals. GlobalCodex/Claude startupinstructions, UnioOWNER-WORKFLOW/playbooks/templates, projectcoorddocs andcanonical/bundledrouting/effort/scoreboardguides areupdated. Existingforeignsessionsnotrestarted. Workerfinishonlyfrozenassignment; no recursiveagents. This is documentedleadpolicy, notautomaticruntimeselection. Respectrealaccountgroups/lead/holds/STOP; defaultsharedCodeximplementationLOW, onefocusedcompanionwithmatchingoneusegrant/temporarymediumthenrestorelowidle. No paidAPI fallback or max/ultra. Actualsettingsunknownwithoutproof.
+- No main push, publication or global candidate installation is authorized.
+- Vecto supplies read-only evidence. Never modify that project or restart its workers.
+- Official/global Unio remains 0.5.22. Version 0.5.23 is an unreleased candidate.
+- Main/origin was last checked at 9fd18f7. Private integration branch:
+  agent/vecto-reliability-20261021, staged runtime through b04aedc.
+- The latest candidate checked independently is 68c7ff4 on
+  agent/codex-delivery-compat-low-20261023. It has NOT passed final acceptance.
 
-## Evidence and first candidate
+## Personal workflow on every project using Unio
 
-Raw VectoOct21 report/evidence/receipt hashmanifest andOct23recheck under tmp/unio-next/vecto-reliability-20261021; untouched. Historicalwindowspansversions; oldapprovalsremainstale. LegacyCodexexecmediumstartupworked; unsupportedlivecontrolseparate. Source/adapter/native exits, delivery, verification, opinions and human/leadacceptanceareseparate.
+Use one independent external current-code reviewer plus the existing lead's final
+assessment: two reviewers total. This supersedes older copied instructions for two
+external workers. Codex lead uses eligible Claude Code / Opus 5.5 XHIGH; Claude lead
+uses eligible Codex. Add an external reviewer only for a concrete unresolved gap or
+an owner request. Preserve stricter current project/CI/human approvals.
 
-A a4ca22f admissiontimeout1..300/default30 +diagnosticphases: Source0/native0/nativescopeOK3checks; admission36+leadbudget52+guard36passed. Notallmetadata/save latencyfixed.
-B initial54beed5 currentreviewprojection: Source1/native1quota failurepreserved; saveddiffseparatenative5checksPASS. It hadrealintegration/configgaps foundlater.
-C initialMistral/Vibe2.26.1/GLM5.3HIGH infrastructure2, Medium3.5HIGH infrastructure2 draftd8f4e6d preserved; AGY1.4.4/Gem3.8FlashHIGH saved23bb459 butCLI0/terminal503ERROR/Source2/enclosingnative1. DedicatedCodex0.163/SolLOW correction3b56061 Source0/native0; native8commandsPASSbutoverall2duefixturebytecode, originalreceiptunchanged/cachearchived. Dedicatedcompatibilitya710c5b Source0/native0/native11checksPASS,292countedchecks+branding. No failure rewritten as success.
+The lead scopes, delegates code corrections through native Unio, reviews and
+integrates. Shared Codex implementation workers start LOW. Escalate one supported
+step after demonstrated reasoning/integration gaps, never for infrastructure.
+One focused companion beside the registered lead uses the actual shared account,
+a task/config-bound grant, temporary coordination tier medium, STOP for unrelated
+admissions and restoration to low when idle. Reasoning effort and tier are separate.
+No paid API fallback, max/ultra, blind retries, invented identity or acceptance.
 
-First combined7cb9b9b, tree5a42c81, fullbash tools/quality-check.sh PASS0/2687.18monotonicseconds/cleanclone, receiptmachine-gate/full-gate.json. ActualClaudeCode2.1.303/Opus5.5xhigh reviewSource0/native0/artifactcheck0 REQUEST-CHANGES11; AGY1.4.6/Gem3.8FlashHIGH Source0/native0/artifactcheck0 APPROVE0. Leadownedmockprobesconfirmed7Opusfindings(8observations), includingall4blockers; no voteaveraging andfirstcandidateNOTaccepted. Opusreviewartifactnativeexperienceaccepted; Geminiapprovalmissesrecordedquality_issue, bothnativeexperiencecommands0. Codeapproval/humanacceptancearenotimplied.
+## Built and tested so far
 
-## Corrections after actual review
+A: a4ca22f adds bounded admission configuration (1–300 seconds, default 30), phase
+errors and safety regressions. Source/native exits 0, native verification PASS.
+Save/result/Git helper latency remains separate; no filesystem root cause claimed.
 
-DedicatedTaskVECTO-REVIEW-INTEGRATION-SOL-LOW-0523-20261023, workercodex-review-integration-low-20261023, ChatGPTsubscription/Codex0.163.0/gpt-6.1-solLOW completedSource0at10:07:49/native0at10:09:39, cleanb04aedc(code8f601f2). All7selectedchecksPASSandseparatenativeverify0. Fixesunboundhistorypermanentveto/preparationleaks/linkedconfigsupport/effectiveprojectconfigandcommandfreshness/canonicalprojectionconsumptionandallowedvalidationreasonsindashboard/scheduler. Preservesstalehistory, originalfailuresandactualcontrols. Privatelystaged4a332e8withownerworkflowchanges; no finalacceptance. Actualreceipts review-integration-sol-low-20261023 andHANDOFF.md; intermediatefixturefailuresretained, mutable-iterationchecksnotrepresentedasevidenceforexactfinalSHA.
+B: 54beed5 adds current review observation beside historical records. Original
+Source/native failure at quota remains preserved; saved code passed separate
+verification. Opus later found integration bugs. Dedicated LOW correction b04aedc
+fixed unbound history veto, preparation leakage, effective config binding and
+consumer handling; Source/native/native-verification all 0.
 
-Additionallead7.6sinstalledprobeonb04aedc confirmedlegitimateno-Source/nonready canonicaldocumentisrejectedsolelyforabsentdispatchafteraddingprojection; evidence no-source-consumer-probe-20261023. Includednextcompatibilitytask, not silentlyfixedinline.
+C: explicit required text delivery preserves Source/adapter/native exits separately
+from required artifacts, checks and acceptance. Initial Mistral/Vibe GLM5.3 and
+Medium3.5 infrastructure failures and AGY/Gemini terminal503 failure remain failures.
+Dedicated Sol LOW corrected the saved draft at 3b56061. Compatibility a710c5b then
+passed 11 commands, including 292 counted checks plus branding. Next compatibility
+68c7ff4 fixed standalone helper import, legacy task readers, unset TMPDIR and
+legitimate no-Source result readability; Source/native/8-command verification 0.
 
-## ACTUAL active task; do not duplicate
+The earlier managed-session CLI slice is retained. Full multi-turn lead ownership,
+phone access and native desktop support are separate later milestones.
 
-Task VECTO-DELIVERY-COMPAT-SOL-LOW-0523-20261023; worker codex-delivery-compat-low-20261023; base4a332e8f66a1c6cd9e1c12341168fb2335002a15. ExistingChatGPTsubscription/CodexCLI0.163.0/gpt-6.1-solLOW, effectiveUnknown. Controller623854/native623891/actualCLIPID624251, Source start2026-10-23T10:23:27+02:00. Authoritativereceipts delivery-compat-sol-low-20261023/receipts/source.json,native.json,verify.json. Offlineverifier624853 waitsrealnative0/cleanthen8frozencommands (no modelcall). Onefocusbuddy/reallead/actualaccount/nativegrant/temporarymedium, STOPclosedunrelatedadmissions, lowrestoredidle. Initialestimate20–45min. LastCodexcapacity08:17:52Z primary16%/weekly71%, reset11:02:17Z=13:02:17local; refreshbeforenewadmission, no inferenceaboutattributionorindividualtaskcost.
+## Actual latest acceptance evidence
 
-RemainingCscope: standalonehelpermissingglobalsys; unsupportednewstrictownership/nlink/ancestorchecksappliedtoundeclaredlegacytaskinputs (actualartifacts/metadataMUSTstaystrict); adapteroutcometestunsetTMPDIR; no-Sourceprojectiondecoderreadabilitywithoutfabricateddispatch/readiness. Optionalbackgroundmetadatarefusaldiagnosticonlyifstraightforward, notredesign. Commitsearlybeforeslowchecks; preservefailedSource/partialsifcapacitystops. ActualSourceordinaryhost; mockchecksONLY existingprojectownedprivateTMPFSharness UID1000/caps0, never actualproviderinnamespace. No UI/CSS/site/CodeGraph/competitor/Windows changes.
+First combined 7cb9b9b: full quality gate PASS (2687.18 seconds). Independent
+Claude Code 2.1.303 / Opus5.5 XHIGH returned REQUEST-CHANGES; AGY1.4.6 /
+Gemini3.8Flash HIGH approved. Lead probes confirmed seven Opus findings. These votes
+were not averaged and the candidate was not accepted. Both original reports remain.
 
-## Finish conditions and exact next action
+Next candidate 68c7ff4: full gate FAILED, exit 1 after 1182.43 seconds, at
+unio-review-findings.py:410. That assertion still expects receipt-less history to
+permanently veto current bound review evidence. Suites after it did not run.
+Claude Code 2.1.309 / Opus5.5 XHIGH delivered a valid independent review,
+REQUEST-CHANGES with eight findings. Three actionable integration defects were
+reproduced by six installed mock observations (43.758 seconds, zero provider calls):
+linked config prevents delivery hashes, legal native reviewer IDs fail decoding,
+and invalid config erases an otherwise known projection revision. No false-ready
+path was found by that review; this is not proof of universal correctness.
 
-ObservecurrentSource/native/checks; neverrestartactiveworker. ReviewrealCdeltaandmeaningfulregressions. RequireB/CnativechecksPASSbeforefinalacceptance. Stageonlyactualscopedcleanworkercommitsprivately; retainallfailedattempts. PreparefreshCURRENT-CODEoneOpus5.5xhigh independentreviewandtheleadassessment underupdatedpersonalworkflow, pluscurrentfullgate. First7cbgate/approvals donotapplytochangedcode. Fullcurrentcandidateexceedsnative300000bytematerialcap; nevercliporclaimnativeReviewAPPROVE. Earlier auditsusednative report-onlySourceworkflowswithcompleteboundedmaterial/hashandstrictartifactchecks; reusepatternwithonlyoneexternalreviewer. Exactroute/client/version/model/effort, nativeCLIexit, wrapperSourceexit,nativeexit,artifactgate,revisionandactualacceptancemustbepreserved. Current reviewcallbacksstrictlyread-onlyClaudeRead/Grep/Glob; normalfirstPartyOAuth, API/3Penvremoved, nofallback. Recheckcapabilities/authstatuswithoutcopyingIDs/tokens. Finalreviewandfullgatecanrunparallelonfrozencandidate. Anoperationscontrollercanlaunchalreadyauthorizedgates/reviewafterCactual0; itmustneveracceptcode,publish,pushmain,globallyinstall,retrySourceorresolveconflictsautomatically.
+Actual evidence under workspace tmp/unio-next/vecto-reliability-20261021:
+- machine-gate-final-20261023/full-gate.json and full-gate.log
+- final-opus-review-20261023/claude/review.md and its receipts
+- review2-triage-20261023/evidence.json and probe.py
 
-OpenCodeGo/DeepSeek4.1FlashHIGH1.19.3 failed401expiredcredential(Source/native1), notquota; noauthchanges. AGYSonnet1.4.5 setupSource1beforemodelafterCLIupdated1.4.6. ReplacementMistral/Vibe2.26.1/Medium3.5HIGH Source/native2infrastructurebelowcaps(1705514/12Mtokens,reportedUSD2.592159/10), partial2497bytefile/noverdict, notusable review. Preserveallreplacements.No additionalreviewersneededundernewdefaultunlessunresolvedgap. Grokremainsbenched; freeZenroutine-onlyhighestpermitted<=xhigh/no max; CopilotAutoBalancefixedlabUnknown; Perplexityproposalonly. No unmeasuredtoken-savingsoruniversalmodelrankclaim.
+## Active correction: inspect before doing anything; do not duplicate
 
-Info/backlog: metadata/Git/result/experience deadlinesandmeasuredWindowsmountcost4–8h; remainingreview_currentstatusconsumers2–4h; effortcapabilitiesvstier2–4h; optinanalysis/binary/ignoredassets1–2days; boundedenclosingreviewcontext4–8h; honestcrossworkspace/modelhistory1–2days. Managedduplicateterminalevent/perchunkmetadataIObelongsnextmanagedleadwork; olddatedfragmentversionlinehistorical, notruntimebug. No manufacturedrealcooldownwait. Finishfocused23, then24fullmanagedleadownership(2–4workingdays),25phone,26nativeWindows/trials/localization/Eqhologic,27macOS. No scopecreepintoshippingcandidate.
+Task VECTO-CONFIG-OBSERVATION-SOL-MEDIUM-0523-20261023, worker
+codex-config-observation-medium-20261023, base 68c7ff4. Route: existing ChatGPT
+subscription / Codex CLI 0.163.0 / requested gpt-6.1-sol MEDIUM. Effective model and
+effort Unknown. Source started 2026-10-23T14:05:35+02:00; controller790691,
+native790734, CLI791123. Read actual receipts rather than assuming these PIDs live.
 
-Updatechangelog/dispositions/operatinghandofffromactualchecks. FinalreportSUMMARY / ITEMS LANDED(test evidence) / ITEMS DEFERRED+WHY / FILES CHANGED / RISKS / NEEDS-REVIEW. Answerstatusquestionsbrieflythencontinue. Beforegenuinelimitpreservejobs/commits/receipts/exactnextstepandstatewhichactualprocessesremain; endedleadturnisnotcontinuingcoordination. No mainpush/releaseauthorization.
+Pipeline config-observation-sol-medium-20261023 has receipts/source.json,
+receipts/native.json and receipts/verify.json. Offline verifier791443 waits for real
+native success and a clean committed worktree, then runs seven frozen commands.
+The code worker stays on the ordinary host; only zero-provider mocks use the
+existing project-owned tmpfs harness. LOW to MEDIUM is justified by demonstrated
+integration gaps; effort-escalation.json records the evidence. Latest fresh capacity
+observation at11:55:55Z: primary97%, weekly68%; dated observation, not guaranteed
+remaining capacity or attribution to this task.
+
+Scope: the three confirmed integration defects and the obsolete history assertion.
+Optional tiny background declaration preflight only; no launcher redesign or scope
+expansion. Estimate30–60 minutes plus fresh current full gate and one Opus/lead review.
+
+## Exact next actions
+
+1. Observe current Source/native/verification receipts and inspect its actual diff.
+   Preserve intermediate failures; a committed diff is not successful delivery.
+2. If all are 0 and the worktree is clean, freeze the exact revision and run the full
+   quality gate plus ONE fresh independent Opus5.5 XHIGH review. Complete material
+   exceeds the native300000-byte review limit: use the existing bounded, hashed,
+   report-only Source audit pattern without clipping or claiming native approval.
+3. Perform the existing lead's assessment. Return real defects to a scoped native
+   implementation worker. No automatic acceptance, merge, retry or publication.
+4. Integrate approved scoped commits privately; update changelog, dispositions,
+   operating guides, experience/scoreboard and this handoff from actual evidence.
+
+## Deferred work and limits
+
+P2: helper-specific measured result/Git/experience deadlines (4–8 hours), remaining
+current-review status consumers (2–4 hours), effort capability reasons versus tier
+(2–4 hours), explicit binary/ignored analysis artifacts (1–2 days), bounded enclosing
+review context (4–8 hours), cross-workspace account visibility/model history (1–2 days).
+Parser-heading ambiguity, Bash deadline granularity and raw-versus-observed stored
+readiness are recorded limitations, not reasons to expand this correction.
+
+Finish focused0.5.23; then full managed lead ownership0.5.24 (2–4 working days),
+phone0.5.25, Windows0.5.26 with trial/localization/Eqho follow-ups, then macOS0.5.27.
+No new UI, website, CodeGraph or competitor research in this round.
+
+Answer status questions briefly and continue authorized work. Before a real limit,
+preserve jobs, commits, actual exits and exact next step. Never imply coordination
+continues after ending the turn. Final report: SUMMARY / ITEMS LANDED (test evidence)
+/ ITEMS DEFERRED + WHY / FILES CHANGED / RISKS / NEEDS-REVIEW.

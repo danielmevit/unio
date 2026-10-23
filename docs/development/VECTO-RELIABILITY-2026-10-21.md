@@ -106,3 +106,22 @@ conditions; the completed Source is not itself approval. Manual verification
 without a Source still records process not_run and no fabricated dispatch.
 Tasks declaring required artifacts still fail before validation without actual
 Source-bound delivery. Verdict-only approvals do not become complete findings.
+
+## Current acceptance checkpoint — 2026-10-23T14:07:42+02:00
+
+The first combined candidate7cb9b9b passed the full gate, but independent Opus
+review and lead reproductions found real integration defects. It was not accepted.
+Dedicated LOW corrections b04aedc and68c7ff4 completed Source/native/selected native
+verification with exit0. The next complete gate on68c7ff4 failed one outdated
+unbound-history expectation; subsequent suites did not run. A fresh Opus5.5 XHIGH
+review delivered REQUEST-CHANGES. Lead-owned installed mock probes confirmed
+linked configuration handling, legal reviewer-ID decoding and config-error revision
+visibility defects. A focused native Sol MEDIUM correction is active; no final
+acceptance or publication is implied.
+
+The owner's current personal workflow applies on every project using Unio:
+one independent external reviewer plus the existing lead, two reviewers total.
+It supersedes the earlier review-count text above. Codex leads prefer eligible
+Claude/Opus5.5 XHIGH; extra external reviewers require a concrete unresolved gap or
+owner request. Current project/CI/human requirements, real account slots and
+original failures remain intact. See [owner workflow](../ai/OWNER-WORKFLOW.md).
