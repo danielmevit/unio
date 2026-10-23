@@ -1,0 +1,1 @@
+- Keep proven pre-provider budget refusals visible as operational history without vetoing a later complete current review; retain strict history counts, collection expectations and fail-closed invoked failures, with matching native execution validation.
