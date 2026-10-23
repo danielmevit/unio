@@ -20605,6 +20605,34 @@ independently, and worker busy checks still apply. Consumer deadlines are unchan
 Explicit `reviews` browsing retains eager material/hash observation, including
 protocol-size diagnostics before a review exists. The deferred path is limited
 to result projection.
+
+Proven pre-provider budget refusals remain current operational history, rather
+than reviewer verdicts. Eligibility is deliberately narrow: a validated protocol-2
+receipt, schema-2 command/configuration context current for the selected config,
+exact `budget_refused` reason, unknown state, null process exit, incomplete material,
+identical before/after/current revision and current material hash, and verified
+empty stdout/stderr. Closing stream, configuration, revision and lock checks still
+apply. Neither null exit alone nor legacy context, free prose, provider-limit or
+unknown-outcome evidence establishes this eligibility.
+
+Eligible rows add `admission_evidence` containing the verified original receipt
+and context. Receipt schemas and the strict counts object are unchanged: counts
+still include all current history (including unknown refusals), while decisions,
+extraction completeness and readiness use eligible reviewer verdicts. A refusal
+never supplies an expected reviewer or an approval. At least one actual complete
+current config-bound approval is required, and every other ordinary check still
+applies. This is eligibility, not timestamp precedence: actual invoked failures,
+change requests, incomplete collections and missing members continue blocking.
+Old readers can remain conservative; the bundled execution validator validates
+the additive evidence and its row/material/revision bindings before excluding it.
+The legacy result reason allowlist also recognizes `budget_refused`, allowing a
+refusal-only nonready result to decode without implying a reviewer verdict.
+An isolated exclusion/ready flag cannot establish readiness. Context-less legacy
+approvals retain their existing conservative machine-readiness behavior.
+
+Observation preserves all original bytes and counters, makes no provider calls,
+and does not resolve, relabel as stale, or erase the refusal. Operational history
+is not code-quality approval, accepted delivery or human/integration acceptance.
 UNIO_REVIEW_STATUS_MD
 fi
 if [ ! -e "$TPL_DIR/REQUIRED-DELIVERY.md" ] && [ ! -L "$TPL_DIR/REQUIRED-DELIVERY.md" ]; then
