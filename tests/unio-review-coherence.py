@@ -39,7 +39,7 @@ class Coherence(unittest.TestCase):
         self.assertEqual(d['review_current']['ai_lab_independence'],'unknown')
         return d
 
-    def test_unreviewed_observation_skips_unusable_review_material(self):
+    def unavailable_review_env(self):
         # Deterministic unavailable/expensive-work sentinel: do not depend on
         # wall-clock speed. Every forbidden attempt is persisted before refusal.
         hooks=self.root/'observation-hooks';hooks.mkdir()
@@ -47,14 +47,19 @@ class Coherence(unittest.TestCase):
         (hooks/'sitecustomize.py').write_text("""import pathlib,sys
 marker=pathlib.Path(%r)
 def trace(frame,event,arg):
-    if event=='call' and (frame.f_code.co_name in ('material_body','review_config_data')
+    if event=='call' and (frame.f_code.co_name=='material_body'
+            or (frame.f_code.co_name=='review_config_data'
+                and frame.f_back.f_code.co_name in ('reviews','observe_material'))
             or (frame.f_code.co_name=='snapshot' and frame.f_back.f_code.co_name=='reviews')):
         with marker.open('a') as stream:stream.write(frame.f_code.co_name+'\\n')
         raise OSError('controlled unavailable review material')
     return trace
 if len(sys.argv)>1 and sys.argv[1]=='result':sys.settrace(trace)
 """ % str(attempted))
-        env=dict(self.env,PYTHONPATH=str(hooks))
+        return dict(self.env,PYTHONPATH=str(hooks)),attempted
+
+    def test_unreviewed_observation_skips_unusable_review_material(self):
+        env,attempted=self.unavailable_review_env()
         stored=self.coord/'results/mock/evidence.json'
         original=stored.read_bytes();before=self.result();calls=self.calls()
         reports=self.coord/'reports'
@@ -87,6 +92,58 @@ if len(sys.argv)>1 and sys.argv[1]=='result':sys.settrace(trace)
                     self.assertEqual(d['review_current']['counts']['unresolved'],1)
                 if kind=='malformed_collection':
                     self.assertIn('invalid_collection_evidence',d['review_current']['reasons'])
+
+        with (self.coord/'.locks/mock.lock').open('r') as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX)
+            d=json.loads(self.unio('result','mock','evidence',env=env).stdout)
+            self.assertIn('worker_busy',d['review_current']['reasons'])
+            self.assertFalse(d['ready_for_human_review'])
+            self.assertFalse(attempted.exists())
+
+    def test_reviewed_material_is_fresh_on_every_observation(self):
+        self.controls(revone='empty');self.unio('review','mock','evidence','revone')
+        self.assertTrue(self.result()['ready_for_human_review'])
+        env,attempted=self.unavailable_review_env()
+        for observation in range(2):
+            with self.subTest(observation=observation):
+                if attempted.exists():attempted.unlink()
+                d=json.loads(self.unio('result','mock','evidence',env=env).stdout)
+                self.assertTrue(attempted.exists())
+                self.assertIn('current_evidence_unavailable',d['review_current']['reasons'])
+                self.assertFalse(d['ready_for_human_review'])
+                self.assertEqual(d['review_current']['counts']['current'],0)
+                self.assertEqual(d['process']['exit_code'],0)
+        self.assertTrue(self.result()['ready_for_human_review'])
+
+    def test_unreviewed_source_and_delivery_outcomes_with_unavailable_material(self):
+        env,attempted=self.unavailable_review_env()
+        conf=self.root/'conf/agents.conf';saved=conf.read_text()
+        for name,exit_code,writes,state in (('complete',0,True,'complete'),
+                ('incomplete',0,False,'incomplete'),('failed',7,True,'incomplete')):
+            task='unreviewed-'+name
+            (self.coord/'tasks'/(task+'.md')).write_text(
+                '# Task\n## Allowed scope\n- hello.txt\n## Required artifacts\nreport.txt\n## Validate\n$ true\n')
+            command=('printf artifact > "$UNIO_DELIVERY_DIR/report.txt"; ' if writes else '')
+            command+='exit '+str(exit_code)
+            conf.write_text('mock='+shlex.join(['bash','-c',command])+'\n'+
+                            '\n'.join(saved.splitlines()[1:])+'\n')
+            self.unio('run','mock',task,code=exit_code)
+            before=json.loads(self.unio('result','mock',task).stdout)
+            calls=self.calls();stored=self.coord/'results/mock'/(task+'.json');raw=stored.read_bytes()
+            with self.subTest(outcome=name):
+                d=json.loads(self.unio('result','mock',task,env=env).stdout)
+                self.assertFalse(attempted.exists())
+                self.assertEqual(d['process']['exit_code'],exit_code)
+                self.assertEqual(d['process']['state'],'failed' if exit_code else 'succeeded')
+                self.assertEqual(d['delivery']['state'],state)
+                for key in ('process','validation','delivery','delivery_current','dispatch_revision','human','integration'):
+                    self.assertEqual(d.get(key),before.get(key),key)
+                self.assertFalse(d['ready_for_human_review'])
+                self.assertFalse(d['review_current']['machine_review_ready'])
+                self.assertEqual(d['human'],{'state':'pending'})
+                self.assertEqual(d['current_revision'],d['review_current']['current_revision'])
+                self.assertEqual(stored.read_bytes(),raw);self.assertEqual(self.calls(),calls)
+        conf.write_text(saved)
 
     def test_collection_result_handoff_and_missing_format(self):
         self.controls(revone='empty',revtwo='empty')
