@@ -488,3 +488,44 @@ capacity or runtime block; preserve receipts, jobs and the exact next step first
 Do not imply work continues after the lead's turn ends. This applies to leads;
 a worker still finishes only its one frozen assignment.
 <!-- /UNIO_OWNER_CONTINUE_MILESTONES_20261016 -->
+
+## Preferred final reviewer — owner rule, 2026-10-23T09:44:09+02:00
+
+For this owner's Unio development, use the Claude subscription through Claude Code,
+requested model `claude-opus-5-5`, requested effort `xhigh`, for final current-code
+review whenever that route is available and eligible. This is a standing rule for
+future sessions, not a one-session trial. It supersedes older Opus holds for review
+when the owner has made the route available; later owner holds still take priority.
+Check the actual CLI, authentication, bench/account slots, supported effort and
+current operational evidence. Unknown remaining allowance is not proof of capacity
+or exhaustion. Do not spend extra API tokens, alter billing/auth, override a bench
+or silently substitute another model or effort. If unavailable, record the reason
+and use other suitable independent AI labs; never claim an Opus review occurred.
+
+Claude Code2.1.303 help supports xhigh; the Oct23 genuine Opus5.5xhigh review
+completed with CLI/Source/native/artifact-check exits0. Effective serving identity
+and effort still remain Unknown without independent evidence. Do not use max/ultra.
+This is lead routing guidance, not a new automatic runtime selector or billing grant.
+
+Keep at least two independent current-code worker reviews from different AI labs,
+then the lead's own assessment. Opus is the preferred first reviewer; a second
+Anthropic route does not supply a different AI lab. Run the reviews concurrently
+when actual account limits permit, against the same frozen revision and exact
+material hashes, blind to current peer conclusions. A failed call, acknowledgment,
+missing required report or incomplete contract is not a usable review. Preserve
+all failures and replace the failed route without cutting a healthy reviewer.
+Resolve findings from code and meaningful regressions, not majority voting. Fresh
+code corrections need current-code review; old approvals never transfer silently.
+
+Implementation and review are different assignments. Keep capable implementation
+workers: focused Codex/gpt-6.1-sol LOW corrections under the standing shared-budget
+exception; Mistral subscription/Vibe GLM5.3 HIGH (AI lab Z.ai) when the route is
+healthy; Antigravity/Gemini3.8Flash HIGH for bounded work with explicit checks;
+Grok when actually available and not benched; and other owner-approved healthy
+subscription routes by demonstrated task fit. Do not infer weak reasoning from
+authentication, networking, streaming or quota failures. Raise shared-model effort
+gradually only for demonstrated reasoning/integration difficulty. Free OpenCode
+models remain routine workers at the highest permitted supported non-max effort;
+Perplexity/Copilot retain their documented research/proposal/support boundaries.
+The lead scopes, coordinates, reviews and integrates; it does not silently take
+over product fixes inline or manufacture parallel jobs on one low-tier account.

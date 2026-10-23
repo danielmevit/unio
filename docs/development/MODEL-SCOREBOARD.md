@@ -756,3 +756,26 @@ why the worker fits. Follow
 [worker → replacement → lead takeover](https://github.com/danielmevit/unio/blob/main/docs/ai/LEAD-ESCALATION.md)
 when progress stops. Do not run extra benchmark or reviewer fleets merely to
 populate this guide, and do not reset unsuccessful task history with a new ID.
+
+## Independent final-review evidence — 2026-10-23T09:44:09+02:00
+
+Same frozen candidate7cb9b9b, complete457443-byte material and exact hashes:
+
+- Claude subscription / Claude Code2.1.303 / requestedOpus5.5xhigh:
+  complete REQUEST-CHANGES,11findings; CLI/Source/native/artifact-check0.
+  Lead-owned installed mock probes confirmed7findings, including all4blocking
+  review integration/configuration defects. Corrections are in progress.
+- Antigravity subscription / agy1.4.6 / Gemini3.8FlashHIGH fixed selector:
+  complete APPROVE with0findings; CLI/Source/native/artifact-check0. The same
+  code still contained the independently reproduced defects. No vote averaging.
+- Mistral subscription / Vibe2.26.1 / Medium3.5HIGH: infrastructure exit2,
+  partial report/noverdict;1705514/12Mreportedtokens and2.592159/10reportedUSD
+  belowcaps. Reported cost is not proof of an additional charge.
+- OpenCodeGo / OpenCode1.19.3 / DeepSeek4.1FlashHIGH: expired-credential401,
+  CLI/Source/native1, no review. Antigravity1.4.5/Sonnet preparation later
+  refused version drift to1.4.6 before any model invocation. Failures retained.
+
+This supports the owner's standing preference for available Opus5.5xhigh final
+review, plus another independent AI lab and the lead. It does not establish
+universal model rankings, guaranteed bug detection or measured token savings.
+Requested/effective Unknowns, actual provider route and each effort stay separate.

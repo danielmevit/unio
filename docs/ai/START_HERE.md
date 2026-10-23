@@ -205,3 +205,17 @@ Before delegating, read the [agent fleet guide](../development/AGENT-FLEET.md)
 for approved account routes, useful assignments and current exclusions. Local
 models are excluded under the current owner rule; Copilot Free uses its GitHub
 Auto Balance route, not a local provider.
+
+<!-- UNIO_OPUS_FINAL_REVIEW_OWNER_20261023 -->
+## Preferred available final reviewer — 2026-10-23T09:45:00+02:00
+
+For this owner's Unio work, prefer the available eligible Claude subscription /
+Claude Code / requested `claude-opus-5-5` / xhigh final reviewer, plus an independent
+current-code reviewer from another AI lab and the lead assessment. Preserve holds,
+real account mappings, Source exits, Unknowns and failed evidence; no paidAPI
+fallback, silent downgrade or automatic unbench. Current code and behavioral
+probes decide findings, not majority votes. This is standing lead guidance, not
+an implemented automatic selector. Shared Codex/Sol corrections still start LOW.
+See the canonical LEAD-ROUTING, MODEL-EFFORT and MODEL-SCOREBOARD guides under
+docs/development/, or installed/project coordination copies, for full policy.
+<!-- /UNIO_OPUS_FINAL_REVIEW_OWNER_20261023 -->

@@ -222,3 +222,16 @@ zero prices for each assignment; don't infer effort from a model's name.
 This supersedes routine-medium suggestions for future free workers. Existing
 frozen assignments and subscription-worker defaults remain unchanged. See
 [the routing rule](LEAD-ROUTING.md#free-supporting-workers-use-their-highest-permitted-effort).
+
+## Opus final-review effort — owner update, 2026-10-23T09:44:09+02:00
+
+Preferred final review: Claude subscription / Claude Code / `claude-opus-5-5` /
+`xhigh` whenever available and eligible. Native CLI2.1.303 advertises xhigh and
+a real Oct23 review completed with that request. Pin `--model claude-opus-5-5`
+and `--effort xhigh`; requested settings and reported client model labels are
+not proof of effective serving identity/effort. Preserve Unknowns and exact exits.
+Do not silently downgrade, use max/ultra, buy API tokens, override a hold or assume
+quota from sign-in. Keep a second independent reviewer from another AI lab and
+the lead assessment. This reviewer preference does not raise implementation
+worker defaults: shared Codex/Sol workers still start LOW, with evidence-based
+gradual escalation. See LEAD-ROUTING.md for availability and fallback rules.
