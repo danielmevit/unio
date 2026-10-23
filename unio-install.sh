@@ -20535,6 +20535,29 @@ process/validation, stale revision and explicit human acceptance checks remain.
 Scheduler Source observation uses this validator, including review-set-only and
 re-verify results whose legacy review remains `not_run`. Validation reasons include
 `delivery_failed` and `invalid_report_artifact`; unknown reasons remain invalid.
+
+Configuration observation failures retain the independently observed current
+revision and actual Source state/exit. Missing, invalid UTF-8, oversized or unstable
+configuration leaves current review unavailable and machine readiness false;
+configuration currentness and approval are not inferred. Canonical consumers can
+still decode this nonready result. Mismatched projection revisions remain invalid.
+Native result reviewer IDs use the engine grammar
+`[a-zA-Z0-9_][a-zA-Z0-9_-]{0,127}`, including legacy review and current projection
+fields. Public HTTP/draft labels retain their narrower input grammar; this does
+not authorize additional reviewer requests. Traversal and overlong IDs refuse.
+
+Unreviewed result projection discovers bounded receipt and collection evidence before
+constructing review material. Receipt-less history and malformed bound evidence
+remain visible without material/configuration hashes or a second review snapshot;
+neither can establish approval. A valid own receipt or collection triggers fresh
+material/configuration observation and the existing closing revision, configuration
+and stream checks. Hashes are local to one call; no cross-call cache is used.
+Source, validation, delivery and the supplied current revision are still observed
+independently, and worker busy checks still apply. Consumer deadlines are unchanged.
+
+Explicit `reviews` browsing retains eager material/hash observation, including
+protocol-size diagnostics before a review exists. The deferred path is limited
+to result projection.
 UNIO_REVIEW_STATUS_MD
 fi
 if [ ! -e "$TPL_DIR/REQUIRED-DELIVERY.md" ] && [ ! -L "$TPL_DIR/REQUIRED-DELIVERY.md" ]; then
@@ -20595,6 +20618,17 @@ extends result schema 1; undeclared legacy documents need no delivery field.
 Incomplete or malformed declared evidence cannot establish completeness.
 
 ## Observation and freshness
+
+The current Source command uses the same effective configuration selection and
+bounded stable configuration reader as review: a regular project
+`coord/agents.conf` takes precedence over the configured global directory, and an
+empty `UNIO_CONF_DIR` uses the default. User-managed configuration supports file
+symlinks, hardlinks and symlinked parents. Its selected path and descriptor must
+remain stable during the read, its bytes must be UTF-8, and it is bounded to
+1 MiB. The first matching Source command line is hashed as launched. Changed or
+unreadable commands cannot establish current delivery. These configuration rules
+do not relax artifact or immutable metadata readers.
+
 
 Artifacts must be nonempty UTF-8 text without NUL, regular files owned by the
 current UID with exactly one hard link. Every path component is walked with
