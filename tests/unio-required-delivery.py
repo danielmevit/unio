@@ -25,6 +25,17 @@ FIXTURES.mkdir(parents=True, exist_ok=True)
 class RequiredDeliveryContract(unittest.TestCase):
     """Parse and validate required artifact declarations."""
 
+    def test_standalone_cli(self):
+        with tempfile.TemporaryDirectory(dir=FIXTURES) as tmp:
+            task = Path(tmp) / 'task.md'
+            for text, code, output in (('# legacy\n', 0, 'legacy\n'),
+                                       ('## Required artifacts\nreport.txt\n', 0, 'artifacts: report.txt\n'),
+                                       ('## Required artifacts\n../escape\n', 2, '')):
+                task.write_text(text)
+                cp = subprocess.run(['python3', '-B', str(ROOT / 'tools/required-delivery.py'), 'parse', str(task)], capture_output=True, text=True)
+                self.assertEqual((cp.returncode, cp.stdout), (code, output), cp.stderr)
+                if code: self.assertIn('required delivery:', cp.stderr)
+
     def test_task_reader_cli_and_legacy_links(self):
         spec = importlib.util.spec_from_file_location('delivery', ROOT / 'tools/required-delivery.py')
         d = importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
