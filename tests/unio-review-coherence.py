@@ -165,6 +165,18 @@ class IntegrationCorrections(Coherence):
         project.write_bytes(original)
         self.assertTrue(self.result()['ready_for_human_review'])
 
+    def test_context_command_binding_and_legacy_override_unknown(self):
+        project=self.coord/'agents.conf';project.write_bytes((self.root/'conf/agents.conf').read_bytes())
+        self.controls(revone='empty');self.unio('review','mock','evidence','revone')
+        context=next((self.coord/'reports').glob('evidence.review.*/context.json'))
+        original=json.loads(context.read_text())
+        altered=dict(original,command_sha256='0'*64);context.write_text(json.dumps(altered))
+        self.assertFalse(self.result()['ready_for_human_review'])
+        context.write_text(json.dumps(dict(schema_version=1,config_sha256=original['config_sha256'])))
+        d=self.result();self.assertFalse(d['ready_for_human_review'])
+        self.assertIsNone(d['review_current']['evidence'][0]['config_current'])
+        context.write_text(json.dumps(original));self.assertTrue(self.result()['ready_for_human_review'])
+
     def test_supported_config_links(self):
         path=self.root/'conf/agents.conf';target=path.with_name('original.conf');path.rename(target)
         self.controls(revone='empty',revtwo='empty')

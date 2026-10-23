@@ -24824,10 +24824,11 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
     findings_view=mode in ('--findings','--findings-json','projection')
     as_json=mode in ('--json','--findings-json')
     current_rev=None; material_hashes={1:None,2:None}; observation=[]
-    config_hash=None
+    config_hash=None; config_data=None
     try:
         if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
-        config_hash=review_config_hash(root)
+        config_data=review_config_data(root)
+        config_hash=hashlib.sha256(config_data).hexdigest()
         current_rev=rev if rev is not None else snapshot(root,worker,task)
         # Each protocol's material is computed independently: a protocol-2
         # size refusal must not invalidate a current legacy receipt, and a
@@ -24886,6 +24887,11 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
                             or not re.fullmatch('[0-9a-f]{64}',context['command_sha256'])):
                         fail('invalid review command binding')
                 config_current=context['config_sha256']==config_hash
+                if context['schema_version']==2:
+                    command=next((line.split('=',1)[1] for line in (config_data or b'').decode('utf-8').split('\n')
+                                  if line.startswith(d['reviewer']+'=')),None)
+                    config_current=bool(config_current and command is not None
+                        and hashlib.sha256(command.encode('utf-8')).hexdigest()==context['command_sha256'])
                 # Old contexts hashed only the global file. An override cannot
                 # establish their provenance, even when its bytes happen to match.
                 if context['schema_version']==1 and os.path.isfile(os.path.join(root,'coord','agents.conf')):
