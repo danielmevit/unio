@@ -55,6 +55,17 @@ Incomplete or malformed declared evidence cannot establish completeness.
 
 ## Observation and freshness
 
+The current Source command uses the same effective configuration selection and
+bounded stable configuration reader as review: a regular project
+`coord/agents.conf` takes precedence over the configured global directory, and an
+empty `UNIO_CONF_DIR` uses the default. User-managed configuration supports file
+symlinks, hardlinks and symlinked parents. Its selected path and descriptor must
+remain stable during the read, its bytes must be UTF-8, and it is bounded to
+1 MiB. The first matching Source command line is hashed as launched. Changed or
+unreadable commands cannot establish current delivery. These configuration rules
+do not relax artifact or immutable metadata readers.
+
+
 Artifacts must be nonempty UTF-8 text without NUL, regular files owned by the
 current UID with exactly one hard link. Every path component is walked with
 non-following directory descriptors. Symlinks (including ancestor symlinks),

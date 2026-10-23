@@ -142,6 +142,84 @@ class Coherence(unittest.TestCase):
         self.assertIn('invalid_collection_evidence',summary['reasons'])
 
 class IntegrationCorrections(Coherence):
+    def execution_module(self):
+        spec=importlib.util.spec_from_file_location('config_execution',Path(__file__).resolve().parents[1]/'bridge/execution_service.py')
+        execution=importlib.util.module_from_spec(spec);spec.loader.exec_module(execution)
+        return execution
+
+    def test_native_reviewer_grammar_installed_results(self):
+        execution=self.execution_module()
+        aliases=('Opus','2nd','_x','R'+'x'*127)
+        conf=self.root/'conf/agents.conf'
+        with conf.open('a') as stream:
+            for alias in aliases:
+                stream.write(alias+'='+shlex.join(['python3',str(self.root/'provider.py'),str(self.root),alias])+'\n')
+        self.controls(**dict.fromkeys(aliases,'empty'))
+        self.unio('review','mock','evidence',aliases[0])
+        d=self.result()
+        self.assertEqual(d['review']['reviewer'],'Opus')
+        self.assertTrue(execution._native_document(d,'mock','evidence')['ready_for_human_review'])
+        self.unio('review-set','mock','evidence',*aliases)
+        d=self.result();self.assertTrue(d['ready_for_human_review'])
+        self.assertEqual(set(d['review_current']['distinct_reviewers']),set(aliases))
+        self.assertTrue(execution._native_document(d,'mock','evidence')['ready_for_human_review'])
+        for bad in ('../Opus','-x','x/y','x'*129):
+            for location in ('legacy','list','row'):
+                forged=copy.deepcopy(d)
+                if location=='legacy': forged['review']['reviewer']=bad
+                elif location=='list': forged['review_current']['distinct_reviewers']=[bad]
+                else: forged['review_current']['evidence'][0]['reviewer']=bad
+                with self.subTest(bad=bad,location=location),self.assertRaises(ValueError):
+                    execution._native_document(forged,'mock','evidence')
+
+    def test_invalid_configuration_keeps_installed_source_observable(self):
+        execution=self.execution_module()
+        self.controls(revone='empty');self.unio('review','mock','evidence','revone')
+        conf=self.root/'conf/agents.conf';saved=conf.read_bytes()
+        hooks=self.root/'unstable-config-hooks';hooks.mkdir()
+        (hooks/'sitecustomize.py').write_text("""import os,sys,types
+original=os.stat
+count=0
+def unstable(path,*args,**kwargs):
+    global count
+    st=original(path,*args,**kwargs)
+    if sys._getframe(1).f_code.co_name=='review_config_data':
+        count+=1
+        if count%2==0:
+            values={k:getattr(st,k) for k in dir(st) if k.startswith('st_')}
+            values['st_ino']+=1
+            return types.SimpleNamespace(**values)
+    return st
+os.stat=unstable
+""")
+        try:
+            for kind in ('utf8','missing','oversized','unstable'):
+                conf.write_bytes(saved)
+                env=self.env
+                if kind=='utf8': conf.write_bytes(b'\xff')
+                elif kind=='missing': conf.unlink()
+                elif kind=='oversized': conf.write_bytes(b'#'+b'x'*1048576)
+                else: env=dict(self.env,PYTHONPATH=str(hooks))
+                with self.subTest(kind=kind):
+                    d=json.loads(self.unio('result','mock','evidence',env=env).stdout)
+                    self.assertEqual(d['process']['state'],'succeeded')
+                    self.assertEqual(d['process']['exit_code'],0)
+                    self.assertEqual(d['review_current']['current_revision'],d['current_revision'])
+                    self.assertFalse(d['ready_for_human_review'])
+                    self.assertIn('current_evidence_unavailable',d['review_current']['reasons'])
+                    self.assertFalse(any(r['current'] for r in d['review_current']['evidence']))
+                    self.assertFalse(execution._native_document(d,'mock','evidence')['ready_for_human_review'])
+                    for mutate in (
+                        lambda x:x['review_current'].update(current_revision=None),
+                        lambda x:x['review_current']['current_revision'].update(task_sha256='0'*64),
+                        lambda x:x.update(ready_for_human_review=True),
+                        lambda x:x['review_current'].update(machine_review_ready=True),
+                    ):
+                        forged=copy.deepcopy(d);mutate(forged)
+                        with self.assertRaises(ValueError):execution._native_document(forged,'mock','evidence')
+        finally: conf.write_bytes(saved)
+        self.assertTrue(self.result()['ready_for_human_review'])
+
     def test_unbound_history_is_visible_without_veto(self):
         orphan=self.coord/'reports/evidence.review.Orphan01';orphan.mkdir()
         (orphan/'stdout.log').write_text('interrupted historical stream')
@@ -233,6 +311,25 @@ if len(sys.argv)>1 and sys.argv[1]=='review-context':sys.settrace(trace)
         self.assertEqual(list((self.coord/'reports').glob('evidence.review.*')),[orphan])
         self.assertEqual(set(Path(os.environ['TMPDIR']).iterdir()),scratch)
         self.assertEqual((orphan/'stdout.log').read_text(),'old evidence')
+
+    def test_manual_no_source_projection_is_readable_but_never_ready(self):
+        spec=importlib.util.spec_from_file_location('manual_execution',Path(__file__).resolve().parents[1]/'bridge/execution_service.py')
+        execution=importlib.util.module_from_spec(spec);spec.loader.exec_module(execution)
+        task='manual-no-source'
+        (self.coord/'tasks'/(task+'.md')).write_text('# Manual check\n## Allowed scope\n- hello.txt\n## Validate\n$ test -s hello.txt\n')
+        self.unio('verify','mock',task)
+        d=json.loads(self.unio('result','mock',task).stdout)
+        self.assertEqual(d['process']['state'],'not_run')
+        self.assertNotIn('dispatch_revision',d)
+        self.assertFalse(d['ready_for_human_review'])
+        for projection in (True,False):
+            observed=copy.deepcopy(d)
+            if not projection:observed.pop('review_current')
+            self.assertFalse(execution._native_document(observed,'mock',task)['ready_for_human_review'])
+            observed['ready_for_human_review']=True
+            with self.assertRaises(ValueError):execution._native_document(observed,'mock',task)
+        forged=copy.deepcopy(d);forged['review_current']['counts']['current']=True
+        with self.assertRaises(ValueError):execution._native_document(forged,'mock',task)
 
     def test_real_projection_parser_and_scheduler(self):
         spec=importlib.util.spec_from_file_location('integration_execution',Path(__file__).resolve().parents[1]/'bridge/execution_service.py')

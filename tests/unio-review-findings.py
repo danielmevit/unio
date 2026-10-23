@@ -403,18 +403,37 @@ class ReviewFindings(unittest.TestCase):
         self.assertEqual(d['findings'],[])
         stream.write_bytes(saved)
         self.assertEqual(self.findings(code=1,expect='revone')['counts']['current'],1)
-        # Unbound historical folder stays unresolved.
+        # Receipt-less history remains visible without vetoing bound findings/opinions.
         legacy=self.coord/'reports/evidence.review.Legacy00';legacy.mkdir()
-        (legacy/'stdout.log').write_text('VERDICT: APPROVE\n')
+        historical=b'VERDICT: APPROVE\n'
+        (legacy/'stdout.log').write_bytes(historical)
         d=self.findings(code=1,expect='revone')
-        self.assertTrue(d['incomplete'])
-        self.assertEqual(d['counts']['unresolved'],1)
+        self.assertFalse(d['incomplete'])
+        self.assertEqual(d['counts']['unresolved'],0)
+        self.assertEqual(d['counts']['recorded'],2)
+        self.assertEqual(d['counts']['current'],1)
+        self.assertEqual(d['findings'][0]['summary'],'A concrete issue caf\u00e9')
+        unbound=next(e for e in d['evidence'] if 'unbound_legacy_evidence' in e['reasons'])
+        self.assertFalse(unbound['current'])
+        opinion=json.loads(self.unio('reviews','mock','evidence','--expect','revone','--json').stdout)
+        self.assertEqual(opinion['decision'],'all_recorded_approved')
+        self.assertEqual(opinion['counts']['unresolved'],0)
+        # A current request for changes still blocks alongside that history.
+        self.controls(revone='changes')
+        self.unio('review','mock','evidence','revone',code=1)
+        opinion=json.loads(self.unio('reviews','mock','evidence','--expect','revone','--json',code=1).stdout)
+        self.assertEqual(opinion['decision'],'changes_requested')
+        raw={p:p.read_bytes() for p in self.receipts()}
         # Stale evidence keeps its findings out of the actionable view.
         self.task.write_text(self.task.read_text()+'\nNew owner instructions.\n')
         d=self.findings(code=2,expect='revone')
-        self.assertEqual(d['counts']['stale'],1)
+        self.assertEqual(d['counts']['stale'],2)
         self.assertEqual(d['findings'],[])
-        self.assertEqual(d['counts']['unresolved'],1)
+        self.assertEqual(d['counts']['unresolved'],0)
+        self.assertTrue(any('unbound_legacy_evidence' in e['reasons'] for e in d['evidence']))
+        self.assertEqual((legacy/'stdout.log').read_bytes(),historical)
+        self.assertEqual(stream.read_bytes(),saved)
+        for path,data in raw.items():self.assertEqual(path.read_bytes(),data)
 
     def test_findings_and_incompleteness_coexist_at_exit_one(self):
         self.controls(revone='findings')

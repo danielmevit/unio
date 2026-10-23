@@ -1048,6 +1048,18 @@ class ExecutionServiceTests(unittest.TestCase):
             self.assertFalse((self.workspace / 'coord/ui-execution/actions' / (key + '.json')).exists())
         self.assertEqual(self.instance.get(identity)['acceptance']['state'], 'pending')
 
+    def test_native_reviewer_ids_do_not_expand_public_input_grammar(self):
+        _, view, _, _ = self.reviewed()
+        original=json.loads(self.native_path(view).read_text())
+        for alias in ('Opus','2nd','_x','R'+'x'*127):
+            document=copy.deepcopy(original)
+            document['review']['reviewer']=alias
+            self.assertEqual(service._native_document(document,document['worker'],document['task'])['review']['reviewer'],alias)
+            with self.assertRaises(ExecutionError):service._input(service.LABEL,alias)
+        for alias in ('../Opus','-x','x/y','x'*129):
+            document=copy.deepcopy(original);document['review']['reviewer']=alias
+            with self.assertRaises(ValueError):service._native_document(document,document['worker'],document['task'])
+
     def test_delivery_and_report_validation_reasons_remain_closed(self):
         _, view, _, _ = self.reviewed()
         original=json.loads(self.native_path(view).read_text())

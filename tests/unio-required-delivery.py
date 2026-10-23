@@ -25,6 +25,40 @@ FIXTURES.mkdir(parents=True, exist_ok=True)
 class RequiredDeliveryContract(unittest.TestCase):
     """Parse and validate required artifact declarations."""
 
+    def test_standalone_cli(self):
+        with tempfile.TemporaryDirectory(dir=FIXTURES) as tmp:
+            task = Path(tmp) / 'task.md'
+            for text, code, output in (('# legacy\n', 0, 'legacy\n'),
+                                       ('## Required artifacts\nreport.txt\n', 0, 'artifacts: report.txt\n'),
+                                       ('## Required artifacts\n../escape\n', 2, '')):
+                task.write_text(text)
+                cp = subprocess.run(['python3', '-B', str(ROOT / 'tools/required-delivery.py'), 'parse', str(task)], capture_output=True, text=True)
+                self.assertEqual((cp.returncode, cp.stdout), (code, output), cp.stderr)
+                if code: self.assertIn('required delivery:', cp.stderr)
+
+    def test_task_reader_cli_and_legacy_links(self):
+        spec = importlib.util.spec_from_file_location('delivery', ROOT / 'tools/required-delivery.py')
+        d = importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
+        with tempfile.TemporaryDirectory(dir=FIXTURES) as tmp:
+            root = Path(tmp); task = root / 'task.md'
+            task.write_text('# legacy task\n')
+            linked = root / 'linked.md'; os.link(task, linked)
+            ancestor = root / 'alias'; ancestor.symlink_to(root, target_is_directory=True)
+            for path in (task, linked, ancestor / 'task.md'):
+                self.assertIsNone(d.parse(d.read_task(path)))
+                cp = subprocess.run(['python3', '-B', str(ROOT / 'tools/required-delivery.py'), 'parse', str(path)], capture_output=True, text=True)
+                self.assertEqual((cp.returncode, cp.stdout), (0, 'legacy\n'), cp.stderr)
+            # Artifact evidence keeps ownership/link/ancestor restrictions.
+            for path in (linked, ancestor / 'task.md'):
+                with self.assertRaises((d.DeliveryError, OSError)): d.read_artifact(path)
+            symlink = root / 'symlink.md'; symlink.symlink_to(task)
+            fifo = root / 'fifo'; os.mkfifo(fifo)
+            for path in (symlink, fifo):
+                with self.assertRaises((d.DeliveryError, OSError)): d.read_task(path)
+            for data in (b'bad\0task', b'\xff', b'x' * (d.LIMIT + 1)):
+                task.write_bytes(data)
+                with self.assertRaises(d.DeliveryError): d.read_task(task)
+
     def test_parse_empty_and_legacy(self):
         """No section means legacy; empty section is malformed."""
         spec = importlib.util.spec_from_file_location(
@@ -174,6 +208,68 @@ class RequiredDeliveryIntegration(unittest.TestCase):
     def data(self, name):
         return json.loads(self.call('result', 'mock', name).stdout)
 
+    def test_supported_configuration_delivery_lifecycle(self):
+        import shutil
+        original_env=self.env
+        for kind in ('symlink','hardlink','parent','project','empty-default'):
+            with self.subTest(kind=kind):
+                self.configure('printf "linked artifact" > "$UNIO_DELIVERY_DIR/report.txt"; printf "native report"')
+                material=self.base/'linked-material'
+                answer='```unio-findings-v1\n{"schema_version":1,"findings":[]}\n```\nVERDICT: APPROVE\n'
+                reviewer=('cp "$TASKFILE" '+shlex.quote(str(material))+
+                          '; printf %b '+shlex.quote(answer.replace('\n',r'\n')))
+                with self.conf.open('a') as stream: stream.write('rev='+reviewer+'\n')
+                target=self.conf.with_name('agents.actual')
+                link=self.base/'linked-config'
+                project=self.root/'coord/agents.conf'
+                try:
+                    if kind in ('symlink','hardlink'):
+                        self.conf.rename(target)
+                        if kind=='symlink': self.conf.symlink_to(target.name)
+                        else: os.link(target,self.conf)
+                    elif kind=='parent':
+                        link.symlink_to(self.conf.parent,target_is_directory=True)
+                        self.env=dict(original_env,UNIO_CONF_DIR=str(link))
+                    elif kind=='project': project.symlink_to(self.conf)
+                    else:
+                        home=self.base/'linked-home'
+                        shutil.copytree(self.conf.parent,home/'.config/unio')
+                        self.env=dict(original_env,HOME=str(home),UNIO_CONF_DIR='')
+                    name='config-'+kind; self.task(name,['report.txt'])
+                    self.call('run','mock',name); self.call('verify','mock',name)
+                    d=self.data(name)
+                    self.assertEqual(d['delivery']['state'],'complete',d)
+                    self.assertEqual(d['delivery']['artifact_count'],1)
+                    self.call('review','mock',name,'rev')
+                    self.assertIn(b'linked artifact',material.read_bytes())
+                    self.assertTrue(self.data(name)['ready_for_human_review'])
+                    packet=Path(self.call('handoff','mock',name).stdout.strip())
+                    self.assertEqual((packet/'delivery/report.txt').read_bytes(),b'linked artifact')
+                    # Active command changes and unreadable bytes cannot inherit delivery.
+                    effective=project if kind=='project' else Path(self.env['HOME'])/'.config/unio/agents.conf' if kind=='empty-default' else self.conf
+                    saved=effective.read_bytes()
+                    for changed in (saved.replace(b'mock=',b'mock=printf changed; ',1),b'\xff'):
+                        effective.write_bytes(changed)
+                        d=self.data(name)
+                        self.assertEqual(d['process']['exit_code'],0)
+                        self.assertFalse(d['ready_for_human_review'])
+                        self.assertEqual(d['delivery_current']['state'],'invalid')
+                    effective.write_bytes(saved)
+                    # Nonzero Source preserves its exit and actual partial evidence.
+                    effective.write_bytes(saved.replace(b'; printf "native report"',b'; exit 7',1))
+                    partial=name+'-partial'; self.task(partial,['report.txt','missing.txt'],mode=None)
+                    self.call('run','mock',partial,code=7)
+                    d=self.data(partial)
+                    self.assertEqual(d['process']['exit_code'],7)
+                    self.assertEqual(d['delivery']['state'],'incomplete')
+                    self.assertEqual(d['delivery']['artifact_count'],1)
+                finally:
+                    self.env=original_env
+                    if kind in ('symlink','hardlink'):
+                        self.conf.unlink(); target.rename(self.conf)
+                    elif kind=='parent': link.unlink()
+                    elif kind=='project': project.unlink()
+
     def test_manual_contract_requires_source_artifacts(self):
         name = 'manual-declared'
         marker = self.base / 'manual-validation-ran'
@@ -201,6 +297,19 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         # Or delivery is explicitly Unknown
         if 'delivery' in result:
             self.assertEqual(result['delivery']['state'], 'Unknown')
+
+    def test_hardlinked_legacy_task_reaches_source_and_declared_gate_stays_strict(self):
+        self.configure('printf called > source-called')
+        tf = self.task('legacy-hardlink')
+        os.link(tf, tf.with_suffix('.original'))
+        self.call('run', 'mock', 'legacy-hardlink')
+        self.assertEqual((self.wt / 'source-called').read_text(), 'called')
+        tf = self.task('declared-hardlink', ['../escape.txt'])
+        os.link(tf, tf.with_suffix('.original'))
+        (self.wt / 'source-called').unlink()
+        self.call('run', 'mock', 'declared-hardlink', code=2)
+        self.assertFalse((self.wt / 'source-called').exists())
+        self.configure()
 
     def test_empty_artifacts_malformed(self):
         """Empty required artifacts section is malformed."""

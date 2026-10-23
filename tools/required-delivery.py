@@ -15,6 +15,7 @@ import hashlib
 import os
 import re
 import stat
+import sys
 from pathlib import Path
 
 # Bounds
@@ -130,8 +131,28 @@ def parse(text):
 
 
 def read_task(path):
-    """Bounded owned regular UTF-8 task, with no symlink ancestors."""
-    return read_artifact(path, LIMIT).decode('utf-8')
+    """Legacy bounded regular UTF-8 input; artifacts retain stricter evidence rules."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= LIMIT:
+            raise DeliveryError('task file must be a regular file of at most 1 MiB')
+        data = b''
+        while len(data) <= LIMIT:
+            chunk = os.read(fd, LIMIT + 1 - len(data))
+            if not chunk:
+                break
+            data += chunk
+    finally:
+        os.close(fd)
+    if len(data) > LIMIT:
+        raise DeliveryError('task file exceeds the 1 MiB bound')
+    if b'\0' in data:
+        raise DeliveryError('task text contains NUL bytes')
+    try:
+        return data.decode('utf-8')
+    except UnicodeError:
+        raise DeliveryError('task file must be valid UTF-8') from None
 
 
 def validate_artifact_path(name):
@@ -365,8 +386,6 @@ def validate_binding(binding, require_artifacts=False):
 
 def main(argv):
     """Command-line interface for testing."""
-    import sys
-
     if len(argv) != 2 or argv[0] != 'parse':
         print('usage: required-delivery.py parse <task-file>', file=sys.stderr)
         return 2

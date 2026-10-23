@@ -53,6 +53,8 @@ HEX32 = re.compile(r'[0-9a-f]{32}')
 HEX64 = re.compile(r'[0-9a-f]{64}')
 GIT_ID = re.compile(r'(?:[0-9a-f]{40}|[0-9a-f]{64})')
 LABEL = re.compile(r'[a-z][a-z0-9_-]{0,63}')
+# Native engine identities are wider than public HTTP/draft input labels.
+NATIVE_REVIEWER = re.compile(r'[a-zA-Z0-9_][a-zA-Z0-9_-]{0,127}')
 ERRORS = dict(invalid_request=400, job_not_found=404, conflict=409, draft_stale=409,
               binding_stale=409, worker_unavailable=409, stopped=409, not_ready=409,
               outcome_unknown=409, storage_unavailable=503, native_unavailable=503)
@@ -210,7 +212,7 @@ def _current_review(projection, worker, task, current):
             raise ValueError('invalid current review list')
         lists[key] = value
     for key in ('expected_reviewers', 'missing_reviewers', 'distinct_reviewers'):
-        if any(not _matches(LABEL, x) for x in lists[key]):
+        if any(not _matches(NATIVE_REVIEWER, x) for x in lists[key]):
             raise ValueError('invalid current reviewer')
     counts = projection.get('counts')
     keys = {'approved', 'changes_requested', 'unknown', 'failed', 'stale', 'unresolved', 'recorded', 'current'}
@@ -249,7 +251,7 @@ def _current_review(projection, worker, task, current):
         if row['current']:
             receipt = row.get('receipt_id')
             if (row['stale'] or not _matches(HEX32, receipt) or receipt in ids
-                    or not _matches(LABEL, row.get('reviewer'))
+                    or not _matches(NATIVE_REVIEWER, row.get('reviewer'))
                     or (row.get('process_exit_code') is not None
                         and (type(row['process_exit_code']) is not int
                              or not 0 <= row['process_exit_code'] <= 2147483647))):
@@ -339,7 +341,7 @@ def _native_document(document, worker, task):
                                    or v['checks_failed'] != 0 or v['reasons']):
         raise ValueError('inconsistent validation')
     if (type(r['material_complete']) is not bool
-            or (r['reviewer'] is not None and not _matches(LABEL, r['reviewer']))):
+            or (r['reviewer'] is not None and not _matches(NATIVE_REVIEWER, r['reviewer']))):
         raise ValueError('invalid reviewer')
     if r['state'] in ('approved', 'changes_requested') and (
             r['process_exit_code'] != 0 or not r['material_complete'] or not r['reviewer'] or r['reasons']):
@@ -358,9 +360,12 @@ def _native_document(document, worker, task):
         review_ready = _current_review(document['review_current'], worker, task, current)
         dispatch = document.get('dispatch_revision')
         if dispatch is None:
-            raise ValueError('missing projection dispatch binding')
-        dispatch = _revision(dispatch)
-        review_ready = review_ready and current is not None and dispatch['task_sha256'] == current['task_sha256']
+            # Manual verification and legacy results can have no Source binding.
+            # Validate their projection above, but never promote them to ready.
+            review_ready = False
+        else:
+            dispatch = _revision(dispatch)
+            review_ready = review_ready and current is not None and dispatch['task_sha256'] == current['task_sha256']
         delivery = document.get('delivery')
         if delivery is not None:
             if not isinstance(delivery, dict) or delivery.get('state') not in (None, 'Unknown', 'complete'):
