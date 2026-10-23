@@ -11,7 +11,6 @@ import os
 import types
 import copy
 import shutil
-from unittest import mock
 from pathlib import Path
 import unittest
 
@@ -247,7 +246,7 @@ if len(sys.argv)>1 and sys.argv[1]=='review-context':sys.settrace(trace)
             d=self.result();self.assertTrue(d['ready_for_human_review'])
             self.assertEqual(d['review']['state'],'not_run')
             self.assertTrue(execution._native_document(d,'mock','evidence')['ready_for_human_review'])
-            runner='/mock/engine';raw=json.dumps(d).encode()
+            runner=self.engine;raw=json.dumps(d).encode()
             client=types.SimpleNamespace(_engine=runner,_worker='mock',
                 _call=lambda *a:(0,raw),_worker_revision=lambda:d['current_revision']['candidate_commit'])
             service_binding=dict(preview=dict(task_id='evidence',task_sha256=d['current_revision']['task_sha256'],reviewer='revone'),
@@ -256,13 +255,12 @@ if len(sys.argv)>1 and sys.argv[1]=='review-context':sys.settrace(trace)
             service_binding['preview']['reviewer']='absent'
             self.assertFalse(execution.ExecutionService._native(client,service_binding)[0]['ready_for_human_review'])
             binding=dict(worker='mock',task='evidence',task_sha256=d['current_revision']['task_sha256'],
-                startup=dict(engine=runner,config='/mock/config'),fingerprints=dict(engine=hashlib.sha256(b'engine').hexdigest()))
-            planner=types.SimpleNamespace(read_regular=lambda *a:(b'engine',None),parse_strict_json=json.loads)
+                startup=dict(engine=runner,config=str(self.root/'conf')),fingerprints=dict(engine=hashlib.sha256(Path(runner).read_bytes()).hexdigest()))
+            planner=types.SimpleNamespace(read_regular=lambda path,limit:(Path(path).read_bytes(),None),parse_strict_json=json.loads)
             store=types.SimpleNamespace(project=self.repo)
             item=dict(attempted=True,source='unknown',launcher='started')
-            with mock.patch.object(scheduler,'spawn',return_value=None),mock.patch.object(scheduler,'collect',return_value=(0,raw)):
-                dispatch=types.SimpleNamespace(load_service=lambda:execution)
-                self.assertEqual(scheduler.observe_source(planner,dispatch,store,dict(bindings={'job':binding},base=d['current_revision']['base_commit']),dict(jobs={'job':item}),'job',runner,5),('succeeded',0))
+            dispatch=types.SimpleNamespace(load_service=lambda:execution)
+            self.assertEqual(scheduler.observe_source(planner,dispatch,store,dict(bindings={'job':binding},base=d['current_revision']['base_commit']),dict(jobs={'job':item}),'job',runner,5),('succeeded',0))
             for mutate in (
                 lambda x:x.update(review_current={'machine_review_ready':True}),
                 lambda x:x['review_current'].update(evidence=[]),
