@@ -3,6 +3,44 @@
 Updated 2026-10-23T19:50:02+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
 ~/.config/unio/OWNER-WORKFLOW.md before acting.
 
+## Active private development — 2026-10-24T01:28:41+02:00
+
+Installed and published stable remains0.5.23. Further milestone work is authorized;
+0.5.24 main push, release and global installation are not authorized yet.
+Private integration branch agent/reliability-integration-20261024 contains the
+review-admission-history correction through755cb060. It keeps a proved
+pre-provider budget refusal visible without allowing it to veto a later genuine
+current approval. Real failures, unknown/corrupt evidence and stale reviews
+continue to block. Original failed Sources and receipts remain unchanged.
+
+- Successful saved-code continuation: ChatGPT subscription / Codex CLI0.163.0 /
+  gpt-6.1-sol LOW, Source/native/verify0; no new implementation commit.
+- Independent review: Claude subscription / Claude Code2.1.309 / Opus5.5 XHIGH,
+  native0/APPROVE on755cb060, diff-only coverage disclosed. Existing lead read
+  enclosing code. Findings/test coverage are still being assessed; approval is
+  distinct from final acceptance. Pipeline review-admission-recovery-20261024.
+- First merged-tree gate on870e649 failed1 before tests because the bundled
+  REVIEW-STATUS guide is stale. Dedicated SolLOW native generator correction
+  runs in codex-review-guide-low-20261024; pipeline
+  tmp/unio-next/review-guide-embedding-scope-20261024. Preserve the failed gate;
+  prove regenerated text/runtime identity, then freeze a fresh full gate.
+- Mistral subscription / Vibe2.26.1 / glm-5-3 / thinkingHIGH delivered the first
+  internal managed-lead backend at08244c2+d5654ac. CLI/adapter0, native finalization,
+  verification and independent review pending. Exact task ends HIGH-PRIVATE-
+  0524-20261024; pipeline managed-lead-core-20261024/controller-private.json.
+  This component has no installed command/provider launch/native integration.
+- Automatic saves still hit the60s helper deadline under current/mnt/d load;
+  commits preserve code, but this remains an operational reliability follow-up.
+- Completed classified research and official23 backup are in the authorized
+  private hub danielmevit/unio-private at e5be535. Mercury remains experimental;
+  no further model trials are planned. Prioritize session ownership/continuity,
+  portability seam and a useful native path before more UI/model benchmarking.
+
+Do not rewrite old review/source hashes or treat process exit0 as accepted delivery.
+Keep real account mappings, lead reservation, STOP and one focused CodexLOW
+companion. Read ~/.config/unio/OWNER-WORKFLOW.md: one external Opus5.5XHIGH
+review plus the existing Codex lead; no routine extra reviewer. No Vecto edits.
+
 ## Release delivery complete
 
 Owner-authorized v0.5.23 is published, installed and verified against all six
