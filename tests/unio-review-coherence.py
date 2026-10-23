@@ -58,6 +58,35 @@ if len(sys.argv)>1 and sys.argv[1]=='result':sys.settrace(trace)
 """ % str(attempted))
         return dict(self.env,PYTHONPATH=str(hooks)),attempted
 
+    def test_admission_refusal_then_approval_preserves_history(self):
+        self.unio('lead','revone')
+        self.unio('review','mock','evidence','revone',code=2)
+        self.assertEqual(self.calls(),b'')
+        refusal=self.receipts()[0]
+        history={p:p.read_bytes() for p in refusal.parent.iterdir()}
+        d=self.result()
+        self.assertFalse(d['ready_for_human_review'])
+        self.assertEqual(d['review_current']['distinct_reviewers'],[])
+        self.unio('lead','none');self.controls(revone='empty')
+        self.unio('review','mock','evidence','revone')
+        calls=self.calls()
+        d=self.result();p=d['review_current']
+        self.assertEqual(p['counts']['unknown'],1)
+        self.assertEqual(p['counts']['current'],2)
+        self.assertTrue(d['ready_for_human_review'])
+        for path,raw in history.items():self.assertEqual(path.read_bytes(),raw)
+        for args in (('reviews','mock','evidence','--json'),
+                     ('reviews','mock','evidence','--findings','--json')):
+            observed=json.loads(self.unio(*args).stdout)
+            self.assertFalse(observed['incomplete'])
+        packet=Path(self.unio('handoff','mock','evidence').stdout.strip())
+        self.assertEqual(json.loads((packet/'result.json').read_text())['review_current'],p)
+        spec=importlib.util.spec_from_file_location('admission_execution',
+            Path(__file__).resolve().parents[1]/'bridge/execution_service.py')
+        execution=importlib.util.module_from_spec(spec);spec.loader.exec_module(execution)
+        self.assertTrue(execution._native_document(d,'mock','evidence')['ready_for_human_review'])
+        self.assertEqual(self.calls(),calls)
+
     def test_unreviewed_observation_skips_unusable_review_material(self):
         diagnostic=json.loads(self.unio('reviews','mock','evidence','--findings','--json',code=2).stdout)
         self.assertTrue(all(diagnostic['material_protocols'].values()))
