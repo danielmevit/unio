@@ -25,6 +25,29 @@ FIXTURES.mkdir(parents=True, exist_ok=True)
 class RequiredDeliveryContract(unittest.TestCase):
     """Parse and validate required artifact declarations."""
 
+    def test_task_reader_cli_and_legacy_links(self):
+        spec = importlib.util.spec_from_file_location('delivery', ROOT / 'tools/required-delivery.py')
+        d = importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
+        with tempfile.TemporaryDirectory(dir=FIXTURES) as tmp:
+            root = Path(tmp); task = root / 'task.md'
+            task.write_text('# legacy task\n')
+            linked = root / 'linked.md'; os.link(task, linked)
+            ancestor = root / 'alias'; ancestor.symlink_to(root, target_is_directory=True)
+            for path in (task, linked, ancestor / 'task.md'):
+                self.assertIsNone(d.parse(d.read_task(path)))
+                cp = subprocess.run(['python3', '-B', str(ROOT / 'tools/required-delivery.py'), 'parse', str(path)], capture_output=True, text=True)
+                self.assertEqual((cp.returncode, cp.stdout), (0, 'legacy\n'), cp.stderr)
+            # Artifact evidence keeps ownership/link/ancestor restrictions.
+            for path in (linked, ancestor / 'task.md'):
+                with self.assertRaises((d.DeliveryError, OSError)): d.read_artifact(path)
+            symlink = root / 'symlink.md'; symlink.symlink_to(task)
+            fifo = root / 'fifo'; os.mkfifo(fifo)
+            for path in (symlink, fifo):
+                with self.assertRaises((d.DeliveryError, OSError)): d.read_task(path)
+            for data in (b'bad\0task', b'\xff', b'x' * (d.LIMIT + 1)):
+                task.write_bytes(data)
+                with self.assertRaises(d.DeliveryError): d.read_task(task)
+
     def test_parse_empty_and_legacy(self):
         """No section means legacy; empty section is malformed."""
         spec = importlib.util.spec_from_file_location(
@@ -201,6 +224,19 @@ class RequiredDeliveryIntegration(unittest.TestCase):
         # Or delivery is explicitly Unknown
         if 'delivery' in result:
             self.assertEqual(result['delivery']['state'], 'Unknown')
+
+    def test_hardlinked_legacy_task_reaches_source_and_declared_gate_stays_strict(self):
+        self.configure('printf called > source-called')
+        tf = self.task('legacy-hardlink')
+        os.link(tf, tf.with_suffix('.original'))
+        self.call('run', 'mock', 'legacy-hardlink')
+        self.assertEqual((self.wt / 'source-called').read_text(), 'called')
+        tf = self.task('declared-hardlink', ['../escape.txt'])
+        os.link(tf, tf.with_suffix('.original'))
+        (self.wt / 'source-called').unlink()
+        self.call('run', 'mock', 'declared-hardlink', code=2)
+        self.assertFalse((self.wt / 'source-called').exists())
+        self.configure()
 
     def test_empty_artifacts_malformed(self):
         """Empty required artifacts section is malformed."""

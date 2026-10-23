@@ -234,6 +234,25 @@ if len(sys.argv)>1 and sys.argv[1]=='review-context':sys.settrace(trace)
         self.assertEqual(set(Path(os.environ['TMPDIR']).iterdir()),scratch)
         self.assertEqual((orphan/'stdout.log').read_text(),'old evidence')
 
+    def test_manual_no_source_projection_is_readable_but_never_ready(self):
+        spec=importlib.util.spec_from_file_location('manual_execution',Path(__file__).resolve().parents[1]/'bridge/execution_service.py')
+        execution=importlib.util.module_from_spec(spec);spec.loader.exec_module(execution)
+        task='manual-no-source'
+        (self.coord/'tasks'/(task+'.md')).write_text('# Manual check\n## Allowed scope\n- hello.txt\n## Validate\n$ test -s hello.txt\n')
+        self.unio('verify','mock',task)
+        d=json.loads(self.unio('result','mock',task).stdout)
+        self.assertEqual(d['process']['state'],'not_run')
+        self.assertNotIn('dispatch_revision',d)
+        self.assertFalse(d['ready_for_human_review'])
+        for projection in (True,False):
+            observed=copy.deepcopy(d)
+            if not projection:observed.pop('review_current')
+            self.assertFalse(execution._native_document(observed,'mock',task)['ready_for_human_review'])
+            observed['ready_for_human_review']=True
+            with self.assertRaises(ValueError):execution._native_document(observed,'mock',task)
+        forged=copy.deepcopy(d);forged['review_current']['counts']['current']=True
+        with self.assertRaises(ValueError):execution._native_document(forged,'mock',task)
+
     def test_real_projection_parser_and_scheduler(self):
         spec=importlib.util.spec_from_file_location('integration_execution',Path(__file__).resolve().parents[1]/'bridge/execution_service.py')
         execution=importlib.util.module_from_spec(spec);spec.loader.exec_module(execution)

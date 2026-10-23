@@ -358,9 +358,12 @@ def _native_document(document, worker, task):
         review_ready = _current_review(document['review_current'], worker, task, current)
         dispatch = document.get('dispatch_revision')
         if dispatch is None:
-            raise ValueError('missing projection dispatch binding')
-        dispatch = _revision(dispatch)
-        review_ready = review_ready and current is not None and dispatch['task_sha256'] == current['task_sha256']
+            # Manual verification and legacy results can have no Source binding.
+            # Validate their projection above, but never promote them to ready.
+            review_ready = False
+        else:
+            dispatch = _revision(dispatch)
+            review_ready = review_ready and current is not None and dispatch['task_sha256'] == current['task_sha256']
         delivery = document.get('delivery')
         if delivery is not None:
             if not isinstance(delivery, dict) or delivery.get('state') not in (None, 'Unknown', 'complete'):
