@@ -473,11 +473,63 @@ def run_suite(base):
     print('ok rejected and invalid transport outcomes recorded exactly once', flush=True)
 
 
+def correction_regressions(base):
+    h = Harness(base)
+    r = h.submit('record')
+    h.session.observe_output(session_id=h.sid, generation=1, turn_id=r['turn_id'],
+                             kind='agent_message', data={'delta': 'text'})
+    journal = h.session.journal_path
+    original = journal.read_bytes()
+    for corrupt in (b'', b'[]\n', b'null\n', b'1\n', b'"text"\n',
+                    b'{}\n', b'\xff\n', original[:-1],
+                    original + original):
+        journal.write_bytes(corrupt)
+        out = h.session.read_output(session_id=h.sid)
+        assert out['gap'] and out['truncated'], corrupt
+        before = journal.read_bytes()
+        refuses(h.session.observe_output, session_id=h.sid, generation=1,
+                turn_id=r['turn_id'], kind='agent_message', data={'delta': 'later'})
+        assert journal.read_bytes() == before
+    journal.write_bytes(original)
+    assert len(h.transport.calls) == 1
+    h = Harness(base)
+    meta = h.session.meta_path
+    original = meta.read_bytes()
+    doc = json.loads(original)
+    doc['session_id'] = 'lead-' + 'f' * 24
+    meta.write_text(json.dumps(doc))
+    refuses(h.open)
+    assert not h.transport.calls
+    meta.write_bytes(original)
+    for kind in ('hardlink', 'symlink', 'fifo', 'loose'):
+        target = base / ('target-' + kind)
+        target.write_bytes(b'preserve me')
+        os.chmod(target, 0o600)
+        tmp = meta.parent / ('.' + meta.name + '.tmp')
+        if kind == 'hardlink':
+            os.link(target, tmp)
+        elif kind == 'symlink':
+            tmp.symlink_to(target)
+        elif kind == 'fifo':
+            os.mkfifo(tmp, 0o600)
+        else:
+            tmp.write_bytes(b'stale')
+            os.chmod(tmp, 0o666)
+        # A fresh exclusive private temporary name leaves stale paths untouched.
+        result = h.submit('temp-' + kind)
+        assert target.read_bytes() == b'preserve me'
+        tmp.unlink()
+        h.finish(result)
+    refuses(h.submit, 'unicode', '\ud800')
+    print('ok correction regressions: journal integrity, identity, private temps, Unicode')
+
+
 def main():
     base = Path(tempfile.mkdtemp(prefix='unio-managed-lead-'))
     os.chmod(base, 0o700)
     try:
         run_suite(base)
+        correction_regressions(base)
     finally:
         shutil.rmtree(base, ignore_errors=True)
     print('all managed lead-session core checks passed')
