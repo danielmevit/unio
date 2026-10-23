@@ -2,6 +2,13 @@ Recorded 2026-10-21T19:44:10+02:00
 
 # Vecto field dispositions — Unio 0.5.23 candidate
 
+**Final candidate checkpoint 2026-10-23T19:02:01+02:00:** private runtime integration8362d1f,
+current whole gatePASS0 on a936848, independent Opus5.5 XHIGH APPROVE on unchanged
+runtime2fa351b, generated-guide identity proven, existing lead assessment accepted
+with disclosed nonblocking limits. No main push, release or global installation.
+Earlier pending/failed checkpoints below are historical. See the
+[candidate report](RELIABILITY-0.5.23-CANDIDATE.md) for final evidence and scope.
+
 Evidence window: Oct19–21, multiple versions. Raw Vecto files stay private and read-only. No provider failures are silently attributed to0.5.22. This is an initial disposition, not a completed fix or review.
 
 | Finding | Disposition before implementation | Evidence and intended treatment |
