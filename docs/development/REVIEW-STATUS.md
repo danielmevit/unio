@@ -89,3 +89,13 @@ process/validation, stale revision and explicit human acceptance checks remain.
 Scheduler Source observation uses this validator, including review-set-only and
 re-verify results whose legacy review remains `not_run`. Validation reasons include
 `delivery_failed` and `invalid_report_artifact`; unknown reasons remain invalid.
+
+Configuration observation failures retain the independently observed current
+revision and actual Source state/exit. Missing, invalid UTF-8, oversized or unstable
+configuration leaves current review unavailable and machine readiness false;
+configuration currentness and approval are not inferred. Canonical consumers can
+still decode this nonready result. Mismatched projection revisions remain invalid.
+Native result reviewer IDs use the engine grammar
+`[a-zA-Z0-9_][a-zA-Z0-9_-]{0,127}`, including legacy review and current projection
+fields. Public HTTP/draft labels retain their narrower input grammar; this does
+not authorize additional reviewer requests. Traversal and overlong IDs refuse.

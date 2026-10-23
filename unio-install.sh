@@ -2915,6 +2915,8 @@ HEX32 = re.compile(r'[0-9a-f]{32}')
 HEX64 = re.compile(r'[0-9a-f]{64}')
 GIT_ID = re.compile(r'(?:[0-9a-f]{40}|[0-9a-f]{64})')
 LABEL = re.compile(r'[a-z][a-z0-9_-]{0,63}')
+# Native engine identities are wider than public HTTP/draft input labels.
+NATIVE_REVIEWER = re.compile(r'[a-zA-Z0-9_][a-zA-Z0-9_-]{0,127}')
 ERRORS = dict(invalid_request=400, job_not_found=404, conflict=409, draft_stale=409,
               binding_stale=409, worker_unavailable=409, stopped=409, not_ready=409,
               outcome_unknown=409, storage_unavailable=503, native_unavailable=503)
@@ -3072,7 +3074,7 @@ def _current_review(projection, worker, task, current):
             raise ValueError('invalid current review list')
         lists[key] = value
     for key in ('expected_reviewers', 'missing_reviewers', 'distinct_reviewers'):
-        if any(not _matches(LABEL, x) for x in lists[key]):
+        if any(not _matches(NATIVE_REVIEWER, x) for x in lists[key]):
             raise ValueError('invalid current reviewer')
     counts = projection.get('counts')
     keys = {'approved', 'changes_requested', 'unknown', 'failed', 'stale', 'unresolved', 'recorded', 'current'}
@@ -3111,7 +3113,7 @@ def _current_review(projection, worker, task, current):
         if row['current']:
             receipt = row.get('receipt_id')
             if (row['stale'] or not _matches(HEX32, receipt) or receipt in ids
-                    or not _matches(LABEL, row.get('reviewer'))
+                    or not _matches(NATIVE_REVIEWER, row.get('reviewer'))
                     or (row.get('process_exit_code') is not None
                         and (type(row['process_exit_code']) is not int
                              or not 0 <= row['process_exit_code'] <= 2147483647))):
@@ -3201,7 +3203,7 @@ def _native_document(document, worker, task):
                                    or v['checks_failed'] != 0 or v['reasons']):
         raise ValueError('inconsistent validation')
     if (type(r['material_complete']) is not bool
-            or (r['reviewer'] is not None and not _matches(LABEL, r['reviewer']))):
+            or (r['reviewer'] is not None and not _matches(NATIVE_REVIEWER, r['reviewer']))):
         raise ValueError('invalid reviewer')
     if r['state'] in ('approved', 'changes_requested') and (
             r['process_exit_code'] != 0 or not r['material_complete'] or not r['reviewer'] or r['reasons']):
@@ -24205,10 +24207,10 @@ def delivery_start(root, worker, task, rev, command, prompt, run_id=None):
 
 
 def delivery_command(root,worker):
-    conf=safe(root,'coord','agents.conf')
-    if not os.path.lexists(conf): conf=os.path.join(os.environ['UNIO_QUALITY_CONF'],'agents.conf')
+    # User-managed configuration follows the same effective selection and
+    # bounded stable reader as review; artifact/metadata reads remain strict.
     prefix=worker.split('-')[0]+'='
-    for line in delivery_ns['read_artifact'](conf,1048576).decode().splitlines():
+    for line in review_config_data(root).decode('utf-8').split('\n'):
         if line.startswith(prefix): return hashlib.sha256(line[len(prefix):].encode()).hexdigest()
     fail('delivery Source command unavailable')
 
@@ -25054,13 +25056,17 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
     findings_mode=True
     findings_view=mode in ('--findings','--findings-json','projection')
     as_json=mode in ('--json','--findings-json')
-    current_rev=None; material_hashes={1:None,2:None}; observation=[]
+    current_rev=rev; material_hashes={1:None,2:None}; observation=[]
     config_hash=None; config_data=None
+    # Revision observation is independent of configuration availability. Keep
+    # the supplied snapshot visible even when configuration cannot be observed.
+    if current_rev is None:
+        try: current_rev=snapshot(root,worker,task)
+        except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
     try:
         if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
         config_data=review_config_data(root)
         config_hash=hashlib.sha256(config_data).hexdigest()
-        current_rev=rev if rev is not None else snapshot(root,worker,task)
         # Each protocol's material is computed independently: a protocol-2
         # size refusal must not invalidate a current legacy receipt, and a
         # legacy refusal must not fabricate currentness for schema-2 receipts.
