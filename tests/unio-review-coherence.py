@@ -59,6 +59,9 @@ if len(sys.argv)>1 and sys.argv[1]=='result':sys.settrace(trace)
         return dict(self.env,PYTHONPATH=str(hooks)),attempted
 
     def test_unreviewed_observation_skips_unusable_review_material(self):
+        diagnostic=json.loads(self.unio('reviews','mock','evidence','--findings','--json',code=2).stdout)
+        self.assertTrue(all(diagnostic['material_protocols'].values()))
+        self.assertFalse(diagnostic.get('machine_review_ready',False))
         env,attempted=self.unavailable_review_env()
         stored=self.coord/'results/mock/evidence.json'
         original=stored.read_bytes();before=self.result();calls=self.calls()

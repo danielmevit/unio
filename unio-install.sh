@@ -25089,6 +25089,10 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
     try:
         if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
     except (ValueError,OSError): observation.append('current_evidence_unavailable')
+    # Explicit review browsing also exposes material hashes before any review
+    # exists (for example protocol-size diagnostics). Keep that contract eager;
+    # only result projection can omit hashes that cannot establish approval.
+    if mode!='projection': observe_material()
     reports=safe(root,'coord','reports'); names=[]
     if os.path.exists(reports):
         with os.scandir(reports) as files:

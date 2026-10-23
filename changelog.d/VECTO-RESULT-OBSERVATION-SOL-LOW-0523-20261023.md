@@ -17,3 +17,9 @@ observation on each reviewed call, and actual Source exits 0/7 with complete or
 incomplete delivery. Test-development failures (an overbroad sentinel and an
 incorrect complete-delivery expectation for failed Source) are preserved in the
 external receipts; neither was a production-code correction.
+
+The first full findings run exposed a compatibility regression: explicit
+`reviews --findings` needs material hashes even before a receipt exists for
+protocol-size diagnostics. Deferred work is now limited to result projection;
+explicit review browsing retains eager material/hash observation. The original
+19-test run (one failure) is preserved, with final checks recorded separately.

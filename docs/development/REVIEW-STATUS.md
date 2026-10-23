@@ -100,7 +100,7 @@ Native result reviewer IDs use the engine grammar
 fields. Public HTTP/draft labels retain their narrower input grammar; this does
 not authorize additional reviewer requests. Traversal and overlong IDs refuse.
 
-Unreviewed observation discovers bounded receipt and collection evidence before
+Unreviewed result projection discovers bounded receipt and collection evidence before
 constructing review material. Receipt-less history and malformed bound evidence
 remain visible without material/configuration hashes or a second review snapshot;
 neither can establish approval. A valid own receipt or collection triggers fresh
@@ -108,3 +108,7 @@ material/configuration observation and the existing closing revision, configurat
 and stream checks. Hashes are local to one call; no cross-call cache is used.
 Source, validation, delivery and the supplied current revision are still observed
 independently, and worker busy checks still apply. Consumer deadlines are unchanged.
+
+Explicit `reviews` browsing retains eager material/hash observation, including
+protocol-size diagnostics before a review exists. The deferred path is limited
+to result projection.
