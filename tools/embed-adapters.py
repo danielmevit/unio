@@ -62,6 +62,9 @@ def embedded_block():
         ('docs/development/LEAD-ROUTING.md', 'LEAD-ROUTING'),
         ('docs/development/MODEL-EFFORT.md', 'MODEL-EFFORT'),
         ('docs/ai/REASONING-PROFILES.md', 'REASONING-PROFILES'),
+        ('docs/development/ADMISSION-DEADLINES.md', 'ADMISSION-DEADLINES'),
+        ('docs/development/REVIEW-STATUS.md', 'REVIEW-STATUS'),
+        ('docs/development/REQUIRED-DELIVERY.md', 'REQUIRED-DELIVERY'),
     ):
         guide = (ROOT / relative).read_text()
         delimiter = 'UNIO_' + name.replace('-', '_') + '_MD'

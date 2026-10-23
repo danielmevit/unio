@@ -122,9 +122,18 @@ def publish_report(data):
         data = data.encode('utf-8')
     if not 0 < len(data) <= 262144 or not data.decode('utf-8').strip() or b'\0' in data:
         raise OutcomeError('native report must be nonempty UTF-8 text of at most 262144 bytes')
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'wb') as stream:
-        stream.write(data)
+    # Walk every ancestor: O_NOFOLLOW on only the final file is insufficient.
+    parent = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in os.path.abspath(os.path.dirname(path)).split('/')[1:]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            os.close(parent)
+            parent = child
+        fd = os.open(os.path.basename(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=parent)
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(data)
+    finally:
+        os.close(parent)
 
 
 def main(argv):

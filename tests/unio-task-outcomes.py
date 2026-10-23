@@ -14,12 +14,27 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = Path(os.environ.get('TMPDIR',str(ROOT/'tmp')))
+FIXTURES.mkdir(parents=True,exist_ok=True)
 spec = importlib.util.spec_from_file_location('outcomes', ROOT/'tools/task-outcomes.py')
 outcomes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(outcomes)
 
 
 class Metadata(unittest.TestCase):
+    def test_report_channel_refuses_symlink_ancestors(self):
+        with tempfile.TemporaryDirectory(dir=FIXTURES) as tmp:
+            root=Path(tmp); (root/'outside/sub').mkdir(parents=True)
+            (root/'linked').symlink_to(root/'outside',target_is_directory=True)
+            prior=os.environ.get('UNIO_TASK_REPORT')
+            os.environ['UNIO_TASK_REPORT']=str(root/'linked/sub/incoming.txt')
+            try:
+                with self.assertRaises(OSError): outcomes.publish_report('native report')
+            finally:
+                if prior is None: os.environ.pop('UNIO_TASK_REPORT')
+                else: os.environ['UNIO_TASK_REPORT']=prior
+            self.assertFalse((root/'outside/sub/incoming.txt').exists())
+
     def test_modes_and_legacy(self):
         self.assertIsNone(outcomes.parse('# task\nimplementation prose\n'))
         for mode in outcomes.MODES:
@@ -52,7 +67,7 @@ class Metadata(unittest.TestCase):
 class Native(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='unio-outcomes-', dir=os.environ.get('TMPDIR'))
+        cls.tmp = tempfile.TemporaryDirectory(prefix='unio-outcomes-', dir=FIXTURES)
         cls.base = Path(cls.tmp.name)
         cls.env = {k:v for k,v in os.environ.items() if not k.startswith(('UNIO_', 'GIT_', 'PYTHON')) and k!='BASH_ENV'}
         cls.env.update(UNIO_BIN_DIR=str(cls.base/'bin'), UNIO_CONF_DIR=str(cls.base/'conf'),
@@ -61,7 +76,7 @@ class Native(unittest.TestCase):
                        GIT_CONFIG_GLOBAL='/dev/null', GIT_CONFIG_NOSYSTEM='1',
                        GIT_AUTHOR_NAME='fixture', GIT_COMMITTER_NAME='fixture',
                        GIT_AUTHOR_EMAIL='fixture@example.invalid', GIT_COMMITTER_EMAIL='fixture@example.invalid')
-        subprocess.run(['bash',str(ROOT/'unio-install.sh')],env=cls.env,capture_output=True,check=True)
+        subprocess.run(['bash',str(ROOT/'unio-install.sh')],env=cls.env,capture_output=True,check=True,timeout=100)
         cls.at = cls.base/'bin/unio'
         cls.root = cls.base/'project'
         cls.repo = cls.root/'repo'
@@ -134,8 +149,10 @@ class Native(unittest.TestCase):
             self.assertIn('blocked_no_repo_access',cp.stdout+cp.stderr)
 
     def configure(self,source='printf "native diagnostic\\n"'):
+        cmd = ('grep -q "COMPLETE SOURCE REPORT" "$TASKFILE" && '
+               'printf "%s\\n" \'```unio-findings-v1\' \'{"schema_version": 1, "findings": []}\' \'```\' \'VERDICT: APPROVE\'')
         self.conf.write_text('mock=bash -c '+shlex.quote(source)+'\n'+
-                            'rev=bash -c '+shlex.quote('grep -q "COMPLETE SOURCE REPORT" "$TASKFILE" && printf "VERDICT: APPROVE\\n"')+'\n')
+                            'rev=bash -c '+shlex.quote(cmd)+'\n')
 
     def data(self,name):
         return json.loads(self.call('result','mock',name).stdout)
@@ -328,7 +345,8 @@ class Native(unittest.TestCase):
         self.at=engine
         self.env['UNIO_CONF_DIR']=str(thin)
         try:
-            (thin/'agents.conf').write_text('mock=printf "thin native report"\nrev=printf "VERDICT: APPROVE\\n"\n')
+            thin_rev = 'printf "%s\\n" \'```unio-findings-v1\' \'{"schema_version": 1, "findings": []}\' \'```\' \'VERDICT: APPROVE\''
+            (thin/'agents.conf').write_text('mock=printf "thin native report"\nrev=' + thin_rev + '\n')
             name='standalone-thin'
             self.task(name)
             self.call('run','mock',name)
