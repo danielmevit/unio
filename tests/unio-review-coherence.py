@@ -142,6 +142,17 @@ if len(sys.argv)>1 and sys.argv[1]=='result':sys.settrace(trace)
         refusal.write_text(json.dumps(modified))
         self.assertFalse(self.result()['ready_for_human_review'])
         refusal.write_bytes(raw);stream.write_bytes(b'')
+        changed_revision=dict(base['before'],candidate_commit='0'*40)
+        for change in ({'material_sha256':'0'*64},
+                       {'before':changed_revision,'after':changed_revision}):
+            with self.subTest(stale_binding=change):
+                refusal.write_text(json.dumps(dict(base,**change)))
+                observed=self.result()
+                row=next(r for r in observed['review_current']['evidence']
+                         if r['raw_directory']==refusal.parent.name)
+                self.assertTrue(row['stale']);self.assertFalse(row['current'])
+                self.assertNotIn('admission_evidence',row)
+                refusal.write_bytes(raw)
         self.assertTrue(self.result()['ready_for_human_review'])
         summary=json.loads(self.unio('reviews','mock','evidence','--expect','revone,revtwo',
                                      '--json',code=2).stdout)
