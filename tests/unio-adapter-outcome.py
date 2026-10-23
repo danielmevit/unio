@@ -19,7 +19,7 @@ spec.loader.exec_module(o)
 
 class Contract(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix='outcome-contract-', dir='/dev/shm')
+        self.tmp = tempfile.TemporaryDirectory(prefix='outcome-contract-', dir=os.environ['TMPDIR'])
         self.root = Path(self.tmp.name)
         (self.root / 'coord/tasks').mkdir(parents=True)
         (self.root / 'coord/reports').mkdir()
@@ -190,7 +190,7 @@ print(json.dumps({'event':'result','result':{'status':'ERROR','error':'SECRET tr
 
 class Installed(unittest.TestCase):
     def test_native_mock_routes(self):
-        with tempfile.TemporaryDirectory(prefix='outcome-project-', dir='/dev/shm') as tmp:
+        with tempfile.TemporaryDirectory(prefix='outcome-project-', dir=os.environ['TMPDIR']) as tmp:
             b = Path(tmp)
             env = dict(os.environ, UNIO_BIN_DIR=str(b/'bin'), UNIO_CONF_DIR=str(b/'conf'),
                        UNIO_COMPLETION_DIR=str(b/'completion'), UNIO_AUTO_VERIFY='0',

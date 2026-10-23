@@ -23941,7 +23941,9 @@ def delivery_finish(root, worker, task, d, code):
 
 
 def delivery_check(root, worker, task, d=None, partial=False):
-    if d is None: d=load(root,worker,task)
+    # Manual verification has no persisted Source result. A fresh in-memory
+    # document still refuses every declared contract below.
+    if d is None: d=load(root,worker,task,missing=True)
     v=d.get('delivery')
     if not v:
         if task_artifacts(root,worker,task) is not None: fail('missing delivery evidence')
@@ -25648,7 +25650,7 @@ try:
         arts=delivery_ns['parse'](text)
         if arts is not None: print(json.dumps(arts))
     elif cmd=='delivery-dir':
-        d=load(*a)
+        d=load(*a,missing=True)
         deliv=d.get('delivery')
         if deliv and deliv.get('run_id'):
             print(delivery_directory(a[0], a[1], a[2], deliv['run_id']))

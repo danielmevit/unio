@@ -51,7 +51,7 @@ if os.environ.get('IDENTITY_COMMIT')=='1':
 ''')
     reviewer = root/'reviewer.py'
     marker = root/'reviewer.started'
-    reviewer.write_text("from pathlib import Path\nPath("+repr(str(marker))+").write_text('started')\nprint('VERDICT: APPROVE')\n")
+    reviewer.write_text("from pathlib import Path\nPath("+repr(str(marker))+").write_text('started')\nprint('```unio-findings-v1')\nprint('{\"schema_version\":1,\"findings\":[]}')\nprint('```')\nprint('VERDICT: APPROVE')\n")
     (base/'conf/agents.conf').write_text('mock=python3 '+shlex.quote(str(mock))+'\nreviewer=python3 '+shlex.quote(str(reviewer))+'\n')
     count = 0
     def check(label, condition=True):

@@ -174,6 +174,21 @@ class RequiredDeliveryIntegration(unittest.TestCase):
     def data(self, name):
         return json.loads(self.call('result', 'mock', name).stdout)
 
+    def test_manual_contract_requires_source_artifacts(self):
+        name = 'manual-declared'
+        marker = self.base / 'manual-validation-ran'
+        self.task(name, artifacts=['report.txt'], mode='implementation',
+                  validate='$ touch ' + shlex.quote(str(marker)))
+        (self.root / 'wt/mock/manual.txt').write_text('manual work\n')
+        cp = self.call('verify', 'mock', name, code=1)
+        self.assertIn('missing delivery evidence', cp.stderr)
+        self.assertFalse(marker.exists())
+        result = self.data(name)
+        self.assertEqual(result['process']['state'], 'not_run')
+        self.assertNotIn('dispatch_revision', result)
+        self.assertFalse(result['ready_for_human_review'])
+        (self.root / 'wt/mock/manual.txt').unlink()
+
     def test_legacy_no_declaration_unknown_delivery(self):
         """Tasks without ## Required artifacts have Unknown/undeclared delivery."""
         self.configure()

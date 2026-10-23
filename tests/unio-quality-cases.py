@@ -49,7 +49,7 @@ def check(label, condition=True):
     print('  quality: ' + label)
 
 
-def configuration(review='printf "VERDICT: APPROVE\\n"', extra=''):
+def configuration(review="printf '%s\\n' '```unio-findings-v1' '{\"schema_version\":1,\"findings\":[]}' '```' 'VERDICT: APPROVE'", extra=''):
     conf.write_text("mock=bash -c 'echo evidence >> hello.txt; git add hello.txt; git commit -qm evidence'\n"
                     "noop=bash -c 'exit 0'\nrev=bash -c " + __import__('shlex').quote(review) + '\n' + extra)
 
@@ -83,7 +83,7 @@ d = data()
 check('new run clears old validation/review', d['validation']['state']=='not_run' and d['review']['state']=='not_run' and not d['ready_for_human_review'])
 verify()
 for label, command, code, state in [
-    ('approve', 'printf "VERDICT: APPROVE\\n"', 0, 'approved'),
+    ('verdict-only approve', 'printf "VERDICT: APPROVE\\n"', 0, 'approved'),
     ('request changes', 'printf "VERDICT: REQUEST-CHANGES\\n"', 1, 'changes_requested'),
     ('stderr approval', 'printf "VERDICT: APPROVE\\n" >&2', 2, 'unknown'),
     ('no verdict', 'printf done', 2, 'unknown'),
@@ -97,6 +97,11 @@ for label, command, code, state in [
     call('review','mock','evidence','rev',code=code)
     d=data()
     check('review '+label, d['review']['state']==state and d['review']['process_exit_code']==(7 if state=='failed' else 0))
+    if label == 'verdict-only approve':
+        projection = d['review_current']
+        check('verdict-only approval remains visible but extraction is incomplete',
+              not projection['machine_review_ready'] and not d['ready_for_human_review']
+              and not projection['extraction_complete'])
 configuration('sleep 3; printf "VERDICT: APPROVE\\n"')
 call('review','mock','evidence','rev',code=1,env={'UNIO_REVIEW_TIMEOUT':'1'})
 check('timeout process exit preserved',data()['review']['process_exit_code']==124)

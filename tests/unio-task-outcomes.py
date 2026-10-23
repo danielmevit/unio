@@ -75,7 +75,7 @@ class Native(unittest.TestCase):
                        UNIO_AUTO_SYNC='0', UNIO_AUTO_OFF='0', UNIO_TIMEOUT='30',
                        GIT_CONFIG_GLOBAL='/dev/null', GIT_CONFIG_NOSYSTEM='1',
                        GIT_AUTHOR_NAME='fixture', GIT_COMMITTER_NAME='fixture',
-                       GIT_AUTHOR_EMAIL='fixture@example.invalid', GIT_COMMITTER_EMAIL='fixture@example.invalid')
+                       GIT_AUTHOR_EMAIL='fixture@example.invalid', GIT_COMMITTER_EMAIL='fixture@example.invalid', PYTHONDONTWRITEBYTECODE='1')
         subprocess.run(['bash',str(ROOT/'unio-install.sh')],env=cls.env,capture_output=True,check=True,timeout=100)
         cls.at = cls.base/'bin/unio'
         cls.root = cls.base/'project'
