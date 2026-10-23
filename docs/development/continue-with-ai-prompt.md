@@ -94,6 +94,21 @@ max/ultra, blind retries, fake groups, automatic acceptance or recursive reviewe
 Record route/subscription, CLI/version, requested/effective settings, actual exits,
 checks, correction count and elapsed. Status questions do not cancel work.
 
+## Current authorized work checkpoint
+
+The reliability follow-up is active in a dedicated worker worktree; consult the
+newest local coord/AGENT-LOG.md for its exact branch, receipts and current checks.
+The Codex shared-budget companion is a LOW implementation worker. Do not start a
+second Codex companion or interrupt a healthy assignment. Existing lead remains
+responsible for scope, independent current-code review and final assessment.
+
+Owner-authorized independent private research is delivered and reconciled in its
+separate private hub, alongside the verified0.5.23 backup. No classified findings,
+raw sessions or credentials belong in public source. Mercury3 is registered only
+as an experimental worker with measured trials; the owner explicitly deprioritized
+further testing. Prioritize the core reliability fix and managed lead-session
+continuity. Do not turn a testing-model exercise into the main milestone.
+
 ## Remaining priorities
 
 1. Explicit recovery/eligibility for pre-provider refusals and context-less legacy
