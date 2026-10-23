@@ -2923,7 +2923,7 @@ ERRORS = dict(invalid_request=400, job_not_found=404, conflict=409, draft_stale=
 REASONS = frozenset(('missing_scope', 'missing_validate', 'scope_violation', 'check_failed',
                      'empty_work', 'task_tampered', 'candidate_changed_during_validation',
                      'delivery_failed', 'invalid_report_artifact',
-                     'reviewer_process_failed', 'unknown_verdict', 'candidate_changed_during_review'))
+                     'budget_refused', 'reviewer_process_failed', 'unknown_verdict', 'candidate_changed_during_review'))
 WARNINGS = frozenset(('native_result_unavailable', 'native_result_invalid', 'binding_stale',
                       'draft_stale', 'outcome_unknown', 'ownership_unknown', 'stopped'))
 REVISION_FIELDS = {'base_commit', 'candidate_commit', 'task_sha256', 'worktree_sha256'}
@@ -3043,6 +3043,52 @@ def _revision(value):
     return dict(value)
 
 
+def _admission_only(row, projection):
+    """Validate additive native evidence, never trust an isolated exclusion flag."""
+    proof = row.get('admission_evidence')
+    if proof is None:
+        return False
+    if not isinstance(proof, dict) or set(proof) != {'receipt', 'context'}:
+        raise ValueError('invalid review admission evidence')
+    receipt, context = proof['receipt'], proof['context']
+    receipt_fields = {'schema_version', 'material_protocol', 'id', 'worker', 'task', 'reviewer',
+        'recorded_at', 'policy_group', 'requested_model', 'effective_model', 'requested_effort',
+        'effective_effort', 'state', 'process_exit_code', 'material_complete', 'reasons',
+        'before', 'after', 'material_sha256', 'stdout', 'stderr'}
+    empty = {'bytes': 0, 'sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'}
+    if (not isinstance(receipt, dict) or set(receipt) != receipt_fields
+            or any(receipt.get(k) != 'unknown' for k in
+                   ('requested_model', 'effective_model', 'requested_effort', 'effective_effort'))
+            or not isinstance(receipt.get('recorded_at'), str) or len(receipt['recorded_at']) > 64
+            or datetime.fromisoformat(receipt['recorded_at']).tzinfo is None
+            or not isinstance(context, dict)
+            or set(context) != {'schema_version', 'reviewer', 'config_sha256', 'command_sha256'}
+            or type(context.get('schema_version')) is not int or context['schema_version'] != 2
+            or context.get('reviewer') != row.get('reviewer')
+            or not _matches(HEX64, context.get('config_sha256'))
+            or not _matches(HEX64, context.get('command_sha256'))
+            or type(receipt.get('schema_version')) is not int or receipt['schema_version'] != 2
+            or type(receipt.get('material_protocol')) is not int or receipt['material_protocol'] != 2
+            or receipt.get('worker') != projection['worker'] or receipt.get('task') != projection['task']
+            or receipt.get('before') != projection['current_revision']
+            or receipt.get('after') != projection['current_revision']
+            or receipt.get('material_sha256') != projection['material_protocols']['2']
+            or not _matches(HEX64, receipt.get('material_sha256'))
+            or any(receipt.get(key) != row.get(field) for key, field in
+                   (('id', 'receipt_id'), ('reviewer', 'reviewer'), ('policy_group', 'policy_group')))
+            or receipt.get('state') != 'unknown' or row.get('state') != 'unknown'
+            or receipt.get('process_exit_code') is not None or row.get('process_exit_code') is not None
+            or receipt.get('material_complete') is not False
+            or receipt.get('reasons') != ['budget_refused'] or row.get('reasons') != ['budget_refused']
+            or receipt.get('stdout') != empty or receipt.get('stderr') != empty
+            or any(type(receipt[k]['bytes']) is not int for k in ('stdout', 'stderr'))
+            or row.get('protocol') != 2 or row.get('config_current') is not True
+            or row.get('findings_state') != 'not_extracted' or row.get('findings_count') is not None
+            or row.get('block_line') is not None):
+        raise ValueError('invalid review admission binding')
+    return True
+
+
 def _current_review(projection, worker, task, current):
     """Check the canonical observation, never a worker's isolated ready flag."""
     if (not isinstance(projection, dict) or type(projection.get('schema_version')) is not int
@@ -3125,7 +3171,8 @@ def _current_review(projection, worker, task, current):
             or sorted({r['reviewer'] for r in active if r['process_exit_code'] is not None}) != sorted(lists['distinct_reviewers'])
             or sorted(set(lists['expected_reviewers']) - set(lists['distinct_reviewers'])) != sorted(lists['missing_reviewers'])):
         raise ValueError('inconsistent current review counts')
-    ready = bool(current is not None and active and not findings and not lists['reasons']
+    verdicts = [row for row in active if not _admission_only(row, projection)]
+    ready = bool(current is not None and verdicts and not findings and not lists['reasons']
         and not lists['missing_reviewers'] and not counts['unresolved']
         and not projection['incomplete'] and not projection['verdict_incomplete']
         and projection['extraction_complete'] and not projection['verdict_disagreement']
@@ -3138,7 +3185,7 @@ def _current_review(projection, worker, task, current):
                 and r.get('config_current') is True and r.get('protocol') == 2
                 and r.get('findings_state') == 'empty' and r.get('findings_count') == 0
                 and type(r.get('block_line')) is int and r['block_line'] > 0
-                and not r['reasons'] for r in active))
+                and not r['reasons'] for r in verdicts))
     if projection['machine_review_ready'] != ready:
         raise ValueError('inconsistent current review readiness')
     return ready
@@ -24873,6 +24920,17 @@ def receipt_protocol(d):
     # review_record_valid already restricted the schema/protocol combinations.
     return 1 if d['schema_version']==1 else d['material_protocol']
 
+def review_admission_only(d,context,config_current):
+    # Native standalone/collection writers emit this exact reason before launch.
+    # Null exit by itself, legacy provenance and unknown provider outcomes prove
+    # nothing. Call only after receipt/context/stream validation and binding.
+    empty={'sha256':hashlib.sha256(b'').hexdigest(),'bytes':0}
+    return (receipt_protocol(d)==2 and config_current is True
+            and isinstance(context,dict) and context.get('schema_version')==2
+            and d['state']=='unknown' and d['process_exit_code'] is None
+            and d['material_complete'] is False and d['reasons']==['budget_refused']
+            and d['before']==d['after'] and d['stdout']==empty and d['stderr']==empty)
+
 def review_config_path(root):
     project=os.path.join(root,'coord','agents.conf')
     if os.path.isfile(project): return project
@@ -25153,7 +25211,7 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
             protocol=receipt_protocol(d)
             observe_material()
             context_path=safe(root,'coord','reports',name,'context.json')
-            config_current=None
+            config_current=None; context=None
             if os.path.lexists(context_path):
                 context_bytes,_,context_identity=review_stream(context_path,4096)
                 context=review_json(context_bytes.decode('utf-8'))
@@ -25198,6 +25256,8 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
                 row.update(current=False,stale=False,reasons=sorted(set(d['reasons']+['review_outcome_unknown'])))
                 unresolved+=1
             row['config_current']=config_current
+            if bound and review_admission_only(d,context,config_current):
+                row['admission_evidence']={'receipt':d,'context':context}
             records.append((row,d))
             if findings_mode:
                 stream_observations.append((row,identities))
@@ -25272,19 +25332,23 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
             if review_config_hash(root)!=config_hash: observation.append('config_changed')
     except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
     # A collection failure limits completeness, not independently verified
-    # receipt freshness. Keep a current refusal blocking alongside partial sets.
+    # receipt freshness. Incomplete contracts still block alongside valid verdicts.
     if any(reason not in ('collection_folder_bound','collection_incomplete',
                           'invalid_collection_evidence') for reason in observation):
         for row in rows: row['current']=False
         # Drift or a busy worker makes actionable findings unavailable.
         extracted=[]
     current_rows=[row for row,d in records if row['current']]
-    aliases=sorted({row['reviewer'] for row in current_rows if row['process_exit_code'] is not None})
+    # Keep strict history counts/currentness intact. Only proved pre-launch
+    # admissions are ineligible as reviewer verdicts, never as collection members.
+    verdict_rows=[row for row in current_rows if 'admission_evidence' not in row]
+    aliases=sorted({row['reviewer'] for row in verdict_rows if row['process_exit_code'] is not None})
     groups=sorted({row['policy_group'] for row in current_rows if row['policy_group'] is not None})
     missing=sorted(set(expected)-set(aliases))
     counts={state:sum(row['state']==state for row in current_rows) for state in ('approved','changes_requested','unknown','failed')}
     counts.update(stale=sum(row['stale'] for row in rows),unresolved=unresolved,recorded=len(rows),current=len(current_rows))
-    incomplete=bool(observation or unresolved or missing or counts['unknown'] or counts['failed'] or not current_rows)
+    incomplete=bool(observation or unresolved or missing or not verdict_rows
+                    or any(row['state'] in ('unknown','failed') for row in verdict_rows))
     if counts['changes_requested']: decision='changes_requested'; exit_code=1
     elif observation or unresolved: decision='incomplete'; exit_code=2
     elif not current_rows: decision='not_run'; exit_code=2
@@ -25294,15 +25358,15 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
     verdict_decision=decision
     verdict_incomplete=incomplete
     if not findings_view:
-        extraction_complete=bool(not incomplete and not extraction_notes and current_rows
-            and all(row['findings_state'] in ('empty','findings') for row in current_rows))
+        extraction_complete=bool(not incomplete and not extraction_notes and verdict_rows
+            and all(row['findings_state'] in ('empty','findings') for row in verdict_rows))
         out=dict(schema_version=1,worker=worker,task=task,current_revision=current_rev,material_sha256=material_sha256,
                  decision=decision,incomplete=incomplete,expected_reviewers=expected,missing_reviewers=missing,
                  distinct_reviewers=aliases,policy_groups=groups,ai_lab_independence='unknown',counts=counts,
                  reasons=sorted(set(observation)),entries=rows,human_acceptance=False,
                  extraction_complete=extraction_complete,
                  machine_review_ready=(decision=='all_recorded_approved' and extraction_complete and not extracted
-                                       and all(row.get('config_current') is True for row in current_rows)))
+                                       and all(row.get('config_current') is True for row in verdict_rows)))
         if as_json: print(json.dumps(out,ensure_ascii=True,indent=2))
         else:
             print('Recorded reviews: '+decision+(' (incomplete)' if incomplete else ''))
@@ -25329,7 +25393,7 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
     legacy_current=any(row['current'] and row['findings_state']=='unstructured_legacy' for row in rows)
     findings_incomplete=bool(incomplete or invalid_current or legacy_current or extraction_notes)
     verdict_disagreement=bool(counts['approved'] and counts['changes_requested'])
-    extractable=[row for row in current_rows
+    extractable=[row for row in verdict_rows
                  if row['findings_state'] in ('findings','empty','unstructured_legacy',
                                               'missing_block','invalid_block','multiple_blocks',
                                               'oversized_block','overflow')]
@@ -25353,7 +25417,7 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
                    extraction_complete=not findings_incomplete,
                    machine_review_ready=(verdict_decision=='all_recorded_approved'
                                          and not findings_incomplete and not grouped
-                                         and all(row.get('config_current') is True for row in current_rows)))
+                                         and all(row.get('config_current') is True for row in verdict_rows)))
         return out
     if as_json:
         encoded=json.dumps(out,ensure_ascii=True,indent=2)

@@ -183,8 +183,14 @@ class ReviewCollection(unittest.TestCase):
         self.assertTrue(all(r['process_exit_code'] is None for r in self.attempts()))
         for reviewer in ('revone','revtwo'):
             self.unio('lead-budget','grant',reviewer,reviewer,'evidence','review')
-        # Earlier refused reviews stay in history and keep aggregation unknown.
-        self.collect(code=2)
+        # Earlier proven pre-provider refusals stay visible without vetoing
+        # a completed current collection. They never supply expected reviewers.
+        refused_bytes={p:p.read_bytes() for p in self.receipts()}
+        self.collect()
+        observed=self.summary(expect='revone,revtwo')
+        self.assertEqual(observed['counts']['unknown'],2)
+        self.assertEqual(observed['counts']['approved'],2)
+        for path,raw in refused_bytes.items():self.assertEqual(path.read_bytes(),raw)
         self.assertTrue(all(r['process_exit_code']==0 and r['state']=='approved'
                             for r in self.attempts()))
         history=json.loads((self.coord/'lead-budget.json').read_text())['grants']
