@@ -98,7 +98,7 @@ The separately scoped ChatGPT subscription / CodexCLI0.163.0 / GPT6.1SolLOW
 correction completed Source0 and committed a710c5b (code6e07e03), clean checkout.
 It first reproduced quality, prompt-transport and run-identity failures on3b56061
 with exit1, then passed all11requested commands:16shell/81contract/26coverage
-checks,100prompttransport,25runidentity,15taskoutcomes,10adapteroutcome,
+checks,73prompttransport,36runidentity,15taskoutcomes,10adapteroutcome,
 30requireddelivery and5reviewcoherence cases, plus branding and syntax/embedding.
 The original failed baselines remain. Final native task verification, two blind
 current-code lab audits and the combined full gate remain separate acceptance
