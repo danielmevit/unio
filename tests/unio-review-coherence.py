@@ -67,6 +67,12 @@ if len(sys.argv)>1 and sys.argv[1]=='result':sys.settrace(trace)
         d=self.result()
         self.assertFalse(d['ready_for_human_review'])
         self.assertEqual(d['review_current']['distinct_reviewers'],[])
+        spec=importlib.util.spec_from_file_location('admission_execution',
+            Path(__file__).resolve().parents[1]/'bridge/execution_service.py')
+        execution=importlib.util.module_from_spec(spec);spec.loader.exec_module(execution)
+        self.assertFalse(execution._native_document(d,'mock','evidence')['ready_for_human_review'])
+        forged=copy.deepcopy(d);forged['review_current']['machine_review_ready']=True
+        with self.assertRaises(ValueError):execution._native_document(forged,'mock','evidence')
         self.unio('lead','none');self.controls(revone='empty')
         self.unio('review','mock','evidence','revone')
         calls=self.calls()
@@ -81,10 +87,65 @@ if len(sys.argv)>1 and sys.argv[1]=='result':sys.settrace(trace)
             self.assertFalse(observed['incomplete'])
         packet=Path(self.unio('handoff','mock','evidence').stdout.strip())
         self.assertEqual(json.loads((packet/'result.json').read_text())['review_current'],p)
-        spec=importlib.util.spec_from_file_location('admission_execution',
-            Path(__file__).resolve().parents[1]/'bridge/execution_service.py')
-        execution=importlib.util.module_from_spec(spec);spec.loader.exec_module(execution)
         self.assertTrue(execution._native_document(d,'mock','evidence')['ready_for_human_review'])
+        for mutate in (
+                lambda row:row.update(admission_evidence=True),
+                lambda row:row['admission_evidence']['receipt'].update(process_exit_code=7),
+                lambda row:row['admission_evidence']['receipt'].update(task='other'),
+                lambda row:row['admission_evidence']['receipt'].update(material_sha256='0'*64),
+                lambda row:row['admission_evidence']['context'].update(schema_version=1),
+                lambda row:row.update(config_current=None),
+                lambda row:row.pop('admission_evidence')):
+            forged=copy.deepcopy(d)
+            row=next(r for r in forged['review_current']['evidence'] if r['process_exit_code'] is None)
+            mutate(row)
+            with self.assertRaises(ValueError):execution._native_document(forged,'mock','evidence')
+        self.assertEqual(self.calls(),calls)
+
+    def test_admission_exclusion_requires_bound_empty_preprovider_evidence(self):
+        self.unio('lead','revone');self.unio('review','mock','evidence','revone',code=2)
+        refusal=self.receipts()[0];raw=refusal.read_bytes();base=json.loads(raw)
+        context=refusal.parent/'context.json';context_raw=context.read_bytes()
+        self.unio('lead','none');self.controls(revone='empty')
+        self.unio('review','mock','evidence','revone')
+        calls=self.calls()
+        for change in (
+                {'reasons':['provider_limit']}, {'reasons':[]},
+                {'reasons':['budget_refused','timeout']}, {'after':None},
+                {'task':'wrong'}, {'state':'failed','process_exit_code':7},
+                {'state':'changes_requested','process_exit_code':0,'material_complete':True}):
+            with self.subTest(change=change):
+                refusal.write_text(json.dumps(dict(base,**change)))
+                self.assertFalse(self.result()['ready_for_human_review'])
+                refusal.write_bytes(raw)
+        original_context=json.loads(context_raw)
+        for value in (None,b'{',json.dumps({'schema_version':1,
+                'config_sha256':original_context['config_sha256']}).encode(),
+                json.dumps(dict(original_context,reviewer='wrong')).encode(),
+                json.dumps(dict(original_context,config_sha256='0'*64)).encode(),
+                json.dumps(dict(original_context,command_sha256='0'*64)).encode()):
+            with self.subTest(context=value):
+                context.unlink()
+                if value is not None:context.write_bytes(value)
+                observed=self.result()
+                row=next(r for r in observed['review_current']['evidence']
+                         if r['raw_directory']==refusal.parent.name)
+                self.assertNotIn('admission_evidence',row)
+                if value is None or value==b'{' or row['current'] or 'invalid_review_evidence' in row['reasons']:
+                    self.assertFalse(observed['ready_for_human_review'])
+                context.write_bytes(context_raw)
+        stream=refusal.parent/'stdout.log'
+        stream.write_bytes(b'not proof')
+        self.assertFalse(self.result()['ready_for_human_review'])
+        # Even a digest-valid nonempty refusal is not known pre-provider evidence.
+        modified=dict(base,stdout={'bytes':9,'sha256':hashlib.sha256(b'not proof').hexdigest()})
+        refusal.write_text(json.dumps(modified))
+        self.assertFalse(self.result()['ready_for_human_review'])
+        refusal.write_bytes(raw);stream.write_bytes(b'')
+        self.assertTrue(self.result()['ready_for_human_review'])
+        summary=json.loads(self.unio('reviews','mock','evidence','--expect','revone,revtwo',
+                                     '--json',code=2).stdout)
+        self.assertEqual(summary['missing_reviewers'],['revtwo'])
         self.assertEqual(self.calls(),calls)
 
     def test_unreviewed_observation_skips_unusable_review_material(self):
@@ -210,6 +271,9 @@ if len(sys.argv)>1 and sys.argv[1]=='result':sys.settrace(trace)
         for p,b in raw.items():self.assertEqual(p.read_bytes(),b)
         self.controls(revtwo='fail');self.unio('review','mock','evidence','revtwo',code=1)
         self.assertEqual(self.result()['review_current']['counts']['failed'],1)
+        self.controls(revtwo='empty');self.unio('review','mock','evidence','revtwo')
+        self.assertEqual(self.result()['review_current']['counts']['failed'],1)
+        self.assertFalse(self.result()['ready_for_human_review'])
         self.receipts()[-1].write_text('{')
         self.assertGreater(self.result()['review_current']['counts']['unresolved'],0)
 

@@ -61,7 +61,7 @@ ERRORS = dict(invalid_request=400, job_not_found=404, conflict=409, draft_stale=
 REASONS = frozenset(('missing_scope', 'missing_validate', 'scope_violation', 'check_failed',
                      'empty_work', 'task_tampered', 'candidate_changed_during_validation',
                      'delivery_failed', 'invalid_report_artifact',
-                     'reviewer_process_failed', 'unknown_verdict', 'candidate_changed_during_review'))
+                     'budget_refused', 'reviewer_process_failed', 'unknown_verdict', 'candidate_changed_during_review'))
 WARNINGS = frozenset(('native_result_unavailable', 'native_result_invalid', 'binding_stale',
                       'draft_stale', 'outcome_unknown', 'ownership_unknown', 'stopped'))
 REVISION_FIELDS = {'base_commit', 'candidate_commit', 'task_sha256', 'worktree_sha256'}

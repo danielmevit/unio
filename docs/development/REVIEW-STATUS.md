@@ -132,6 +132,8 @@ applies. This is eligibility, not timestamp precedence: actual invoked failures,
 change requests, incomplete collections and missing members continue blocking.
 Old readers can remain conservative; the bundled execution validator validates
 the additive evidence and its row/material/revision bindings before excluding it.
+The legacy result reason allowlist also recognizes `budget_refused`, allowing a
+refusal-only nonready result to decode without implying a reviewer verdict.
 An isolated exclusion/ready flag cannot establish readiness. Context-less legacy
 approvals retain their existing conservative machine-readiness behavior.
 
