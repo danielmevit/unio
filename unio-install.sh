@@ -3892,13 +3892,17 @@ class ExecutionService:
         if code != 0:
             return None, 'native_result_unavailable'
         try:
-            native = _native_document(_decode(raw), self._worker, task)
+            document = _decode(raw)
+            native = _native_document(document, self._worker, task)
             revision = native['current_revision']
             if revision is not None and (revision['task_sha256'] != binding['preview']['task_sha256']
                     or revision['base_commit'] != binding['base_revision']
                     or revision['candidate_commit'] != self._worker_revision()):
                 native.update(stale=True, ready_for_human_review=False)
             if native['review']['state'] == 'approved' and native['review']['reviewer'] != binding['preview']['reviewer']:
+                native.update(stale=True, ready_for_human_review=False)
+            if ('review_current' in document and native['ready_for_human_review']
+                    and binding['preview']['reviewer'] not in document['review_current']['distinct_reviewers']):
                 native.update(stale=True, ready_for_human_review=False)
             return native, None
         except (ValueError, TypeError, KeyError, UnicodeError, ExecutionError, RecursionError, OverflowError):

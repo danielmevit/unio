@@ -236,6 +236,13 @@ if len(sys.argv)>1 and sys.argv[1]=='review-context':sys.settrace(trace)
             self.assertEqual(d['review']['state'],'not_run')
             self.assertTrue(execution._native_document(d,'mock','evidence')['ready_for_human_review'])
             runner='/mock/engine';raw=json.dumps(d).encode()
+            client=types.SimpleNamespace(_engine=runner,_worker='mock',
+                _call=lambda *a:(0,raw),_worker_revision=lambda:d['current_revision']['candidate_commit'])
+            service_binding=dict(preview=dict(task_id='evidence',task_sha256=d['current_revision']['task_sha256'],reviewer='revone'),
+                                 base_revision=d['current_revision']['base_commit'])
+            self.assertTrue(execution.ExecutionService._native(client,service_binding)[0]['ready_for_human_review'])
+            service_binding['preview']['reviewer']='absent'
+            self.assertFalse(execution.ExecutionService._native(client,service_binding)[0]['ready_for_human_review'])
             binding=dict(worker='mock',task='evidence',task_sha256=d['current_revision']['task_sha256'],
                 startup=dict(engine=runner,config='/mock/config'),fingerprints=dict(engine=hashlib.sha256(b'engine').hexdigest()))
             planner=types.SimpleNamespace(read_regular=lambda *a:(b'engine',None),parse_strict_json=json.loads)
