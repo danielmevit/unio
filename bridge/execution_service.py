@@ -233,14 +233,15 @@ def _current_review(projection, worker, task, current):
             receipt = row.get('receipt_id')
             if (row['stale'] or not _matches(HEX32, receipt) or receipt in ids
                     or not _matches(LABEL, row.get('reviewer'))
-                    or type(row.get('process_exit_code')) is not int
-                    or row['process_exit_code'] < 0):
+                    or (row.get('process_exit_code') is not None
+                        and (type(row['process_exit_code']) is not int
+                             or not 0 <= row['process_exit_code'] <= 2147483647))):
                 raise ValueError('invalid bound current review')
             ids.add(receipt); active.append(row)
     if (counts['current'] != len(active) or counts['stale'] != sum(r['stale'] for r in evidence)
             or any(counts[state] != sum(r['state'] == state for r in active)
                    for state in ('approved', 'changes_requested', 'unknown', 'failed'))
-            or sorted({r['reviewer'] for r in active}) != sorted(lists['distinct_reviewers'])
+            or sorted({r['reviewer'] for r in active if r['process_exit_code'] is not None}) != sorted(lists['distinct_reviewers'])
             or sorted(set(lists['expected_reviewers']) - set(lists['distinct_reviewers'])) != sorted(lists['missing_reviewers'])):
         raise ValueError('inconsistent current review counts')
     ready = bool(current is not None and active and not findings and not lists['reasons']

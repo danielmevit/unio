@@ -1048,6 +1048,20 @@ class ExecutionServiceTests(unittest.TestCase):
             self.assertFalse((self.workspace / 'coord/ui-execution/actions' / (key + '.json')).exists())
         self.assertEqual(self.instance.get(identity)['acceptance']['state'], 'pending')
 
+    def test_delivery_and_report_validation_reasons_remain_closed(self):
+        _, view, _, _ = self.reviewed()
+        original=json.loads(self.native_path(view).read_text())
+        for reason in ('delivery_failed','invalid_report_artifact'):
+            document=copy.deepcopy(original)
+            document['validation'].update(state='failed',reasons=[reason])
+            document['ready_for_human_review']=False
+            native=service._native_document(document,document['worker'],document['task'])
+            self.assertFalse(native['ready_for_human_review'])
+            self.assertEqual(native['validation']['reasons'],[reason])
+        document['validation']['reasons']=['unrecognized_delivery_reason']
+        with self.assertRaises(ValueError):
+            service._native_document(document,document['worker'],document['task'])
+
     def test_accept_rechecks_hidden_index_between_native_observations(self):
         _, view, _, _ = self.reviewed(); identity = view['job']['id']
         original = self.instance._native

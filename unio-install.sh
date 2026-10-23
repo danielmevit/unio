@@ -3095,14 +3095,15 @@ def _current_review(projection, worker, task, current):
             receipt = row.get('receipt_id')
             if (row['stale'] or not _matches(HEX32, receipt) or receipt in ids
                     or not _matches(LABEL, row.get('reviewer'))
-                    or type(row.get('process_exit_code')) is not int
-                    or row['process_exit_code'] < 0):
+                    or (row.get('process_exit_code') is not None
+                        and (type(row['process_exit_code']) is not int
+                             or not 0 <= row['process_exit_code'] <= 2147483647))):
                 raise ValueError('invalid bound current review')
             ids.add(receipt); active.append(row)
     if (counts['current'] != len(active) or counts['stale'] != sum(r['stale'] for r in evidence)
             or any(counts[state] != sum(r['state'] == state for r in active)
                    for state in ('approved', 'changes_requested', 'unknown', 'failed'))
-            or sorted({r['reviewer'] for r in active}) != sorted(lists['distinct_reviewers'])
+            or sorted({r['reviewer'] for r in active if r['process_exit_code'] is not None}) != sorted(lists['distinct_reviewers'])
             or sorted(set(lists['expected_reviewers']) - set(lists['distinct_reviewers'])) != sorted(lists['missing_reviewers'])):
         raise ValueError('inconsistent current review counts')
     ready = bool(current is not None and active and not findings and not lists['reasons']
@@ -24607,7 +24608,7 @@ def review_config_path(root):
     conf=os.environ.get('UNIO_QUALITY_CONF') or os.environ.get('UNIO_CONF_DIR') or os.path.expanduser('~/.config/unio')
     return os.path.join(conf,'agents.conf')
 
-def review_config_hash(root):
+def review_config_data(root):
     # Configuration is user-managed input, unlike immutable review evidence.
     # Follow supported symlinks/hardlinks, but require bounded regular bytes and
     # stable descriptor AND selected-path identity throughout the read.
@@ -24627,14 +24628,22 @@ def review_config_hash(root):
             or review_config_path(root)!=path):
         fail('review configuration changed during observation')
     data.decode('utf-8')
-    return hashlib.sha256(data).hexdigest()
+    return data
 
-def review_context(root,raw):
+def review_config_hash(root):
+    return hashlib.sha256(review_config_data(root)).hexdigest()
+
+def review_context(root,raw,reviewer,command):
     # Compute before creating any context file; callers own preparation cleanup.
-    digest=review_config_hash(root)
+    data=review_config_data(root)
+    selected=next((line.split('=',1)[1] for line in data.decode('utf-8').split('\n')
+                   if line.startswith(reviewer+'=')),None)
+    if selected!=command: fail('reviewer command changed during preparation')
+    digest=hashlib.sha256(data).hexdigest()
+    command_hash=hashlib.sha256(command.encode('utf-8')).hexdigest()
     path=os.path.join(raw,'context.json')
     with open(path,'x') as stream:
-        json.dump(dict(schema_version=2,config_sha256=digest),stream)
+        json.dump(dict(schema_version=2,config_sha256=digest,reviewer=reviewer,command_sha256=command_hash),stream)
 
 
 def review_receipt(root,worker,task,reviewer,state,code,complete,reasons,before,after,pf,raw,group,material_hash):
@@ -24860,11 +24869,18 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
             if os.path.lexists(context_path):
                 context_bytes,_,context_identity=review_stream(context_path,4096)
                 context=review_json(context_bytes.decode('utf-8'))
-                if (not isinstance(context,dict) or set(context)!={'schema_version','config_sha256'}
+                context_fields={'schema_version','config_sha256'}
+                if isinstance(context,dict) and context.get('schema_version')==2:
+                    context_fields|={'reviewer','command_sha256'}
+                if (not isinstance(context,dict) or set(context)!=context_fields
                         or type(context['schema_version']) is not int or context['schema_version'] not in (1,2)
                         or not isinstance(context['config_sha256'],str)
                         or not re.fullmatch('[0-9a-f]{64}',context['config_sha256'])):
                     fail('invalid review context')
+                if context['schema_version']==2:
+                    if (context['reviewer']!=d['reviewer'] or not isinstance(context['command_sha256'],str)
+                            or not re.fullmatch('[0-9a-f]{64}',context['command_sha256'])):
+                        fail('invalid review command binding')
                 config_current=context['config_sha256']==config_hash
                 # Old contexts hashed only the global file. An override cannot
                 # establish their provenance, even when its bytes happen to match.
@@ -32740,7 +32756,7 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   raw=$(mktemp -d "$root/coord/reports/$task.review.XXXXXXXX") || { rm -rf "$nd"; return 2; }
   stdout="$raw/stdout.log"; stderr="$raw/stderr.log"
   : > "$stdout"; : > "$stderr"
-  quality review-context "$root" "$raw" || { rm -rf -- "$nd" "$raw"; return 2; }
+  quality review-context "$root" "$raw" "$reviewer" "$rcmd" || { rm -rf -- "$nd" "$raw"; return 2; }
   host_warning || return $?
   # Native guard: the independent reviewer is its own workflow in the
   # reviewer's budget group. Admit before the reviewer provider starts; a
@@ -33019,7 +33035,7 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   for r in "${reviewers[@]}"; do
     raw=$(mktemp -d "$root/coord/reports/$task.review.XXXXXXXX") || { rm -rf -- "$nd" "${raws[@]}"; return 2; }
     : > "$raw/stdout.log"; : > "$raw/stderr.log"
-    quality review-context "$root" "$raw" || { rm -rf -- "$nd" "$raw" "${raws[@]}"; return 2; }
+    quality review-context "$root" "$raw" "$r" "${rcmds[${#raws[@]}]}" || { rm -rf -- "$nd" "$raw" "${raws[@]}"; return 2; }
     raws+=("$raw")
   done
   local reviewers_csv raws_csv out cid cdir
