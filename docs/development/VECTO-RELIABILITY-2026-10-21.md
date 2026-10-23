@@ -165,3 +165,42 @@ the coherent candidate, obtain one independent current-code Opus5.5 XHIGH review
 and perform the existing lead assessment. No main push/release/global candidate
 installation is authorized. A failed process, timeout, incomplete output and a
 negative code review are recorded independently rather than combined into success.
+
+## Independent approval and lead disposition — 2026-10-23T15:46:40+02:00
+
+Claude subscription / Claude Code2.1.309 / requested Opus5.5 XHIGH returned
+APPROVE on exact2fa351b, with12 observations explicitly classified nonblocking.
+Native CLI/Source/runner and artifact verification all exited0. The final generated
+a936848 differs only in two bundled guide bodies and a changelog fragment; both
+guide bodies already existed canonically at the reviewed revision. A separate
+byte comparison proves every other installer byte unchanged. The audit remains
+bound to2fa351b; no receipt or native approval was rewritten for another revision.
+The full gate on a936848 remains pending at this checkpoint.
+
+| Review observation | Lead disposition and priority |
+| --- | --- |
+| Pre-provider refusal or context-less history can veto later approval | Confirmed in two installed mock probes with zero real provider calls. Source0 remains separate from incomplete review/readiness. Preserve current conservative behavior for this candidate. Highest follow-up: explicit non-invoked/legacy history eligibility and recovery, without deleting history, hiding real change requests or automatic retries. |
+| Delivery made stale during a reversible task/config change does not recover automatically | Consistent with the documented no-upgrade/new-dispatch rule. Keep it; improve the empty stale diagnostic in a focused follow-up. A new dispatch consumes the configured route's allowance, not an implied paid API fallback. |
+| Reviewed results can require four to seven snapshots and heavy history I/O | Confirmed call structure, not a universal runtime measurement. Unreviewed result path is now lazy; heavier reviewed/declared cases remain high priority for bounded observation/deadlines. |
+| Large result projections can exceed256KiB/1MiB consumer limits | Bounds mismatch confirmed by code inspection; maximum payload not benchmarked here. Add a bounded summary contract without silent clipping or Source-outcome loss. |
+| Near-miss/deeper Required artifacts headings | Known exact opt-in parser limitation; document exact heading and defer a separately validated normalization/refusal policy. |
+| Execution stage still uses some legacy review fields | Known functional consumer follow-up. Preserve accept guards; show missing-format/current-review reasons and an actionable next step. |
+| Single-review aliases such as glm.5 exceed review-set grammar | Pre-existing single-review versus collection grammar mismatch; the new aligned bridge grammar covers the collection grammar. Defer one unified identity contract, retaining invalid/unsafe-name refusal. |
+| Delivery destination outside worktree and prompt discoverability | Deployment prerequisite: the Source must read UNIO_DELIVERY_DIR and have write authority there. Workspace sandboxes may refuse it; no sandbox bypass was added. |
+| Unsafe or oversized artifacts reported as missing | Fail-closed behavior preserved; add per-artifact reason codes in a bounded diagnostic follow-up. |
+| Duplicate managed session_completed record | Known retained-slice issue, deferred with full managed-session ownership. |
+| Historical fragment says version stays0.5.22 | Dated earlier-slice statement. Current candidate intentionally reports0.5.23; the first changelog heading says unreleased. Reconcile when rolling release notes, not by rewriting old evidence. |
+| Helper-only/misnamed tests | Integration tests provide the delivery evidence; unused helper API/test clarity is cleanup after the reliability contract. |
+
+The conservative recovery behavior is a disclosed limitation, not a claim that an
+operational refusal is a negative code verdict. Unknown/incomplete review is
+separate from Source success, recorded reviewer opinion and human acceptance.
+There is no automatic retry, receipt deletion, fake implementation commit or
+waiver to make a task ready. A genuinely changed and reverified candidate has a
+new revision; same-revision supersession needs its own explicit contract.
+
+Prioritize that recovery contract and result size/deadline consistency before
+visual work. Allow roughly4–8hours for a first reviewed slice, with actual scope
+and estimates refreshed from evidence. Remaining current-review consumers and
+route effort capability reporting follow; full managed-lead ownership remains
+the next feature milestone after this reliability foundation.

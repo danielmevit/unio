@@ -12,7 +12,7 @@ selected tests0; LOW final80tests0. Source/runtime and acceptance remain separat
 Private corrected2fa engine returned own /mnt/d results8.322/7.811s; same-pass
 installed22 baseline11.875/7.934s. Earlier candidate45s observer timeouts retained.
 Load differed; no speedup ratio or universal guarantee. Evidence
-owned-result-latency-corrected-20261023/receipt.json. Fresh12:22:22Z metadata at
+owned-result-latency-corrected-20261023/receipt.json. Fresh15:22:22+02:00 metadata at
 latest source preparation: primary27%, weekly57%, dated/shared not task attribution.
 
 Fullgate2fa stopped4.124s before tests at embed-adapters parity. Investigation
