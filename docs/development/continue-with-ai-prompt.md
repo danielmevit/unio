@@ -3,6 +3,50 @@
 Updated 2026-10-23T14:22:35+02:00. Read applicable AGENTS.md, the newest workspace
 coord/AGENT-LOG.md and ~/.config/unio/OWNER-WORKFLOW.md before assigning work.
 
+## Active final evidence — 2026-10-23T15:31:17+02:00
+
+This checkpoint supersedes earlier pending-job descriptions. MEDIUM ae2521c and
+LOW result correction2fa351b both Source/native/native verification0. MEDIUM148
+selected tests0; LOW final80tests0. Source/runtime and acceptance remain separate.
+
+Private corrected2fa engine returned own /mnt/d results8.322/7.811s; same-pass
+installed22 baseline11.875/7.934s. Earlier candidate45s observer timeouts retained.
+Load differed; no speedup ratio or universal guarantee. Evidence
+owned-result-latency-corrected-20261023/receipt.json. Fresh12:22:22Z metadata at
+latest source preparation: primary27%, weekly57%, dated/shared not task attribution.
+
+Fullgate2fa stopped4.124s before tests at embed-adapters parity. Investigation
+corrected the initial helper hypothesis: stale bundled REVIEW-STATUS and
+REQUIRED-DELIVERY guide text only. Dedicated CodexCLI0.163/SolLOW generated
+clean a936848a9f0f01585e0c32b006bacd446d2fe2e8, Source/native/native4checks0,
+6contracttests0. Actual new delta: installer34guide lines + own changelog fragment.
+No executable Python payload change. Proof guide-regeneration-final-checks-20261023/
+receipt.json removes ONLY the two named guide bodies and finds all other installer
+bytes identical; both new bodies match canonical text already present at2fa.
+Original failed gate preserved; no fabricated current/native approval.
+
+Current whole gate: machine-gate-guides-corrected-20261023/full-gate.json/log,
+exact a936848, started15:28:27, gate controller1054322. It uses a clean clone and
+private mock-only tmpfs; zero provider calls. All embedding guards now passed;
+tests still active at checkpoint. Do not launch a duplicate.
+
+Independent actual Claude subscription / Claude Code2.1.309 / Opus5.5 XHIGH
+review Source started15:20:11, PID1052109, native1051570/controller1051549;
+healthy active, effective/capacity Unknown. Frozen exact2fa code, complete576920byte
+material SHA7ca0543db7afe849627d8ce648ed367bb530a6e60d105eeb8a4a8283d3504c87.
+Review pipeline final-opus-result-corrected-20261023; receipt/artifact and
+native/audit-verification are authoritative. Review was NOT interrupted for guide
+regeneration. Keep its revision unchanged. Lead must assess byte-identity reuse
+only for unchanged runtime/already-canonical guides; any real code difference or
+unresolved reviewer finding requires a scoped correction/fresh evidence. One
+external reviewer + existing lead, no recursive extra agent by default.
+
+Exact next action: observe existing Opus report and current full gate; inspect and
+reproduce real findings. When accepted, integrate scoped worker commits privately,
+prove staged runtime matches gated code, update dispositions/changelog/experience/
+handoff. No main push, release or global candidate installation authorized.
+Vecto remains untouched/read-only. Preserve all original failures and jobs.
+
 ## Latest live checkpoint — 2026-10-23T15:00:14+02:00
 
 This checkpoint supersedes older active-job descriptions below. MEDIUM correction

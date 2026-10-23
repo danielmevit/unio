@@ -21,6 +21,14 @@ Candidate preparation only; no publication is authorized in the current round.
 - Add optional required text artifacts bound to the exact Source run, task, command and revision. Keep missing or changed delivery separate from actual process exits, verification and human acceptance; preserve partial evidence and refuse unsafe paths.
 - Preserve manual machine verification for undeclared legacy tasks without inventing a successful Source. Keep declared artifacts mandatory and verdict-only review findings explicitly incomplete.
 
+- Keep Source outcomes readable with linked configuration, wider native reviewer IDs
+  and configuration observation failures; preserve strict artifact and public-input rules.
+- Avoid review-only material work for unreviewed results while retaining exact
+  reviewed evidence checks and explicit review diagnostics. Local timing evidence
+  is documented without a general performance guarantee.
+- Refresh bundled operating guides from their canonical copies and document the
+  owner's one-independent-reviewer-plus-lead workflow across Unio projects.
+
 ## 0.5.22 — clearer runs and route contracts — 2026-10-19
 
 Published and installed. Seven reliability improvements from a heavy real-world
