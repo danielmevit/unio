@@ -18,6 +18,7 @@ Candidate preparation only; no publication is authorized in the current round.
 
 - Add an additive current review observation to result and handoff, keeping legacy records, current/stale receipts, findings completeness and acceptance distinct. Current change requests remain blocking alongside incomplete review collections.
 - Document the highest permitted free-worker effort default, exact current route variants and the continuing role/spending restrictions.
+- Add optional required text artifacts bound to the exact Source run, task, command and revision. Keep missing or changed delivery separate from actual process exits, verification and human acceptance; preserve partial evidence and refuse unsafe paths.
 
 ## 0.5.22 — clearer runs and route contracts — 2026-10-19
 

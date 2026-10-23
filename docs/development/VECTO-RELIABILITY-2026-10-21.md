@@ -73,3 +73,21 @@ Final current-code independent reviews and the full candidate gate are pending.
 ## Required-delivery draft validation, Oct22
 
 The AGY1.4.4 / Gemini3.8FlashHIGH continuation saved23bb459 before a terminal503ERROR. Native CLI0, strict adapter/Source2 and enclosing runner1 remain separate original facts. No completed feature or accepted provider result is claimed. Independent installed zero-provider probes reproduced an engine-generated prompt counting as delivery, ignored binding/prompt tampering and a nested ancestor-symlink read beyond the artifact directory. Missing declared output also retained validationPASS while delivery was incomplete. A focused CodexCLI0.163.0 / SolLOW correction is now separately scoped/admitted, pending actual Source/checks, final independent current-code reviews and combined full gate. The lead has not repaired product source inline.
+
+## Required-delivery correction checkpoint, Oct23
+
+A dedicated existing ChatGPT subscription / CodexCLI0.163.0 / GPT6.1SolLOW
+worker completed and committed3b56061, Source0 and enclosing native0. It corrected
+reserved engine artifact names, immutable run/task/command metadata, ancestor
+symlink handling, changed evidence, validation preflight and safe bounded handoff
+copies. Effective identity/effort remains Unknown; these requested settings are
+not provider attestation. Earlier Mistral and Gemini failures remain failures.
+
+Fresh native verification passed all eight declared commands and scope38patterns,
+but overall exited2 INCOMPLETE because a sanitized child test environment
+generated Python bytecode in the checkout. That receipt remains unchanged. A
+separate dedicated LOW compatibility correction now covers the fixture environment,
+the confirmed legacy manual-verification regression and complete readiness mocks.
+Verdict-only approvals remain visible without conferring review completeness.
+No final current-code lab approval, complete candidate gate, main push, global
+installation or publication is claimed at this checkpoint.
