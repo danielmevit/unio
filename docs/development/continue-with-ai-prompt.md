@@ -1,6 +1,6 @@
 # Continue Unio 0.5.23 reliability work
 
-Updated 2026-10-23T14:07:42+02:00. Read applicable AGENTS.md, the newest workspace
+Updated 2026-10-23T14:22:35+02:00. Read applicable AGENTS.md, the newest workspace
 coord/AGENT-LOG.md and ~/.config/unio/OWNER-WORKFLOW.md before assigning work.
 
 ## Authority and current state
@@ -74,39 +74,60 @@ Actual evidence under workspace tmp/unio-next/vecto-reliability-20261021:
 - final-opus-review-20261023/claude/review.md and its receipts
 - review2-triage-20261023/evidence.json and probe.py
 
-## Active correction: inspect before doing anything; do not duplicate
+## Latest correction complete; native finalization/verification still pending
 
-Task VECTO-CONFIG-OBSERVATION-SOL-MEDIUM-0523-20261023, worker
-codex-config-observation-medium-20261023, base 68c7ff4. Route: existing ChatGPT
-subscription / Codex CLI 0.163.0 / requested gpt-6.1-sol MEDIUM. Effective model and
-effort Unknown. Source started 2026-10-23T14:05:35+02:00; controller790691,
-native790734, CLI791123. Read actual receipts rather than assuming these PIDs live.
+Updated 2026-10-23T14:22:35+02:00. Task VECTO-CONFIG-OBSERVATION-SOL-MEDIUM-0523-20261023,
+ChatGPT subscription / Codex CLI0.163.0 / gpt-6.1-sol MEDIUM, effective Unknown,
+finished Source0 at14:19:09+02:00 with clean ae2521c. Its seven checks passed on
+that exact revision:34 delivery,21 coherence,19 findings,65 bridge,9 receipts
+(148 tests), syntax and embedding. Native finalization and separate verification
+remain authoritative; inspect pipeline receipts rather than assuming success.
+Automatic baseline/periodic/final saves exceeded60seconds; prior saves retained.
+The source supervisor was observed waiting on Windows-mount p9 I/O, not active
+model inference. No Source restart or failure rewrite.
 
-Pipeline config-observation-sol-medium-20261023 has receipts/source.json,
-receipts/native.json and receipts/verify.json. Offline verifier791443 waits for real
-native success and a clean committed worktree, then runs seven frozen commands.
-The code worker stays on the ordinary host; only zero-provider mocks use the
-existing project-owned tmpfs harness. LOW to MEDIUM is justified by demonstrated
-integration gaps; effort-escalation.json records the evidence. Latest fresh capacity
-observation at11:55:55Z: primary97%, weekly68%; dated observation, not guaranteed
-remaining capacity or attribution to this task.
+## Newly measured latency concern; investigate before final acceptance
 
-Scope: the three confirmed integration defects and the obsolete history assertion.
-Optional tiny background declaration preflight only; no launcher redesign or scope
-expansion. Estimate30–60 minutes plus fresh current full gate and one Opus/lead review.
+Lead privately installed68c7ff4 (no global install) and observed the same completed
+own task on /mnt/d using both engines. Installed0.5.22 returned0 in18.982/13.758s;
+candidate0.5.23 exceeded the45second observer twice. There were concurrent mock
+checks. This is local evidence, not an isolated causal or universal benchmark.
+The dashboard result deadline is15s. Actual Source outcomes remain separate from
+observer timeouts. Evidence: owned-result-latency-20261023/receipt.json.
+
+The waiting conditional final-gate/reviewer controller794587 was stopped BEFORE
+launch; no active worker was interrupted. Its record preserves that decision and
+a corrected local timestamp-recording error. No fresh review/gate has been run on
+ae2521c. First7cb9 gatePASS and68c gateFAIL remain unchanged.
+
+Prepared next bounded task: VECTO-RESULT-OBSERVATION-SOL-LOW-0523-20261023,
+worker codex-result-observation-low-20261023. Preparer852746 waits for the previous
+actual Source/native/native-verification0 and restored low tier before creating
+its frozen task/worktree and admitting one LOW Source through native Unio. It
+refreshes capacity and CLI/version first and keeps real group/lead/grant/STOP.
+Pipeline result-observation-sol-low-20261023/preparation.json is authoritative.
+Preparation is NOT a running provider call. Inspect before duplicating.
+
+Scope: remove redundant result-observation material/snapshot work, first targeting
+no-review evidence, without weakening current/stale review hashes, corruption
+visibility, closing drift checks, Source/delivery state or acceptance. No broad
+cache architecture or deadline inflation. Estimate30–60min plus final fullgate and
+ONE Opus5.5 XHIGH review followed by the existing lead's assessment.
 
 ## Exact next actions
 
-1. Observe current Source/native/verification receipts and inspect its actual diff.
-   Preserve intermediate failures; a committed diff is not successful delivery.
-2. If all are 0 and the worktree is clean, freeze the exact revision and run the full
-   quality gate plus ONE fresh independent Opus5.5 XHIGH review. Complete material
-   exceeds the native300000-byte review limit: use the existing bounded, hashed,
-   report-only Source audit pattern without clipping or claiming native approval.
-3. Perform the existing lead's assessment. Return real defects to a scoped native
-   implementation worker. No automatic acceptance, merge, retry or publication.
-4. Integrate approved scoped commits privately; update changelog, dispositions,
-   operating guides, experience/scoreboard and this handoff from actual evidence.
+1. Observe actual MEDIUM native/verification receipts. Resolve any real failure;
+   a successful Source and148 passing tests do not waive native verification.
+2. Observe the already prepared LOW task, inspect its committed delta and relevant
+   regressions; preserve all baselines. Repeat bounded private-engine observations
+   against the same own finished /mnt/d task. Never touch Vecto or global install.
+3. Freeze the clean verified candidate for a fresh full quality gate and ONE
+   independent Opus5.5 XHIGH review. The full material exceeds the native300000-byte
+   cap; retain the bounded hashed report-only Source audit, no clipping or claim
+   of native Review approval. Do not reuse old approvals on changed code.
+4. Perform the lead's assessment, integrate only accepted scoped commits privately,
+   and update changelog/dispositions/scoreboard/handoff. No automatic acceptance,
+   main push, publication, global candidate installation or blind retry.
 
 ## Deferred work and limits
 

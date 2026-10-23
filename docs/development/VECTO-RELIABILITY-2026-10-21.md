@@ -125,3 +125,15 @@ It supersedes the earlier review-count text above. Codex leads prefer eligible
 Claude/Opus5.5 XHIGH; extra external reviewers require a concrete unresolved gap or
 owner request. Current project/CI/human requirements, real account slots and
 original failures remain intact. See [owner workflow](../ai/OWNER-WORKFLOW.md).
+
+## Owned /mnt/d latency observation — 2026-10-23T14:22:35+02:00
+
+A zero-provider read-only comparison used the same completed own task with the
+installed0.5.22 engine and a privately installed68c7ff4 candidate. Two baseline
+observations exited0 at18.982/13.758seconds. Both candidate observations exceeded
+a45second observer deadline. Concurrent mock checks were active; this is local
+evidence, not a controlled universal benchmark or established filesystem cause.
+The dashboard result deadline is15seconds, so this concern is now investigated
+before final acceptance, rather than treated as a performance promise. No Vecto
+files/workers or global engine changed. Required review freshness and artifact
+checks must not be removed to make a timing result pass.
