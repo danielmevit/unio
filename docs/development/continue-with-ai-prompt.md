@@ -3,43 +3,35 @@
 Updated 2026-10-23T19:50:02+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
 ~/.config/unio/OWNER-WORKFLOW.md before acting.
 
-## Active private development — 2026-10-24T01:28:41+02:00
+## Active private development — 2026-10-24T01:49:33+02:00
 
-Installed and published stable remains0.5.23. Further milestone work is authorized;
-0.5.24 main push, release and global installation are not authorized yet.
-Private integration branch agent/reliability-integration-20261024 contains the
-review-admission-history correction through755cb060. It keeps a proved
-pre-provider budget refusal visible without allowing it to veto a later genuine
-current approval. Real failures, unknown/corrupt evidence and stale reviews
-continue to block. Original failed Sources and receipts remain unchanged.
+Published/installed remains0.5.23. No0.5.24 main push, release or global install
+authorized yet. Current private integration agent/reliability-integration-20261024
+contains reviewed755cb060, own release/handoff docs and b5a1b0e bundled-guide
+regeneration. The first870e649 gate failed before tests because that guide was
+stale; preserve it. generated-identity-proof.json proves the28new guide lines were
+already canonical at755 and all other installer bytes unchanged.
 
-- Successful saved-code continuation: ChatGPT subscription / Codex CLI0.163.0 /
-  gpt-6.1-sol LOW, Source/native/verify0; no new implementation commit.
-- Independent review: Claude subscription / Claude Code2.1.309 / Opus5.5 XHIGH,
-  native0/APPROVE on755cb060, diff-only coverage disclosed. Existing lead read
-  enclosing code. Findings/test coverage are still being assessed; approval is
-  distinct from final acceptance. Pipeline review-admission-recovery-20261024.
-- First merged-tree gate on870e649 failed1 before tests because the bundled
-  REVIEW-STATUS guide is stale. Dedicated SolLOW native generator correction
-  runs in codex-review-guide-low-20261024; pipeline
-  tmp/unio-next/review-guide-embedding-scope-20261024. Preserve the failed gate;
-  prove regenerated text/runtime identity, then freeze a fresh full gate.
-- Mistral subscription / Vibe2.26.1 / glm-5-3 / thinkingHIGH delivered the first
-  internal managed-lead backend at08244c2+d5654ac. CLI/adapter0, native finalization,
-  verification and independent review pending. Exact task ends HIGH-PRIVATE-
-  0524-20261024; pipeline managed-lead-core-20261024/controller-private.json.
-  This component has no installed command/provider launch/native integration.
-- Automatic saves still hit the60s helper deadline under current/mnt/d load;
-  commits preserve code, but this remains an operational reliability follow-up.
-- Completed classified research and official23 backup are in the authorized
-  private hub danielmevit/unio-private at e5be535. Mercury remains experimental;
-  no further model trials are planned. Prioritize session ownership/continuity,
-  portability seam and a useful native path before more UI/model benchmarking.
+Read [the current round checkpoint](RELIABILITY-CONTINUITY-2026-10-24.md).
+SolLOW generator native4/4 PASS0. Mistral/Vibe2.26.1 GLM5.3HIGH original backend
+Source/native/verify0 but four actual lead-reproduced defects, stored natively as
+quality_issue. Dedicated Codex0.163/SolLOW correction01cb958+da43719 Source/
+native0, verify3/3 PASS0; lead original-defect probes pass. Blind independent
+ClaudeCode2.1.309/Opus5.5XHIGH native review now active on that exact correction.
+Pipeline managed-lead-core-correction-low-20261024/independent-opus-review-current.
+No corrected-code acceptance before its actual review and lead assessment.
 
-Do not rewrite old review/source hashes or treat process exit0 as accepted delivery.
-Keep real account mappings, lead reservation, STOP and one focused CodexLOW
-companion. Read ~/.config/unio/OWNER-WORKFLOW.md: one external Opus5.5XHIGH
-review plus the existing Codex lead; no routine extra reviewer. No Vecto edits.
+Next merge only accepted current code privately; freeze and run new direct backend
+tests plus complete quality gate once in managed-reliability-combined-20261024.
+Then build the owned Codex transport/native admission path. The module alone is
+not installed continuity. Automatic save60s timeouts remain operational backlog;
+commits preserve work. Completed privatehub e5be535 holds classified research and
+six official23 backup assets. Mercury trials remain closed.
+
+Keep original failures/receipts, real accounts, Codex lead reservation, STOP and
+one focused CodexLOW companion. Read ~/.config/unio/OWNER-WORKFLOW.md: one
+independent Opus5.5XHIGH review plus existing lead, no routine extra reviewer.
+Effective identities/effort Unknown; no paid fallback, Vecto edits or worker restart.
 
 ## Release delivery complete
 
