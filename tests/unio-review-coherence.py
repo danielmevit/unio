@@ -7,6 +7,9 @@ import hashlib
 import shlex
 import importlib.util
 import json
+import os
+import sys
+from unittest import mock
 from pathlib import Path
 import unittest
 
@@ -136,5 +139,85 @@ class Coherence(unittest.TestCase):
         self.assertFalse(d['ready_for_human_review'])
         summary=json.loads(self.unio('reviews','mock','evidence','--expect','revone,revtwo','--json',code=2).stdout)
         self.assertIn('invalid_collection_evidence',summary['reasons'])
+
+class IntegrationCorrections(Coherence):
+    def test_unbound_history_is_visible_without_veto(self):
+        orphan=self.coord/'reports/evidence.review.Orphan01';orphan.mkdir()
+        (orphan/'stdout.log').write_text('interrupted historical stream')
+        self.controls(revone='empty');self.unio('review','mock','evidence','revone')
+        d=self.result();self.assertTrue(d['ready_for_human_review'])
+        self.assertEqual(d['review_current']['counts']['unresolved'],0)
+        self.assertTrue(any('unbound_legacy_evidence' in r['reasons'] for r in d['review_current']['evidence']))
+        self.assertEqual((orphan/'stdout.log').read_text(),'interrupted historical stream')
+
+    def test_effective_project_config(self):
+        global_config=self.root/'conf/agents.conf'
+        project=self.coord/'agents.conf';project.write_bytes(global_config.read_bytes())
+        self.controls(revone='empty');self.unio('review','mock','evidence','revone')
+        self.assertTrue(self.result()['ready_for_human_review'])
+        original=project.read_bytes()
+        global_config.write_bytes(global_config.read_bytes()+b'\n# inactive configuration\n')
+        self.assertTrue(self.result()['ready_for_human_review'])
+        project.write_text(project.read_text().replace('revone=','revone=printf changed; '))
+        self.assertFalse(self.result()['ready_for_human_review'])
+        project.write_bytes(original)
+        self.assertTrue(self.result()['ready_for_human_review'])
+
+    def test_supported_config_links(self):
+        path=self.root/'conf/agents.conf';target=path.with_name('original.conf');path.rename(target)
+        self.controls(revone='empty',revtwo='empty')
+        for kind in ('symlink','hardlink'):
+            with self.subTest(kind=kind):
+                if kind=='symlink':path.symlink_to(target.name)
+                else:os.link(target,path)
+                self.unio('review','mock','evidence','revone')
+                self.unio('review-set','mock','evidence','revone','revtwo')
+                self.assertTrue(self.result()['ready_for_human_review'])
+                path.unlink()
+
+    def test_context_failure_cleans_only_owned_preparation(self):
+        path=self.root/'conf/agents.conf'
+        path.write_bytes(path.read_bytes()+b'#'+b'x'*1048576)
+        orphan=self.coord/'reports/evidence.review.Orphan01';orphan.mkdir()
+        (orphan/'stdout.log').write_text('preserved')
+        before=self.calls()
+        for args in (('review','mock','evidence','revone'),('review-set','mock','evidence','revone','revtwo')):
+            self.unio(*args,code=2)
+            self.assertEqual(list((self.coord/'reports').glob('evidence.review.*')),[orphan])
+            self.assertEqual(self.calls(),before)
+        self.assertEqual((orphan/'stdout.log').read_text(),'preserved')
+
+    def test_real_projection_parser_and_scheduler(self):
+        spec=importlib.util.spec_from_file_location('integration_execution',Path(__file__).resolve().parents[1]/'bridge/execution_service.py')
+        execution=importlib.util.module_from_spec(spec);spec.loader.exec_module(execution)
+        spec=importlib.util.spec_from_file_location('integration_scheduler',Path(__file__).resolve().parents[1]/'tools/continuous-delegation.py')
+        scheduler=importlib.util.module_from_spec(spec);spec.loader.exec_module(scheduler)
+        self.controls(revone='empty',revtwo='empty')
+        self.unio('review-set','mock','evidence','revone','revtwo')
+        for reverify in (False,True):
+            if reverify:self.unio('verify','mock','evidence')
+            d=self.result();self.assertTrue(d['ready_for_human_review'])
+            self.assertEqual(d['review']['state'],'not_run')
+            self.assertTrue(execution._native_document(d,'mock','evidence')['ready_for_human_review'])
+            import types,copy,hashlib
+            runner='/mock/engine';raw=json.dumps(d).encode()
+            binding=dict(worker='mock',task='evidence',task_sha256=d['current_revision']['task_sha256'],
+                startup=dict(engine=runner,config='/mock/config'),fingerprints=dict(engine=hashlib.sha256(b'engine').hexdigest()))
+            planner=types.SimpleNamespace(read_regular=lambda *a:(b'engine',None),parse_strict_json=json.loads)
+            store=types.SimpleNamespace(project=self.repo)
+            item=dict(attempted=True,source='unknown',launcher='started')
+            with mock.patch.object(scheduler,'spawn',return_value=None),mock.patch.object(scheduler,'collect',return_value=(0,raw)),mock.patch.object(scheduler.dispatch,'load_service',return_value=execution):
+                self.assertEqual(scheduler.observe_source(planner,store,dict(bindings={'job':binding},base=d['current_revision']['base_commit']),item,'job',runner,5),('succeeded',0))
+            for mutate in (
+                lambda x:x.update(review_current={'machine_review_ready':True}),
+                lambda x:x['review_current'].update(evidence=[]),
+                lambda x:x['review_current'].update(missing_reviewers=['revtwo']),
+                lambda x:x['review_current']['current_revision'].update(task_sha256='0'*64),
+                lambda x:x['review_current']['evidence'][0].update(config_current=False),
+                lambda x:x['review_current']['evidence'][0].update(state='changes_requested'),
+                lambda x:x.update(dispatch_revision=None),
+            ):
+                forged=copy.deepcopy(d);mutate(forged)
+                with self.assertRaises(ValueError):execution._native_document(forged,'mock','evidence')
 
 if __name__=='__main__':unittest.main(verbosity=2)
