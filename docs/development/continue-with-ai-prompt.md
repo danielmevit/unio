@@ -3,6 +3,30 @@
 Updated 2026-10-23T14:22:35+02:00. Read applicable AGENTS.md, the newest workspace
 coord/AGENT-LOG.md and ~/.config/unio/OWNER-WORKFLOW.md before assigning work.
 
+## Latest live checkpoint — 2026-10-23T15:00:14+02:00
+
+This checkpoint supersedes older active-job descriptions below. MEDIUM correction
+Source/native/native7-command verification all0 on ae2521c, 148 selected tests0.
+Privately staged07096fe; no final acceptance, main push, release or global install.
+LOW result-observation task actually started14:40:06 through ChatGPT subscription /
+Codex CLI0.163.0 / gpt-6.1-sol LOW, effectiveUnknown. Product06b12ea; test-only
+4b6f97e adds actual Source/delivery regression. Initial23-test coherence suite0;
+expanded checks and Source completion still pending. Native/source/verification
+receipts in result-observation-sol-low-20261023 are authoritative.
+
+ActualLOWcontroller882249/native882414, verifier882275; old preparation waiter
+852746 was stopped before any call and replaced by880462 to overlap the new Source
+with independent earlier machine verification. That earlier verification now0.
+No duplicate Source, grant bypass or waived check. Fresh12:36:32Z capacity65%primary,
+63%weekly is dated shared metadata, not task cost or current guarantee.
+
+Final-checks waiter854505 waits actual LOWSource/native/verify0, clean exactscope,
+then freezes that revision for one full gate, one independent native Claude/
+Opus5.5 XHIGH Source audit and a same-task private-engine /mnt/d timing comparison.
+It never accepts, merges, retries, pushes, publishes or globally installs.
+Read final-checks-result-correction-20261023/controller.json, original failures and
+owned-result-latency-20261023/receipt.json. Do not rerun stopped controller794587.
+
 ## Authority and current state
 
 - No main push, publication or global candidate installation is authorized.
