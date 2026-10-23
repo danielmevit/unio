@@ -191,7 +191,11 @@ class ReviewReceipts(unittest.TestCase):
             self.assertEqual(self.summary(code=2)['decision'],'incomplete')
         legacy=self.coord/'reports/evidence.review.Legacy00';legacy.mkdir()
         (legacy/'stdout.log').write_text('VERDICT: APPROVE\n')
-        self.assertEqual(self.summary(code=2)['counts']['unresolved'],1)
+        history=self.summary()
+        self.assertEqual(history['counts']['unresolved'],0)
+        self.assertEqual(history['counts']['recorded'],2)
+        self.assertTrue(any(row['reasons']==['unbound_legacy_evidence'] for row in history['entries']))
+        self.assertTrue(legacy.exists())
 
     def test_failed_snapshot_keeps_uncertainty_after_worker_recovery(self):
         self.unio('review','mock','evidence','revone')

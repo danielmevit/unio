@@ -2920,6 +2920,7 @@ ERRORS = dict(invalid_request=400, job_not_found=404, conflict=409, draft_stale=
               outcome_unknown=409, storage_unavailable=503, native_unavailable=503)
 REASONS = frozenset(('missing_scope', 'missing_validate', 'scope_violation', 'check_failed',
                      'empty_work', 'task_tampered', 'candidate_changed_during_validation',
+                     'delivery_failed', 'invalid_report_artifact',
                      'reviewer_process_failed', 'unknown_verdict', 'candidate_changed_during_review'))
 WARNINGS = frozenset(('native_result_unavailable', 'native_result_invalid', 'binding_stale',
                       'draft_stale', 'outcome_unknown', 'ownership_unknown', 'stopped'))
@@ -3040,6 +3041,107 @@ def _revision(value):
     return dict(value)
 
 
+def _current_review(projection, worker, task, current):
+    """Check the canonical observation, never a worker's isolated ready flag."""
+    if (not isinstance(projection, dict) or type(projection.get('schema_version')) is not int
+            or projection['schema_version'] != 1 or projection.get('view') != 'findings'
+            or projection.get('worker') != worker or projection.get('task') != task
+            or projection.get('ai_lab_independence') != 'unknown'
+            or projection.get('human_acceptance') is not False):
+        raise ValueError('invalid current review identity')
+    revision = projection.get('current_revision')
+    if revision is not None:
+        revision = _revision(revision)
+    if revision != current:
+        raise ValueError('stale current review')
+    for key in ('incomplete', 'verdict_incomplete', 'extraction_complete',
+                'machine_review_ready', 'verdict_disagreement'):
+        if type(projection.get(key)) is not bool:
+            raise ValueError('invalid current review flags')
+    if (projection.get('decision') not in ('no_structured_findings', 'findings_attention',
+                                         'not_run', 'unstructured_legacy', 'incomplete')
+            or projection.get('verdict_decision') not in ('all_recorded_approved',
+                'changes_requested', 'not_run', 'incomplete')):
+        raise ValueError('invalid current review decision')
+    lists = {}
+    for key in ('expected_reviewers', 'missing_reviewers', 'distinct_reviewers', 'policy_groups', 'reasons'):
+        value = projection.get(key)
+        if (not isinstance(value, list) or len(value) > 256
+                or any(not isinstance(x, str) or len(x) > 160 for x in value)
+                or len(set(value)) != len(value)):
+            raise ValueError('invalid current review list')
+        lists[key] = value
+    for key in ('expected_reviewers', 'missing_reviewers', 'distinct_reviewers'):
+        if any(not _matches(LABEL, x) for x in lists[key]):
+            raise ValueError('invalid current reviewer')
+    counts = projection.get('counts')
+    keys = {'approved', 'changes_requested', 'unknown', 'failed', 'stale', 'unresolved', 'recorded', 'current'}
+    if (not isinstance(counts, dict) or set(counts) != keys
+            or any(type(v) is not int or not 0 <= v <= 256 for v in counts.values())):
+        raise ValueError('invalid current review counts')
+    protocols = projection.get('material_protocols')
+    if (not isinstance(protocols, dict) or set(protocols) != {'1', '2'}
+            or any(value is not None and not _matches(HEX64, value) for value in protocols.values())
+            or (projection.get('material_sha256') is not None
+                and not _matches(HEX64, projection['material_sha256']))):
+        raise ValueError('invalid current review material')
+    evidence = projection.get('evidence')
+    findings = projection.get('findings')
+    if (not isinstance(evidence, list) or len(evidence) > 256 or counts['recorded'] != len(evidence)
+            or not isinstance(findings, list) or len(findings) > 4096):
+        raise ValueError('invalid current review evidence')
+    active = []; ids = set()
+    for row in evidence:
+        if (not isinstance(row, dict) or type(row.get('current')) is not bool
+                or type(row.get('stale')) is not bool
+                or row.get('state') not in ('approved', 'changes_requested', 'unknown', 'failed')
+                or not isinstance(row.get('reasons'), list)
+                or any(not isinstance(reason, str) or len(reason) > 160 for reason in row['reasons'])
+                or not _matches(re.compile(re.escape(task) + r'\.review\.[A-Za-z0-9]{8}'), row.get('raw_directory'))
+                or row.get('findings_state') not in ('not_extracted', 'empty', 'findings',
+                    'unstructured_legacy', 'missing_block', 'invalid_block', 'multiple_blocks',
+                    'oversized_block', 'overflow')
+                or (row.get('protocol') is not None and (type(row['protocol']) is not int
+                    or row['protocol'] not in (1, 2)))
+                or (row.get('findings_count') is not None and (type(row['findings_count']) is not int
+                    or not 0 <= row['findings_count'] <= 4096))
+                or (row.get('block_line') is not None and (type(row['block_line']) is not int
+                    or not 1 <= row['block_line'] <= 16 * 1024 * 1024))):
+            raise ValueError('invalid current review row')
+        if row['current']:
+            receipt = row.get('receipt_id')
+            if (row['stale'] or not _matches(HEX32, receipt) or receipt in ids
+                    or not _matches(LABEL, row.get('reviewer'))
+                    or (row.get('process_exit_code') is not None
+                        and (type(row['process_exit_code']) is not int
+                             or not 0 <= row['process_exit_code'] <= 2147483647))):
+                raise ValueError('invalid bound current review')
+            ids.add(receipt); active.append(row)
+    if (counts['current'] != len(active) or counts['stale'] != sum(r['stale'] for r in evidence)
+            or any(counts[state] != sum(r['state'] == state for r in active)
+                   for state in ('approved', 'changes_requested', 'unknown', 'failed'))
+            or sorted({r['reviewer'] for r in active if r['process_exit_code'] is not None}) != sorted(lists['distinct_reviewers'])
+            or sorted(set(lists['expected_reviewers']) - set(lists['distinct_reviewers'])) != sorted(lists['missing_reviewers'])):
+        raise ValueError('inconsistent current review counts')
+    ready = bool(current is not None and active and not findings and not lists['reasons']
+        and not lists['missing_reviewers'] and not counts['unresolved']
+        and not projection['incomplete'] and not projection['verdict_incomplete']
+        and projection['extraction_complete'] and not projection['verdict_disagreement']
+        and projection['decision'] == 'no_structured_findings'
+        and projection['verdict_decision'] == 'all_recorded_approved'
+        and _matches(HEX64, projection.get('material_sha256'))
+        and isinstance(projection.get('material_protocols'), dict)
+        and projection['material_protocols'].get('2') == projection['material_sha256']
+        and all(r['state'] == 'approved' and r['process_exit_code'] == 0
+                and r.get('config_current') is True and r.get('protocol') == 2
+                and r.get('findings_state') == 'empty' and r.get('findings_count') == 0
+                and type(r.get('block_line')) is int and r['block_line'] > 0
+                and not r['reasons'] for r in active))
+    if projection['machine_review_ready'] != ready:
+        raise ValueError('inconsistent current review readiness')
+    return ready
+
+
 def _native_document(document, worker, task):
     """Validate known fields before whitelisting; private producer extras vanish."""
     if (not isinstance(document, dict) or type(document.get('schema_version')) is not int
@@ -3113,8 +3215,20 @@ def _native_document(document, worker, task):
         if document['process']['post_run_snapshot'] != 'failed':
             raise ValueError('invalid snapshot failure')
         stale = True
+    review_ready = r['state'] == 'approved' and r['revision'] == current
+    if 'review_current' in document:
+        review_ready = _current_review(document['review_current'], worker, task, current)
+        dispatch = document.get('dispatch_revision')
+        if dispatch is None:
+            raise ValueError('missing projection dispatch binding')
+        dispatch = _revision(dispatch)
+        review_ready = review_ready and current is not None and dispatch['task_sha256'] == current['task_sha256']
+        delivery = document.get('delivery')
+        if delivery is not None:
+            if not isinstance(delivery, dict) or delivery.get('state') not in (None, 'Unknown', 'complete'):
+                review_ready = False
     ready = (not stale and p['state'] == 'succeeded' and v['state'] == 'passed'
-             and r['state'] == 'approved' and all(s['revision'] == current for s in (p, v, r)))
+             and review_ready and all(s['revision'] == current for s in (p, v)))
     if document['ready_for_human_review'] and not ready:
         raise ValueError('inconsistent native readiness')
     result.update(stale=stale, ready_for_human_review=ready and document['ready_for_human_review'])
@@ -3796,13 +3910,17 @@ class ExecutionService:
         if code != 0:
             return None, 'native_result_unavailable'
         try:
-            native = _native_document(_decode(raw), self._worker, task)
+            document = _decode(raw)
+            native = _native_document(document, self._worker, task)
             revision = native['current_revision']
             if revision is not None and (revision['task_sha256'] != binding['preview']['task_sha256']
                     or revision['base_commit'] != binding['base_revision']
                     or revision['candidate_commit'] != self._worker_revision()):
                 native.update(stale=True, ready_for_human_review=False)
             if native['review']['state'] == 'approved' and native['review']['reviewer'] != binding['preview']['reviewer']:
+                native.update(stale=True, ready_for_human_review=False)
+            if ('review_current' in document and native['ready_for_human_review']
+                    and binding['preview']['reviewer'] not in document['review_current']['distinct_reviewers']):
                 native.update(stale=True, ready_for_human_review=False)
             return native, None
         except (ValueError, TypeError, KeyError, UnicodeError, ExecutionError, RecursionError, OverflowError):
@@ -24646,15 +24764,48 @@ def receipt_protocol(d):
     # review_record_valid already restricted the schema/protocol combinations.
     return 1 if d['schema_version']==1 else d['material_protocol']
 
-def review_config_hash():
-    conf=os.environ.get('UNIO_CONF_DIR',os.path.expanduser('~/.config/unio'))
-    return review_digest(os.path.join(conf,'agents.conf'),1048576)['sha256']
+def review_config_path(root):
+    project=os.path.join(root,'coord','agents.conf')
+    if os.path.isfile(project): return project
+    conf=os.environ.get('UNIO_QUALITY_CONF') or os.environ.get('UNIO_CONF_DIR') or os.path.expanduser('~/.config/unio')
+    return os.path.join(conf,'agents.conf')
 
-def review_context(raw):
-    # Captured before admission/provider invocation; no credentials copied.
+def review_config_data(root):
+    # Configuration is user-managed input, unlike immutable review evidence.
+    # Follow supported symlinks/hardlinks, but require bounded regular bytes and
+    # stable descriptor AND selected-path identity throughout the read.
+    path=review_config_path(root)
+    def identity(st):
+        return (st.st_dev,st.st_ino,st.st_size,st.st_mtime_ns,st.st_ctime_ns)
+    before=os.stat(path)
+    fd=os.open(path,os.O_RDONLY|os.O_NONBLOCK)
+    with os.fdopen(fd,'rb') as stream:
+        opened=os.fstat(stream.fileno())
+        if not stat.S_ISREG(opened.st_mode) or opened.st_size>1048576:
+            fail('unsupported or oversized review configuration')
+        data=stream.read(1048577)
+        after=os.fstat(stream.fileno())
+    if (len(data)>1048576 or identity(before)!=identity(opened)
+            or identity(opened)!=identity(after) or identity(after)!=identity(os.stat(path))
+            or review_config_path(root)!=path):
+        fail('review configuration changed during observation')
+    data.decode('utf-8')
+    return data
+
+def review_config_hash(root):
+    return hashlib.sha256(review_config_data(root)).hexdigest()
+
+def review_context(root,raw,reviewer,command):
+    # Compute before creating any context file; callers own preparation cleanup.
+    data=review_config_data(root)
+    selected=next((line.split('=',1)[1] for line in data.decode('utf-8').split('\n')
+                   if line.startswith(reviewer+'=')),None)
+    if selected!=command: fail('reviewer command changed during preparation')
+    digest=hashlib.sha256(data).hexdigest()
+    command_hash=hashlib.sha256(command.encode('utf-8')).hexdigest()
     path=os.path.join(raw,'context.json')
     with open(path,'x') as stream:
-        json.dump(dict(schema_version=1,config_sha256=review_config_hash()),stream)
+        json.dump(dict(schema_version=2,config_sha256=digest,reviewer=reviewer,command_sha256=command_hash),stream)
 
 
 def review_receipt(root,worker,task,reviewer,state,code,complete,reasons,before,after,pf,raw,group,material_hash):
@@ -24831,10 +24982,11 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
     findings_view=mode in ('--findings','--findings-json','projection')
     as_json=mode in ('--json','--findings-json')
     current_rev=None; material_hashes={1:None,2:None}; observation=[]
-    config_hash=None
+    config_hash=None; config_data=None
     try:
         if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
-        config_hash=review_config_hash()
+        config_data=review_config_data(root)
+        config_hash=hashlib.sha256(config_data).hexdigest()
         current_rev=rev if rev is not None else snapshot(root,worker,task)
         # Each protocol's material is computed independently: a protocol-2
         # size refusal must not invalidate a current legacy receipt, and a
@@ -24868,7 +25020,7 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
         try:
             path=safe(root,'coord','reports',name,'receipt.json')
             if not os.path.exists(path):
-                row['reasons']=['unbound_legacy_evidence']; unresolved+=1; rows.append(row); continue
+                row['reasons']=['unbound_legacy_evidence']; rows.append(row); continue
             d=review_read(path)
             if d['worker']!=worker: continue
             if d['task']!=task: fail('review task mismatch')
@@ -24880,12 +25032,28 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
             if os.path.lexists(context_path):
                 context_bytes,_,context_identity=review_stream(context_path,4096)
                 context=review_json(context_bytes.decode('utf-8'))
-                if (not isinstance(context,dict) or set(context)!={'schema_version','config_sha256'}
-                        or type(context['schema_version']) is not int or context['schema_version']!=1
+                context_fields={'schema_version','config_sha256'}
+                if isinstance(context,dict) and context.get('schema_version')==2:
+                    context_fields|={'reviewer','command_sha256'}
+                if (not isinstance(context,dict) or set(context)!=context_fields
+                        or type(context['schema_version']) is not int or context['schema_version'] not in (1,2)
                         or not isinstance(context['config_sha256'],str)
                         or not re.fullmatch('[0-9a-f]{64}',context['config_sha256'])):
                     fail('invalid review context')
+                if context['schema_version']==2:
+                    if (context['reviewer']!=d['reviewer'] or not isinstance(context['command_sha256'],str)
+                            or not re.fullmatch('[0-9a-f]{64}',context['command_sha256'])):
+                        fail('invalid review command binding')
                 config_current=context['config_sha256']==config_hash
+                if context['schema_version']==2:
+                    command=next((line.split('=',1)[1] for line in (config_data or b'').decode('utf-8').split('\n')
+                                  if line.startswith(d['reviewer']+'=')),None)
+                    config_current=bool(config_current and command is not None
+                        and hashlib.sha256(command.encode('utf-8')).hexdigest()==context['command_sha256'])
+                # Old contexts hashed only the global file. An override cannot
+                # establish their provenance, even when its bytes happen to match.
+                if context['schema_version']==1 and os.path.isfile(os.path.join(root,'coord','agents.conf')):
+                    config_current=None
             streams={}; identities=[]
             if config_current is not None: identities.append((context_path,context_identity))
             for stream in ('stdout','stderr'):
@@ -24972,7 +25140,7 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
     try:
         if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
         if snapshot(root,worker,task)!=current_rev: observation.append('revision_changed')
-        if review_config_hash()!=config_hash: observation.append('config_changed')
+        if review_config_hash(root)!=config_hash: observation.append('config_changed')
     except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
     # A collection failure limits completeness, not independently verified
     # receipt freshness. Keep a current refusal blocking alongside partial sets.
@@ -32756,7 +32924,7 @@ cmd_review() { # a DIFFERENT vendor judges the task order + the diff
   raw=$(mktemp -d "$root/coord/reports/$task.review.XXXXXXXX") || { rm -rf "$nd"; return 2; }
   stdout="$raw/stdout.log"; stderr="$raw/stderr.log"
   : > "$stdout"; : > "$stderr"
-  quality review-context "$raw" || return 2
+  quality review-context "$root" "$raw" "$reviewer" "$rcmd" || { rm -rf -- "$nd" "$raw"; return 2; }
   host_warning || return $?
   # Native guard: the independent reviewer is its own workflow in the
   # reviewer's budget group. Admit before the reviewer provider starts; a
@@ -33035,7 +33203,7 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   for r in "${reviewers[@]}"; do
     raw=$(mktemp -d "$root/coord/reports/$task.review.XXXXXXXX") || { rm -rf -- "$nd" "${raws[@]}"; return 2; }
     : > "$raw/stdout.log"; : > "$raw/stderr.log"
-    quality review-context "$raw" || return 2
+    quality review-context "$root" "$raw" "$r" "${rcmds[${#raws[@]}]}" || { rm -rf -- "$nd" "$raw" "${raws[@]}"; return 2; }
     raws+=("$raw")
   done
   local reviewers_csv raws_csv out cid cdir

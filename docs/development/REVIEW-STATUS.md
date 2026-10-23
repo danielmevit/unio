@@ -30,14 +30,28 @@ are inspected; overflow, invalid evidence, busy workers and drift fail closed.
 The legacy `reviews` and findings CLI shapes/decisions remain compatible; their
 explicit `--expect` remains authoritative for those invocations.
 
-New review invocations capture `context.json` before admission, containing only a
-schema version and SHA-256 of the bounded (1 MiB) agents.conf. Receipt schemas and
+New review invocations capture schema 2 `context.json` before admission, containing
+the effective configuration SHA-256, reviewer alias and SHA-256 of the command
+captured for launch. Selection matches `conf_for_root()`: a regular project
+`coord/agents.conf` takes precedence, otherwise the configured directory is used;
+an empty `UNIO_CONF_DIR` uses the normal default. The configuration reader follows
+supported hardlinks and symlink-managed paths, reads at most 1 MiB, requires a
+regular file and checks descriptor/path identity and metadata before and after
+reading. Evidence/artifact readers retain their stricter path/link checks.
+Preparation verifies that the selected command still equals the captured launch
+command. A context failure removes only newly owned raw/material preparations,
+including earlier reviewers' preparation when a later review-set context fails.
+Interrupted provider streams and historical evidence remain preserved. Receipt schemas and
 material protocols do not change. Observation checks the context as a bounded
 4096-byte regular, singly linked file and closes its replacement window alongside
 the streams. Configuration drift makes those receipts stale. Historical receipts
 without this sidecar retain verdict/freshness visibility but have
 `config_current: null` and cannot establish machine readiness. No old receipt is
-rewritten. This binds agents.conf, not every host environment or provider setting;
+rewritten. Schema 1 contexts remain readable; with a project override their
+provenance is Unknown and they cannot establish machine readiness. Inactive global
+configuration edits do not invalidate project-bound contexts. Both effective
+configuration and command digests must match for schema 2 currentness.
+This binds agents.conf, not every host environment or provider setting;
 effective provider identity and remaining allowance are still Unknown.
 
 Handoff already owns the worker lock; its internal observer explicitly recognizes
@@ -57,3 +71,21 @@ Git snapshot helpers, which have no new enclosing wall-clock deadline in this
 change. Configuration hashes are read once at observation start and again at the
 closing check. Corrupt collection evidence fails closed even with explicit
 `--expect`; explicit expectations still control the reviewer list.
+
+Receipt-less folders remain visible as `unbound_legacy_evidence` history and count
+as recorded folders, but do not increment unresolved or veto a later bound review.
+They establish no current approval. Bound malformed evidence, current failures or
+requests for changes, incomplete collection contracts, missing expected reviewers,
+active locks, material/revision/configuration drift and folder bounds still prevent
+readiness. No historical folder or receipt is deleted or rewritten by observation.
+
+The bundled execution validator accepts both legacy results and the current
+projection. For projections it checks identity/revision, completeness and extraction
+flags, decisions, evidence/count consistency, reviewer expectations, empty findings,
+configuration currentness and dispatch task binding before deriving readiness.
+An isolated `machine_review_ready` flag is insufficient. Execution jobs additionally
+require their configured reviewer among the verified current reviewers; existing
+process/validation, stale revision and explicit human acceptance checks remain.
+Scheduler Source observation uses this validator, including review-set-only and
+re-verify results whose legacy review remains `not_run`. Validation reasons include
+`delivery_failed` and `invalid_report_artifact`; unknown reasons remain invalid.

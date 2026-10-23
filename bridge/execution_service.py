@@ -58,6 +58,7 @@ ERRORS = dict(invalid_request=400, job_not_found=404, conflict=409, draft_stale=
               outcome_unknown=409, storage_unavailable=503, native_unavailable=503)
 REASONS = frozenset(('missing_scope', 'missing_validate', 'scope_violation', 'check_failed',
                      'empty_work', 'task_tampered', 'candidate_changed_during_validation',
+                     'delivery_failed', 'invalid_report_artifact',
                      'reviewer_process_failed', 'unknown_verdict', 'candidate_changed_during_review'))
 WARNINGS = frozenset(('native_result_unavailable', 'native_result_invalid', 'binding_stale',
                       'draft_stale', 'outcome_unknown', 'ownership_unknown', 'stopped'))
@@ -178,6 +179,107 @@ def _revision(value):
     return dict(value)
 
 
+def _current_review(projection, worker, task, current):
+    """Check the canonical observation, never a worker's isolated ready flag."""
+    if (not isinstance(projection, dict) or type(projection.get('schema_version')) is not int
+            or projection['schema_version'] != 1 or projection.get('view') != 'findings'
+            or projection.get('worker') != worker or projection.get('task') != task
+            or projection.get('ai_lab_independence') != 'unknown'
+            or projection.get('human_acceptance') is not False):
+        raise ValueError('invalid current review identity')
+    revision = projection.get('current_revision')
+    if revision is not None:
+        revision = _revision(revision)
+    if revision != current:
+        raise ValueError('stale current review')
+    for key in ('incomplete', 'verdict_incomplete', 'extraction_complete',
+                'machine_review_ready', 'verdict_disagreement'):
+        if type(projection.get(key)) is not bool:
+            raise ValueError('invalid current review flags')
+    if (projection.get('decision') not in ('no_structured_findings', 'findings_attention',
+                                         'not_run', 'unstructured_legacy', 'incomplete')
+            or projection.get('verdict_decision') not in ('all_recorded_approved',
+                'changes_requested', 'not_run', 'incomplete')):
+        raise ValueError('invalid current review decision')
+    lists = {}
+    for key in ('expected_reviewers', 'missing_reviewers', 'distinct_reviewers', 'policy_groups', 'reasons'):
+        value = projection.get(key)
+        if (not isinstance(value, list) or len(value) > 256
+                or any(not isinstance(x, str) or len(x) > 160 for x in value)
+                or len(set(value)) != len(value)):
+            raise ValueError('invalid current review list')
+        lists[key] = value
+    for key in ('expected_reviewers', 'missing_reviewers', 'distinct_reviewers'):
+        if any(not _matches(LABEL, x) for x in lists[key]):
+            raise ValueError('invalid current reviewer')
+    counts = projection.get('counts')
+    keys = {'approved', 'changes_requested', 'unknown', 'failed', 'stale', 'unresolved', 'recorded', 'current'}
+    if (not isinstance(counts, dict) or set(counts) != keys
+            or any(type(v) is not int or not 0 <= v <= 256 for v in counts.values())):
+        raise ValueError('invalid current review counts')
+    protocols = projection.get('material_protocols')
+    if (not isinstance(protocols, dict) or set(protocols) != {'1', '2'}
+            or any(value is not None and not _matches(HEX64, value) for value in protocols.values())
+            or (projection.get('material_sha256') is not None
+                and not _matches(HEX64, projection['material_sha256']))):
+        raise ValueError('invalid current review material')
+    evidence = projection.get('evidence')
+    findings = projection.get('findings')
+    if (not isinstance(evidence, list) or len(evidence) > 256 or counts['recorded'] != len(evidence)
+            or not isinstance(findings, list) or len(findings) > 4096):
+        raise ValueError('invalid current review evidence')
+    active = []; ids = set()
+    for row in evidence:
+        if (not isinstance(row, dict) or type(row.get('current')) is not bool
+                or type(row.get('stale')) is not bool
+                or row.get('state') not in ('approved', 'changes_requested', 'unknown', 'failed')
+                or not isinstance(row.get('reasons'), list)
+                or any(not isinstance(reason, str) or len(reason) > 160 for reason in row['reasons'])
+                or not _matches(re.compile(re.escape(task) + r'\.review\.[A-Za-z0-9]{8}'), row.get('raw_directory'))
+                or row.get('findings_state') not in ('not_extracted', 'empty', 'findings',
+                    'unstructured_legacy', 'missing_block', 'invalid_block', 'multiple_blocks',
+                    'oversized_block', 'overflow')
+                or (row.get('protocol') is not None and (type(row['protocol']) is not int
+                    or row['protocol'] not in (1, 2)))
+                or (row.get('findings_count') is not None and (type(row['findings_count']) is not int
+                    or not 0 <= row['findings_count'] <= 4096))
+                or (row.get('block_line') is not None and (type(row['block_line']) is not int
+                    or not 1 <= row['block_line'] <= 16 * 1024 * 1024))):
+            raise ValueError('invalid current review row')
+        if row['current']:
+            receipt = row.get('receipt_id')
+            if (row['stale'] or not _matches(HEX32, receipt) or receipt in ids
+                    or not _matches(LABEL, row.get('reviewer'))
+                    or (row.get('process_exit_code') is not None
+                        and (type(row['process_exit_code']) is not int
+                             or not 0 <= row['process_exit_code'] <= 2147483647))):
+                raise ValueError('invalid bound current review')
+            ids.add(receipt); active.append(row)
+    if (counts['current'] != len(active) or counts['stale'] != sum(r['stale'] for r in evidence)
+            or any(counts[state] != sum(r['state'] == state for r in active)
+                   for state in ('approved', 'changes_requested', 'unknown', 'failed'))
+            or sorted({r['reviewer'] for r in active if r['process_exit_code'] is not None}) != sorted(lists['distinct_reviewers'])
+            or sorted(set(lists['expected_reviewers']) - set(lists['distinct_reviewers'])) != sorted(lists['missing_reviewers'])):
+        raise ValueError('inconsistent current review counts')
+    ready = bool(current is not None and active and not findings and not lists['reasons']
+        and not lists['missing_reviewers'] and not counts['unresolved']
+        and not projection['incomplete'] and not projection['verdict_incomplete']
+        and projection['extraction_complete'] and not projection['verdict_disagreement']
+        and projection['decision'] == 'no_structured_findings'
+        and projection['verdict_decision'] == 'all_recorded_approved'
+        and _matches(HEX64, projection.get('material_sha256'))
+        and isinstance(projection.get('material_protocols'), dict)
+        and projection['material_protocols'].get('2') == projection['material_sha256']
+        and all(r['state'] == 'approved' and r['process_exit_code'] == 0
+                and r.get('config_current') is True and r.get('protocol') == 2
+                and r.get('findings_state') == 'empty' and r.get('findings_count') == 0
+                and type(r.get('block_line')) is int and r['block_line'] > 0
+                and not r['reasons'] for r in active))
+    if projection['machine_review_ready'] != ready:
+        raise ValueError('inconsistent current review readiness')
+    return ready
+
+
 def _native_document(document, worker, task):
     """Validate known fields before whitelisting; private producer extras vanish."""
     if (not isinstance(document, dict) or type(document.get('schema_version')) is not int
@@ -251,8 +353,20 @@ def _native_document(document, worker, task):
         if document['process']['post_run_snapshot'] != 'failed':
             raise ValueError('invalid snapshot failure')
         stale = True
+    review_ready = r['state'] == 'approved' and r['revision'] == current
+    if 'review_current' in document:
+        review_ready = _current_review(document['review_current'], worker, task, current)
+        dispatch = document.get('dispatch_revision')
+        if dispatch is None:
+            raise ValueError('missing projection dispatch binding')
+        dispatch = _revision(dispatch)
+        review_ready = review_ready and current is not None and dispatch['task_sha256'] == current['task_sha256']
+        delivery = document.get('delivery')
+        if delivery is not None:
+            if not isinstance(delivery, dict) or delivery.get('state') not in (None, 'Unknown', 'complete'):
+                review_ready = False
     ready = (not stale and p['state'] == 'succeeded' and v['state'] == 'passed'
-             and r['state'] == 'approved' and all(s['revision'] == current for s in (p, v, r)))
+             and review_ready and all(s['revision'] == current for s in (p, v)))
     if document['ready_for_human_review'] and not ready:
         raise ValueError('inconsistent native readiness')
     result.update(stale=stale, ready_for_human_review=ready and document['ready_for_human_review'])
@@ -934,13 +1048,17 @@ class ExecutionService:
         if code != 0:
             return None, 'native_result_unavailable'
         try:
-            native = _native_document(_decode(raw), self._worker, task)
+            document = _decode(raw)
+            native = _native_document(document, self._worker, task)
             revision = native['current_revision']
             if revision is not None and (revision['task_sha256'] != binding['preview']['task_sha256']
                     or revision['base_commit'] != binding['base_revision']
                     or revision['candidate_commit'] != self._worker_revision()):
                 native.update(stale=True, ready_for_human_review=False)
             if native['review']['state'] == 'approved' and native['review']['reviewer'] != binding['preview']['reviewer']:
+                native.update(stale=True, ready_for_human_review=False)
+            if ('review_current' in document and native['ready_for_human_review']
+                    and binding['preview']['reviewer'] not in document['review_current']['distinct_reviewers']):
                 native.update(stale=True, ready_for_human_review=False)
             return native, None
         except (ValueError, TypeError, KeyError, UnicodeError, ExecutionError, RecursionError, OverflowError):
