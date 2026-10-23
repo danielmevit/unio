@@ -1,29 +1,32 @@
 # Continue Unio after the 0.5.23 reliability round
 
-Updated 2026-10-23T19:02:01+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
+Updated 2026-10-23T19:50:02+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
 ~/.config/unio/OWNER-WORKFLOW.md before acting.
 
-## Release delivery update — 2026-10-23T19:18:47+02:00
+## Release delivery complete
 
-Owner-authorized0.5.23 publication/install is now in progress. Operational receipts
-are under workspace tmp/unio-next/reliability-release-0523-20261023. Preserve current
-configuration, personal workflow and all earlier tags. Start new task invocations
-only after the installed0.5.23 engine and official artifact hashes are verified.
+Owner-authorized v0.5.23 is published, installed and verified against all six
+freshly downloaded official assets. Exact release source:
+cd0b3a213f0bf52e4349af89e7b4ed94a3b95e0f. Main and the immutable v0.5.23 tag
+contain it. The installed dashboard is http://127.0.0.1:33417/ on this machine.
 
-## Current outcome
+[Official release](https://github.com/danielmevit/unio/releases/tag/v0.5.23).
+Local delivery receipt:
+workspace tmp/unio-next/reliability-release-0523-20261023/delivery.json,
+state published_installed_official_download_verified, all delivery exits0.
+Installation/offline smoke preceded publication; official downloaded hashes were
+verified afterward. Existing operator configuration/templates and older release
+tags were preserved. Never rerun completed shipping controllers or retag v0.5.23.
 
-The 0.5.23 candidate is prepared and privately integrated on
-agent/vecto-reliability-20261021. Runtime integration checkpoint8362d1f;
-subsequent changes are reports/handoff only. Read
-[the candidate report](RELIABILITY-0.5.23-CANDIDATE.md) and
-[field dispositions](VECTO-RELIABILITY-2026-10-21.md).
+Runtime integration checkpoint8362d1f plus documentation1b0700d and cd0b3a2.
+Read [the release report](../RELEASE-0.5.23.md),
+[the candidate evidence](RELIABILITY-0.5.23-CANDIDATE.md) and
+[field dispositions](VECTO-RELIABILITY-2026-10-21.md). Historical candidate reports
+keep their original acceptance/publication status; this section records delivery.
 
-The owner explicitly authorized main push,0.5.23 publication and installation on
-2026-10-23. Delivery is in progress; inspect actual release receipts before
-claiming publication or starting another installation.
-Official/global Unio remains0.5.22; main last checked9fd18f7. The explicit owner message authorizes this release; later plain continue messages
-do not authorize unrelated releases. Vecto is read-only evidence: do not modify
-that project or restart its workers. Its reporting window spans versions.
+Vecto remains read-only evidence; do not modify it or restart its workers.
+Its reporting window spans multiple versions. The owner authorized continuing
+milestone work; that does not authorize unrelated future releases automatically.
 
 ## Accepted evidence and exact revisions
 
@@ -103,13 +106,16 @@ checks, correction count and elapsed. Status questions do not cancel work.
    unified reviewer grammar, explicit binary/ignored analysis contracts, bounded
    enclosing review context, cross-workspace visibility/model-history normalization.
 4. Full managed lead-session ownership; then phone, Windows/trials/localization/
-   Eqho logic and macOS. No new decorative UI/site/CodeGraph/competitor work here.
+   Eqho logic and macOS. Keep UI/site/CodeGraph work separately scoped.
 
-Current feature is the reliability candidate, not a release. For publication,
-first obtain explicit owner authorization for main/release. Prepare official assets
-from the accepted final tree, retain guards and do the ordinary verified install
-flow; do not globally install an unreleased snapshot by assumption. For independent
-next work, scope a new task/worker branch and refresh capacity/CLI before admission.
-No worker or gate from this round remains active. Preserve their exact receipts;
-do not relaunch completed controllers. Answer status questions and continue the
-currently authorized scope; never imply background lead work after ending a turn.
+Private research runs, studies and backups belong only in the owner-authorized
+private workspace, never this public source tree or public release artifacts.
+Consult the newest local coordination log for active processes and account slots.
+Do not dispatch another shared-budget worker until the current companion is idle.
+
+The reliability release is delivered. Next public implementation work needs a
+new focused task/worktree and fresh capacity/CLI evidence. Keep original failures,
+reviews and receipts; do not rerun completed Sources or gates. No new runtime
+change is made by this handoff update. The full gate above remains the exact
+release gate, not evidence for future implementation. Answer status questions
+and continue authorized work; never imply lead work continues after its turn ends.
