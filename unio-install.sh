@@ -25063,25 +25063,32 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
     if current_rev is None:
         try: current_rev=snapshot(root,worker,task)
         except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
+    material_observed=False
+    def observe_material():
+        nonlocal material_observed,config_data,config_hash
+        if material_observed: return
+        material_observed=True
+        try:
+            config_data=review_config_data(root)
+            config_hash=hashlib.sha256(config_data).hexdigest()
+            # Each protocol's material is computed independently: a protocol-2
+            # size refusal must not invalidate a current legacy receipt, and a
+            # legacy refusal must not fabricate currentness for schema-2 receipts.
+            body=material_body(root,worker,task)
+            for protocol,payload in ((1,body+REVIEW_VERDICT_FOOTER),
+                                     (2,body+FINDINGS_INSTRUCTIONS+REVIEW_VERDICT_FOOTER)):
+                limit_data=body if protocol==1 else payload
+                try:
+                    if len(limit_data)>300000: continue
+                    limit_data.decode('utf-8')
+                    material_hashes[protocol]=hashlib.sha256(payload).hexdigest()
+                except UnicodeError: pass
+            if material_hashes[1] is None and material_hashes[2] is None:
+                observation.append('current_evidence_unavailable')
+        except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
     try:
         if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
-        config_data=review_config_data(root)
-        config_hash=hashlib.sha256(config_data).hexdigest()
-        # Each protocol's material is computed independently: a protocol-2
-        # size refusal must not invalidate a current legacy receipt, and a
-        # legacy refusal must not fabricate currentness for schema-2 receipts.
-        body=material_body(root,worker,task)
-        for protocol,payload in ((1,body+REVIEW_VERDICT_FOOTER),
-                                 (2,body+FINDINGS_INSTRUCTIONS+REVIEW_VERDICT_FOOTER)):
-            limit_data=body if protocol==1 else payload
-            try:
-                if len(limit_data)>300000: continue
-                limit_data.decode('utf-8')
-                material_hashes[protocol]=hashlib.sha256(payload).hexdigest()
-            except UnicodeError: pass
-        if material_hashes[1] is None and material_hashes[2] is None:
-            observation.append('current_evidence_unavailable')
-    except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
+    except (ValueError,OSError): observation.append('current_evidence_unavailable')
     reports=safe(root,'coord','reports'); names=[]
     if os.path.exists(reports):
         with os.scandir(reports) as files:
@@ -25106,6 +25113,7 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
             if d['id'] in receipt_ids: fail('duplicate review receipt ID')
             receipt_ids.add(d['id'])
             protocol=receipt_protocol(d)
+            observe_material()
             context_path=safe(root,'coord','reports',name,'context.json')
             config_current=None
             if os.path.lexists(context_path):
@@ -25210,6 +25218,7 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
             c=collection_read(safe(root,'coord','reports',name,'collection.json'))
             if c['worker']!=worker: continue
             if c['task']!=task: fail('collection task mismatch')
+            observe_material()
             if c['before']==current_rev and c['material_sha256'] in material_hashes.values():
                 if infer_expected: expected=sorted(set(expected)|set(c['reviewers']))
                 if c['state']!='completed' or c['after']!=current_rev:
@@ -25218,8 +25227,11 @@ def reviews(root,worker,task,expected,mode,rev=None,owned_lock=False):
             observation.append('invalid_collection_evidence')
     try:
         if not owned_lock and observed_lock(root,worker)=='held': observation.append('worker_busy')
-        if snapshot(root,worker,task)!=current_rev: observation.append('revision_changed')
-        if review_config_hash(root)!=config_hash: observation.append('config_changed')
+        # No approval is possible without bound evidence. Only close freshness
+        # windows that were opened; supplied result revision remains visible.
+        if material_observed:
+            if snapshot(root,worker,task)!=current_rev: observation.append('revision_changed')
+            if review_config_hash(root)!=config_hash: observation.append('config_changed')
     except (ValueError,OSError,KeyError,TypeError): observation.append('current_evidence_unavailable')
     # A collection failure limits completeness, not independently verified
     # receipt freshness. Keep a current refusal blocking alongside partial sets.

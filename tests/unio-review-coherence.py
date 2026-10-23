@@ -39,6 +39,55 @@ class Coherence(unittest.TestCase):
         self.assertEqual(d['review_current']['ai_lab_independence'],'unknown')
         return d
 
+    def test_unreviewed_observation_skips_unusable_review_material(self):
+        # Deterministic unavailable/expensive-work sentinel: do not depend on
+        # wall-clock speed. Every forbidden attempt is persisted before refusal.
+        hooks=self.root/'observation-hooks';hooks.mkdir()
+        attempted=self.root/'review-material-attempts'
+        (hooks/'sitecustomize.py').write_text("""import pathlib,sys
+marker=pathlib.Path(%r)
+def trace(frame,event,arg):
+    if event=='call' and (frame.f_code.co_name in ('material_body','review_config_data')
+            or (frame.f_code.co_name=='snapshot' and frame.f_back.f_code.co_name=='reviews')):
+        with marker.open('a') as stream:stream.write(frame.f_code.co_name+'\\n')
+        raise OSError('controlled unavailable review material')
+    return trace
+if len(sys.argv)>1 and sys.argv[1]=='result':sys.settrace(trace)
+""" % str(attempted))
+        env=dict(self.env,PYTHONPATH=str(hooks))
+        stored=self.coord/'results/mock/evidence.json'
+        original=stored.read_bytes();before=self.result();calls=self.calls()
+        reports=self.coord/'reports'
+        for kind in ('no_folders','unbound','malformed_receipt','malformed_collection'):
+            if kind=='unbound':
+                orphan=reports/'evidence.review.Orphan01';orphan.mkdir()
+                (orphan/'stdout.log').write_bytes(b'raw history\x00\xff')
+            elif kind=='malformed_receipt':
+                bad=reports/'evidence.review.Broken01';bad.mkdir()
+                (bad/'receipt.json').write_bytes(b'{')
+            elif kind=='malformed_collection':
+                bad=reports/'evidence.review-set.Broken01';bad.mkdir()
+                (bad/'collection.json').write_bytes(b'{')
+            raw={p:p.read_bytes() for p in reports.rglob('*') if p.is_file()}
+            with self.subTest(kind=kind):
+                d=json.loads(self.unio('result','mock','evidence',env=env).stdout)
+                self.assertFalse(attempted.exists(),attempted.read_text() if attempted.exists() else '')
+                self.assertFalse(d['ready_for_human_review'])
+                self.assertFalse(d['review_current']['machine_review_ready'])
+                self.assertEqual(d['review_current']['current_revision'],d['current_revision'])
+                for key in ('process','validation','delivery','human','integration','dispatch_revision'):
+                    self.assertEqual(d.get(key),before.get(key),key)
+                self.assertEqual(stored.read_bytes(),original)
+                self.assertEqual({p:p.read_bytes() for p in raw},raw)
+                self.assertEqual(self.calls(),calls)
+                if kind!='no_folders':
+                    self.assertTrue(any('unbound_legacy_evidence' in row['reasons']
+                                        for row in d['review_current']['evidence']))
+                if kind in ('malformed_receipt','malformed_collection'):
+                    self.assertEqual(d['review_current']['counts']['unresolved'],1)
+                if kind=='malformed_collection':
+                    self.assertIn('invalid_collection_evidence',d['review_current']['reasons'])
+
     def test_collection_result_handoff_and_missing_format(self):
         self.controls(revone='empty',revtwo='empty')
         self.unio('review-set','mock','evidence','revone','revtwo')
