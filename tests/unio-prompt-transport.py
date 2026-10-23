@@ -81,7 +81,7 @@ n = len(list(receipts.iterdir()))
 if os.environ.get('STUB_EXIT'):
     sys.exit(int(os.environ['STUB_EXIT']))
 if review:
-    print('reviewed full material\nVERDICT: APPROVE', flush=True)
+    print('reviewed full material\n```unio-findings-v1\n{"schema_version":1,"findings":[]}\n```\nVERDICT: APPROVE', flush=True)
 else:
     name = f'out-{agent}.txt'
     Path(name).write_text('done\n')

@@ -57,7 +57,7 @@ def check(label, condition=True):
 
 
 def configure(mock='echo cov >> hello.txt; git add hello.txt; git commit -qm cov',
-              review='printf "VERDICT: APPROVE\\n"'):
+              review="printf '%s\\n' '```unio-findings-v1' '{\"schema_version\":1,\"findings\":[]}' '```' 'VERDICT: APPROVE'"):
     touch = 'touch ' + shlex.quote(str(mark)) + '; '
     conf.write_text('mock=bash -c ' + shlex.quote(touch + mock) + '\n'
                     + 'rev=bash -c ' + shlex.quote(touch + review) + '\n'
