@@ -105,3 +105,30 @@ generation refusals, mismatched terminal events, bounded output with
 explicit gaps, archive exhaustion, malformed/unsafe/oversized state and
 request-history exhaustion. Tests import `tools/managed-lead.py`
 directly.
+
+## Persistence correction — 2026-10-24
+
+The first Vibe backend Source reproduced four defects: a missing journal prefix
+looked complete, a JSON array journal record raised AttributeError, persisted
+identity was not bound to the controller filename, and a predictable temporary
+hardlink could be truncated before a transport call. That Source and its commits
+remain historical evidence, not acceptance.
+
+Reads now compare the validated contiguous journal prefix and byte count with
+recorded metadata; missing, extra, torn or malformed records report a gap and
+truncation (unsafe files refuse). Reads never repair or replay. Appends first
+validate that agreement, so a later observation cannot conceal disagreement.
+This adds a bounded full-journal scan per append; large archives cost more I/O.
+Persisted identity and turn/request/generation/result relationships are checked
+on every state load, and malformed Unicode refuses in a controlled way.
+
+State replacement uses an unpredictable exclusive mode-0600 temporary file,
+fsync and atomic replacement, without opening predictable stale temporary paths.
+Existing unsafe state targets refuse, including hardlinks, symlinks and FIFOs.
+Persistence failures before durable intent completion make zero transport calls;
+a failure after replacement may leave pending intent, which remains uncertain
+and is never automatically resent. Directory fsync errors are no longer ignored.
+These defenses remain trusted-host, same-user controls, not isolation against a
+hostile same-user process or public observer authorization. Native admission,
+account slots, STOP, provider launching and effective model/effort verification
+remain outside this backend; effective settings stay Unknown.

@@ -520,6 +520,70 @@ def correction_regressions(base):
         assert target.read_bytes() == b'preserve me'
         tmp.unlink()
         h.finish(result)
+    for mutation in ('generation', 'request-generation', 'result-turn'):
+        h2 = Harness(base)
+        r2 = h2.submit('relationship')
+        doc = json.loads(h2.session.meta_path.read_bytes())
+        if mutation == 'generation':
+            doc['generation'] += 1
+        elif mutation == 'request-generation':
+            doc['requests']['relationship']['generation'] += 1
+        else:
+            doc['requests']['relationship']['result']['turn_id'] = 'turn-' + 'f' * 16
+        h2.session.meta_path.write_text(json.dumps(doc))
+        refuses(h2.open)
+        assert len(h2.transport.calls) == 1
+    for operation in ('replace', 'fsync'):
+        h2 = Harness(base)
+        previous = getattr(ml.os, operation)
+        def fail(*args):
+            raise OSError('controlled persistence failure')
+        setattr(ml.os, operation, fail)
+        try:
+            refuses(h2.submit, 'durable-failure')
+        finally:
+            setattr(ml.os, operation, previous)
+        assert not h2.transport.calls
+        assert h2.open().status(session_id=h2.sid)['state'] == 'idle'
+        assert not list(h2.session.meta_path.parent.glob('.*.tmp'))
+    h2 = Harness(base)
+    fsync = ml.os.fsync
+    sync_calls = []
+    def fail_directory_sync(fd):
+        sync_calls.append(fd)
+        if len(sync_calls) == 2:
+            raise OSError('controlled crash boundary after replacement')
+        return fsync(fd)
+    ml.os.fsync = fail_directory_sync
+    try:
+        refuses(h2.submit, 'replaced-intent')
+    finally:
+        ml.os.fsync = fsync
+    assert not h2.transport.calls
+    reopened = h2.open()
+    assert reopened.status(session_id=h2.sid)['state'] == 'pending'
+    replay = reopened.submit_next_turn(session_id=h2.sid, generation=1,
+                                      request_id='replaced-intent', text='next turn input')
+    assert replay['state'] == 'uncertain' and not h2.transport.calls
+    for kind in ('fifo', 'hardlink', 'symlink', 'loose'):
+        h2 = Harness(base)
+        meta2 = h2.session.meta_path
+        data2 = meta2.read_bytes()
+        meta2.unlink()
+        target = base / ('unsafe-state-' + kind)
+        target.write_bytes(data2)
+        os.chmod(target, 0o600)
+        if kind == 'fifo':
+            os.mkfifo(meta2, 0o600)
+        elif kind == 'hardlink':
+            os.link(target, meta2)
+        elif kind == 'symlink':
+            meta2.symlink_to(target)
+        else:
+            meta2.write_bytes(data2)
+            os.chmod(meta2, 0o644)
+        refuses(h2.submit, 'unsafe-state')
+        assert not h2.transport.calls and target.read_bytes() == data2
     refuses(h.submit, 'unicode', '\ud800')
     print('ok correction regressions: journal integrity, identity, private temps, Unicode')
 

@@ -125,39 +125,45 @@ def _read_owned_file(path, bound):
 
 def _atomic_write(path, data):
     safe_path(path)
-    tmp = path.parent / ('.' + path.name + '.tmp')
-    replaced = False
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    # Never open a predictable stale name, even with O_NOFOLLOW: hardlinks
+    # would still truncate another inode. Same-user hostile races are outside
+    # this trusted-host component's isolation guarantees.
+    if path.exists():
+        _read_owned_file(path, STATE_BOUND)
+    tmp = path.parent / ('.' + path.name + '.' + uuid.uuid4().hex + '.tmp')
+    fd = None
+    created = False
     try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                     | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        created = True
         with os.fdopen(fd, 'wb') as stream:
             fd = None
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, path)
-        replaced = True
+        dir_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
         try:
-            dir_fd = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(dir_fd)
-            finally:
-                os.close(dir_fd)
-        except OSError:
-            pass
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError as exc:
+        raise Refusal('durable state write failed') from exc
     finally:
         if fd is not None:
             os.close(fd)
-        if not replaced:
+        if created:
             try:
                 os.unlink(tmp)
-            except OSError:
+            except FileNotFoundError:
                 pass
 
 
 def _append_owned(path, line):
     safe_path(path)
     try:
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
         raise Refusal('unsafe output journal')
     try:
@@ -214,11 +220,25 @@ def _validate_turn_record(record, statuses):
             and isinstance(record.get('ended_at'), str))
 
 
+def _valid_unicode(value):
+    try:
+        if isinstance(value, str):
+            value.encode('utf-8')
+        elif isinstance(value, dict):
+            return all(_valid_unicode(k) and _valid_unicode(v)
+                       for k, v in value.items())
+        elif isinstance(value, list):
+            return all(_valid_unicode(v) for v in value)
+        return True
+    except (UnicodeError, RecursionError):
+        return False
+
+
 def _validate_state(doc):
     def refuse():
         raise Refusal('invalid session state')
 
-    if not isinstance(doc, dict):
+    if not isinstance(doc, dict) or not _valid_unicode(doc):
         refuse()
     if not isinstance(doc.get('session_id'), str) or not SESSION_ID.fullmatch(doc['session_id']):
         refuse()
@@ -266,6 +286,51 @@ def _validate_state(doc):
         result = value.get('result')
         if result is not None and not (isinstance(result, dict)
                                        and result.get('state') in RESULT_STATUS):
+            refuse()
+    active = doc['state'] in ('pending', 'running', 'outcome_unknown')
+    if active != (turn is not None):
+        refuse()
+    if turn is not None:
+        if turn['generation'] != doc['generation']:
+            refuse()
+        matches = [v for v in requests.values()
+                   if v['turn_id'] == turn['turn_id']
+                   and v['generation'] == turn['generation']]
+        if len(matches) != 1 or matches[0]['state'] == 'rejected':
+            refuse()
+    last_turn = doc.get('last_turn')
+    if ((last_turn is not None
+         and last_turn['generation'] != doc['generation'] - 1)
+            or (doc['state'] == 'terminal' and last_turn is None)):
+        refuse()
+    if turn is not None and turn['delivery'] != (
+            'accepted' if doc['state'] == 'running' else 'unknown'):
+        refuse()
+    seen = set()
+    for key, value in requests.items():
+        identity = value['turn_id']
+        if identity in seen or value['generation'] > doc['generation']:
+            refuse()
+        seen.add(identity)
+        result = value.get('result')
+        if (value['state'] == 'pending') != (result is None):
+            refuse()
+        if result is not None and (
+                result.get('session_id') != doc['session_id']
+                or result.get('request_id') != key
+                or type(result.get('generation')) is not int
+                or result['generation'] != value['generation']
+                or result.get('turn_id') != identity
+                or result['state'] != {'accepted': 'accepted', 'rejected': 'rejected',
+                                       'outcome_unknown': 'uncertain'}.get(value['state'])):
+            refuse()
+    for item in history + ([doc['last_turn']] if doc.get('last_turn') else []):
+        if (item['generation'] > doc['generation']
+                or (item['status'] != 'rejected'
+                    and item['generation'] >= doc['generation'])
+                or not any(v['turn_id'] == item['turn_id']
+                           and v['generation'] == item['generation']
+                           for v in requests.values())):
             refuse()
     for key in ('output_cursor', 'archive_bytes', 'turns_completed', 'turns_failed'):
         if type(doc.get(key)) is not int or doc[key] < 0:
@@ -332,6 +397,8 @@ class LeadSession:
         except (ValueError, UnicodeError, RecursionError):
             raise Refusal('invalid session state')
         self._state = _validate_state(doc)
+        if self._state['session_id'] != self.session_id:
+            raise Refusal('session identity mismatch')
 
     def _save(self):
         data = json.dumps(self._state, ensure_ascii=False).encode('utf-8')
@@ -395,6 +462,9 @@ class LeadSession:
         }
 
     def _write_journal(self, line):
+        page = self._read_journal(0, 1)
+        if page['gap']:
+            raise Refusal('output journal disagrees with state')
         _append_owned(self.journal_path, line)
 
     def _append_lifecycle(self, data):
@@ -428,7 +498,7 @@ class LeadSession:
         return state['output_cursor']
 
     def _sanitize_output(self, kind, data):
-        if not isinstance(data, dict):
+        if not isinstance(data, dict) or not _valid_unicode(data):
             raise Refusal('invalid output data')
         if kind in ('agent_message', 'command_output'):
             if set(data) != {'delta'} or not isinstance(data['delta'], str):
@@ -472,7 +542,10 @@ class LeadSession:
             raise Refusal('invalid generation')
         if not isinstance(text, str) or not text or '\x00' in text:
             raise Refusal('invalid turn input')
-        encoded = text.encode('utf-8')
+        try:
+            encoded = text.encode('utf-8')
+        except UnicodeError:
+            raise Refusal('invalid turn input')
         if len(encoded) > MAX_INPUT_BYTES:
             raise Refusal('turn input bound exceeded')
         content_sha = hashlib.sha256(encoded).hexdigest()
@@ -555,6 +628,8 @@ class LeadSession:
     def observe_turn_started(self, *, session_id, generation, turn_id):
         """Accept a provider turn-started observation for the matching turn."""
         self._check_session(session_id)
+        if type(generation) is not int or generation < 1:
+            raise Refusal('invalid generation')
         with self._guard():
             state = self._state
             turn = state.get('turn')
@@ -578,6 +653,8 @@ class LeadSession:
         owner turn. It is not proof of task delivery or acceptance.
         """
         self._check_session(session_id)
+        if type(generation) is not int or generation < 1:
+            raise Refusal('invalid generation')
         if status not in TURN_STATUS:
             raise Refusal('invalid terminal status')
         if exit_code is not None and type(exit_code) is not int:
@@ -611,6 +688,8 @@ class LeadSession:
     def observe_owner(self, *, session_id, generation, owner):
         """Accept an ownership observation for the matching generation."""
         self._check_session(session_id)
+        if type(generation) is not int or generation < 1:
+            raise Refusal('invalid generation')
         if not isinstance(owner, str) or not LABEL.fullmatch(owner):
             raise Refusal('invalid owner label')
         with self._guard():
@@ -625,6 +704,8 @@ class LeadSession:
     def observe_output(self, *, session_id, generation, turn_id, kind, data):
         """Append one bounded selected output observation for a matching turn."""
         self._check_session(session_id)
+        if type(generation) is not int or generation < 1:
+            raise Refusal('invalid generation')
         if kind not in OUTPUT_KINDS:
             raise Refusal('unsupported output kind')
         with self._guard():
@@ -705,16 +786,32 @@ class LeadSession:
                     try:
                         rec = json.loads(line)
                         cur = rec.get('cursor') if isinstance(rec, dict) else None
-                        kind = rec.get('kind')
+                        kind = rec.get('kind') if isinstance(rec, dict) else None
                         ok = (type(cur) is int and cur == last + 1
                               and kind in ('agent_message', 'command_output',
                                            'lifecycle', 'archive_limit')
-                              and isinstance(rec.get('data'), dict))
+                              and isinstance(rec.get('data'), dict)
+                              and isinstance(rec.get('timestamp'), str))
                         if ok and kind in ('agent_message', 'command_output'):
                             ok = (isinstance(rec['data'].get('delta'), str)
                                   and type(rec.get('generation')) is int
-                                  and isinstance(rec.get('turn_id'), str))
-                        if not ok:
+                                  and rec['generation'] >= 1
+                                  and isinstance(rec.get('turn_id'), str)
+                                  and TURN_ID.fullmatch(rec['turn_id'])
+                                  and set(rec['data']) == {'delta'}
+                                  and any(v['turn_id'] == rec['turn_id']
+                                          and v['generation'] == rec['generation']
+                                          for v in self._state['requests'].values()))
+                        if ok and kind == 'lifecycle':
+                            facts = rec['data']
+                            ok = (bool(facts) and set(facts) <= {
+                                'event', 'status', 'exit_code', 'detail', 'owner'}
+                                and all(v is None or type(v) in (str, int)
+                                        for v in facts.values()))
+                        if ok and kind == 'archive_limit':
+                            ok = rec['data'] == {
+                                'history': 'truncated; subsequent output Unknown'}
+                        if not ok or not _valid_unicode(rec):
                             raise ValueError('unsupported or unordered record')
                     except (ValueError, UnicodeError, RecursionError):
                         gap = truncated = True
@@ -729,7 +826,9 @@ class LeadSession:
                             page += len(line)
                         else:
                             page_full = truncated = True
-            gap |= after > last
+            gap |= (after > last or last != self._state['output_cursor']
+                    or size != self._state['archive_bytes'])
+            truncated |= gap
             return {'session_id': self.session_id, 'records': records,
                     'next_cursor': records[-1]['cursor'] if records else after,
                     'output_cursor': last, 'truncated': truncated, 'gap': gap}
@@ -754,7 +853,7 @@ def create_lead_session(root, *, transport, authority, ownership, workspace,
                                ('budget_label', budget_label, 128),
                                ('route', route, 128), ('model', model, 128),
                                ('effort', effort, 128)):
-        if not isinstance(value, str) or not value or '\x00' in value or len(value) > bound:
+        if not isinstance(value, str) or not value or '\x00' in value or len(value) > bound or not _valid_unicode(value):
             raise Refusal('invalid ' + name)
     if type(max_requests) is not int or not 1 <= max_requests <= 256:
         raise Refusal('invalid request bound')
