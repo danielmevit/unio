@@ -3,44 +3,71 @@
 Updated 2026-10-23T19:50:02+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
 ~/.config/unio/OWNER-WORKFLOW.md before acting.
 
-## Active private development — 2026-10-24T02:01:01+02:00
+## Active private development — 2026-10-24T02:32:15+02:00
 
-Stable published/main/installed remains0.5.23. No0.5.24 main push/release/install
-authorized. Private candidate4a744ca stages the review-history fix plus the new
-backend for testing only; the backend is NOT accepted. Read the current round
-checkpoint and newest local log before acting; earlier "review active" text
-records the earlier phase, not approval.
+Published/main/installed stable is0.5.23 cd0b3a2. No0.5.24 main push,
+release or install is authorized. Current private integration8190057 stages code
+for testing only; the managed-lead backend is NOT accepted or installed.
 
-Claude subscription/ClaudeCode2.1.309/Opus5.5XHIGH review on exact da437194:
-CLI/adapter0, native1 REQUEST-CHANGES. Lead reproduced three real defects:
-missing nullable state keys can reach transport and crash status, a concurrent
-start then rejected reply persists unreadable state, and append/save failure is
-misreported as archive size limit. Additional low findings concern marker bounds,
-controlled input/I/O errors, tests and repeated scanning cost. Original four
-lead defects were fixed; these new findings still block acceptance.
+Current exact next step: observe the already admitted native task
+MANAGED-LEAD-OUTPUT-REJECTION-SOL-LOW-0524-20261024 in worker
+codex-managed-lead-output-low-20261024. Pipeline:
+tmp/unio-next/managed-lead-output-correction-low-20261024.
+Do not duplicate it or launch another Codex workflow. Requested route is ChatGPT
+subscription/CodexCLI0.163.0/gpt-6.1-sol LOW; effective Unknown. Source starts
+from8190057; this is one narrow mechanical correction after the broader MEDIUM
+pass. Real Codex lead/account, task grant, temporary coordination medium and STOP
+are preserved; controller restores low when idle.
 
-Dedicated CodexCLI0.163/gpt-6.1-sol MEDIUM task
-MANAGED-LEAD-OPUS-CORRECTIONS-SOL-MEDIUM-0524-20261024 is admitted through Unio
-in codex-managed-lead-review-medium-20261024, starting4a744ca. This is the next
-supported effort after demonstrated LOW reasoning/integration gaps, not a quota
-workaround. Real shared Codex group/lead/grant retained, temporary coordination
-medium separately, restore low when idle. Pipeline:
-tmp/unio-next/managed-lead-review-corrections-medium-20261024.
+- Mistral/Vibe2.26.1/GLM5.3/HIGH original backend08244c2+d5654ac Source/native/
+  verify0 but4actual lead defects; native quality_issue recorded. SolLOW
+  da437194 fixed those, Source/native/verify0, then OpusXHIGH requested changes.
+- SolMEDIUM649fb89+c46170f Source/native0, native4/4 PASS0; Opus5.5XHIGH
+  confirms all7previous findings fixed. CLI/adapter0 but native1 REQUEST-CHANGES
+  for ONE further blocker: matching output while pending followed by rejection
+  can free a possibly active turn. The current LOW task corrects that case.
+  Nonblocking typed-error, transient-journal and edge-I/O notes remain explicit.
+- The current task has a fresh Claude subscription/ClaudeCode2.1.309/
+  claude-opus-5-5 XHIGH native review observer under independent-opus-review/.
+  It waits Source/native/verify0 and supplies4complete source snapshots/hashes.
+- machine-gate/observe-and-run.py waits actual current-code Opus native APPROVE0,
+  then freezes the exact clean worker revision and runs the new direct backend
+  suite plus the complete repository gate in a private tmpfs clone. It makes
+  NO model call and NEVER accepts, merges, installs or publishes. Its observer.json,
+  full-gate.json/log and frozen-source.json are the evidence. A failure stops it;
+  no blind retry. The existing lead must assess the final code/findings/gate.
+- Preserve all old reviews and gates:870e649 failed1 stale embedded guide;
+  b5a1b0e regenerated28canonical lines, native4/4 PASS0 and outside-guide bytes
+  identical.4a744 and8190057 gates intentionally interrupted for concrete Opus
+  findings, actual-15; these are not completed gates or code-test failures.
+  The separate guard correction755cb060 retains its exact Opus APPROVE.
+- Mistral native integration proposal7280cad returned Source/native0, native
+  verification1 from the LEAD'S contradictory report-only+commit task.2/2 scope/
+  doc checks passed. Separate deterministic local unchanged-artifact validation
+  Source/native/verify0, NO AI invocation, preserved the failure. Do not count it
+  as a second GLM run or semantic acceptance. Read
+  [integration decisions](MANAGED-LEAD-INTEGRATION-DECISIONS.md): codexmanaged
+  is unmapped here, private accepted code need not be published before integration,
+  provider-ID mapping is not yet implemented, and new strict-schema fields need
+  explicit compatibility. Original proposal stays on its own branch as context.
 
-Combined4a744ca gate was deliberately stopped after review requested changes;
-new backend suite and embedding checks passed, broad gate incomplete. Preserve
-managed-reliability-combined-20261024/machine-gate, review-stop.json and old
-failed870e649 gate. No PASS claim; freeze corrected code for a NEW gate after
-Source/native/verify. Fresh current-code Opus review plus existing lead required.
-Do not rebind the old rejection/approval or start dependent transport work yet.
-The next transport slice is only a draft; full native ownership/continuity remains
-later, with no installed public command from this internal component.
+Fresh Codex observation02:27:21+02:00: primary7%, weekly70% remaining;
+reset03:44:29UTC/05:44:29local. Shared budget, not per-task attribution. No more
+Codex tasks are planned after this final narrow fix in this allowance. Save early
+and keep this handoff current if the lead reaches capacity. Do not fake acceptance.
+Original LOW experience quality_issue record attempt timed out2; only manual
+assessment remains, not a native score. Automatic save60s helper timeouts remain
+operational backlog; early commits preserve code. Native Source exits stay real.
 
-Review-history correction755cb060 retains its own Opus APPROVE and guide-only
-b5a1b0e identity proof. Save60s helper timeouts remain operational backlog; early
-commits preserve code. Classified studies/private stable backup complete in
-authorized privatehub e5be535. Mercury testing closed. No paid fallback, Vecto
-changes, auth changes, extra lead-account workflows or global upgrade.
+After final review/gatePASS, existing lead assesses and merges the exact accepted
+worker commit privately, updates this handoff/round report and records experience
+if current native observation succeeds. No main push/release/global install.
+Then freeze the accepted interface and implement one owned Codex transport/native
+lead route; current modules alone do not deliver usable continuity. Broader plan
+is2–4working days. Do not restart Mercury trials or CodeGraph work. Classified
+research and stable23 backup are complete in privatehub e5be535. Vecto read-only.
+Read ~/.config/unio/OWNER-WORKFLOW.md before final assessment: one external Opus
+review plus this existing lead, no routine extra reviewers or paid fallback.
 
 ## Release delivery complete
 
