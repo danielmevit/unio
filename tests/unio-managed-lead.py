@@ -738,7 +738,11 @@ def medium_review_regressions(base):
             observe('x' * delta)
             assert h.session.journal_path.stat().st_size == ml.ARCHIVE_BOUND - ml.MARKER_HEADROOM - 1
             if close_with == 'output':
-                result = observe('y' * (ml.MARKER_HEADROOM - marker_len))
+                # Without reservation this record would fit but leave one byte
+                # too little for the eventual marker, reproducing the old alignment.
+                fill = ml.MARKER_HEADROOM + 1 - (marker_len - 1) - overhead
+                assert fill > 0
+                result = observe('y' * fill)
                 assert result['state'] == 'archive_limit'
             else:
                 h.session.observe_owner(session_id=h.sid, generation=1, owner='owner')
@@ -782,6 +786,45 @@ def medium_review_regressions(base):
         finally:
             setattr(ml.os, operation, previous)
         assert len(h2.transport.calls) == 1
+    # A partial write followed by failure preserves the torn bytes. Status
+    # exposes disagreement, and a later terminal fact is durable but refuses.
+    h2 = Harness(base)
+    r2 = h2.submit('partial-write')
+    write = ml.os.write
+    writes = []
+    def partial_write(fd, data):
+        writes.append(len(data))
+        if len(writes) == 1:
+            return write(fd, data[:7])
+        raise OSError('controlled failure after partial write')
+    ml.os.write = partial_write
+    try:
+        refuses(h2.session.observe_output, session_id=h2.sid, generation=1,
+                turn_id=r2['turn_id'], kind='agent_message', data={'delta': 'partial'})
+    finally:
+        ml.os.write = write
+    partial = h2.session.journal_path.read_bytes()
+    assert len(partial) == 7
+    assert h2.open().status(session_id=h2.sid)['journal_status'] == 'journal_disagreement'
+    refuses(h2.finish, r2, 'failed', 45)
+    assert h2.session.journal_path.read_bytes() == partial
+    assert h2.open().status(session_id=h2.sid)['last_turn']['exit_code'] == 45
+    # Journal-specific inspection failures give controlled reads and Unknown
+    # status; state inspection failures also remain controlled refusals.
+    h2 = Harness(base)
+    fstat = ml.os.fstat
+    journal_inode = h2.session.journal_path.stat().st_ino
+    def fail_journal_stat(fd):
+        st = fstat(fd)
+        if st.st_ino == journal_inode:
+            raise OSError('controlled journal inspection failure')
+        return st
+    ml.os.fstat = fail_journal_stat
+    try:
+        assert h2.session.status(session_id=h2.sid)['journal_status'] == 'Unknown'
+        refuses(h2.session.read_output, session_id=h2.sid)
+    finally:
+        ml.os.fstat = fstat
     # Failed lifecycle persistence must preserve terminal facts and refuse.
     h2 = Harness(base)
     r2 = h2.submit('terminal-write')

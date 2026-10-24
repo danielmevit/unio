@@ -64,7 +64,7 @@ MAX_LIMIT = 500
 MAX_REQUESTS = 64
 HISTORY_BOUND = 32
 LOCK_WAIT = 5.0
-# Reserve enough for the complete closing marker, even at STATE_BOUND digits.
+# Writers keep headroom for a complete closing marker; cursor is archive-bounded.
 MARKER_HEADROOM = 512
 INT_MIN, INT_MAX = -(2 ** 31), 2 ** 31 - 1
 STATE_KEYS = frozenset("session_id role generation state workspace budget_label route model "
@@ -170,6 +170,8 @@ def _atomic_write(path, data):
                 os.unlink(tmp)
             except FileNotFoundError:
                 pass
+            except OSError as exc:
+                raise Refusal('state temp cleanup failed') from exc
 
 
 def _append_owned(path, line):
@@ -193,7 +195,10 @@ def _append_owned(path, line):
     except OSError as exc:
         raise Refusal("output journal write failed") from exc
     finally:
-        os.close(fd)
+        try:
+            os.close(fd)
+        except OSError as exc:
+            raise Refusal('output journal close failed') from exc
 
 
 def _acquire_lock(path):
