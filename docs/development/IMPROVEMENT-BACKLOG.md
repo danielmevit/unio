@@ -2,11 +2,44 @@
 
 This backlog consolidates pending, accepted, and shipped functional improvements for Unio, organized by priority. It acts as a detailed inventory supporting the [ROADMAP.md](ROADMAP.md) without assigning fixed deadlines or version numbers for unreleased work.
 
-## Current Delivery States
+## Current delivery and owner priority — 2026-10-24T22:52:32+02:00
 
-- **Shipped and installed**: [v0.5.19](https://github.com/danielmevit/unio/releases/tag/v0.5.19) combines owned Linux Source stopping, folded save validation and Copilot metadata compatibility. Its full gate and seven final native checks passed; the lead accepted the inspected corrections. See [scope and review limitations](../RELEASE-0.5.19.md). Published and installed on 2026-10-16 after upgrade/rollback, configuration preservation and six official download hash checks.
-- **Next batch**: Shared-lead budget consent, opt-in interrupted-work WIP, plain stop reasons and development/release push guards. Existing snapshots, slots and worker guards remain foundations; the field gaps are not yet fixed.
+- **Shipped and installed:**0.5.23, following the seven operator fixes in0.5.22.
+  See [the release evidence](../RELEASE-0.5.23.md). Older entries below retain
+  their dated context; shipped20/21/22 work is not an unfinished next batch.
+- **Privately accepted:** review-history/dispatch corrections and tested internal
+  lead core/RPC foundations. The complete foundation gate passed; these do not
+  provide installed native lead ownership.
+- **Current task:** checkpoint metadata reuse, preserving validation/retention/
+  restoration. Focused checks and independent reviews passed; exact combined
+  gate is still running. Do not claim all capture deadlines are repaired.
+- **Next:** operational improvements before ownership or interface work. Preserve
+  the failed ownership invocation (infrastructure exit2, no edits), without retry.
 
+### Operational queue
+
+1. Finish the current checkpoint candidate gate and existing-lead assessment.
+2. Validate remaining helper delays: mounted-workspace automatic captures still
+   hit60s; result/experience observations may exceed caller deadlines. Diagnose
+   the exact call/phase, reduce redundant work or add bounded configurable
+   observation deadlines where justified. Preserve freshness and failed exits;
+   no arbitrary timeout increase, data deletion or unproven speedup claim.
+3. Improve operating clarity where evidence is missing: supported stop reasons,
+   receipt provenance, requested startup effort/live-control capability/pending
+   configuration/effective Unknown, separate from coordination tier. A custom
+   wrapper's Unknown is not proof the provider exported nothing; distinguish
+   route setup limitations from product defects before fixing them.
+4. Provide bounded enclosing review context with exact material hashes; keep
+   individual opinions, current change requests, stale evidence and lead
+   acceptance separate. Preserve material caps; never silently clip.
+5. Follow with explicit analysis/asset delivery and honest cross-workspace
+   shared-account visibility when scoped. Do not weaken implementation no-op
+   gates or claim global account enforcement that does not exist.
+
+Ownership/lifecycle and UX work resume after the operational batch: existing
+dashboard integration, session phone pairing and native Windows before macOS.
+No extra feature is added to an already running gate. Bundle coherent completed
+operational changes; run the required final combined gate on the frozen scope.
 
 ## Functional Priorities
 

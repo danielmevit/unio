@@ -1,5 +1,28 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## NEW OWNER PRIORITY: operations before ownership/UX — 2026-10-24T22:52:32+02:00
+
+Owner defers managedleadownership/dashboard/desktop/phone until operational
+reliability/QoL work. Proposed24 now operationalbatch; futurefeature numbers
+unassigned. ReadcurrentVERSION-PLAN/ROADMAP/IMPROVEMENT-BACKLOG beforedispatch.
+Noownershipretry/Opusreview/newclaimwork. Preserveall acceptedinternalfoundations.
+
+OwnershipMistral/Vibe2.26.1/GLM5.3HIGH endednaturally: CLI/canonicaladapter2
+22:44:56, native2/finalization22:47:01; noedits/commit. Validexportclassifies
+infrastructure,602205tokens/12M,7estimatedturns/150, reportedestimatedUSD0.885609/10.
+Do not call thisquota/effortfailure. Nativecustomwrapper report showsUnknown
+budget/stopreason, a route-observability gap requiringvalidation, notproofthat
+canonicaladapterexportslackusage. KeepfailedSourceandnoautomaticreplacement.
+
+Currentpriority checkpointreuse94d fullqualitygate stillrunning since22:14:35;
+324focusedchecks+independentreviews passed; privateacceptance waitsactualgate0.
+Then remaininghelperdelays/diagnostics, effortcapabilityandreviewcontextqueue.
+Sourceconstraints/freshness/STOP/grants unchanged. Main/install23; no24publish.
+
+Statusformat clarified: practicalgoal+feature+exacttaskrelationship ANDnittygritty
+changes/workerroute/CLI/model/effort/exits/commits/checks/reviews/failures/next/ETA.
+UpdatedpublicCLIguide, personalOWNER-WORKFLOW/localAGENTS/coordcopy.
+
 ## Lead ownership belongs to the phone/desktop roadmap — 2026-10-24T22:45:55+02:00
 
 Owner correctly connects currentleadbackend tophone/Windowsroadmap. Recorded

@@ -23,6 +23,23 @@ For an overall status, cover the shipped baseline, the current feature and its
 finish line, remaining work and the next functional priority. Do not substitute
 only the latest worker or test result.
 
+## Status questions: include context and technical detail together
+
+For a status request, cover all of the following in a readable update:
+
+- **Overall goal:** the practical result the owner wants.
+- **Feature:** which capability is being built or improved.
+- **Current piece:** the exact task/component and how it advances that feature.
+- **Technical state:** concrete behavior changed, current worker route/CLI/version,
+  requested model/effort, actual exits, meaningful commit or test evidence, review
+  verdicts and remaining defects. A heartbeat proves liveness, not useful progress.
+- **Next and estimate:** what remains for this task and feature, the next action,
+  elapsed/estimated time and uncertainty. Mention parked work when it affects scope.
+
+Do not replace task details with a generic roadmap, or omit the main goal when
+giving low-level checks. Full receipts and hashes remain in the handoff; enough
+concrete evidence belongs in the CLI answer to make the state assessable.
+
 ## Enough detail, without a receipt dump
 
 Use a short connected explanation first. Add technical detail where it explains

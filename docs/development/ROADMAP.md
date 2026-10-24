@@ -1,5 +1,20 @@
 # Unio roadmap and development priorities
 
+## Current owner direction — 2026-10-24T22:52:32+02:00
+
+Published and installed baseline is0.5.23. Prioritize operational reliability
+and quality of life in the next proposed0.5.24 batch. Finish current checkpoint
+and review fixes, then address evidenced helper delays and clear run/route/
+effort diagnostics. See [the current backlog](IMPROVEMENT-BACKLOG.md).
+
+Managed lead ownership/lifecycle, dashboard expansion, phone access and native
+desktop interfaces follow the operational work. Preserve completed internal
+foundations and all failed attempts; do not start another ownership assignment
+now. Future feature release numbers are unassigned; Windows still precedes
+macOS. The [version plan](../VERSION-PLAN.md) supersedes earlier dated sequences
+below. No0.5.24 push, global installation or publication is authorized.
+
+
 Current delivery,2026-10-19: [v0.5.22](https://github.com/danielmevit/unio/releases/tag/v0.5.22)
 is published and installed. All seven operator-reliability improvements passed
 independent code reviews, the complete gate and artifact/upgrade/install/download

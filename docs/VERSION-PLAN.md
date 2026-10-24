@@ -15,15 +15,32 @@ assets stay immutable.
 Validation update, 2026-10-08: see [completed checks, preserved failures and
 remaining release work](development/RECOVERY-ACCEPTANCE-2026-10-08.md). The complete candidate gate passed; final documentation-only publication retains identical runtime and test bytes.
 
+
+## Current owner priority — 2026-10-24T22:52:32+02:00
+
+Improve how the existing tool operates before extending managed lead ownership,
+the dashboard, desktop or phone interfaces. The priority is operational
+reliability, recovery performance, clear run/route/effort status and useful
+review evidence. The unfinished ownership assignment ended with infrastructure
+failure and no edits; preserve it without retry or further ownership assignments.
+Do not abruptly terminate active work or discard already reviewed foundations.
+
+The table below supersedes older proposed24/25/26/27 allocations; only published
+release numbers are fixed. A finished operational batch does not grant permission
+to push main, install a development build globally or publish a release.
+See [the operational priorities](development/IMPROVEMENT-BACKLOG.md) and
+[CLI status reporting](development/CLI-PROGRESS-REPORTING.md).
+
 | Version | Included work | State |
 | --- | --- | --- |
 | 0.5.21 | Bounded continuous delegation for existing approved jobs | [Released and installed 2026-10-17](https://github.com/danielmevit/unio/releases/tag/v0.5.21); complete gate, independent Gemini and Mistral/Vibe GLM reviews, reproducible assets, upgrade/rollback and six official download hashes passed. |
 | 0.5.22 | Seven operator-reliability improvements | [Released and installed2026-10-19](https://github.com/danielmevit/unio/releases/tag/v0.5.22); independent reviews, complete gate, reproducible assets, upgrade/rollback and six official download hashes passed. See [scope and limits](RELEASE-0.5.22.md). |
 | 0.5.23 | Vecto field reliability: bounded admission diagnostics, consistent review observation and explicit required delivery; preserve the reviewed managed-session CLI slice | [Released and installed2026-10-23](https://github.com/danielmevit/unio/releases/tag/v0.5.23), sourcecd0b3a2; full gate, independent Opus review plus lead assessment, upgrade/rollback and six official download hashes passed. See [release scope and limits](RELEASE-0.5.23.md). Full multi-turn lead continuity remains later. |
-| 0.5.24 | Full managed lead-session ownership and continuity | Proposed; 2–4 working days for the first complete supported route, after reliability follow-ups. The0.5.23 CLI slice alone does not satisfy this dependency. |
-| 0.5.25 | Session-scoped phone access | Proposed; 2–4 working days after managed lead-session ownership. |
-| 0.5.26 | Native Windows | Proposed; 1–3 working weeks after feasibility assessment; split if required. Include [app-managed trial expiry](development/WINDOWS-TRIALS.md) and expiry/restart/offline acceptance. Owner 2026-10-17: once a Windows installer exists, list it on winget (`damt.Unio`, PR to microsoft/winget-pkgs, like Eqho's `damt.Eqho`). |
-| 0.5.27 | Native macOS | Proposed; 3–6 working days, subject to actual host checks. |
+| 0.5.24 | Operational reliability and quality of life | Proposed next batch: finish checkpoint/review fixes, then evidence-backed helper delays and clearer operating diagnostics. Scope/checks must be frozen before release; no publication or installation authorized. Managed lead ownership is no longer a requirement for this release. |
+| Later; number unassigned | Managed lead ownership, lifecycle and existing dashboard integration | Deferred until the operational batch is accepted. Preserve the internal core/RPC foundations and ended worker evidence. Earlier 2–4 working-day estimate needs reassessment when resumed. |
+| Later; number unassigned | Session-scoped phone access | After a usable managed lead route; earlier 2–4 working-day estimate remains provisional. |
+| Later; number unassigned | Native Windows | After operational foundations; Windows precedes macOS. Earlier 1–3 working-week estimate requires feasibility assessment. Include [app-managed trial expiry](development/WINDOWS-TRIALS.md), localization and planned Store/winget distribution (`damt.Unio`, after an installer exists). |
+| Later; number unassigned | Native macOS | After Windows; earlier 3–6 working-day estimate requires actual host checks. |
 | 0.5.20 | Shared-lead budget consent, eligible WIP commits, worker stop outcomes and safe publication remotes | [Released and installed 2026-10-16](https://github.com/danielmevit/unio/releases/tag/v0.5.20); complete gate, reproducible assets, upgrade/rollback, configuration preservation and six official download hashes passed. |
 | 0.5.19 | Owned Source cleanup, native verification identity, measured saving and Copilot compatibility | [Released and installed 2026-10-16](https://github.com/danielmevit/unio/releases/tag/v0.5.19); complete gate, isolated install/upgrade checks and official download verification passed. |
 | 0.5.18 | Worker reliability: Vibe live progress, Antigravity structured outcomes and exact Copilot JSONL proposals | [Released and installed 2026-10-14](https://github.com/danielmevit/unio/releases/tag/v0.5.18); full gate, artifacts, upgrade/restore, installation, dashboard identity and six official download hashes passed. |
@@ -98,10 +115,11 @@ completed 0.5.x releases, unattended sequential browser 0.5.3 and checkpoint
 0.5.4 work, and installation of the latest verified release on this machine.
 The current sequence under the newest owner YOLO+low policy uses one independent
 workflow per shared provider/account including lead, focused native validation,
-and one full required release gate before publication. The owner update of
-2026-10-16 requires at least two independent current-code worker reviews from
-different AI labs, followed by lead assessment; earlier personal-review-only
-exceptions are superseded. Standing LOW-Sol companion work retains the actual
+and one full required release gate before publication. The current personal owner workflow requires one independent external
+current-code reviewer plus the existing lead (two reviewers total), superseding
+the older October16 review count. Prefer eligible Opus5.5 XHIGH for a Codex lead;
+extra external reviewers require an unresolved gap or owner request. Stricter
+current project/CI/human approvals remain in force. Standing LOW-Sol companion work retains the actual
 shared budget, narrow consent and temporary coordination tier as documented in
 [lead routing](development/LEAD-ROUTING.md). Frozen checks, owner authority and
 exact pushes remain required. This does
