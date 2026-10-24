@@ -1,5 +1,37 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Active operational task: bounded assessment observation — 2026-10-24T23:02:36+02:00
+
+Goal: improve existing Unio operation before ownership/UI. Featurecurrentpiece
+is experience-record deadline control, NOT automatic-save speedup. Leadvalidated
+fixedRECORD_DEADLINE_SECONDS30 and parserrefuses --timeout (0modelcalls);
+new bounded --timeout1..300/default30 with phasediagnostics preservesfreshness,
+recordschema, no-write-on-timeout andexistingfleet ownedgroupcleanup. Suggest
+1..60/default10unchanged. Sourcebasepubliccd0, helperbyteidenticalcurrentprivate
+integration; sixfile scope, unrelatedSAVES/POLICY/QUALITY mustremainidentical.
+
+Task EXPERIENCE-RECORD-DEADLINE-SOL-LOW-0524-20261024, workercodex-experience-deadline-low-20261024,
+pipeline experience-record-deadline-sol-low-20261024. ChatGPTsubscription/
+CodexCLI0.163.0/gpt6.1solLOW actualSource2026-10-24T23:01:12+02:00, toolactivityobserved;
+noedits/commit/checks/verdictyet. FrozenSource+reviewconfig/taskhash/parser/AST
+preflightPASS. Controller2136951, exactaccountcodex+existingregisteredlead,
+1task/configboundgrant/tempnativecoordinationmedium, STOPrestored; finally
+restoreslowwhenidle. Freshcontrollercapacityreceiptavailable, notold99/31.
+Source120minbound, estimate20–40min+review.
+
+Observer2136955 waitsactualSource/native/Verify0 ANDtierrestored, thenone
+Claude subscription/Code2.1.309/Opus5.5XHIGH nativecurrent-code review; exact
+Git-Csnapshot/read-onlysource, noimplicitcwdassumption. UnsupportedClaude
+capacityrefreshremainsUnknown. Noautocorrection/acceptance/push/install/release.
+Source/reviewwrappersandreceiptspreserved; existing-leadfinalassessmentrequired.
+
+Parallel94d checkpointcombinedqualitygate stillrunning22:14:35, nofailureobserved;
+324focusedchecks+reviews0. Foundationeddc alreadyaccepted/fullPASS/privateintegrated.
+Ownershipparked; originalGLMSource2infrastructure/noedits recordednativeexperience
+operational_failure ef000cdf28bfb086d21aa6214c1598b3/stored0, notquality/quota.
+Main/install23. Currentpriorityandstatusinstructionsinversionplan/backlog/
+OWNER-WORKFLOW. NextactualSource/check/review andsavegate/leadassessment.
+
 ## NEW OWNER PRIORITY: operations before ownership/UX — 2026-10-24T22:52:32+02:00
 
 Owner defers managedleadownership/dashboard/desktop/phone until operational
