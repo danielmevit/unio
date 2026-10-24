@@ -34391,43 +34391,105 @@ cmd_selftest() { # the whole loop, rehearsed with mock agents — zero quota
   [ -f "$TPL_DIR/TASK.md" ] || die "templates missing at $TPL_DIR — rerun the installer"
 
   # ST_BACKGROUND_HELPERS_BEGIN — also exercised from the installed payload.
-  # Keep the actual background runtime as our child, rather than losing its
-  # identity at the detached -b frontend. UNIO_BG publishes native ownership.
+  # Drive the public run -b frontend. Its detached runtime is not our child, so
+  # identity is proved, never inferred from kill -0: the published pid must be
+  # a session leader holding the worker lock, pinned by its start time. Signals
+  # go only through native kill or a pidfd re-checked against that identity.
+  ST_BG_LIMIT="${ST_BG_LIMIT:-40}"
+  ST_BG_PY='import os, signal, sys
+def stat(pid):
+    try:
+        with open("/proc/%d/stat" % pid) as f:
+            rest = f.read().rsplit(")", 1)[1].split()
+    except (OSError, IndexError):
+        return None
+    return rest[0], rest[3], rest[19]
+mode, args = sys.argv[1], sys.argv[2:]
+if mode == "ident":
+    try:
+        pid = int(open(args[0]).read().strip())
+        ino = os.stat(args[1]).st_ino
+    except (OSError, ValueError):
+        sys.exit(1)
+    info = stat(pid) if pid > 1 else None
+    if not info or info[0] == "Z" or info[1] != str(pid):
+        sys.exit(1)
+    try:
+        fds = os.listdir("/proc/%d/fdinfo" % pid)
+    except OSError:
+        sys.exit(1)
+    for fd in fds:
+        try:
+            text = open("/proc/%d/fdinfo/%s" % (pid, fd)).read()
+        except OSError:
+            continue
+        lines = text.splitlines()
+        if "ino:\t%d" % ino in lines and any(l.startswith("lock:") and " WRITE " in l for l in lines):
+            if stat(pid) == info:
+                print(pid, info[2])
+                sys.exit(0)
+    sys.exit(1)
+pid, start = int(args[0]), args[1]
+if mode == "alive":
+    info = stat(pid)
+    sys.exit(0 if info and info[0] != "Z" and info[2] == start else 1)
+try:
+    fd = os.pidfd_open(pid)
+except OSError:
+    sys.exit(1)
+try:
+    info = stat(pid)
+    if not info or info[0] == "Z" or info[2] != start:
+        sys.exit(1)
+    signal.pidfd_send_signal(fd, signal.SIGTERM)
+finally:
+    os.close(fd)'
+  st_bg_proc() { python3 -I -S -B -c "$ST_BG_PY" "$@"; }
   st_bg_launch() {
-    local worker="$1" task="$2"
-    rm -f "$ST/$task.started"
-    UNIO_BG=1 UNIO_SELFTEST_STARTED="$ST/$task.started" \
-      "$0" run "$worker" "$task" >"$ST/$task.launch.log" 2>&1 &
-    ST_BG_PID=$!
-    ST_BG_TASK="$task"
+    ST_BG_WORKER="$1" ST_BG_TASK="$2" ST_BG_ID="" ST_BG_RC=0
+    rm -f "$ST/$2.started"
+    ST_BG_RUNS=$(grep -c "\"event\":\"run\",[^}]*\"task\":\"$2\"" ../coord/reports/ledger.jsonl 2>/dev/null) || true
+    UNIO_SELFTEST_STARTED="$ST/$2.started" timeout -k 5 "$ST_BG_LIMIT" \
+      "$0" run -b "$1" "$2" >"$ST/$2.launch.log" 2>&1 || ST_BG_RC=$?
+    [ "$ST_BG_RC" -eq 0 ] && grep -q "^started in background" "$ST/$2.launch.log"
   }
   st_bg_diagnostic() {
-    echo "selftest background: task=$ST_BG_TASK child=$ST_BG_PID phase=$1" >&2
+    echo "selftest background: task=$ST_BG_TASK frontend=$ST_BG_RC identity=${ST_BG_ID:-none} phase=$1 elapsed=${SECONDS}s" >&2
     ls -l "../coord/reports/$ST_BG_TASK.pid" "../coord/reports/$ST_BG_TASK.own" \
-      "$ST/$ST_BG_TASK.started" >&2 || true
-    tail -n 20 "$ST/$ST_BG_TASK.launch.log" >&2 || true
+      "$ST/$ST_BG_TASK.started" 2>&1 | sed 's/^/  /' >&2
+    tail -n 20 "$ST/$ST_BG_TASK.launch.log" "../coord/reports/$ST_BG_TASK.log" 2>/dev/null | sed 's/^/  /' >&2
+  }
+  st_bg_lock_free() { # only after the marker: probing earlier could steal it
+    [ -f "$ST/$ST_BG_TASK.started" ] &&
+      ( exec 9>>"../coord/.locks/$ST_BG_WORKER.lock"; flock -n 9 ) 2>/dev/null
+  }
+  st_bg_ended() {
+    if [ -n "$ST_BG_ID" ]; then
+      # shellcheck disable=SC2086
+      ! st_bg_proc alive $ST_BG_ID && st_bg_lock_free
+    else
+      st_bg_lock_free
+    fi
   }
   st_bg_wait() {
-    local phase="$1" deadline=$((SECONDS + 60))
+    local phase="$1" deadline=$((SECONDS + ST_BG_LIMIT)) id
+    if [ "$ST_BG_RC" -ne 0 ] || ! grep -q "^started in background" "$ST/$ST_BG_TASK.launch.log"; then
+      st_bg_diagnostic "$phase-frontend"; return 1
+    fi
     while [ "$SECONDS" -lt "$deadline" ]; do
+      if [ -z "$ST_BG_ID" ] && [ -s "../coord/reports/$ST_BG_TASK.own" ] &&
+         id=$(st_bg_proc ident "../coord/reports/$ST_BG_TASK.pid" "../coord/.locks/$ST_BG_WORKER.lock"); then
+        ST_BG_ID="$id"
+      fi
       if [ "$phase" = ready ]; then
-        if [ -s "../coord/reports/$ST_BG_TASK.own" ] &&
-           [ "$(cat "../coord/reports/$ST_BG_TASK.pid" 2>/dev/null)" = "$ST_BG_PID" ] &&
-           [ -f "$ST/$ST_BG_TASK.started" ] && kill -0 "$ST_BG_PID" 2>/dev/null; then
-          return 0
-        fi
-        kill -0 "$ST_BG_PID" 2>/dev/null || break
-      elif ! kill -0 "$ST_BG_PID" 2>/dev/null; then
-        local rc=0
-        wait "$ST_BG_PID" || rc=$?
-        # noop deliberately makes no diff; runtime exit may be nonzero.
-        # A fresh stub marker proves this invocation actually started.
-        if [ -f "$ST/$ST_BG_TASK.started" ] &&
-           [ ! -e "../coord/reports/$ST_BG_TASK.pid" ] &&
+        [ -n "$ST_BG_ID" ] && [ -f "$ST/$ST_BG_TASK.started" ] && return 0
+      elif st_bg_ended && [ ! -e "../coord/reports/$ST_BG_TASK.pid" ] &&
            [ ! -e "../coord/reports/$ST_BG_TASK.own" ]; then
-          return 0
-        fi
-        echo "selftest background: child exit=$rc" >&2
+        # Natural noop completion: exit 0 and a bound post-run snapshot.
+        [ "$(grep -c "\"event\":\"run\",[^}]*\"task\":\"$ST_BG_TASK\"" ../coord/reports/ledger.jsonl)" -gt "${ST_BG_RUNS:-0}" ] &&
+          grep "\"event\":\"run\",[^}]*\"task\":\"$ST_BG_TASK\"" ../coord/reports/ledger.jsonl | tail -n 1 |
+            grep -q '"exit":0,.*"snapshot_failed":0' && return 0
+        echo "selftest background: completion outcome was not exit 0 with a bound snapshot" >&2
         break
       fi
       sleep 0.1
@@ -34435,22 +34497,39 @@ cmd_selftest() { # the whole loop, rehearsed with mock agents — zero quota
     st_bg_diagnostic "$phase"
     return 1
   }
-  st_bg_cleanup() {
-    # Never enumerate operator jobs or signal a pid taken from an unchecked file.
-    # Native kill validates ownership; a pre-start child is ours by construction.
-    if kill -0 "$ST_BG_PID" 2>/dev/null; then
-      if [ -f "../coord/reports/$ST_BG_TASK.own" ]; then
-        "$0" kill "$ST_BG_TASK" >>"$ST/$ST_BG_TASK.launch.log" 2>&1 || return 1
-      else
-        kill -TERM "$ST_BG_PID" 2>/dev/null || true
+  st_bg_cleanup() { # 0 only when the exact run is proved gone with its controls
+    local deadline=$((SECONDS + ST_BG_LIMIT)) id="" termed=0
+    if [ -z "$ST_BG_ID" ] && [ -s "../coord/reports/$ST_BG_TASK.own" ]; then
+      ST_BG_ID=$(st_bg_proc ident "../coord/reports/$ST_BG_TASK.pid" "../coord/.locks/$ST_BG_WORKER.lock") || ST_BG_ID=""
+    fi
+    if [ -z "$ST_BG_ID" ]; then
+      if st_bg_lock_free && [ ! -e "../coord/reports/$ST_BG_TASK.pid" ] && [ ! -e "../coord/reports/$ST_BG_TASK.own" ]; then
+        return 0
+      fi
+      echo "selftest background: cleanup Unknown — no proved runtime identity; nothing signaled, sandbox kept" >&2
+      return 1
+    fi
+    # shellcheck disable=SC2086
+    if st_bg_proc alive $ST_BG_ID; then
+      id=$(st_bg_proc ident "../coord/reports/$ST_BG_TASK.pid" "../coord/.locks/$ST_BG_WORKER.lock") || id=""
+      if [ "$id" = "$ST_BG_ID" ]; then
+        "$0" kill "$ST_BG_TASK" >>"$ST/$ST_BG_TASK.launch.log" 2>&1 ||
+          echo "selftest background: native kill failed; TERM to the proved runtime" >&2
       fi
     fi
-    local deadline=$((SECONDS + 70))
-    while kill -0 "$ST_BG_PID" 2>/dev/null; do
-      [ "$SECONDS" -lt "$deadline" ] || { st_bg_diagnostic cleanup; return 1; }
+    while ! st_bg_ended || [ -e "../coord/reports/$ST_BG_TASK.pid" ] || [ -e "../coord/reports/$ST_BG_TASK.own" ]; do
+      if [ "$termed" = 0 ]; then
+        # Never an abandoned owned child: pidfd TERM only if the start still matches.
+        # shellcheck disable=SC2086
+        st_bg_proc term $ST_BG_ID 2>/dev/null || true
+        termed=1
+      fi
+      if [ "$SECONDS" -ge "$deadline" ]; then
+        echo "selftest background: cleanup Unknown — run or controls remain; sandbox kept" >&2
+        return 1
+      fi
       sleep 0.1
     done
-    wait "$ST_BG_PID" 2>/dev/null || true
   }
   # ST_BACKGROUND_HELPERS_END
 
@@ -34463,7 +34542,7 @@ cmd_selftest() { # the whole loop, rehearsed with mock agents — zero quota
   cat > "$ST/conf/agents.conf" <<'ST_CONF_EOF'
 mock=bash -c 'cat "$TASKFILE" >/dev/null; echo working; echo line >> hello.txt; git add hello.txt; git commit -q -m "selftest: mock"; echo ok'
 rogue=bash -c 'echo rogue; echo x > forbidden.txt; git add forbidden.txt; git commit -q -m "selftest: rogue"; echo ok'
-slow=bash -c 'touch "$UNIO_SELFTEST_STARTED"; echo napping; sleep 120; echo ok'
+slow=bash -c '[ -z "${UNIO_SELFTEST_STARTED:-}" ] || touch "$UNIO_SELFTEST_STARTED"; echo napping; sleep 60; echo ok'
 rev=bash -c 'cat "$TASKFILE" >/dev/null; echo reviewed; echo "VERDICT: APPROVE"'
 noop=bash -c '[ -z "${UNIO_SELFTEST_STARTED:-}" ] || touch "$UNIO_SELFTEST_STARTED"; echo did nothing at all; echo ok'
 ST_CONF_EOF
@@ -34571,11 +34650,13 @@ n/a
 SUMMARY
 ST_T3_EOF
 
-  st_bg_launch slow T3-slow
-  st_chk "background run writes a pidfile" st_bg_wait ready
+  st_bg_launch slow T3-slow || true
+  st_chk "background run -b starts, detaches and publishes ownership" st_bg_wait ready
   st_chk "kill terminates the background run" \
     bash -c '"$0" kill T3-slow && [ ! -e ../coord/reports/T3-slow.pid ] && [ ! -e ../coord/reports/T3-slow.own ]' "$0"
   st_bg_cleanup || { ST_FAIL=$((ST_FAIL + 1)); st_bg_diagnostic cleanup; }
+  # slow exists only for T3: keep sabotage rotation from detaching its nap.
+  "$0" off slow >/dev/null
 
   git merge --no-ff -q agent/mock -m "merge T1" >/dev/null 2>&1 || true
   st_chk "post-merge hook records a merge event in the ledger" \
@@ -34633,8 +34714,8 @@ ST_T5_EOF
   # a background run that finishes on its OWN must remove its pidfile — the
   # kill path never exercises the natural-completion EXIT trap. noop commits
   # nothing, so this cannot perturb any branch-topology check.
-  st_bg_launch noop T5-noop
-  st_chk "background run cleans up its own pidfile on natural completion" \
+  st_bg_launch noop T5-noop || true
+  st_chk "background run -b completes with exit 0 and cleans its own controls" \
     st_bg_wait complete
   st_bg_cleanup || { ST_FAIL=$((ST_FAIL + 1)); st_bg_diagnostic cleanup; }
   st_chk "report command prints a task's history" \
@@ -34674,7 +34755,6 @@ ST_T5_EOF
     bash -c 'first=$(cat ../coord/.saboteur-last); sleep 1
              "$0" sabotage >/dev/null 2>&1; [ "$(cat ../coord/.saboteur-last)" != "$first" ]' "$0"
 
-  "$0" off slow >/dev/null   # keep smoke from sitting through slow's nap
   st_chk "smoke prints one row per agent" \
     bash -c '[ "$("$0" smoke 2>/dev/null | wc -l)" -ge 5 ]' "$0"
 
@@ -34684,11 +34764,13 @@ ST_T5_EOF
   # sabotage detaches real runs (run -b); on a slow drive they can still be
   # writing results when we delete the sandbox, and rm -rf then races them.
   # Each holds a pidfile until its EXIT trap, so wait for those to go.
+  local active=""
   for _ in $(seq 120); do
-    compgen -G "$ST/proj/coord/reports/*.pid" >/dev/null || break
+    active=$(compgen -G "$ST/proj/coord/reports/*.pid") || break
     sleep 0.5
   done
-  if [ "$ST_FAIL" -eq 0 ]; then
+  [ -z "$active" ] || echo "background runs still recorded: $active" >&2
+  if [ "$ST_FAIL" -eq 0 ] && [ -z "$active" ]; then
     rm -rf "$ST"
     echo "sandbox removed — all green."
   else
