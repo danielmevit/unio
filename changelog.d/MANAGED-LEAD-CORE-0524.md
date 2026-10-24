@@ -6,3 +6,4 @@ Backend component only — not installed lead continuity.
 Correction: bind persisted identity/turn relationships, report journal/metadata
 mismatches without repair, and replace state using exclusive private temp files;
 add controlled corruption, unsafe-file and persistence-failure regressions.
+Independent-review correction: validate complete state before replacement, preserve conflicting observations as uncertain, distinguish journal failures from archive caps, reserve closing-marker space, and bound external lifecycle integers; add direct/fault-injection regressions and document unrepaired crash windows.

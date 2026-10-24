@@ -118,7 +118,13 @@ Reads now compare the validated contiguous journal prefix and byte count with
 recorded metadata; missing, extra, torn or malformed records report a gap and
 truncation (unsafe files refuse). Reads never repair or replay. Appends first
 validate that agreement, so a later observation cannot conceal disagreement.
-This adds a bounded full-journal scan per append; large archives cost more I/O.
+This adds a bounded full-journal scan per append: filling an archive with n
+records parses O(n²) records in total, under the session lock, as well as
+repeating I/O. Request identity membership is precomputed once per scan,
+removing the per-record linear request search. No throughput improvement has
+been measured. A validated-prefix cache is deferred because invalidation must
+still detect truncation, replacement and in-place corruption; this correction
+retains complete detection rather than introducing a cache trust assumption.
 Persisted identity and turn/request/generation/result relationships are checked
 on every state load, and malformed Unicode refuses in a controlled way.
 
@@ -132,3 +138,56 @@ These defenses remain trusted-host, same-user controls, not isolation against a
 hostile same-user process or public observer authorization. Native admission,
 account slots, STOP, provider launching and effective model/effort verification
 remain outside this backend; effective settings stay Unknown.
+
+
+## Independent-review corrections — 2026-10-24
+
+The private internal state requires every schema key, including nullable keys,
+with nested turn/request/result/history relationships validated on load and
+before replacement. This unpublished schema adds `journal_error`; it does not
+change worker session records or external receipt/report formats. Existing
+private managed-lead records missing required keys refuse rather than migrate.
+External exit codes and lifecycle integers must be signed 32-bit values;
+invalid types, Unicode and huge integers refuse before serialization. Directory,
+journal read/write and lock errors become controlled refusals (status reports
+`journal_status: Unknown` if its journal cannot be inspected).
+
+A send reply is reconciled with observations already received outside the lock.
+Rejection after a proven start or terminal observation records an `uncertain`
+request result (`outcome_unknown` request state), preserving the running turn's
+accepted delivery or the terminal fact, exit code and generation. A running
+turn stays active until a matching terminal observation. Accepted/uncertain
+replies also preserve those facts. Reopening or resubmitting the same request
+never replays the call or overwrites its recorded result.
+
+Archive writers reserve 512 bytes of headroom for the complete final marker;
+the marker itself is checked against the reader's real archive bound. Status
+keeps `archive_limited` for an actual successfully appended archive-limit marker.
+`journal_status` distinguishes `ok`, `archive_limit`, `journal_disagreement`,
+`journal_write_failed` and `Unknown`; `journal_error` retains a lifecycle
+persistence failure independently. Output reads add `disagreement` to distinguish
+corruption/metadata mismatch from the intentional gap of a complete cap marker.
+
+Journal append/fsync and state replacement are separate durable operations.
+A crash or failed state save after an append leaves the original journal ahead
+of the persisted cursor/byte count. Reopen/status reports disagreement, output
+reads expose the gap, and appends refuse without changing the original bytes.
+No automatic rollback, truncation, replay, cursor advancement or history repair
+is attempted. A later matching terminal observation can still save the terminal
+failure and original exit code in state: it records `journal_error` and raises
+an explicit refusal (`terminal saved; output ...`) rather than reporting a
+successful journal write. A terminal observation whose state save itself fails
+remains uncommitted; the failure propagates. An fsync error after replacement
+may already have replaced the state but still refuses because durability is
+unconfirmed. Partial writes are preserved and also surface as disagreement.
+
+Explicit owner recovery for these windows (auditing the extra bytes, establishing
+which observations are authoritative, then rebuilding a consistent journal and
+state) remains unsupported. Lifecycle write errors remain recorded and close
+further appends; there is no public repair or error-clearing operation. These
+limitations are separate from normal archive exhaustion and native turn recovery.
+The regression suite injects failure between append and replacement for output,
+terminal and owner events, checks reopen/status/output and terminal failure
+preservation, deletes every required state/nested key, covers reply/observation
+orderings, directly tests replacement destination defenses, and isolates the
+unsafe FIFO lock probe in a subprocess with a five-second timeout.

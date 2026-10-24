@@ -64,6 +64,13 @@ MAX_LIMIT = 500
 MAX_REQUESTS = 64
 HISTORY_BOUND = 32
 LOCK_WAIT = 5.0
+# Writers keep headroom for a complete closing marker; cursor is archive-bounded.
+MARKER_HEADROOM = 512
+INT_MIN, INT_MAX = -(2 ** 31), 2 ** 31 - 1
+STATE_KEYS = frozenset("session_id role generation state workspace budget_label route model "
+                       "effort effective turn last_turn history requests max_requests "
+                       "turns_completed turns_failed output_cursor archive_bytes "
+                       "archive_limited journal_error created_at updated_at".split())
 STATES = ('idle', 'pending', 'running', 'outcome_unknown', 'terminal')
 TURN_STATUS = ('completed', 'failed', 'interrupted', 'unknown')
 REQUEST_STATUS = ('pending', 'accepted', 'rejected', 'outcome_unknown')
@@ -95,8 +102,11 @@ def safe_path(path):
 
 def _sessions_dir(root):
     path = safe_path(Path(root) / 'coord' / 'sessions')
-    path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(path, 0o700)
+    try:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path, 0o700)
+    except OSError as exc:
+        raise Refusal("session directory unavailable") from exc
     return path
 
 
@@ -118,6 +128,8 @@ def _read_owned_file(path, bound):
         if len(data) > bound:
             raise Refusal('state bound exceeded')
         return data
+    except OSError as exc:
+        raise Refusal("state read failed") from exc
     finally:
         if fd is not None:
             os.close(fd)
@@ -158,6 +170,8 @@ def _atomic_write(path, data):
                 os.unlink(tmp)
             except FileNotFoundError:
                 pass
+            except OSError as exc:
+                raise Refusal('state temp cleanup failed') from exc
 
 
 def _append_owned(path, line):
@@ -178,8 +192,13 @@ def _append_owned(path, line):
                 raise OSError('short journal write')
             view = view[written:]
         os.fsync(fd)
+    except OSError as exc:
+        raise Refusal("output journal write failed") from exc
     finally:
-        os.close(fd)
+        try:
+            os.close(fd)
+        except OSError as exc:
+            raise Refusal('output journal close failed') from exc
 
 
 def _acquire_lock(path):
@@ -189,7 +208,7 @@ def _acquire_lock(path):
         raise Refusal('session locking unsupported on this platform')
     safe_path(path)
     try:
-        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
     except OSError:
         raise Refusal('unsafe lock file')
     try:
@@ -206,17 +225,25 @@ def _acquire_lock(path):
                 if time.monotonic() >= deadline:
                     raise Refusal('session state busy')
                 time.sleep(0.02)
+    except OSError as exc:
+        os.close(fd)
+        raise Refusal("session lock failed") from exc
     except BaseException:
         os.close(fd)
         raise
 
 
+def _valid_int(value):
+    return type(value) is int and INT_MIN <= value <= INT_MAX
+
+
 def _validate_turn_record(record, statuses):
     return (isinstance(record, dict)
+            and {'turn_id', 'generation', 'status', 'exit_code', 'ended_at'} <= record.keys()
             and isinstance(record.get('turn_id'), str) and TURN_ID.fullmatch(record['turn_id'])
             and type(record.get('generation')) is int and record['generation'] >= 1
             and record.get('status') in statuses
-            and (record.get('exit_code') is None or type(record.get('exit_code')) is int)
+            and (record.get('exit_code') is None or _valid_int(record.get('exit_code')))
             and isinstance(record.get('ended_at'), str))
 
 
@@ -238,7 +265,8 @@ def _validate_state(doc):
     def refuse():
         raise Refusal('invalid session state')
 
-    if not isinstance(doc, dict) or not _valid_unicode(doc):
+    if (not isinstance(doc, dict) or set(doc) != STATE_KEYS
+            or not _valid_unicode(doc)):
         refuse()
     if not isinstance(doc.get('session_id'), str) or not SESSION_ID.fullmatch(doc['session_id']):
         refuse()
@@ -259,6 +287,7 @@ def _validate_state(doc):
     turn = doc.get('turn')
     if turn is not None and not (
             isinstance(turn, dict)
+            and {'turn_id', 'generation', 'delivery'} <= turn.keys()
             and isinstance(turn.get('turn_id'), str) and TURN_ID.fullmatch(turn['turn_id'])
             and type(turn.get('generation')) is int and turn['generation'] >= 1
             and turn.get('delivery') in ('unknown', 'accepted')):
@@ -278,6 +307,7 @@ def _validate_state(doc):
         if not isinstance(key, str) or not LABEL.fullmatch(key):
             refuse()
         if not (isinstance(value, dict)
+                and {'sha256', 'state', 'generation', 'turn_id', 'result'} <= value.keys()
                 and isinstance(value.get('sha256'), str) and SHA256.fullmatch(value['sha256'])
                 and value.get('state') in REQUEST_STATUS
                 and type(value.get('generation')) is int and value['generation'] >= 1
@@ -335,6 +365,10 @@ def _validate_state(doc):
     for key in ('output_cursor', 'archive_bytes', 'turns_completed', 'turns_failed'):
         if type(doc.get(key)) is not int or doc[key] < 0:
             refuse()
+    if (doc['archive_bytes'] > ARCHIVE_BOUND
+            or doc['output_cursor'] > ARCHIVE_BOUND
+            or doc['journal_error'] not in (None, 'journal_disagreement', 'journal_write_failed')):
+        refuse()
     if type(doc.get('archive_limited')) is not bool:
         refuse()
     for key in ('created_at', 'updated_at'):
@@ -401,7 +435,13 @@ class LeadSession:
             raise Refusal('session identity mismatch')
 
     def _save(self):
-        data = json.dumps(self._state, ensure_ascii=False).encode('utf-8')
+        _validate_state(self._state)
+        if self._state['session_id'] != self.session_id:
+            raise Refusal('session identity mismatch')
+        try:
+            data = json.dumps(self._state, ensure_ascii=False).encode('utf-8')
+        except (ValueError, TypeError, UnicodeError, RecursionError) as exc:
+            raise Refusal('invalid session state') from exc
         if len(data) > STATE_BOUND:
             raise Refusal('state bound exceeded')
         _atomic_write(self.meta_path, data)
@@ -442,6 +482,12 @@ class LeadSession:
 
     def _view(self):
         state = self._state
+        try:
+            journal_status = ('journal_disagreement' if self._read_journal(0, 1)['disagreement']
+                              else state['journal_error'] or (
+                                  'archive_limit' if state['archive_limited'] else 'ok'))
+        except Refusal:
+            journal_status = 'Unknown'
         return {
             'session_id': state['session_id'], 'role': 'lead',
             'generation': state['generation'], 'state': state['state'],
@@ -457,11 +503,14 @@ class LeadSession:
             'max_requests': state['max_requests'],
             'output_cursor': state['output_cursor'],
             'archive_limited': state['archive_limited'],
+            'journal_status': journal_status, 'journal_error': state['journal_error'],
             'created_at': state['created_at'], 'updated_at': state['updated_at'],
             'caution': CAUTION,
         }
 
     def _write_journal(self, line):
+        if self._state['journal_error']:
+            raise Refusal('output ' + self._state['journal_error'])
         page = self._read_journal(0, 1)
         if page['gap']:
             raise Refusal('output journal disagrees with state')
@@ -475,27 +524,30 @@ class LeadSession:
         rec = {'cursor': state['output_cursor'] + 1, 'kind': 'lifecycle',
                'data': data, 'timestamp': _now()}
         line = (json.dumps(rec, ensure_ascii=False) + '\n').encode('utf-8')
-        if len(line) > RECORD_BOUND or state['archive_bytes'] + len(line) > ARCHIVE_BOUND:
-            marker = {'cursor': state['output_cursor'] + 1, 'kind': 'archive_limit',
-                      'data': {'history': 'truncated; subsequent output Unknown'},
-                      'timestamp': _now()}
-            mline = (json.dumps(marker) + '\n').encode('utf-8')
-            try:
-                self._write_journal(mline)
-                state['output_cursor'] += 1
-                state['archive_bytes'] += len(mline)
-            except (Refusal, OSError):
-                pass
-            state['archive_limited'] = True
-            return None
+        limited = (len(line) > RECORD_BOUND or
+                   state['archive_bytes'] + len(line) + MARKER_HEADROOM > ARCHIVE_BOUND)
         try:
+            if limited:
+                line = self._archive_marker()
             self._write_journal(line)
-        except (Refusal, OSError):
-            state['archive_limited'] = True
+        except Refusal as exc:
+            state['journal_error'] = ('journal_disagreement' if 'disagree' in str(exc)
+                                      else 'journal_write_failed')
             return None
         state['output_cursor'] += 1
         state['archive_bytes'] += len(line)
+        state['archive_limited'] = limited
         return state['output_cursor']
+
+    def _archive_marker(self):
+        marker = {'cursor': self._state['output_cursor'] + 1, 'kind': 'archive_limit',
+                  'data': {'history': 'truncated; subsequent output Unknown'},
+                  'timestamp': _now()}
+        line = (json.dumps(marker) + '\n').encode('utf-8')
+        if (len(line) > MARKER_HEADROOM
+                or self._state['archive_bytes'] + len(line) > ARCHIVE_BOUND):
+            raise Refusal('no room for archive marker')
+        return line
 
     def _sanitize_output(self, kind, data):
         if not isinstance(data, dict) or not _valid_unicode(data):
@@ -509,6 +561,8 @@ class LeadSession:
             if key in data:
                 value = data[key]
                 if isinstance(value, bool) or value is not None and not isinstance(value, (str, int)):
+                    raise Refusal('invalid lifecycle fact')
+                if type(value) is int and not _valid_int(value):
                     raise Refusal('invalid lifecycle fact')
                 if isinstance(value, str) and ('\x00' in value or len(value) > 1024):
                     raise Refusal('invalid lifecycle fact')
@@ -597,6 +651,14 @@ class LeadSession:
             prev = state['requests'].get(request_id)
             if prev is None or prev['state'] != 'pending':
                 raise Refusal('session state changed during submission')
+            # A proven start or terminal observation outranks a contradictory
+            # rejection. Keep the facts, but record the send result as uncertain.
+            turn = state.get('turn')
+            observed = (state['generation'] > generation
+                        or (turn and turn['turn_id'] == turn_id
+                            and turn['delivery'] == 'accepted'))
+            if status == 'rejected' and observed:
+                status = 'uncertain'
             result = {'session_id': self.session_id, 'request_id': request_id,
                       'generation': generation, 'turn_id': turn_id,
                       'state': {'accepted': 'accepted',
@@ -657,7 +719,7 @@ class LeadSession:
             raise Refusal('invalid generation')
         if status not in TURN_STATUS:
             raise Refusal('invalid terminal status')
-        if exit_code is not None and type(exit_code) is not int:
+        if exit_code is not None and not _valid_int(exit_code):
             raise Refusal('invalid exit code')
         with self._guard():
             state = self._state
@@ -683,6 +745,8 @@ class LeadSession:
             self._append_lifecycle({'event': 'turn_terminal', 'status': status,
                                     'exit_code': exit_code})
             self._save()
+            if state['journal_error']:
+                raise Refusal('terminal saved; output ' + state['journal_error'])
             return self._view()
 
     def observe_owner(self, *, session_id, generation, owner):
@@ -699,6 +763,8 @@ class LeadSession:
             self._append_lifecycle({'event': 'owner_observed', 'owner': owner})
             state['updated_at'] = _now()
             self._save()
+            if state['journal_error']:
+                raise Refusal('owner observation journal failed: ' + state['journal_error'])
             return self._view()
 
     def observe_output(self, *, session_id, generation, turn_id, kind, data):
@@ -726,12 +792,8 @@ class LeadSession:
             line = (json.dumps(rec, ensure_ascii=False) + '\n').encode('utf-8')
             if len(line) > RECORD_BOUND:
                 raise Refusal('output record bound exceeded')
-            if state['archive_bytes'] + len(line) > ARCHIVE_BOUND:
-                marker = {'cursor': state['output_cursor'] + 1,
-                          'kind': 'archive_limit',
-                          'data': {'history': 'truncated; subsequent output Unknown'},
-                          'timestamp': _now()}
-                mline = (json.dumps(marker) + '\n').encode('utf-8')
+            if state['archive_bytes'] + len(line) + MARKER_HEADROOM > ARCHIVE_BOUND:
+                mline = self._archive_marker()
                 self._write_journal(mline)
                 state['output_cursor'] += 1
                 state['archive_bytes'] += len(mline)
@@ -763,7 +825,10 @@ class LeadSession:
                          os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         except OSError:
             raise Refusal('unsafe output journal')
+        identities = {(v['turn_id'], v['generation'])
+                      for v in self._state['requests'].values()}
         records, last, size, page = [], 0, 0, 0
+        marker_seen = False
         gap, truncated, page_full = False, False, False
         try:
             st = os.fstat(fd)
@@ -788,6 +853,7 @@ class LeadSession:
                         cur = rec.get('cursor') if isinstance(rec, dict) else None
                         kind = rec.get('kind') if isinstance(rec, dict) else None
                         ok = (type(cur) is int and cur == last + 1
+                              and not marker_seen
                               and kind in ('agent_message', 'command_output',
                                            'lifecycle', 'archive_limit')
                               and isinstance(rec.get('data'), dict)
@@ -799,15 +865,13 @@ class LeadSession:
                                   and isinstance(rec.get('turn_id'), str)
                                   and TURN_ID.fullmatch(rec['turn_id'])
                                   and set(rec['data']) == {'delta'}
-                                  and any(v['turn_id'] == rec['turn_id']
-                                          and v['generation'] == rec['generation']
-                                          for v in self._state['requests'].values()))
+                                  and (rec['turn_id'], rec['generation']) in identities)
                         if ok and kind == 'lifecycle':
                             facts = rec['data']
                             ok = (bool(facts) and set(facts) <= {
                                 'event', 'status', 'exit_code', 'detail', 'owner'}
-                                and all(v is None or type(v) in (str, int)
-                                        for v in facts.values()))
+                                and all(v is None or isinstance(v, str)
+                                        or _valid_int(v) for v in facts.values()))
                         if ok and kind == 'archive_limit':
                             ok = rec['data'] == {
                                 'history': 'truncated; subsequent output Unknown'}
@@ -818,7 +882,7 @@ class LeadSession:
                         break
                     last = cur
                     if kind == 'archive_limit':
-                        gap = truncated = True
+                        marker_seen = True
                     if cur > after:
                         if (not page_full and len(records) < limit
                                 and page + len(line) <= PAGE_BOUND):
@@ -826,12 +890,17 @@ class LeadSession:
                             page += len(line)
                         else:
                             page_full = truncated = True
-            gap |= (after > last or last != self._state['output_cursor']
-                    or size != self._state['archive_bytes'])
+            disagreement = (gap or last != self._state['output_cursor']
+                            or size != self._state['archive_bytes']
+                            or marker_seen != self._state['archive_limited'])
+            gap = disagreement or marker_seen or after > last
             truncated |= gap
             return {'session_id': self.session_id, 'records': records,
                     'next_cursor': records[-1]['cursor'] if records else after,
-                    'output_cursor': last, 'truncated': truncated, 'gap': gap}
+                    'output_cursor': last, 'truncated': truncated, 'gap': gap,
+                    'disagreement': disagreement}
+        except OSError as exc:
+            raise Refusal('output journal read failed') from exc
         finally:
             if fd is not None:
                 os.close(fd)
@@ -867,6 +936,7 @@ def create_lead_session(root, *, transport, authority, ownership, workspace,
         'turn': None, 'last_turn': None, 'history': [], 'requests': {},
         'max_requests': max_requests, 'turns_completed': 0, 'turns_failed': 0,
         'output_cursor': 0, 'archive_bytes': 0, 'archive_limited': False,
+        'journal_error': None,
         'created_at': now, 'updated_at': now,
     }
     data = json.dumps(doc, ensure_ascii=False).encode('utf-8')
