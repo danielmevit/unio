@@ -64,3 +64,21 @@ Original683 quality_issue assessment is stored in native experience as
 6db08f90085d9c0920ac097aae01a86f. Default-context refusal2 is preserved separately;
 matching the unchanged Source-pinned configuration provedfresh and stored0.
 This is operator-reported task evidence, not a universal model ranking.
+
+## Second audit and conditional takeover
+
+2026-10-24T18:12:04+02:00: Opus5.5XHIGH audit of5c2a5ae delivered REQUEST-CHANGES. It confirms
+core no-false-success and legacy-exit fixes. The medium issue is documentation
+promising more than intentional budget_refused-only history eligibility;
+admittedSTOP remains a blocking unknown. Lead confirms the exact predicate.
+Choose the audit's bounded documentation/help plus follow-up-regression option,
+not an unreviewed expansion of eligibility. Smaller proven issues concern
+impossible finalizer tuples, published receipt state versus stdout decision
+and verified invocation counts; pre-existing exception ambiguity is deferred.
+
+Owner-authorized conditional OpusLOW correction is prepared in a separate
+worktree/pipeline; current observed statenative_started. Current native review artifacts
+and original Sol checks remain unchanged. Mistral/Vibe GLM5.3HIGH provides fresh
+other-lab review after Opus authors corrections, then the existing lead. New
+managed-lead-opus-corrected-gate-20261024 is the only current gate observer.
+No acceptance, main push, installation or release has occurred.

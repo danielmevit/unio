@@ -1,5 +1,54 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Latest owner-approved Opus takeover — 2026-10-24T18:12:04+02:00
+
+Current5c2a5ae compatibility correction passed Source/native/4checks0 including
+16tests, but fresh ClaudeCode2.1.309/Opus5.5XHIGH audit REQUEST-CHANGES:1medium,
+3low,1info. Actual CLI/Source0 at18:04:09, native0; read final artifact verification
+from audit-review-dispatch-contract-opus-xhigh-20261024/controller.json.
+The major no-false-success/legacy-exit fixes hold. Medium is a contract mismatch:
+only exact budget_refused history is eligible, while docs implied admittedSTOP
+rows also stop blocking future batches. Current deliberate eligibility stays
+narrow; correct docs/help and add a follow-up-batch regression. Low issues are
+impossible numeric finalizer tuples, stdout verdict disagreeing with published
+material_changed receipt, and invoked meaning verified count when invalid>0.
+Info summary-helper uncaught-exception ambiguity is pre-existing/not reproduced;
+defer explicitly. Do not broadly catch exceptions or silently extend eligibility.
+
+Conditional owner takeover after two Sol passes: Claude subscription/ClaudeCode
+2.1.309/claude-opus-5-5 LOW, NEW worker claude-review-dispatch-contract-low-20261024
+from exact5c2a5ae. Task REVIEW-DISPATCH-CONTRACT-OPUS-LOW-0524-20261024. Pipeline
+review-dispatch-contract-opus-low-20261024, observednative_started; controller waits
+previous auditSource/native/artifactverify0 before admission, no interruption or
+shared-Claude overlap. Source actual start must be read from source/source.json;
+do not equate preparation with a model call. Scope two installer functions plus
+tests/doc/new fragment, every other installer byte unchanged. Estimate20–40min
+code plus native checks; lower effort first, no paid fallback or recursiveagents.
+
+NEW current audit observer: audit-review-dispatch-final-vibe-high-20261024,
+Mistral subscription/Vibe2.26.1/GLM5.3HIGH. It waits actual OpusSource/native/verify0
+and freezes complete focused diff, enclosing eligibility/finalizer/CLI source,
+hashes and required artifacts. Other-lab review is necessary for Opus-authored
+changes; one external reviewer plus existing Codex lead, not another review fleet.
+NEW current gate observer: managed-lead-opus-corrected-gate-20261024. It waits
+that bound approving audit and reuses unchanged9431 transport Mistral audit,
+then prepares exact disjoint candidate wt/managed-lead-opus-corrected-batch-20261024
+and runs ONE full quality gate. It never accepts/pushes/installs/publishes.
+Older managed-lead-contract-corrected-gate observer stops on5c rejection; preserve
+all original receipts/reviews/gates. Do not duplicate running Sources or gates.
+
+Codex remaining13primary/39weekly at17:57local, reset20:26local. No further
+Codex worker in this round; reserve lead allowance for assessment/gate. Actual
+root lead is not managed by Unio. Handoff committed; detached native controllers
+are real jobs, but an ended lead turn does not continue coordinating them.
+Read fresh JSONs after any reset. Existing lead must inspect actual final findings,
+source/byte proof, full-gate.json/log, then privately integrate; do not autoaccept.
+
+Official/public/main/installed23 remaincd0b3a2. No24main push, global install or
+release authority. Private research/stablebackup complete; Mercuryclosed; Vecto
+read-only/UIseparate. Savehelper60s performance and nativeownedlead remain open.
+
+
 ## Current verification checkpoint — 2026-10-24T17:52:51+02:00
 
 Exact corrected revision5c2a5ae0ad5045f5e2308700f6de91e160b19823 is clean.
