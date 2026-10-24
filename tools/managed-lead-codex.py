@@ -168,6 +168,7 @@ class CodexLeadTransport:
         self._held_dropped = set()  # mapped provider ids dropped while held
         self._quarantined = {}  # provider id -> reason; mapping kept as evidence
         self._quarantined_events = 0
+        self._unrecorded = set()  # markers the frozen core could not record
         self._inherited = False
         self._local = {}      # validated provider turn id -> local turn facts
         self._provider = {}   # local turn id -> validated provider turn id
@@ -218,6 +219,7 @@ class CodexLeadTransport:
             'turn_mappings': len(self._local),
             'quarantined_ids': len(self._quarantined),
             'quarantined_events': self._quarantined_events,
+            'unrecorded_markers': len(self._unrecorded),
             'inherited_history': self._inherited,
             'mapping_capacity': MAX_MAPPINGS,
             'handoff_required': len(self._local) >= MAX_MAPPINGS,
@@ -553,8 +555,10 @@ class CodexLeadTransport:
                 turn_id=turn_id, kind='lifecycle',
                 data={'event': event, 'detail': detail})
             self._marks.add((turn_id, event))
+            self._unrecorded.discard((turn_id, event))
         except Exception:
-            # The core cannot record the marker (for example a closed
-            # archive): the limitation stays explicit in status; history is
-            # never claimed complete and no marker of another kind is faked.
-            pass
+            # The core cannot record the marker (a closed archive, or a turn
+            # older than its last_turn): the limitation stays explicit in
+            # status; history is never claimed complete and no marker of
+            # another kind is faked.
+            self._unrecorded.add((turn_id, event))

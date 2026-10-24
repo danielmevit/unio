@@ -59,11 +59,22 @@ CLI, not all future runtime behavior.
   after a valid correlated acknowledgement. Early same-thread events never
   prove which local turn they belong to; the first observed provider id is
   never adopted. Stale, foreign, duplicate and unsupported events cannot
-  terminate another turn or impersonate complete history. Attributed events
-  for an already validated turn are delivered live, including while a new
-  submission is in flight.
-- Provider identities are never rebound or silently evicted. A reused ack
-  returns `uncertain` while preserving its original local mapping. The bridge
+  terminate another turn or impersonate complete history. Events for an
+  already validated turn are delivered live only while no submission is in
+  flight. During an unresolved `turn/start` they are held in the same
+  bounded buffer, because the pending acknowledgement may reuse that id;
+  they reach the old turn only after a distinct valid acknowledgement or an
+  activity-free typed rejection proves attribution.
+- Provider identities are never rebound, adopted or silently evicted. A
+  reused ack returns `uncertain`; the original mapping is kept as evidence
+  but quarantined. Untyped failures, invalid acks and rejections with
+  potential new-turn activity quarantine every mapped id, because the new
+  turn's id is unknown. A quarantined id is never dispatched again: events
+  held during the RPC and every later delta or lifecycle event for it return
+  `quarantined` and are counted in `quarantined_events`. The bridge records
+  one `bridge_identity_ambiguous` lifecycle fact for the old turn. Nothing
+  is resent, resumed or claimed delivered, and historical records are never
+  rewritten. The bridge
   retains at most four mappings for its lifetime; at capacity, the next
   submission returns `uncertain` with an explicit handoff requirement before
   making any RPC. The core holds that request as `outcome_unknown`; its
@@ -76,14 +87,47 @@ CLI, not all future runtime behavior.
   error (`terminal saved; output ...`) — is retained verbatim in the
   result and is never converted into proof of process exit or delivery.
 
+## Instance versus session lifetime
+
+Every identity guarantee above holds for one bridge instance. The bridge
+has no persistence, and the frozen core stores no provider ids. A fresh
+bridge therefore does not know which provider ids a session already used.
+`bind` refuses an `idle`/`terminal` session with any prior turn
+(`session has prior provider history; explicit handoff required`) with zero
+RPC calls, before the core reserves any intent. A stale ack/completion for
+an old id therefore cannot open or terminate a new turn. A
+`pending`/`running`/`outcome_unknown` session may still be bound for
+inspection (`inherited_history`). The core refuses new submissions there,
+and `send_turn` refuses with zero RPC calls. The core's own status and
+output reads never need the bridge. No supported explicit handoff exists
+yet. Continuing a session after the owner process restarts is unsupported
+and is refused instead of guessed. If a caller ignores the bind refusal and
+submits through the core anyway, the core reserves its intent before calling
+the unbound transport, which raises. The core then records `outcome_unknown`
+with zero RPC calls. That is core behavior, and its API is frozen.
+
+## Frozen-core marker limitation
+
+The core accepts output only for its active or `last_turn`. A gap or
+ambiguity marker for an older turn, and proved late output for an older
+turn, are therefore refused by the core. The bridge counts each refused
+marker in `unrecorded_markers` and reports refused output as `refused`. It
+never writes the marker into a different turn or fakes another marker
+kind. Expressing those facts in the journal needs a core API change, which
+is out of scope.
+
 ## Explicit gap limitation
 
 On event-buffer overflow or an oversized delta the bridge preserves an
-explicit gap instead of inventing complete output. Releasing an unacknowledged
+explicit gap instead of inventing complete output. Gap markers are tracked
+per local turn: an old turn's oversized late delta gets its own marker and
+never suppresses or stands in for the current turn's marker. `gap_recorded`
+in `last_send` and status refers only to the current submission's turn;
+`gap_turns_recorded` counts turns with a recorded marker. Releasing an unacknowledged
 buffer frees payloads while preserving bounded activity, drop and gap evidence
 in bridge status, including when no event fitted in the queue. The core has no public
 gap marker, so the bridge records exactly one honest lifecycle fact
-(`bridge_output_gap`, with a cause detail) for the bound turn and reports
+(`bridge_output_gap`, with a cause detail) for each affected turn and reports
 `gap`/`gap_recorded` in its status. If the core cannot record the gap (for
 example a closed archive), the limitation stays visible in the status; the
 bridge never fakes an archive-limit marker of a different kind and never
@@ -131,3 +175,21 @@ mounted fixture deadline failures remain operational failures. Original
 Mistral subscription / Vibe 2.26.1 / requested GLM5.3 HIGH Source 0 and native 0
 remain preserved; those successful exits did not establish contract acceptance.
 Fresh independent review and lead acceptance remain pending.
+
+Identity correction (TRANSPORT-IDENTITY-OPUS-LOW-0524), 2026-10-24: the suite adds
+`IDENTITY_CASES`. These cover reused acks for the oldest and a non-oldest
+mapping, with agent and command deltas plus stale lifecycle before, during
+and after the ack. They also cover held old-id output under fresh acks,
+typed rejection and unresolved outcomes; per-turn gap markers for an
+oversized old delta before the send, during the RPC and after the ack; and
+fresh-bridge rebind refusal. Record contents, generations and RPC counts are
+asserted outside the callbacks. Repository negative control:
+`git show ea8fae809f58c4a8a89d11efaeb23e30f73fef65:tools/managed-lead-codex.py > "$TMPDIR/frozen-bridge.py"`
+followed by
+`python3 -B tests/unio-managed-lead-codex.py --negative-control "$TMPDIR/frozen-bridge.py"`.
+This run requires every identity case to fail on behavior (AssertionError
+or Refusal, not a missing key) against that source. The capacity refusal
+case makes no RPC and is not counted as exercising a reused ack. Deferred
+and out of scope: four-turn capacity and pre-intent native authority,
+widening the counted notification set, and a supported handoff. This is
+Opus-authored and needs other-lab review; it is not lead acceptance.
