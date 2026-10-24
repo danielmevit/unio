@@ -1,5 +1,35 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Foundation accepted; explain the goal behind every update — 2026-10-24T22:20:46+02:00
+
+Foundationeddc fullqualitygatePASS0 at22:12:50, elapsed3103.048s, exacttracked
+sourceunchanged/untracked[]. Leadfinalassessment rechecked pinned currentaudits,
+controls andbyteproofs; privatelyintegrated daaf1e92beba65110d7dc4cade5bb360b1197fc6.
+Onlyadditional docs differ fromgatedruntime. Nativeexperience OpusLOW accepted
+records c3385b542485a93c419c48c883805df9 (544) and d6fa8614600f1550f3da25a6585a286c
+(9431), bothstored0; operatoracceptance, nothumanapproval/publication.
+
+Corrected independentMistral/Vibe2.26.1/GLM5.3HIGH actualCLI/canonicaladapter/
+nativeReview0 APPROVE for627117a at22:14:08. Leadassessed2low+2info asnonblocking
+and independentlyclosed history/fullinstallerbytevisibilitygaps. Saveacceptance
+stillwaitscombinedqualitygate: CURRENT reliability-save-reviewed-combined-gate-20261024,
+exact94d29082be48b8704b434b2c30502f81246d6ab2, started22:14:35. Offline,
+noautomaticacceptance. Earlierlocalreviewfailure/observers preserved.
+
+Mainfeaturegoal: manageandtrack thelead session throughUnio, aswellasworkers.
+Core/RPC aretestedfoundations; nativeownership/persistentCLI remainunfinished.
+Nextboundedclaim NOTdispatched. FreshCodeX22:17 observation31primary/27weekly;
+donotreuse99. Main/install23; no24publish/install/mainpushauthority.
+
+Owner requests goal-first CLIupdates: main goal anduserbenefit, currenttask
+relationship, concretebehavior/reason, actualevidence, remainingwork/nextstep/
+estimate. Read [CLI reporting guidance](CLI-PROGRESS-REPORTING.md). Sameinstruction
+is in personalOWNER-WORKFLOW.md andlocalrepoAGENTS, so futureownerprojectleads
+receiveit oninstructionrefresh. AGENTS islocal/ignored, nottrackedinworkerWTs;
+onepreparationattempt assumedotherwise andstoppedbeforepersonalfilemutation.
+No productcode oractivefrozenworkerinstructions changed. Nextactualcombinedgate
+andboundednativeclaimimplementationthroughUnio, notleadinlinecode.
+
 ## Corrected review launch, actual original failure preserved — 2026-10-24T22:11:01+02:00
 
 627117a OpusLOW nativeVerify4/4PASS0 at22:04:39. First nativeMistral review
