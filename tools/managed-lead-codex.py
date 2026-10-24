@@ -48,6 +48,21 @@ Frozen contract:
   (``bridge_output_gap``) for the bound turn and reports the limitation in
   its status; it never fakes an archive-limit marker of a different kind
   and never silently claims complete history;
+- gap markers are tracked per local turn: an old turn's marker never
+  stands in for the current turn's gap proof;
+- while turn/start is unresolved, events for already mapped provider ids
+  are held too, because the acknowledgement may reuse one of them; they are
+  delivered to the old turn only once a distinct acknowledgement or an
+  activity-free typed rejection proves attribution. A reused id, and every
+  mapped id after an unresolved outcome, is quarantined: the mapping stays
+  as evidence, one ``bridge_identity_ambiguous`` lifecycle fact is recorded
+  for the old turn, and later events for that id are counted, never
+  dispatched to any turn;
+- identity memory is per bridge instance only. Binding a fresh bridge to an
+  idle/terminal session with prior turns is refused before any effect,
+  because the provider ids already used are unknown to it; binding a
+  pending/running/outcome_unknown session stays possible for inspection
+  only and send_turn refuses with zero RPC calls;
 - reopening or rebinding never recovers an unproven provider-turn mapping
   and never resends pending work: after owner or connection loss,
   reconciliation stays unsupported/Unknown until the future native owner
@@ -72,6 +87,8 @@ SUPPORTED_METHODS = ('turn/started', 'item/agentMessage/delta',
 TERMINAL_STATUS = ('completed', 'failed', 'interrupted')
 SESSION_ID = re.compile(r'lead-[0-9a-f]{24}')
 GAP_EVENT = 'bridge_output_gap'
+AMBIGUOUS_EVENT = 'bridge_identity_ambiguous'
+OPEN_STATES = ('idle', 'terminal')
 CAUTION = ('requested model/effort only; effective settings remain Unknown '
            'and no native lead is claimed')
 
@@ -146,7 +163,13 @@ class CodexLeadTransport:
         self._dropped = 0
         self._gap = False
         self._overflow = False
-        self._gap_recorded = False
+        self._marks = set()   # (local turn id, marker event) recorded once
+        self._current = None  # local turn id of the latest submission
+        self._held_dropped = set()  # mapped provider ids dropped while held
+        self._quarantined = {}  # provider id -> reason; mapping kept as evidence
+        self._quarantined_events = 0
+        self._unrecorded = set()  # markers the frozen core could not record
+        self._inherited = False
         self._local = {}      # validated provider turn id -> local turn facts
         self._provider = {}   # local turn id -> validated provider turn id
         self._activity = False  # potential new-turn activity, even if dropped
@@ -167,6 +190,13 @@ class CodexLeadTransport:
         if (view.get('model') != self._model
                 or view.get('requested_effort') != self._effort):
             raise Refusal('pinned model/effort do not match the session record')
+        prior = (view.get('generation') != 1 or view.get('history')
+                 or view.get('last_turn') or view.get('turn'))
+        if prior and view.get('state') in OPEN_STATES:
+            # Provider ids already used by this session are unknown here;
+            # continuing could accept a reused id as a fresh turn.
+            raise Refusal('session has prior provider history; explicit handoff required')
+        self._inherited = bool(prior)
         self._session = session
         self._session_id = session_id
         return self.status()
@@ -184,8 +214,13 @@ class CodexLeadTransport:
             'buffered_events': len(self._buffer),
             'dropped_events': self._dropped,
             'gap': self._gap,
-            'gap_recorded': self._gap_recorded,
+            'gap_recorded': (self._current, GAP_EVENT) in self._marks,
+            'gap_turns_recorded': sum(1 for _, ev in self._marks if ev == GAP_EVENT),
             'turn_mappings': len(self._local),
+            'quarantined_ids': len(self._quarantined),
+            'quarantined_events': self._quarantined_events,
+            'unrecorded_markers': len(self._unrecorded),
+            'inherited_history': self._inherited,
             'mapping_capacity': MAX_MAPPINGS,
             'handoff_required': len(self._local) >= MAX_MAPPINGS,
             'unbound_activity': self._activity,
@@ -219,6 +254,8 @@ class CodexLeadTransport:
         text = _bounded(facts.get('text'), MAX_TEXT_BYTES, 'turn input')
         if turn_id in self._provider:
             raise Refusal('turn already mapped')
+        if self._inherited:
+            raise Refusal('bound for inspection only; explicit handoff required')
         if len(self._local) >= MAX_MAPPINGS:
             self._last_send = {'status': 'uncertain',
                                'reason': 'mapping capacity exhausted; explicit handoff required'}
@@ -226,52 +263,60 @@ class CodexLeadTransport:
         params = {'threadId': self._thread, 'model': self._model, 'effort': self._effort,
                   'input': [{'type': 'text', 'text': text}]}
         self._inflight = {'turn_id': turn_id, 'generation': generation}
+        self._current = turn_id
         self._buffer = []
         self._buffer_bytes = 0
         self._dropped = 0
         self._gap = False
         self._overflow = False
-        self._gap_recorded = False
+        self._held_dropped = set()
         self._activity = False
         try:
             reply = self._rpc(START_METHOD, params)
         except self._rejection:
-            dropped = self._release()
+            if self._activity:
+                # A new turn may exist under an unknown id, possibly a reused one.
+                self._quarantine_all('typed rejection with potential new-turn activity')
+            counts = self._settle(None)
             self._last_send = {
                 'status': 'uncertain' if self._activity else 'rejected',
                 'reason': ('typed rejection with potential new-turn activity'
                            if self._activity else 'typed rejection without new-turn activity'),
-                'dropped_events': dropped, 'gap': self._gap,
-                'unbound_activity': self._activity}
+                'dropped_events': self._dropped + counts['foreign_events'] + counts['quarantined_events'],
+                'gap': self._gap, 'unbound_activity': self._activity, **counts}
             return dict(self._last_send)
         except Exception:
-            self._release()
+            self._quarantine_all('rpc failed without a typed rejection')
+            counts = self._settle(None)
             self._last_send = {'status': 'uncertain',
-                               'reason': 'rpc failed without a typed rejection'}
+                               'reason': 'rpc failed without a typed rejection', **counts}
             return dict(self._last_send)
         provider_turn = self._validate_ack(reply)
         if provider_turn is None:
-            self._release()
+            self._quarantine_all('turn/start acknowledgement missing, malformed or foreign')
+            counts = self._settle(None)
             self._last_send = {
                 'status': 'uncertain',
-                'reason': 'turn/start acknowledgement missing, malformed or foreign'}
+                'reason': 'turn/start acknowledgement missing, malformed or foreign', **counts}
             return dict(self._last_send)
         if provider_turn in self._local:
-            self._release()
+            # Never adopt or rebind: the mapping stays as evidence only.
+            self._quarantine(provider_turn, 'reused provider turn id')
+            counts = self._settle(None)
             self._last_send = {
-                'status': 'uncertain',
-                'reason': 'reused provider turn id; original mapping retained; explicit handoff required'}
+                'status': 'uncertain', 'provider_turn_id': provider_turn,
+                'reason': 'reused provider turn id; original mapping retained; explicit handoff required',
+                **counts}
             return dict(self._last_send)
         self._bind_mapping(turn_id, provider_turn, generation)
-        replayed, foreign, refused = self._replay(provider_turn)
-        self._inflight = None
-        self._buffer = []
-        self._buffer_bytes = 0
+        if self._gap:
+            self._record_gap(turn_id, generation,
+                             'event buffer overflow; output history incomplete')
+        counts = self._settle(provider_turn)
         self._last_send = {
             'status': 'accepted', 'provider_turn_id': provider_turn,
-            'replayed_events': replayed, 'foreign_events': foreign,
-            'refused_events': refused, 'dropped_events': self._dropped,
-            'gap': self._gap, 'gap_recorded': self._gap_recorded}
+            'dropped_events': self._dropped, **counts,
+            'gap': self._gap, 'gap_recorded': (turn_id, GAP_EVENT) in self._marks}
         return dict(self._last_send)
 
     def _validate_ack(self, reply):
@@ -286,39 +331,69 @@ class CodexLeadTransport:
             return None
         return turn['id']
 
-    def _release(self):
-        """Release payloads but preserve bounded activity and gap evidence."""
-        dropped = len(self._buffer) + self._dropped
-        self._inflight = None
-        self._buffer = []
-        self._buffer_bytes = 0
-        self._dropped = dropped
-        return dropped
-
     def _bind_mapping(self, turn_id, provider_turn, generation):
         self._provider[turn_id] = provider_turn
         self._local[provider_turn] = {'turn_id': turn_id,
                                       'generation': generation}
 
-    def _replay(self, provider_turn):
-        """Replay only events matching the validated provider turn, in order."""
-        local = self._inflight
-        if self._gap:
-            self._record_gap(local['turn_id'], local['generation'],
-                             'event buffer overflow; output history incomplete')
-        replayed = foreign = refused = 0
-        while self._buffer:
-            event = self._buffer.pop(0)
-            self._buffer_bytes -= event['bytes']
-            if event['turn_id'] != provider_turn:
+    def _quarantine(self, provider_turn, reason):
+        """Stop trusting one mapped id; keep the mapping, record evidence."""
+        if provider_turn in self._quarantined:
+            return
+        self._quarantined[provider_turn] = reason
+        local = self._local[provider_turn]
+        self._record_mark(local['turn_id'], local['generation'], AMBIGUOUS_EVENT,
+                          reason + '; later events for this provider turn are quarantined')
+
+    def _quarantine_all(self, reason):
+        for provider_turn in list(self._local):
+            self._quarantine(provider_turn, reason)
+
+    def _settle(self, new_turn):
+        """Resolve held events once the submission outcome is known.
+
+        Events for ``new_turn`` (a fresh validated id) and for mapped,
+        non-quarantined ids are now proved and replayed in order; quarantined
+        ids are counted only; everything else stays foreign and unadopted.
+        """
+        replayed = foreign = refused = quarantined = 0
+        buffer, self._buffer = self._buffer, []
+        held_dropped, self._held_dropped = self._held_dropped, set()
+        self._buffer_bytes = 0
+        self._inflight = None
+        for event in buffer:
+            provider_turn = event['turn_id']
+            if provider_turn in self._quarantined:
+                quarantined += 1
+                self._quarantined_events += 1
+                continue
+            if provider_turn not in self._local:
                 foreign += 1
+                continue
+            if event.get('oversized'):
+                self._oversized(provider_turn)
+                refused += 1
                 continue
             result = self._dispatch(event)
             if result['action'] == 'refused':
                 refused += 1
             else:
                 replayed += 1
-        return replayed, foreign, refused
+        for provider_turn in sorted(held_dropped):
+            if provider_turn in self._local and provider_turn not in self._quarantined:
+                local = self._local[provider_turn]
+                self._record_gap(local['turn_id'], local['generation'],
+                                 'event buffer overflow while attribution was unresolved; '
+                                 'output history incomplete')
+        return {'replayed_events': replayed, 'foreign_events': foreign,
+                'refused_events': refused, 'quarantined_events': quarantined}
+
+    def _oversized(self, provider_turn):
+        local = self._local[provider_turn]
+        if local['turn_id'] == self._current:
+            self._gap = True
+        self._record_gap(local['turn_id'], local['generation'],
+                         'delta bound exceeded; output history incomplete')
 
     # -- provider notifications --------------------------------------------
 
@@ -344,22 +419,32 @@ class CodexLeadTransport:
         event = self._extract(method, params)
         if event is None:
             return {'action': 'ignored', 'reason': 'malformed notification'}
+        if event['turn_id'] in self._quarantined:
+            # Ambiguous identity: never dispatched to the old or a new turn.
+            self._quarantined_events += 1
+            return {'action': 'quarantined', 'reason': 'ambiguous provider turn identity',
+                    'gap': True}
         attributed = event['turn_id'] in self._local
         inflight = self._inflight is not None
         if not attributed and not inflight:
             # Unknown mapping (for example after reopen) stays unknown; the
             # first observed provider id is never adopted.
             return {'action': 'ignored', 'reason': 'unbound provider turn'}
-        if inflight and not attributed:
+        oversized = 'delta' in event and event['bytes'] > DELTA_BOUND
+        if inflight and attributed:
+            # The pending acknowledgement may reuse this id: hold, don't write.
+            if oversized:
+                event = {'method': event['method'], 'turn_id': event['turn_id'],
+                         'bytes': 0, 'oversized': True}
+            return self._buffer_event(event)
+        if inflight:
             self._activity = True
-        if 'delta' in event and event['bytes'] > DELTA_BOUND:
-            self._gap = True
+        if oversized:
             if attributed:
-                local = self._local[event['turn_id']]
-                self._record_gap(local['turn_id'], local['generation'],
-                                 'delta bound exceeded; output history incomplete')
+                self._oversized(event['turn_id'])
                 return {'action': 'refused', 'reason': 'delta bound exceeded',
                         'gap': True}
+            self._gap = True
             self._dropped += 1
             return {'action': 'dropped', 'reason': 'delta bound exceeded',
                     'gap': True}
@@ -404,6 +489,7 @@ class CodexLeadTransport:
 
     def _buffer_event(self, event):
         if self._overflow:
+            self._held(event)
             self._dropped += 1
             return {'action': 'dropped', 'reason': 'event buffer overflow',
                     'gap': True}
@@ -411,12 +497,17 @@ class CodexLeadTransport:
                 or self._buffer_bytes + event['bytes'] > self._buffer_bytes_bound):
             self._overflow = True
             self._gap = True
+            self._held(event)
             self._dropped += 1
             return {'action': 'dropped', 'reason': 'event buffer overflow',
                     'gap': True}
         self._buffer.append(event)
         self._buffer_bytes += event['bytes']
         return {'action': 'buffered'}
+
+    def _held(self, event):
+        if event['turn_id'] in self._local:
+            self._held_dropped.add(event['turn_id'])
 
     def _dispatch(self, event):
         """Deliver one fully attributed event to the bound core session."""
@@ -451,17 +542,23 @@ class CodexLeadTransport:
                     'reason': '%s: %s' % (type(exc).__name__, exc)}
 
     def _record_gap(self, turn_id, generation, detail):
-        """Record one honest lifecycle gap fact; never fake completeness."""
-        if self._session is None or self._gap_recorded:
+        """Record one honest gap fact per local turn; never fake completeness."""
+        self._record_mark(turn_id, generation, GAP_EVENT, detail)
+
+    def _record_mark(self, turn_id, generation, event, detail):
+        """One bounded lifecycle marker per (local turn, kind)."""
+        if self._session is None or (turn_id, event) in self._marks:
             return
         try:
             self._session.observe_output(
                 session_id=self._session_id, generation=generation,
                 turn_id=turn_id, kind='lifecycle',
-                data={'event': GAP_EVENT, 'detail': detail})
-            self._gap_recorded = True
+                data={'event': event, 'detail': detail})
+            self._marks.add((turn_id, event))
+            self._unrecorded.discard((turn_id, event))
         except Exception:
-            # The core cannot record the gap (for example a closed archive):
-            # the limitation stays explicit in status; history is never
-            # claimed complete and no marker of another kind is faked.
-            self._gap_recorded = False
+            # The core cannot record the marker (a closed archive, or a turn
+            # older than its last_turn): the limitation stays explicit in
+            # status; history is never claimed complete and no marker of
+            # another kind is faked.
+            self._unrecorded.add((turn_id, event))

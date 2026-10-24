@@ -12,6 +12,7 @@ import importlib.util
 import os
 from pathlib import Path
 import shutil
+import sys
 import tempfile
 
 SOURCE = Path(__file__).resolve().parents[1]
@@ -572,11 +573,245 @@ def run_suite(base):
         only_turn_start(harness.rpc)
     print('ok every owned rpc call is exactly one turn/start; no thread lifecycle rpc', flush=True)
 
+    # 15. Identity and attribution invariants (see IDENTITY_CASES).
+    for case in IDENTITY_CASES:
+        case(base)
+
+
+def records_for(out, turn_id):
+    return [rec for rec in out['records'] if rec.get('turn_id') == turn_id]
+
+
+def completed_turns(base, count):
+    h = Harness(base)
+    turns = []
+    for index in range(count):
+        provider = 'old-%d' % index
+        h.rpc.behavior = ('reply', ack(provider))
+        turns.append(h.submit('old-%d' % index)['turn_id'])
+        assert h.notify(completed(THREAD, provider))['action'] == 'observed'
+    return h, turns
+
+
+def case_reused_ack_quarantine(base):
+    """Reused ack: no delta reaches the old turn before, during or after."""
+    for reused in (1, 0):  # non-oldest (last) and oldest mapping
+        for delta in (agent_delta, command_delta):
+            h, turns = completed_turns(base, 2)
+            reused_id = 'old-%d' % reused
+            other_id = 'old-%d' % (1 - reused)
+            original = dict(h.bridge._local[reused_id])
+            before = h.output()['records']
+            h.rpc.before = [delta(THREAD, reused_id, 'during rpc\n'),
+                            started(THREAD, reused_id),
+                            completed(THREAD, reused_id)]
+            h.rpc.behavior = ('reply', ack(reused_id))
+            result = h.submit('reuse')
+            assert result['state'] == 'uncertain'
+            assert len(h.rpc.calls) == 3
+            # Behavior first: no reused-id delta reached any journal turn.
+            mid = h.output()['records'][len(before):]
+            assert not any('delta' in rec['data'] for rec in mid), mid
+            send = h.bridge.status()['last_send']
+            assert send['quarantined_events'] == 3, send
+            assert 'reused' in send['reason'] and 'handoff' in send['reason']
+            assert h.bridge._local[reused_id] == original
+            assert reused_id not in h.bridge._provider.values() or \
+                h.bridge._provider[original['turn_id']] == reused_id
+            assert result['turn_id'] not in h.bridge._provider
+            # Late output and stale lifecycle after detection stay quarantined.
+            for msg in (delta(THREAD, reused_id, 'after ack\n'),
+                        started(THREAD, reused_id), completed(THREAD, reused_id)):
+                assert h.notify(msg)['action'] == 'quarantined'
+            view = h.view()
+            assert view['state'] == 'outcome_unknown' and view['generation'] == 3
+            out = h.output()['records']
+            added = out[len(before):]
+            assert out[:len(before)] == before, 'historical bytes changed'
+            assert not any('delta' in rec['data'] for rec in added)
+            status = h.bridge.status()
+            if reused == 1:
+                # The last turn accepts the explicit ambiguity marker.
+                assert [rec['data']['event'] for rec in added] == [br.AMBIGUOUS_EVENT], added
+                assert added[0]['turn_id'] == turns[reused]
+                assert added[0]['generation'] == reused + 1
+                assert status['unrecorded_markers'] == 0
+            else:
+                # The frozen core takes output only for its active/last turn:
+                # the marker cannot be written, and that stays explicit.
+                assert added == [], added
+                assert status['unrecorded_markers'] == 1
+            assert records_for(h.output(), result['turn_id']) == []
+            status = h.bridge.status()
+            assert status['quarantined_ids'] == 1 and status['quarantined_events'] == 6
+            assert status['turn_mappings'] == 2
+            # A proved distinct old id still targets its own old turn (the
+            # core accepts it only for its last turn) and never the new one.
+            res = h.notify(delta(THREAD, other_id, 'legit late old\n'))
+            if reused == 0:
+                assert res['action'] == 'observed', res
+                last = h.output()['records'][-1]
+                assert last['turn_id'] == turns[1]
+                assert last['data'] == {'delta': 'legit late old\n'}
+            else:
+                assert res['action'] == 'refused' and 'mismatched' in res['reason'], res
+            assert records_for(h.output(), result['turn_id']) == []
+            assert h.submit('reuse')['state'] == 'uncertain'
+            assert len(h.rpc.calls) == 3
+    print('ok reused ack quarantines oldest/non-oldest ids before, during and after ack', flush=True)
+
+
+def case_held_old_output(base):
+    """Old-id output during the rpc is written only once attribution is proved."""
+    # Fresh distinct ack proves the old id: delivered to the old turn, in order.
+    h, turns = completed_turns(base, 1)
+    h.rpc.before = [command_delta(THREAD, 'old-0', 'late old\n'),
+                    agent_delta(THREAD, 'fresh', 'new text\n')]
+    h.rpc.behavior = ('reply', ack('fresh'))
+    r = h.submit('fresh')
+    assert r['state'] == 'accepted'
+    send = h.bridge.status()['last_send']
+    assert send['replayed_events'] == 2 and send['quarantined_events'] == 0, send
+    tail = h.output()['records'][-2:]
+    assert (tail[0]['turn_id'], tail[0]['generation']) == (turns[0], 1)
+    assert tail[0]['data'] == {'delta': 'late old\n'}
+    assert (tail[1]['turn_id'], tail[1]['generation']) == (r['turn_id'], 2)
+    # Activity-free typed rejection proves no new turn exists.
+    h, turns = completed_turns(base, 1)
+    h.rpc.before = [agent_delta(THREAD, 'old-0', 'late old\n')]
+    h.rpc.behavior = ('reject', None)
+    assert h.submit('rejected')['state'] == 'rejected'
+    assert h.output()['records'][-1]['data'] == {'delta': 'late old\n'}
+    assert h.output()['records'][-1]['turn_id'] == turns[0]
+    assert h.bridge.status()['quarantined_ids'] == 0
+    # Unresolved outcomes prove nothing: every mapped id is quarantined.
+    for behavior, events in ((('raise', OSError('lost')), []),
+                             (('reply', {'turn': {}}), []),
+                             (('reject', None), [started(THREAD, 'unknown-new')])):
+        h, turns = completed_turns(base, 2)
+        before = h.output()['records']
+        h.rpc.before = [agent_delta(THREAD, 'old-1', 'ambiguous\n')] + events
+        h.rpc.behavior = behavior
+        assert h.submit('unresolved')['state'] == 'uncertain'
+        added = h.output()['records'][len(before):]
+        assert [rec['data'] for rec in added if 'delta' in rec['data']] == [], added
+        assert [(rec['turn_id'], rec['data']['event']) for rec in added] == [
+            (turns[1], br.AMBIGUOUS_EVENT)], added
+        assert h.bridge.status()['unrecorded_markers'] == 1  # older than last_turn
+        assert h.notify(agent_delta(THREAD, 'old-0', 'x'))['action'] == 'quarantined'
+        assert h.bridge.status()['quarantined_ids'] == 2
+        assert h.view()['state'] == 'outcome_unknown'
+    print('ok old-id output during rpc is held until attribution is proved', flush=True)
+
+
+def case_per_turn_gap(base):
+    """An old turn's gap marker never stands in for the current turn's gap."""
+    for timing in ('during-rpc', 'before-send', 'after-ack'):
+        h, turns = completed_turns(base, 1)
+        h.bridge._buffer_events_bound = 2
+        big = agent_delta(THREAD, 'old-0', 'x' * (br.DELTA_BOUND + 1))
+        if timing == 'before-send':
+            assert h.notify(big)['action'] == 'refused'
+        h.rpc.before = ([big] if timing == 'during-rpc' else []) + [
+            agent_delta(THREAD, 'new', 'chunk-%d\n' % i) for i in range(4)]
+        h.rpc.behavior = ('reply', ack('new'))
+        r = h.submit('new')
+        if timing == 'after-ack':
+            assert h.notify(big)['action'] == 'refused'
+        send = h.bridge.status()['last_send']
+        assert send['gap'] is True and send['gap_recorded'] is True, (timing, send)
+        out = h.output()
+        old_gaps = [rec for rec in records_for(out, turns[0])
+                    if rec['data'].get('event') == br.GAP_EVENT]
+        new_gaps = [rec for rec in records_for(out, r['turn_id'])
+                    if rec['data'].get('event') == br.GAP_EVENT]
+        assert len(old_gaps) == 1 and len(new_gaps) == 1, (timing, out['records'])
+        assert 'overflow' in new_gaps[0]['data']['detail']
+        assert h.bridge.status()['gap_recorded'] is True
+        # A second oversized old delta adds no marker and no current-turn gap.
+        h.notify(big)
+        assert len(h.output()['records']) == len(out['records'])
+        assert h.bridge.status()['gap_turns_recorded'] == 2
+    # An old gap alone never claims the current turn had one.
+    h, turns = completed_turns(base, 1)
+    h.notify(agent_delta(THREAD, 'old-0', 'x' * (br.DELTA_BOUND + 1)))
+    h.rpc.behavior = ('reply', ack('clean'))
+    h.submit('clean')
+    send = h.bridge.status()['last_send']
+    assert send['gap'] is False and send['gap_recorded'] is False, send
+    assert h.bridge.status()['gap_recorded'] is False
+    print('ok gap markers are per local turn; old gaps never prove the current gap', flush=True)
+
+
+def case_fresh_bridge_rebind(base):
+    """A fresh bridge cannot continue a session whose provider ids it never saw."""
+    h, turns = completed_turns(base, 1)
+    before = h.view()
+    records = h.output()['records']
+    rpc = FakeRPC()
+    bridge = br.CodexLeadTransport(rpc, THREAD, model=MODEL, effort=EFFORT)
+    session = ml.LeadSession(h.root, h.sid, transport=bridge,
+                             authority=authority_ok, ownership=ownership_ok)
+    rpc.bridge = bridge
+    assert 'handoff' in refuses(bridge.bind, session)
+    assert bridge.status()['bound'] is False
+    # Continuing through the core reaches the unbound bridge: refused, no RPC,
+    # and the old id cannot terminate anything.
+    rpc.behavior = ('reply', ack('old-0'))
+    result = session.submit_next_turn(session_id=h.sid, generation=2,
+                                      request_id='after-reopen', text='x')
+    assert result['state'] == 'uncertain' and rpc.calls == []
+    assert bridge.handle_notification(completed(THREAD, 'old-0'))['action'] == 'ignored'
+    view = session.status(session_id=h.sid)
+    assert view['state'] == 'outcome_unknown' and view['generation'] == 2
+    assert view['history'] == before['history']
+    assert session.read_output(session_id=h.sid)['records'] == records
+    # Pending/uncertain sessions remain bindable for inspection only.
+    h2 = Harness(base)
+    h2.rpc.behavior = ('raise', OSError('lost'))
+    h2.submit('lost')
+    rpc2, bridge2, session2 = h2.open()
+    assert bridge2.status()['inherited_history'] is True
+    assert 'inspection only' in refuses(bridge2.send_turn, {
+        'session_id': h2.sid, 'generation': 1, 'turn_id': 'turn-z', 'text': 'x'})
+    assert rpc2.calls == []
+    print('ok fresh bridge refuses unsafe continuation before any effect', flush=True)
+
+
+IDENTITY_CASES = (case_reused_ack_quarantine, case_held_old_output,
+                  case_per_turn_gap, case_fresh_bridge_rebind)
+
+
+def negative_control(base, bridge_path):
+    """Each identity case must fail against an unfixed bridge source."""
+    global br
+    fixed = br
+    spec = importlib.util.spec_from_file_location('control_bridge', bridge_path)
+    br = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(br)
+    if not hasattr(br, 'AMBIGUOUS_EVENT'):
+        br.AMBIGUOUS_EVENT = fixed.AMBIGUOUS_EVENT
+    try:
+        for case in IDENTITY_CASES:
+            try:
+                case(base)
+            except (AssertionError, ml.Refusal, br.Refusal) as exc:
+                print('ok negative control %s fails: %s: %s'
+                      % (case.__name__, type(exc).__name__, str(exc)[:80]), flush=True)
+            else:
+                raise AssertionError('negative control passed: ' + case.__name__)
+    finally:
+        br = fixed
+
 
 def main():
     base = Path(tempfile.mkdtemp(prefix='unio-managed-lead-codex-'))
     os.chmod(base, 0o700)
     try:
+        if len(sys.argv) == 3 and sys.argv[1] == '--negative-control':
+            negative_control(base, sys.argv[2])
+            print('all negative controls failed as expected')
+            return
         run_suite(base)
     finally:
         shutil.rmtree(base, ignore_errors=True)
