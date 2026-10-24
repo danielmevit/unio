@@ -45,6 +45,6 @@ exact next step. Do not imply that the lead keeps coordinating after its turn en
 ## Personal workflow and distribution
 
 For this owner's projects, the current local OWNER-WORKFLOW.md is read by every
-Unio lead and carries this reporting instruction. This repository's AGENTS.md
-links this guide. These are instructions for leads, not an automatic dashboard
+Unio lead and carries this reporting instruction. The owner's local AGENTS.md
+and the public development handoff link this guide. These are instructions for leads, not an automatic dashboard
 feature or an injection into already-running foreign CLI sessions.

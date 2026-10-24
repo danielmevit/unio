@@ -1,5 +1,39 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Active next feature: native lead ownership — 2026-10-24T22:29:18+02:00
+
+Main goal: Unio owns/tracks thelead CLI aswellasworkers. Current slice adds
+claim/policyguards, preventingduplicateownershipandaccountmiscount. Complete
+app-serverlifecycle/launch/nextturn UX remain later; donotclaimcompletefeature.
+
+NativeSource task NATIVE-LEAD-OWNERSHIP-VIBE-GLM-HIGH-0524-20261024 throughinstalled23, worker
+vibeglm-native-lead-ownership-20261024, basedde730e75bd7432086901ed3e632c64bda0d8e55,
+branchagent/vibeglm-native-lead-ownership-20261024. Mistralsubscription/Vibe2.26.1/
+GLM5.3 thinkingHIGH; CLI/model/effortrequested, effectiveUnknown. Separateactual
+mistralgroup, lowtier/codexleadunchanged, noCodeXcompanion, STOPrestored.
+Canonicaladapter actualstart2026-10-24T22:28:23+02:00; modelprogressreadingfiles/shell
+observed. Noexit/commit/check/review/acceptanceyet. Sourcecontroller2010958,
+pipeline native-lead-ownership-vibe-high-20261024. Taskhash/bounds/CLI/version/
+requiredartifactparser/syntax preflightPASS, private0700receipts precreated.
+90mincanonical/120minnative;120minnotautomaticretry. Delta9paths; machine scope
+alsoincludesinheritedprivatebase, frozencheckerenforcesnewdeltaanduntouchedsaves.
+5installedmockregressions/privateTMPFS and4nativeValidatecommands required.
+Requiredreal summary.md. Ownsourceonly/nootheragents. Plannedindependent
+ClaudeCode2.1.309/Opus5.5XHIGH current-code audit afterSource/Verify0, then
+existing-leadassessment. No externalreview is launched yet.
+
+PARALLEL acceptedreviewedsave runtime/testcandidate94d29082 completecombined
+qualitygate running since22:14:35 in reliability-save-reviewed-combined-gate-20261024.
+Read actualfull-gate.json beforeaccepting. Foundationeddc alreadyfullPASS0 and
+privatelyintegrateddaaf1e92. Current public/main/install remain23; no24push,
+globalinstall orreleaseauthority. UI/Vecto/classifiedstudies untouched.
+
+NextreadcurrentSourcecontroller/actualreceipts+combinedgate; followworkeruntil
+commit/checks, arrangeoneblindOpusreview, leadassess/integrateexactcontent.
+Do not recreate failedoldobservers or countlocalcwdsetupfailure asmodelverdict.
+Reportingrule nowinlocalOWNER-WORKFLOW+AGENTS/publicCLIguide: explainmain
+goalanduserbenefitbeforetaskmechanics; questions donotcancel authorizedwork.
+
 ## Foundation accepted; explain the goal behind every update — 2026-10-24T22:20:46+02:00
 
 Foundationeddc fullqualitygatePASS0 at22:12:50, elapsed3103.048s, exacttracked
