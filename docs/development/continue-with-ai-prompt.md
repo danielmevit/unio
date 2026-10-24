@@ -34,13 +34,42 @@ unchanged runtime passes both; injected wrong-turn activity and callback asserti
 are missed by old tests and caught by corrected tests. No provider calls or source
 changes. An initial operator fault-injection placement error is preserved separately.
 
-Full quality gate is RUNNING from11:42:35+02 on exact9758f42/tree76fb311c.
-It uses an isolated exact Git clone/private project tmpfs, zero AI calls, direct
-backend suite then bash tools/quality-check.sh; estimate45–60minutes. Read actual
-machine-gate/full-gate.json and log. Never infer PASS from an active process.
-Final existing-lead acceptance/private integration waits actual gate completion.
-No worker is still invoking a provider at this checkpoint; reallead/account/lowtier
-and STOP retained. Failed/stale reviews and original failures remain unchanged.
+Full quality gate FAILED at11:58:00+02: exit1 after872.995s, exact9758f42.
+Managed-lead core passed; selftest38/40 failed its background pidfile and kill
+assertions. Fixed2s readiness sleep and a vacuous natural-completion check are
+suspects, not yet a proven native runtime failure. Preserve full-gate.json/log;
+no acceptance, integration or public24delivery from that failed gate.
+
+New native correction SELFTEST-BACKGROUND-READINESS-SOL-LOW-0524-20261024 uses
+ChatGPT subscription/Codex CLI0.163.0/gpt-6.1-sol LOW. Source active from12:04:45
+in registered worker codex-save-attempt-rescan-low-20261024, frozen9758f42. Worker
+was prepared for a save scan optimization but made0calls for that work; actual
+gate failure superseded it before assignment. New code scope is cmd_selftest,
+its installed regression, one doc/fragment; no worker/admission/kill/save runtime
+change. Pipeline selftest-background-readiness-low-20261024. Estimate30–60min plus
+checks/review. Fresh capacity preparation11:58 showed48% primary/61% weekly,
+not a per-task consumption claim. Native task/config-bound grant, one shared
+companion, realcodexlead/group/tempmedium; controller closes STOP and restores
+low when idle. No other Codex worker may be added concurrently.
+
+Separate disjoint feature MANAGED-LEAD-CODEX-TRANSPORT-VIBE-GLM-HIGH-0524-20261024
+was admitted through nativeUnio, pipeline managed-lead-codex-transport-vibe-20261024,
+worker vibeglm-managed-lead-transport-20261024. Mistral subscription/Vibe2.26.1/
+GLM5.3/thinkingHIGH, remaining/effective Unknown; fresh capacity query unsupported
+(actualexit1), recent genuine other-lab review0 is not a quota meter. Check
+source/source.json for actual inference start; admission is not provider execution.
+Estimate1–2h plus review. Frozen9758core bytes are reviewed and focused-tested;
+new bridge files/quality registration do not overlap the selftest correction.
+This is parallel prototyping, not final gated integration. It must issue only
+turn/start on an injected already-owned connection/thread, match provider/local
+IDs, bound early events and preserve ambiguity, with fake-only tests. No native
+lead claim, new process, thread adoption, auth/API/billing or UI change is allowed.
+Latest official installed runner was rechecked as0.5.23 before assignments.
+
+Next: inspect actual selftest cause/fix/checks, obtain one fresh independent
+Opus5.5XHIGH current-code review, then run the exact corrected full gate. Freeze
+and review returned transport separately; no acceptance/merge/install/publication
+by observer processes. Preserve all previous failed gates/reviews/Source exits.
 
 Current personal workflow also contains conditional Opus takeover after repeated
 unresolved Sol corrections; read [the rule](../ai/REVIEWER-LED-CORRECTIONS.md).
@@ -53,9 +82,12 @@ helper-latency-profile-vibe-20261024. Repeated save-store traversal on v9fs is
 measured expensive; full-save105–125seconds is a MODEL, not completed timing.
 Under-load result/experience contention is a hypothesis from one idle19.42s
 sample. Some original Sources failed quota/setup: do not call them all successful.
-Lead must inspect exact lock lifetime before accepting cached-identity proposal:
-publish releases its store lock before current write_attempt runs. Do not blindly
-raise limits or change save protections. No performance code correction dispatched.
+Lead assessment is now tracked at
+[helper latency assessment](HELPER-LATENCY-LEAD-ASSESSMENT-2026-10-24.md). It also
+corrects unequal worktree byte counts and the false assumption of a held publish
+lock during write_attempt. The original report and its fragment are preserved
+unchanged. No timeout increase, performance patch or real-store cleanup applied;
+save optimization was deferred before Source for the actual failed selftest.
 
 Separate review-history755cb060 has its own OpusAPPROVE; bundled-guideb5a1b0e
 passed4nativechecks and outside-guide identity proof; current full gate includes
@@ -176,7 +208,8 @@ continuity. Do not turn a testing-model exercise into the main milestone.
 
 ## Remaining priorities
 
-1. Finish the running exact9758f42 gate and existing-lead acceptance. The narrow
+1. Fix the exact9758f42 selftest failure, then rerun the corrected candidate gate
+   and existing-lead acceptance. The narrow
    pre-provider-refusal eligibility correction is implemented/reviewed and included
    in this candidate; do not reimplement it. Legacy contextless history still blocks
    conservatively; no deletion, fake commits or automatic retry. Then complete the
