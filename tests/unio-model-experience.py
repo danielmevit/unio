@@ -188,7 +188,7 @@ class ExperienceSuite(unittest.TestCase):
     def record_args(self, *extra):
         return ('record', 'codex', 'DEADLINE', '--model', 'fixture', '--route',
                 'codex', '--effort', 'low', '--task-type', 'feature',
-                '--outcome', 'accepted', *extra)
+                '--outcome', 'accepted', '--project', str(self.project), *extra)
 
     def test_11_record_deadline_forwarding_and_invalid_values(self):
         spec = importlib.util.spec_from_file_location('experience', CLI)
@@ -213,10 +213,10 @@ class ExperienceSuite(unittest.TestCase):
                 self.assertFalse((self.root / 'calls.jsonl').exists())
                 self.assertFalse((self.project / 'coord/experience').exists())
         for value in ('0', '61', '1.5', 'NaN'):
-            result = self.run_cli('suggest', '--task-type', 'feature', '--timeout', value)
+            result = self.run_cli('suggest', '--task-type', 'feature', '--timeout', value, project=self.project)
             self.assertEqual(result.returncode, 2)
         for words, expected in [((), 10), (('--timeout', '1'), 1), (('--timeout', '60'), 60)]:
-            result = self.run_cli('suggest', '--task-type', 'feature', '--json', *words)
+            result = self.run_cli('suggest', '--task-type', 'feature', '--json', *words, project=self.project)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['timeout_seconds'], expected)
 
@@ -252,7 +252,7 @@ class ExperienceSuite(unittest.TestCase):
         for pid in json.loads((self.root / 'pids.json').read_text()):
             status = Path('/proc') / str(pid) / 'stat'
             self.assertTrue(not status.exists() or status.read_text().split()[2] == 'Z', pid)
-        self.assertEqual(json.loads(self.run_cli('show', '--json').stdout)['records'], 1)
+        self.assertEqual(json.loads(self.run_cli('show', '--json', project=self.project).stdout)['records'], 1)
 
     def test_13_large_bound_does_not_relax_evidence(self):
         for result in (make_result(task='DEADLINE', stale=True),
