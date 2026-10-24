@@ -787,6 +787,15 @@ class LeadSession:
                         and last.get('generation') == generation)):
                 raise Refusal('mismatched output observation')
             data = self._sanitize_output(kind, data)
+            # Write uncertainty BEFORE retention checks or journaling. Even a failed/absent append
+            # must not let a later contradictory rejection release this turn.
+            if (active.get('turn_id') == turn_id
+                    and active.get('generation') == generation
+                    and state['state'] == 'pending'):
+                self._output_activity = turn_id
+                state['state'] = 'outcome_unknown'
+                state['updated_at'] = _now()
+                self._save()
             if state['archive_limited']:
                 raise Refusal('output archive closed')
             rec = {'cursor': state['output_cursor'] + 1, 'kind': kind,
@@ -795,13 +804,6 @@ class LeadSession:
             line = (json.dumps(rec, ensure_ascii=False) + '\n').encode('utf-8')
             if len(line) > RECORD_BOUND:
                 raise Refusal('output record bound exceeded')
-            # Write uncertainty BEFORE journaling. Even a failed/absent append
-            # must not let a later contradictory rejection release this turn.
-            if active.get('turn_id') == turn_id and state['state'] == 'pending':
-                self._output_activity = turn_id
-                state['state'] = 'outcome_unknown'
-                state['updated_at'] = _now()
-                self._save()
             if state['archive_bytes'] + len(line) + MARKER_HEADROOM > ARCHIVE_BOUND:
                 mline = self._archive_marker()
                 self._write_journal(mline)

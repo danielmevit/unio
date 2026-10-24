@@ -987,6 +987,91 @@ def output_rejection_regressions(base):
     print('ok output-before-reply matrix: all kinds, reopen, idempotence, reconciliation and save/append failures', flush=True)
 
 
+
+def retention_activity_regressions(base):
+    # Reduced real writer/reader bounds avoid filling the production archive.
+    archive_bound, record_bound = ml.ARCHIVE_BOUND, ml.RECORD_BOUND
+    try:
+        ml.ARCHIVE_BOUND = 4096
+        for kind in ml.OUTPUT_KINDS:
+            for boundary in ('closed', 'oversized'):
+                for separate in (False, True):
+                    h = Harness(base)
+                    old = h.submit('old-turn')
+                    h.finish(old)
+                    if boundary == 'closed':
+                        assert h.session.observe_output(session_id=h.sid,
+                            generation=1, turn_id=old['turn_id'], kind='agent_message',
+                            data={'delta': 'x' * 4096})['state'] == 'archive_limit'
+                    before = h.session.journal_path.read_bytes()
+                    ml.RECORD_BOUND = 1024 if boundary == 'oversized' else record_bound
+                    data = ({'detail': 'x' * 1024} if kind == 'lifecycle'
+                            else {'delta': 'x' * 1024})
+                    def send(facts):
+                        h.transport.calls.append(dict(facts))
+                        observer = h.open() if separate else h.session
+                        # Neither an arbitrary turn nor the previous terminal turn
+                        # can establish activity for this pending generation.
+                        refuses(observer.observe_output, session_id=h.sid,
+                            generation=2, turn_id='wrong-turn', kind=kind, data=data)
+                        refuses(observer.observe_output, session_id=h.sid,
+                            generation=1, turn_id=old['turn_id'], kind=kind, data=data)
+                        assert h.open().status(session_id=h.sid)['state'] == 'pending'
+                        # Sanitization must still succeed before activity is saved.
+                        refuses(observer.observe_output, session_id=h.sid,
+                            generation=2, turn_id=facts['turn_id'], kind=kind, data={})
+                        assert h.open().status(session_id=h.sid)['state'] == 'pending'
+                        error = refuses(observer.observe_output, session_id=h.sid,
+                            generation=2, turn_id=facts['turn_id'], kind=kind, data=data)
+                        assert error == ('output archive closed' if boundary == 'closed'
+                                         else 'output record bound exceeded')
+                        return {'status': 'rejected'}
+                    h.transport.send_turn = send
+                    result = h.submit('retention-activity')
+                    assert result['state'] == 'uncertain'
+                    reopened = h.open()
+                    view = reopened.status(session_id=h.sid)
+                    assert view['state'] == 'outcome_unknown'
+                    assert view['turn']['delivery'] == 'unknown'
+                    assert view['generation'] == 2 and view['history'] == [view['last_turn']]
+                    assert view['last_turn']['turn_id'] == old['turn_id']
+                    assert h.session.journal_path.read_bytes() == before
+                    assert len(before) <= ml.ARCHIVE_BOUND
+                    page = reopened.read_output(session_id=h.sid)
+                    assert not page['disagreement']
+                    if boundary == 'closed':
+                        assert page['records'][-1]['kind'] == 'archive_limit'
+                    assert reopened.submit_next_turn(session_id=h.sid, generation=2,
+                        request_id='retention-activity', text='next turn input') == result
+                    refuses(reopened.submit_next_turn, session_id=h.sid, generation=2,
+                            request_id='new-id', text='x')
+                    assert len(h.transport.calls) == 2
+                    reopened.observe_terminal(session_id=h.sid, generation=2,
+                        turn_id=result['turn_id'], status='failed', exit_code=31)
+                    assert h.open().status(session_id=h.sid)['last_turn']['exit_code'] == 31
+                    assert reopened.submit_next_turn(session_id=h.sid, generation=3,
+                        request_id='retention-activity', text='next turn input') == result
+                    assert len(h.transport.calls) == 2
+                    h.transport.send_turn = lambda facts: (h.transport.calls.append(dict(facts))
+                                                           or {'status': 'accepted'})
+                    reopened.submit_next_turn(session_id=h.sid, generation=3,
+                                              request_id='after-retention-terminal', text='x')
+                    assert len(h.transport.calls) == 3
+                    ml.RECORD_BOUND = record_bound
+    finally:
+        ml.ARCHIVE_BOUND, ml.RECORD_BOUND = archive_bound, record_bound
+    # Activity first arriving after rejection cannot reopen the recorded request.
+    h = Harness(base)
+    h.transport.mode = 'rejected'
+    result = h.submit('already-rejected')
+    refuses(h.open().observe_output, session_id=h.sid, generation=1,
+            turn_id=result['turn_id'], kind='lifecycle', data={'event': 'late'})
+    view = h.open().status(session_id=h.sid)
+    assert view['state'] == 'idle' and view['turn'] is None
+    assert h.submit('already-rejected') == result and len(h.transport.calls) == 1
+    print('ok retention refusal activity matrix: kinds, separate observers, old/wrong turns, replay and terminal release', flush=True)
+
+
 def main():
     base = Path(tempfile.mkdtemp(prefix='unio-managed-lead-'))
     os.chmod(base, 0o700)
@@ -995,6 +1080,7 @@ def main():
         correction_regressions(base)
         medium_review_regressions(base)
         output_rejection_regressions(base)
+        retention_activity_regressions(base)
     finally:
         shutil.rmtree(base, ignore_errors=True)
     print('all managed lead-session core checks passed')
