@@ -43,14 +43,14 @@ if action=='hold':
 if action=='timeout':time.sleep(20)
 if action=='drift':(root/'project/wt/mock/hello.txt').write_text('changed during review')
 if action=='snapshot_fail':os.mkfifo(root/'project/wt/mock/unsupported')
-if action=='material':common.write_text('changed common material')
+if action in ('material','material_changes'):common.write_text('changed common material')
 if action=='break_child':
     c=max((root/'project/coord/reports').glob('evidence.review-set.*/collection.json'),key=lambda p:p.stat().st_mtime_ns)
     a=next(a for a in json.loads(c.read_text())['attempts'] if a['reviewer']==name)
     (c.parent.parent/a['raw_directory']/'attempt.json').mkdir()
 print('PRIVATE_COLLECTION_PROSE')
 print('PRIVATE_COLLECTION_ERROR',file=sys.stderr)
-print('VERDICT: '+('REQUEST-CHANGES' if action=='changes' else 'APPROVE'))
+print('VERDICT: '+('REQUEST-CHANGES' if action in ('changes','material_changes') else 'APPROVE'))
 if action=='unknown':print('VERDICT: APPROVE')
 raise SystemExit(7 if action=='fail' else 0)
 '''
@@ -327,7 +327,11 @@ class ReviewCollection(unittest.TestCase):
                '$cid completed 2 1 0 1 0 0', '$cid completed 3 1 0 2 0 0',
                '$cid completed 2 1 0 2 0 0 extra', '$cid unknown 0 1 0 2 0 0',
                '$cid completed 2 0 0 2 0 0', '$cid completed 2 1 0 2 0 0\nextra',
-               '$cid completed 2 1 0 2 0', '$cid completed 2 yes 0 2 0 0')
+               '$cid completed 2 1 0 2 0', '$cid completed 2 yes 0 2 0 0',
+               # Internally impossible: completed with invalid, change request
+               # without a verified invocation or alongside invalid evidence.
+               '$cid completed 2 0 2 0 0 2', '$cid unknown 0 0 1 0 2 0',
+               '$cid completed 2 0 1 0 0 2', '$cid unknown 1 0 2 0 0 2')
         for output in cases:
             with self.subTest(output=output):
                 self.fault_engine(line,line+'\n    out="'+output+'"')
@@ -360,6 +364,25 @@ class ReviewCollection(unittest.TestCase):
             self.assertTrue(data['admitted']);self.assertFalse(data['invoked'])
         self.assertEqual(self.summary(code=2,expect='revone,revtwo')['counts']['approved'],2)
         for path,data in originals.items():self.assertEqual(path.read_bytes(),data)
+        self.assert_slots_empty()
+        # Admitted STOP rows stay conservative unknowns for this revision: a
+        # later all-approving batch on the clean engine cannot erase them.
+        stopped={p:p.read_bytes() for p in self.receipts()}
+        self.engine=self.__class__.engine;self.unio('resume')
+        result=self.collect(code=2)
+        self.assertIn('invoked=2/2 refused=0 invalid=0 dispatch_exit=0',result.stdout)
+        self.assertEqual(len(self.calls().splitlines())-len(before.splitlines()),2)
+        self.assertTrue(all(r['state']=='approved' for r in self.attempts()))
+        for path,data in stopped.items():self.assertEqual(path.read_bytes(),data)
+        self.assert_slots_empty()
+
+    def test_material_mutation_with_changes_is_not_a_dispatch_change_request(self):
+        self.controls(revone='material_changes')
+        result=self.collect(code=2)
+        self.assertIn('dispatch_exit=2',result.stdout)
+        mutated=next(r for r in self.attempts() if r['reviewer']=='revone')
+        self.assertEqual(mutated['state'],'unknown');self.assertIn('material_changed',mutated['reasons'])
+        self.assertIn('material_changed',self.manifest()['reasons'])
         self.assert_slots_empty()
 
     def test_drift_material_mutation_and_failed_observation(self):

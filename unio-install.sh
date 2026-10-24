@@ -25697,9 +25697,7 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
             if code!=0: state='failed'
             rreasons=['reviewer_process_failed'] if code!=0 else ['unknown_verdict'] if state=='unknown' else []
             complete='yes'
-            if state!='approved': unsuccessful+=1
             if code!=0: process_failed+=1
-            if state=='changes_requested': rejected+=1
         if drift: rreasons.append('candidate_changed_during_review')
         if after is None: rreasons.append('post_snapshot_failed')
         try:
@@ -25719,6 +25717,10 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
             fail('published receipt does not match its attempt')
         attempt['receipt_id']=receipt['id']
         bound+=1
+        # Decisions come from the durable published receipt, not stdout.
+        if result['invoked']:
+            if receipt['state']!='approved': unsuccessful+=1
+            if receipt['state']=='changes_requested': rejected+=1
         collection_valid(d)
         collection_atomic(os.path.join(directory,'collection.json'),d)
     final='unknown' if after is None or bound!=len(d['attempts']) else 'completed'
@@ -25729,7 +25731,9 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
     # Keep historical receipts independent of this invocation's dispatch result.
     ready=(final=='completed' and after==d['before'] and not reasons
            and invoked==len(d['attempts']) and not unsuccessful)
-    dispatch=2 if refused or invalid or process_failed else 1 if rejected else 0 if ready else 2
+    durable_unknown='material_changed' in reasons or 'receipt_failed' in reasons
+    dispatch=(2 if refused or invalid or process_failed or durable_unknown
+              else 1 if rejected else 0 if ready else 2)
     print('%s %s %d %d %d %d %d %d'%(d['id'],final,bound,int(ready),
                                     dispatch,invoked,refused,invalid))
 
@@ -33381,6 +33385,11 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
     echo 'retry, substitute, queue, merge or grant human acceptance. Exit 0 only'
     echo 'for a complete unchanged collection with every recorded reviewer approving,'
     echo '1 for current changes requested, 2 for any other outcome or invalid input.'
+    echo 'invoked counts VERIFIED invocations only; invalid attempts have unknown'
+    echo 'invocation status, so invoked=0 with invalid>0 does not prove no calls.'
+    echo 'Only exact budget_refused receipts leave current verdict history; admitted'
+    echo 'STOP refusals stay unknown rows for that revision/material/config and later'
+    echo 'approving batches do not erase them (inspect; the owner decides).'
     return 0
   fi
   # Argument validation precedes any project state read.
@@ -33483,8 +33492,11 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
       local rid="${BASH_REMATCH[1]}" rstate="${BASH_REMATCH[2]}" rb="${BASH_REMATCH[3]}"
       local rr="${BASH_REMATCH[4]}" rd="${BASH_REMATCH[5]}" ri="${BASH_REMATCH[6]}"
       local rf="${BASH_REMATCH[7]}" rx="${BASH_REMATCH[8]}" total="${#reviewers[@]}"
-      if [ "$rid" = "$cid" ] && (( rb <= total && ri + rf + rx == total )) \
-          && { [ "$rstate" != completed ] || [ "$rb" = "$total" ]; } \
+      # Invalid attempts are never bound; a change request needs a verified
+      # invocation and no refused or invalid attempt.
+      if [ "$rid" = "$cid" ] && (( rb <= total && ri + rf + rx == total && rb <= ri + rf )) \
+          && { [ "$rstate" != completed ] || { [ "$rb" = "$total" ] && [ "$rx" = 0 ]; }; } \
+          && { [ "$rd" != 1 ] || (( rf == 0 && rx == 0 && ri >= 1 )); } \
           && { { [ "$rr" = 0 ] && [ "$rd" != 0 ]; } ||
                { [ "$rr" = 1 ] && [ "$rd" = 0 ] && [ "$rstate" = completed ] \
                  && [ "$rb" = "$total" ] && [ "$ri" = "$total" ]; }; }; then
