@@ -69,3 +69,31 @@ backlog, not a measured performance improvement.
 The original proposal's phrase no provider called means the worker launched no
 additional provider: there was one actual Mistral/Vibe model invocation. Requested
 model/effort and catalog labels do not prove effective serving identity.
+
+## Extend the existing dashboard — 2026-10-24T22:38:53+02:00
+
+The user-facing goal is one project view containing both the managed lead
+session and the existing workers. Extend bridge/ and its local API; do not build
+a replacement dashboard or a second orchestration interface. This is the planned
+UX direction, not a claim that UI integration has shipped.
+
+- Add a lead entry showing the project/session, requested route and settings,
+  recorded turn state, latest selected output and timestamps. Uncertain state,
+  missing output and effective Unknown remain visible. A completed turn is not
+  task acceptance. Reuse existing activity/detail patterns where practical.
+- The browser talks to Unio's local backend. The backend checks the exact owned
+  session, authority and policy before sending supported input to the provider
+  connection. Never expose a direct provider RPC channel or credentials in the
+  browser. Existing worker/task/review views keep their canonical records.
+- Build read-only lead visibility first, then supported next-message, steering
+  and stop controls. CLI and browser must address the same managed session, with
+  no second model conversation, implicit adoption or duplicate launch. Ordinary
+  separately started CLIs are not automatically attached. Start with the tested
+  Codex route; support for another lead route requires its own evidence.
+- The browser is a client of the owned backend process. Opening/reloading a tab
+  must not launch a replacement, and closing a tab must not silently stop the
+  lead. Define backend lifetime explicitly when implementing the supervisor.
+- Native ownership/policy and persistent launch/control come before dashboard
+  edits. The current ownership worker has no bridge/ or site/ scope. Phone
+  pairing and remote session control follow later; no whole-PC remote desktop
+  or new desktop shell is required for this stage.

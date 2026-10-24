@@ -1,5 +1,19 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Dashboard direction clarified — 2026-10-24T22:38:53+02:00
+
+Extend existing bridge/ dashboard/localAPI for the same managedlead session;
+no replacementdashboard. Read nativeintegrationdecisions newestsection. Planned
+leadentry/output/details then supportedmessage/steer/stop controls; providerRPC
+staysbackend-owned. NewclaimworkerstillnoUI/site scope; ordinaryseparateCLIs
+notautoattached. Nativeownership/lifecyclefirst, phonepairinglater.
+
+22:37observedGLM5.3HIGH/Vibe2.26.1 Sourceadapteralive/heartbeatbut no new
+providerprogress recently, noedits/commit/checks yet; do not callheartbeat useful
+work or successfuldelivery. Keep90minbound/currentrun, noretry/escalation for
+assumednetworkfailure. Savecombined94d gate stillrunning/no failure observed.
+NextactualSource/gateoutcome and current-codeOpusXHIGH review when ready.
+
 ## Active next feature: native lead ownership — 2026-10-24T22:29:18+02:00
 
 Main goal: Unio owns/tracks thelead CLI aswellasworkers. Current slice adds
