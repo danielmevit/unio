@@ -55,3 +55,16 @@ Opus review and lead assessment are still required. Frozen sequential four-suite
 check logs and exact revision/exits are recorded in the delivery summary. The
 in-process fault cases remain catchable bookkeeping injections, distinct from
 the existing suites' real process-exit faults.
+
+## Tie-break coverage restoration — 2026-10-24
+
+Review of 94c1d43 found its existing-wins tie (fff… vs new 111…) passes even
+when publish ignores the ID, because max() keeps the first tied candidate. The
+existing-wins case is kept and a new-wins fixed tie (existing 222… vs new eee…
+at one pinned stamp) is added; both compare against a fresh installed
+last_good(False). A behavioral mutation control binds an in-memory publish with
+only its ID tie-break removed to the installed globals and must fail exactly at
+the new-wins metadata identity assertion; the oracle last_good stays unmodified.
+The os.urandom pin now returns the fixed ID only for the first 16-byte request
+and delegates every other call (including atomic_private's 8-byte nonce) to the
+real function. Installer and quality registration remain byte-identical to e2f0afa.

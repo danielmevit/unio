@@ -193,15 +193,64 @@ with tempfile.TemporaryDirectory(prefix='save-attempt-reuse-') as directory:
     check('future archive selected with bytes intact', attempt()['last_good_id'] == archived
           and bytes_under(wrapper/'snapshot') == archived_bytes)
 
-    tied, tied_path = clone(2, 'mock-source', key='f'*32)
-    doc = json.loads((tied_path/'manifest.json').read_text())
-    doc['published_at'] = '2100-01-01T00:00:00+00:00'
-    (tied_path/'manifest.json').write_text(json.dumps(doc)+'\n')
-    # Pin only the generated publication ID; all other randomness remains real.
-    with patch.object(module, 'stamp', return_value='2100-01-01T00:00:00+00:00'), patch.object(module.os, 'urandom', return_value=bytes.fromhex('1'*32)):
-        new_id = success('existing ID deterministically wins publication tie', must_archive=True)
+    real_urandom = os.urandom
+    def pinned_save_id(value):
+        # Pin only the first 16-byte request (the save ID); delegate every other
+        # call, including atomic_private's 8-byte nonce, to the real function.
+        sizes = []
+        def fake(n):
+            sizes.append(n)
+            if n == 16 and sizes.count(16) == 1:
+                return bytes.fromhex(value)
+            return real_urandom(n)
+        return patch.object(module.os, 'urandom', side_effect=fake), sizes
+
+    def fixed_tie(when, existing_key, new_key, label, publisher=None, must_archive=False):
+        existing, existing_path = clone(4, 'mock-source', key=existing_key)
+        doc = json.loads((existing_path/'manifest.json').read_text())
+        doc['published_at'] = when
+        (existing_path/'manifest.json').write_text(json.dumps(doc)+'\n')
+        pin, sizes = pinned_save_id(new_key)
+        with patch.object(module, 'stamp', return_value=when), pin, patch.object(module, 'publish', publisher or module.publish):
+            new_id = success(label, must_archive=must_archive)
+        check(label + ' pins only the save ID', new_id == new_key and sizes.count(16) >= 1
+              and 8 in sizes and attempt()['last_good_id'] in (existing, new_key))
+        return existing, existing_path, new_id
+
+    tied, tied_path, new_id = fixed_tie('2100-01-01T00:00:00+00:00', 'f'*32, '1'*32,
+                                        'existing ID deterministically wins publication tie', must_archive=True)
     check('existing tie winner beats deliberately lower new ID',
           new_id == '1'*32 and attempt()['last_good_id'] == tied)
+    lower, _, new_id = fixed_tie('2101-01-01T00:00:00+00:00', '2'*32, 'e'*32,
+                                 'new ID deterministically wins publication tie')
+    check('new tie winner beats deliberately lower existing ID',
+          new_id == 'e'*32 and attempt()['last_good_id'] == 'e'*32 != lower)
+
+    # Behavioral mutation control: an in-memory publish lacking only its ID
+    # tie-break, bound to the installed globals, must fail the new-wins case.
+    # The oracle (real_last) remains the unmodified installed last_good.
+    tie_key = "key=lambda item: (item['published'], item['id']))\n"
+    anchor = "good = max((item for item in metadata if item['worker'] == worker),\n"
+    start = body.index(anchor); end = body.index(tie_key, start) + len(tie_key)
+    check('publish ID tie-break located exactly once', body.count(body[start:end]) == 1
+          and body[start:end].count('\n') == 2)
+    mutant_body = body[:start] + anchor + body[start+len(anchor):end].replace(
+        "(item['published'], item['id'])", "item['published']") + body[end:]
+    mutant_ns = {}
+    exec(compile(mutant_body.rsplit('sys.exit(main(sys.argv[1:]))', 1)[0], 'mutant', 'exec'), mutant_ns)
+    mutant = types.FunctionType(mutant_ns['publish'].__code__, module.__dict__, 'publish',
+                                mutant_ns['publish'].__defaults__)
+    label = 'mutant without ID tie-break'
+    try:
+        fixed_tie('2102-01-01T00:00:00+00:00', '3'*32, 'd'*32, label, publisher=mutant)
+    except AssertionError as error:
+        check('missing ID tie-break detected by fresh metadata identity',
+              str(error) == label + ' metadata identity'
+              and 'd'*32 in active_ids() and attempt()['save_id'] == 'd'*32
+              and attempt()['last_good_id'] == '3'*32
+              and real_last(str(store), 'mock-source', False)['id'] == 'd'*32)
+    else:
+        raise AssertionError('publish without ID tie-break escaped new-wins assertions')
 
     check('restore claim pin survives captures', original.exists())
     with patch.object(module, 'CAP_PROJECT', 0):
@@ -247,8 +296,9 @@ with tempfile.TemporaryDirectory(prefix='save-attempt-reuse-') as directory:
         check(fault + ' identity remains equivalent', attempt()['last_good_id'] == real_last(str(store), 'mock-source', False)['id'])
 
     archive = store/'archive'; archive.mkdir(exist_ok=True, mode=0o700)
-    wrapper = archive/tied; wrapper.mkdir(mode=0o700)
-    shutil.copytree(tied_path, wrapper/'snapshot')
+    duplicate = max(active_ids())  # Extra tie captures may have archived fff....
+    wrapper = archive/duplicate; wrapper.mkdir(mode=0o700)
+    shutil.copytree(store/duplicate, wrapper/'snapshot')
     check('duplicate active/archive refuses', create() != 0)
     shutil.rmtree(wrapper)
     bad = archive/('%032x' % 99); bad.mkdir(mode=0o700)
