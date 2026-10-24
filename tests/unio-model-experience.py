@@ -5,6 +5,7 @@
 import copy
 import datetime
 import json
+import importlib.util
 import os
 from pathlib import Path
 import stat
@@ -13,6 +14,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 SOURCE = Path(__file__).resolve().parents[1]
 CLI = SOURCE / 'tools/model-experience.py'
@@ -182,6 +184,88 @@ class ExperienceSuite(unittest.TestCase):
             cmd.extend(['--project', str(project)])
         cmd.extend(args)
         return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+
+    def record_args(self, *extra):
+        return ('record', 'codex', 'DEADLINE', '--model', 'fixture', '--route',
+                'codex', '--effort', 'low', '--task-type', 'feature',
+                '--outcome', 'accepted', *extra)
+
+    def test_11_record_deadline_forwarding_and_invalid_values(self):
+        spec = importlib.util.spec_from_file_location('experience', CLI)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        for words, seconds in [((), 30), (('--timeout', '60'), 60),
+                               (('--timeout', '1.25'), 1.25), (('--timeout', '300'), 300)]:
+            args = module.make_record_parser().parse_args(self.record_args(*words)[1:])
+            fleet = mock.Mock()
+            fleet.observe.return_value = (None, 'launch_failed')
+            with mock.patch.object(module, 'load_fleet_status', return_value=fleet), \
+                 mock.patch.object(module.time, 'monotonic', return_value=100), \
+                 self.assertRaises(SystemExit):
+                module.cmd_record(str(self.runner), self.project, args)
+            self.assertEqual(fleet.observe.call_args.args[-1], 100 + seconds)
+        for value in ('0', '-1', '0.99', '300.01', '301', 'NaN', 'nan', 'inf',
+                      '-inf', 'Infinity', '1e999', 'bad', '', ' 60', '60 ', '1_0'):
+            with self.subTest(value=value):
+                result = self.run_cli(*self.record_args('--timeout=' + value))
+                self.assertEqual(result.returncode, 2, result)
+                self.assertIn('--timeout', result.stderr)
+                self.assertFalse((self.root / 'calls.jsonl').exists())
+                self.assertFalse((self.project / 'coord/experience').exists())
+        for value in ('0', '61', '1.5', 'NaN'):
+            result = self.run_cli('suggest', '--task-type', 'feature', '--timeout', value)
+            self.assertEqual(result.returncode, 2)
+        for words, expected in [((), 10), (('--timeout', '1'), 1), (('--timeout', '60'), 60)]:
+            result = self.run_cli('suggest', '--task-type', 'feature', '--json', *words)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)['timeout_seconds'], expected)
+
+    def test_12_real_timeout_owned_group_and_slow_success(self):
+        self.results['codex/DEADLINE'] = make_result(task='DEADLINE')
+        self.save_results()
+        before = self.results_db.read_bytes()
+        # Both parent and descendant ignore TERM; descendant closes its pipes.
+        script = RUNNER_SCRIPT.replace("    worker = sys.argv[2]", """
+    import signal, subprocess, time
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    child = subprocess.Popen([sys.executable, '-B', '-c',
+        'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(20)'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    (root / 'pids.json').write_text(json.dumps([os.getpid(), child.pid]))
+    time.sleep(1.5)
+    worker = sys.argv[2]""")
+        self.runner.write_text(script)
+        started = time.monotonic()
+        result = self.run_cli(*self.record_args('--timeout', '1'))
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertIn('native result observation timed out after 1 seconds', result.stderr)
+        self.assertIn('--timeout', result.stderr)
+        self.assertFalse((self.project / 'coord/experience').exists())
+        self.assertEqual(self.results_db.read_bytes(), before)
+        for pid in json.loads((self.root / 'pids.json').read_text()):
+            status = Path('/proc') / str(pid) / 'stat'
+            self.assertTrue(not status.exists() or status.read_text().split()[2] == 'Z', pid)
+        result = self.run_cli(*self.record_args('--timeout', '3'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.results_db.read_bytes(), before)
+        for pid in json.loads((self.root / 'pids.json').read_text()):
+            status = Path('/proc') / str(pid) / 'stat'
+            self.assertTrue(not status.exists() or status.read_text().split()[2] == 'Z', pid)
+        self.assertEqual(json.loads(self.run_cli('show', '--json').stdout)['records'], 1)
+
+    def test_13_large_bound_does_not_relax_evidence(self):
+        for result in (make_result(task='DEADLINE', stale=True),
+                       make_result(task='DEADLINE', schema_version=2),
+                       {'schema_version': 1}):
+            self.results['codex/DEADLINE'] = result
+            self.save_results()
+            before = self.results_db.read_bytes()
+            refused = self.run_cli(*self.record_args('--timeout', '300'))
+            self.assertEqual(refused.returncode, 2)
+            self.assertNotIn('timed out', refused.stderr)
+            self.assertFalse((self.project / 'coord/experience').exists())
+            self.assertEqual(self.results_db.read_bytes(), before)
 
     def test_01_installed_bundle_and_help(self):
         """Journey 1: Real copied standalone install & native project detection."""
