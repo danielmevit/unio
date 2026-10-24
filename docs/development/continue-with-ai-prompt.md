@@ -1,5 +1,62 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Resumed verification and independent save correction — 2026-10-24T21:06:16+02:00
+
+Codex allowance reset: native99primary/37weekly20:51local. OpusLOW correction
+544cfad4de33563022e6a4e643b0086b86ac0241 completedCLI/Source/native0 and4/4PASS0,
+17installed tests404.9s. Its first fixture-string test failure is preserved and
+corrected; scope fourpaths/twoinstallerfunctions. No final acceptance yet.
+
+Old follow-up Mistral prep audit-review-dispatch-final-vibe-high-20261024
+incorrectly reused the OLD TRANSPORT task constant; wrapper hash check refused
+before CLI/model. Native1 is a LOCAL setup failure, not model quality. It created
+a second delivery/run under the old transport task; its latest canonical task
+result now reflects that failed run. Never restore/erase/relabel it. The original
+transport audit remains exact9431 with its original actualSource/native/checks0
+and APPROVE artifact: pinned delivery2c4ff00ec1954e4ba0f7da6b4ee7ef73. Its format,
+expected binding/current code hashes were revalidated0; see preserved-transport-audit.json.
+A later preflight pipeline rejected locally2 because its canonical Vibe receipt
+parent was absent, again0CLI/model calls. Both failures are preserved separately.
+
+CURRENT Mistral/Vibe2.26.1/GLM5.3HIGH audit:
+audit-review-dispatch-vibe-ready-20261024, task
+AUDIT-REVIEWDISPATCH-VIBE-READY-0524-20261024. Sole controller task identity comes
+from profile.json; actual task hash/artifact parser/canonical bounds/private0700
+receipt directory passed preflight. Actual canonical CLI call observed21:01:47.
+Read fresh source/model-receipts/controllerJSON for result. Old preflight
+controllers/gates have stopped; do not rerun them. One prep paragraph used a
+single-# section after artifacts and was caught/corrected by the actual parser
+before any dispatch. This is an operator setup issue, not model failure.
+
+CURRENT candidate gate ONLY managed-lead-ready-audited-gate-20261024. It waits
+new544 current-code audit actualCLI/Source/native/verify0 and APPROVE; then
+combines it with unchanged9431 by exact disjoint source proof and pins the
+original transport delivery/report hash. Later failed replay remains in history
+and is never presented as the latest task success. Gate is offline/private and
+never accepts/pushes/installs/publishes. Lead final assessment still required.
+
+PARALLEL new authorized QoL correction, separate from that frozen candidate:
+ChatGPT/CodexCLI0.163.0/gpt-6.1-solLOW task
+SAVE-ATTEMPT-LOCK-REUSE-SOL-LOW-0524-20261024, worker
+codex-save-attempt-reuse-low-20261024 on accepted publiccd0b3a2. Pipeline
+save-attempt-lock-reuse-sol-low-20261024, controllerPID1704050. Source actual
+start must be observed, not inferred from preparation. Entire SAVES_PY helper
+provedbyteidentical to544. Scope6helperfunctions plus newinstalledtest, onequality
+registration line/doc/fragment. Goal eliminate redundant successful postpublish
+metadata work under REAL lock lifetime; preserve metadata-only last_good semantics
+for corrupt bodies/future times/ties, deepvalidation/caps/pins/failures/restore.
+No cache/cap/timeout/schema/real-store changes. Estimate1–2h+review. Native4checks
+include4sequential installed suites via frozen private fixture. Config freezes
+CodeXLOW Source and independentClaude/Opus5.5XHIGH review routes before grant;
+realgroups/lead, narrowtempmedium/STOP/restorelow apply. No new perf native review
+or gate yet. Do not fold unfinished perf into the current frozen candidate.
+
+Main/public/installed23 remaincd0b3a2; newest official23 rechecked20:51. No24
+push/install/release authorization. Vecto/UI untouched; private studies complete.
+Next actual new review/gate/leadassessment/privateintegration, and separately
+assess saveSource/current-code review. Nativeownedlead remains after foundations.
+
+
 ## Active-job recovery checkpoint — 2026-10-24T18:16:44+02:00
 
 Latest Codex capacity4primary/38weekly at18:13local; reset20:26local. No Codex
