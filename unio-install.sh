@@ -20414,7 +20414,7 @@ No failed handshake starts a provider, queues or retries. Uncertain grant
 consumption is never restored. Reports remain append-only; stderr remains the
 failure channel if report storage fails.
 
-Related helper deadlines (deliberately unchanged; installer symbols are stable
+Related helper deadlines (independent bounds; installer symbols are stable
 search anchors):
 
 | Helper / source | Bound | Configurable? |
@@ -20423,13 +20423,13 @@ search anchors):
 | `unio-install.sh`: `CAPTURE_SECONDS`, `Budget`, `observe`, `RESTORE_SECONDS` | Other save observations 30 seconds; restore 120 seconds | Fixed constants; capture override does not globally change these |
 | `unio-install.sh`: `spawn_owned_provider`, `_await_byte` | Provider session readiness 2 seconds; owned supervisor acknowledgement 15 seconds | Fixed |
 | `unio-install.sh`: `quality` Python `git`, `snapshot`, `cmd_evidence`, `handoff` | Native result/handoff and result-start snapshot have no enclosing wall deadline; Git subprocess has no timeout | No native result deadline option |
-| `tools/model-experience.py`: `RECORD_DEADLINE_SECONDS`, record's `fleet.observe` | Native result observation for recording: 30 seconds | Fixed |
+| `tools/model-experience.py`: `RECORD_DEADLINE_SECONDS`, record's `fleet.observe` | Native result observation for recording: default 30 seconds | `experience record --timeout`, finite numeric seconds 1..300 |
 | `tools/model-experience.py`: `LOCK_WAIT_SECONDS` | Experience store lock wait: 5 seconds | Fixed |
 | `tools/model-experience.py`: `SUGGEST_TIMEOUT_DEFAULT`, suggest's `fleet.collect` | Suggest observation: default 10 seconds | `experience suggest --timeout`, 1..60 |
 
 A separate follow-up should measure result-start/result snapshot cost on owned
 slow-storage fixtures, then consider bounding native result/Git work and aligning
-experience's 30-second observation with that contract. Extending admission alone
+experience's explicitly bounded observation with that contract. Extending admission alone
 does not fix or diagnose an unrelated result helper delay. No expensive Git or
 status operation was added to the admission handshake.
 
@@ -21962,7 +21962,7 @@ no provider call, no agent execution, no human acceptance.
 
 commands:
   record WORKER TASK --model MODEL --route ROUTE --effort EFFORT
-        --task-type TYPE --outcome OUTCOME [--corrections N]
+        --task-type TYPE --outcome OUTCOME [--corrections N] [--timeout SECONDS]
         record one final operator assessment of one native task revision
   show [--task-type TYPE] [--json]
         show stored evidence grouped by profile
@@ -22560,6 +22560,11 @@ def agent_admission(report, agent):
 
 
 def cmd_record(runner, root, args):
+    if re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', args.timeout) is None:
+        fail('--timeout must be finite numeric seconds in 1..300')
+    timeout = float(args.timeout)
+    if not math.isfinite(timeout) or not 1 <= timeout <= 300:
+        fail('--timeout must be finite numeric seconds in 1..300')
     for label, value in (('worker', args.worker), ('task', args.task)):
         if not ident_ok(value):
             fail('invalid ' + label + ' ID: '
@@ -22581,8 +22586,11 @@ def cmd_record(runner, root, args):
         corrections = int(args.corrections)
     fleet = load_fleet_status()
     obj, reason = fleet.observe(runner, str(root), ['result', args.worker, args.task],
-                                time.monotonic() + RECORD_DEADLINE_SECONDS)
+                                time.monotonic() + timeout)
     if obj is None:
+        if reason == 'timeout':
+            fail('native result observation timed out after {:g} seconds; nothing was recorded; '
+                 'use record --timeout SECONDS (1..300) to explicitly allow more time'.format(timeout))
         fail('native result unavailable (' + reason + '); nothing was recorded')
     process_facts, validation_facts, revision, observed_at = valid_result(
         obj, args.worker, args.task)
@@ -22878,7 +22886,7 @@ def resolve_root(project):
 
 
 RECORD_OPTIONS_VALUED = {'--model', '--route', '--effort', '--task-type',
-                         '--outcome', '--corrections', '--project'}
+                         '--outcome', '--corrections', '--timeout', '--project'}
 RECORD_OPTIONS_FLAGS = {'-h', '--help'}
 SHOW_OPTIONS_VALUED = {'--task-type', '--project'}
 SHOW_OPTIONS_FLAGS = {'--json', '-h', '--help'}
@@ -22902,6 +22910,8 @@ def make_record_parser():
                    metavar='TYPE', help='exact task type label')
     p.add_argument('--outcome', required=True, metavar='OUTCOME',
                    help='one of: ' + ', '.join(OUTCOMES))
+    p.add_argument('--timeout', default=str(RECORD_DEADLINE_SECONDS), metavar='SECONDS',
+                   help='native result observation bound, finite numeric seconds 1..300 (default: 30)')
     p.add_argument('--corrections', metavar='N',
                    help='operator-reported correction count 0..10000 (missing means unknown, not zero)')
     p.add_argument('--project', metavar='PATH',

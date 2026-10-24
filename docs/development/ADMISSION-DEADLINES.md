@@ -16,7 +16,7 @@ No failed handshake starts a provider, queues or retries. Uncertain grant
 consumption is never restored. Reports remain append-only; stderr remains the
 failure channel if report storage fails.
 
-Related helper deadlines (deliberately unchanged; installer symbols are stable
+Related helper deadlines (independent bounds; installer symbols are stable
 search anchors):
 
 | Helper / source | Bound | Configurable? |
@@ -25,13 +25,13 @@ search anchors):
 | `unio-install.sh`: `CAPTURE_SECONDS`, `Budget`, `observe`, `RESTORE_SECONDS` | Other save observations 30 seconds; restore 120 seconds | Fixed constants; capture override does not globally change these |
 | `unio-install.sh`: `spawn_owned_provider`, `_await_byte` | Provider session readiness 2 seconds; owned supervisor acknowledgement 15 seconds | Fixed |
 | `unio-install.sh`: `quality` Python `git`, `snapshot`, `cmd_evidence`, `handoff` | Native result/handoff and result-start snapshot have no enclosing wall deadline; Git subprocess has no timeout | No native result deadline option |
-| `tools/model-experience.py`: `RECORD_DEADLINE_SECONDS`, record's `fleet.observe` | Native result observation for recording: 30 seconds | Fixed |
+| `tools/model-experience.py`: `RECORD_DEADLINE_SECONDS`, record's `fleet.observe` | Native result observation for recording: default 30 seconds | `experience record --timeout`, finite numeric seconds 1..300 |
 | `tools/model-experience.py`: `LOCK_WAIT_SECONDS` | Experience store lock wait: 5 seconds | Fixed |
 | `tools/model-experience.py`: `SUGGEST_TIMEOUT_DEFAULT`, suggest's `fleet.collect` | Suggest observation: default 10 seconds | `experience suggest --timeout`, 1..60 |
 
 A separate follow-up should measure result-start/result snapshot cost on owned
 slow-storage fixtures, then consider bounding native result/Git work and aligning
-experience's 30-second observation with that contract. Extending admission alone
+experience's explicitly bounded observation with that contract. Extending admission alone
 does not fix or diagnose an unrelated result helper delay. No expensive Git or
 status operation was added to the admission handshake.
 
