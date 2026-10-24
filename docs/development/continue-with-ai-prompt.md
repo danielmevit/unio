@@ -1,5 +1,19 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Lead ownership belongs to the phone/desktop roadmap — 2026-10-24T22:45:55+02:00
+
+Owner correctly connects currentleadbackend tophone/Windowsroadmap. Recorded
+sharedsessioninfrastructure relationship in nativeintegrationdecisions:
+24managedsession →25sessionphone →26Windows →27macOS proposed. Ownershipclaim
+isoneprerequisite, notwhole24/desktopapp; operatorcontrolandAIleadrolesunchanged.
+
+ActualGLM/VibeSource22:44inspection: adapter+VibeCLI processesalive/sleeping,
+nativeevents lastmodified22:30:42, noedits/commit. No confirmedquota/network/
+reasoningfailure, noretry/effortraise. Read lead-liveness-inspection.json in
+currentSourcepipeline; preserve90minbound. Currentnewfeaturedeliverypending,
+OpusXHIGH reviewnotstarted. Savecombinedgate22:44stillrunning/nofailureobserved.
+Source/acceptance/private/public distinctions remain. Nextactualoutcomes.
+
 ## Dashboard direction clarified — 2026-10-24T22:38:53+02:00
 
 Extend existing bridge/ dashboard/localAPI for the same managedlead session;

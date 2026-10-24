@@ -97,3 +97,19 @@ UX direction, not a claim that UI integration has shipped.
   edits. The current ownership worker has no bridge/ or site/ scope. Phone
   pairing and remote session control follow later; no whole-PC remote desktop
   or new desktop shell is required for this stage.
+
+## Relationship to phone and desktop milestones — 2026-10-24T22:45:55+02:00
+
+Managed lead ownership and lifecycle are shared session infrastructure for the
+existing browser dashboard, later session-scoped phone access and native desktop
+clients. The operator remains in control; ownership means Unio holds the exact
+process/session connection, not that Unio replaces the lead's reasoning role.
+
+The current proposed VERSION-PLAN sequence is0.5.24 usable managed lead session,
+0.5.25 session-scoped phone access,0.5.26 native Windows and0.5.27 macOS. Ownership
+is one prerequisite within24, not completion of24 or any desktop/mobile app.
+Persistent process launch/control and the existing dashboard connection follow
+its claim primitive. Phone access additionally needs explicit pairing and remote
+authorization; native Windows needs platform process/path/installation work and
+its own trial/i18n scope. Share session semantics and dashboard UX where suitable
+without claiming an app framework, Windows backend or phone connection is built.
