@@ -3,48 +3,70 @@
 Updated 2026-10-23T19:50:02+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
 ~/.config/unio/OWNER-WORKFLOW.md before acting.
 
-## Active private development — 2026-10-24T10:31:07+02:00
+## Active private development — 2026-10-24T11:54:21+02:00
 
-Published/main/installed stable0.5.23 cd0b3a2; no0.5.24 main push/release/install
-authorized. Private integration dbf96af retains staged8190057 plus its handoff.
-Final output fix is saved separately at0e3b63813ef56e2742fecc28eb29c5ca90deb539.
-Its originalLOW Source1/native1 hit actualCodexquota at02:33/02:35 after commit;
-focused new matrix/diff/AST0, fullsuite unfinished. Never relabel that attempt.
-Original review/gate observers made0calls, so no current-code approval or gatePASS.
+Published/main/installed stable0.5.23 cd0b3a2. No0.5.24 main push, release or
+global installation is authorized. Lead integration branch retains staged8190057
+plus guidance commits. Latest separately reviewed candidate is
+9758f4224a73d8ee49dd3a85cfbefd8830e8f2a4 in
+wt/claude-managed-lead-tests-low-20261024. Do not duplicate its completed Source.
 
-Fresh capacity10:26 primary99%/weekly68%. Native saved-code completion now in
-codex-managed-lead-output-recovery-low-20261024, task
-MANAGED-LEAD-OUTPUT-RECOVERY-SOL-LOW-0524-20261024; ChatGPT subscription/
-CodexCLI0.163.0/gpt-6.1-sol LOW, effective Unknown. No code edits expected if
-checks pass. One focused companion, actualcodexaccount/lead/grant/tempmedium,
-STOP retained; controller restores low. Pipeline:
-tmp/unio-next/managed-lead-output-recovery-low-20261024.
+The managed-lead prototype now retains uncertainty when matching output arrives
+before a rejected acknowledgement, including closed-archive and oversized-output
+paths. SolLOW b89aa67 fixed the runtime ordering; OpusXHIGH confirmed that fix
+and found a test assertion swallowed by the fake transport's exception handler.
+Conditional owner takeover used Claude subscription/ClaudeCode2.1.309/
+claude-opus-5-5 LOW. Source0/native0/native4checksPASS0, commit9758f42 changes
+only tests/unio-managed-lead.py. Runtime is byte-identical to b89aa67. LOW was
+sufficient, no escalation. Preserve original Sol quota failures and prior reviews.
 
-Fresh independent-opus-review observer requests ClaudeCode2.1.309/Opus5.5XHIGH
-only after Source/native/verify0; includes complete frozen source snapshots and
-hashes. machine-gate observer waits actualnativeAPPROVE0, freezes exactworker,
-runs direct backend suite plus full quality-check in private project tmpfs clone.
-Both make no acceptance/merge/push/install/publication decision. Check actual
-observer/source/controller/full-gate JSONs; do not duplicate active work.
+Independent final other-lab review: Mistral subscription/Vibe2.26.1/
+mistral-medium-3-5/HIGH via --thinking high, CLI0/adapter0/native review0,
+APPROVE with valid empty findings. Full frozen source116244bytes accompanied
+native diff material, separately hashed. Requested settings remain effective
+Unknown. One external reviewer plus existing lead; Opus authored the last fix,
+so this final external reviewer appropriately uses another AI lab.
 
-Read the earlier preserved milestones and
-[integration decisions](MANAGED-LEAD-INTEGRATION-DECISIONS.md). Mediumc46170f
-fixed7confirmed issues; nextOpus review found1matching-output/rejection gap,
-addressed by saved0e3b638. Nonblocking typed-error API/transient recovery/edge-I/O
-remain explicit. Backend is internal, no installed usablelead command. After
-actualcurrent review/gatePASS, existing lead assesses and merges exactcandidate
-privately; then implement ownedtransport/nativeleadclaim. No public24authority.
+Pipeline tmp/unio-next/managed-lead-test-takeover-opus-low-20261024 contains
+source/controller/verification proof, independent-mistral-review and machine-gate.
+Lead-negative-controls.json confirms six deterministic old/corrected tests:
+unchanged runtime passes both; injected wrong-turn activity and callback assertion
+are missed by old tests and caught by corrected tests. No provider calls or source
+changes. An initial operator fault-injection placement error is preserved separately.
 
-Separate review-history correction755cb060 has its own OpusAPPROVE; bundled-guide
-b5a1b0e passed native4checks and outside-guide identity proof. Old870e649 gate1
-packaging failure and4a744/819 intentionally interrupted gates(-15) stay unchanged.
-Mistral/Vibe2.26.1 GLM5.3HIGH nativeplan7280cad Source/native0, verify1 fromlead's
-reportonly+commit contradiction; document/scopechecks0. Local saved-artifact task
-Source/native/verify0 used0AIcalls; originalproposal stays context, not code.
-Save60s helper timeouts/LOW experience record2timeout remain operational backlog.
-Classified research/privatehub e5be535 and stable23 backup complete. Mercurytests
-closed. Vecto read-only. Read current OWNER-WORKFLOW before final acceptance:
-one externalOpus reviewer plus existing lead. No paidfallback or recursiveworkers.
+Full quality gate is RUNNING from11:42:35+02 on exact9758f42/tree76fb311c.
+It uses an isolated exact Git clone/private project tmpfs, zero AI calls, direct
+backend suite then bash tools/quality-check.sh; estimate45–60minutes. Read actual
+machine-gate/full-gate.json and log. Never infer PASS from an active process.
+Final existing-lead acceptance/private integration waits actual gate completion.
+No worker is still invoking a provider at this checkpoint; reallead/account/lowtier
+and STOP retained. Failed/stale reviews and original failures remain unchanged.
+
+Current personal workflow also contains conditional Opus takeover after repeated
+unresolved Sol corrections; read [the rule](../ai/REVIEWER-LED-CORRECTIONS.md).
+Sol remains ordinary correction defaultLOW. This is guidance, not native routing.
+
+Helper diagnosis: Mistral subscription/Vibe2.26.1/GLM5.3/HIGH Source/native/verify0,
+commitcabb1db in wt/vibeglm-helper-latency-20261024. Read
+HELPER-LATENCY-2026-10-24.md there plus raw receipts under
+helper-latency-profile-vibe-20261024. Repeated save-store traversal on v9fs is
+measured expensive; full-save105–125seconds is a MODEL, not completed timing.
+Under-load result/experience contention is a hypothesis from one idle19.42s
+sample. Some original Sources failed quota/setup: do not call them all successful.
+Lead must inspect exact lock lifetime before accepting cached-identity proposal:
+publish releases its store lock before current write_attempt runs. Do not blindly
+raise limits or change save protections. No performance code correction dispatched.
+
+Separate review-history755cb060 has its own OpusAPPROVE; bundled-guideb5a1b0e
+passed4nativechecks and outside-guide identity proof; current full gate includes
+both. Old packaging failure1 and deliberate gate stops-15 remain unchanged.
+Native-plan7280cad Source/native0 but verify1 was a lead report-only/commit contract
+contradiction; separate local fixed artifact validation0 made no AI call.
+[Integration decisions](MANAGED-LEAD-INTEGRATION-DECISIONS.md) correct account-alias,
+private dependency, provider-ID and strict-schema assumptions. Native owned
+transport/lead claim remain to implement; this backend alone is not usable full
+lead continuity. Research/privatehub e5be535 and stable23 backup complete; Mercury
+trials closed. Vecto read-only. Do not publish or install an unfinished24.
 
 ## Release delivery complete
 
@@ -154,11 +176,12 @@ continuity. Do not turn a testing-model exercise into the main milestone.
 
 ## Remaining priorities
 
-1. Explicit recovery/eligibility for pre-provider refusals and context-less legacy
-   history; reviewed result payload/deadline bounds. Two installed lead mock probes
-   confirmed conservative same-revision nonready behavior, actualSource0preserved.
-   Keep history/genuine change requests; no deletion, fake commits or automatic retry.
-   Estimate4–8h for a first scoped slice; refresh from implementation evidence.
+1. Finish the running exact9758f42 gate and existing-lead acceptance. The narrow
+   pre-provider-refusal eligibility correction is implemented/reviewed and included
+   in this candidate; do not reimplement it. Legacy contextless history still blocks
+   conservatively; no deletion, fake commits or automatic retry. Then complete the
+   owned transport/native lead claim, and a separately scoped save-cost correction
+   if the measured diagnosis survives the locking/correctness assessment.
 2. Remaining current-review consumers and useful stale/unsafe/background reasons.
 3. Effort startup/live/pending/effective capability reasons separate from tier;
    unified reviewer grammar, explicit binary/ignored analysis contracts, bounded
