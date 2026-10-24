@@ -15,13 +15,25 @@ it retains the existing aggregate history semantics. `dispatch_exit=0` is a
 necessary condition for command success, not final acceptance: historical current
 change requests, failures or incomplete contracts can still block the command.
 
-A missing/consumed owner grant or partial admission returns 2, including when
-older approvals exist. Admitted attempts stopped before invocation also count as
-refused. Invalid child evidence or an invoked nonzero process/REQUEST-CHANGES
-returns 1 unless this same collection also contains a refusal (which takes exit
-2 precedence). An unknown verdict without a process failure, drift, unavailable
-snapshot or incomplete material returns 2. Signals retain their signal exit.
-No refused attempt authorizes a provider call or consumes a second grant.
+The final CLI exit is 1 whenever the historical summary contains a current
+recorded REQUEST-CHANGES, including partial/refused dispatches or finalizer
+failure. Otherwise a missing/consumed owner grant, partial admission, invalid
+child evidence or actual reviewer process failure returns 2. Process failures
+keep their real exit and failed state in receipts; they are not change requests.
+Admitted attempts stopped before invocation count as refused. Unknown verdicts,
+drift, unavailable snapshots and incomplete material also return 2. Signals
+retain their signal exit. No refused attempt authorizes a provider call or
+consumes a second grant.
+
+`dispatch_exit` describes this collection only: 2 for refusal, invalid child
+or process failure; otherwise 1 for an actual REQUEST-CHANGES; 0 only for a
+complete approving dispatch; 2 for other incomplete outcomes. Historical
+change requests determine final CLI exit 1 independently of this field.
+
+If finalization fails or its output has the wrong collection identity, state,
+field count, numeric ranges or inconsistent totals/readiness, counters remain
+`unknown` and `dispatch_exit=2`. Successfully validated helper output alone
+supplies numeric counters. An Unknown invocation count never asserts zero calls.
 
 Receipt and collection schemas are unchanged. Proven pre-provider refusals stay
 visible as unknown history without permanently vetoing a later complete batch.
@@ -30,8 +42,12 @@ contracts keep their conservative aggregate treatment. No history is deleted,
 no consent is synthesized, and no lab identity or human acceptance is inferred.
 
 The installed offline regression suite is `tests/unio-review-collection.py`.
-Its seven cases cover granted success and replay, old approvals followed by a
-fresh refusal, partial shared-group admission, actual process failure and
-REQUEST-CHANGES, invalid child evidence, drift/material failure, STOP and cleanup.
-Run it using the lead-provided private fixture wrapper for this frozen task;
-no live provider invocation or full Source gate is needed.
+Cases cover granted success and replay, current changes followed by refusal,
+partial shared-group admission with approval or changes, process failure,
+invalid child evidence, malformed/mismatched finalizer output, finalizer failure,
+admitted STOP before invocation, drift/material failure and signal cleanup.
+Fault injection modifies only disposable installed fixture scripts; production
+has no fault switches. Tests assert offline call logs, unchanged historical
+receipts and native slot cleanup. Run using the lead-provided private fixture
+wrapper for this frozen task; no live provider invocation or full Source gate
+is needed.

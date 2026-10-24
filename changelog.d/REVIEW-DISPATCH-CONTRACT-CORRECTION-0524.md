@@ -1,0 +1,1 @@
+Restore review-set exit 1 for current recorded change requests and exit 2 for infrastructure/process failures, while preserving fresh-dispatch approval requirements. Validate finalizer identity and counters before reporting them; add installed offline fault and admitted-STOP regressions.
