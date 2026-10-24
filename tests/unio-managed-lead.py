@@ -896,6 +896,97 @@ sys.exit(1)
     print('ok direct unsafe destination checks and bounded nonblocking FIFO lock refusal', flush=True)
 
 
+def output_rejection_regressions(base):
+    # Inject exact active output before send_turn returns. Generic lifecycle
+    # activity is not a proven start and must retain unknown delivery.
+    for kind in ml.OUTPUT_KINDS:
+        for reply in ('rejected', 'accepted', 'uncertain'):
+            for failure in ('none', 'append', 'activity-save', 'output-save'):
+                h = Harness(base)
+                data = {'event': 'provider_notice'} if kind == 'lifecycle' else {'delta': 'activity'}
+                def send(facts):
+                    h.transport.calls.append(dict(facts))
+                    args = {k: facts[k] for k in ('session_id', 'generation', 'turn_id')}
+                    append, save = ml._append_owned, h.session._save
+                    saves = []
+                    def fail_append(*args):
+                        raise ml.Refusal('injected append failure before any bytes')
+                    def save_activity():
+                        saves.append(True)
+                        if len(saves) == (1 if failure == 'activity-save' else 2):
+                            raise ml.Refusal('injected state save failure')
+                        return save()
+                    try:
+                        if failure == 'append':
+                            ml._append_owned = fail_append
+                        if failure in ('activity-save', 'output-save'):
+                            h.session._save = save_activity
+                        observe = lambda: h.session.observe_output(**args, kind=kind, data=data)
+                        if failure == 'none':
+                            observe()
+                        else:
+                            refuses(observe)  # even swallowed errors cannot free activity
+                    finally:
+                        ml._append_owned, h.session._save = append, save
+                    return {'status': reply}
+                h.transport.send_turn = send
+                result = h.submit('output-ordering')
+                assert result['state'] == ('uncertain' if reply == 'rejected' else reply)
+                reopened = h.open()
+                view = reopened.status(session_id=h.sid)
+                assert view['state'] == ('running' if reply == 'accepted' else 'outcome_unknown')
+                assert view['turn']['delivery'] == ('accepted' if reply == 'accepted' else 'unknown')
+                assert view['generation'] == 1 and not view['history']
+                assert reopened.submit_next_turn(session_id=h.sid, generation=1,
+                    request_id='output-ordering', text='next turn input') == result
+                refuses(reopened.submit_next_turn, session_id=h.sid, generation=1,
+                        request_id='different', text='x')
+                assert len(h.transport.calls) == 1
+                if failure in ('append', 'activity-save'):
+                    assert h.session.journal_path.read_bytes() == b''
+                else:
+                    assert h.session.journal_path.read_bytes()
+                terminal = lambda: reopened.observe_terminal(session_id=h.sid,
+                    generation=1, turn_id=result['turn_id'], status='failed', exit_code=29)
+                if failure == 'output-save':
+                    assert view['journal_status'] == 'journal_disagreement'
+                    assert 'terminal saved' in refuses(terminal)
+                else:
+                    terminal()
+                assert h.open().status(session_id=h.sid)['last_turn']['exit_code'] == 29
+                assert reopened.submit_next_turn(session_id=h.sid, generation=2,
+                    request_id='output-ordering', text='next turn input') == result
+                assert len(h.transport.calls) == 1
+                # Only matching terminal reconciliation permits another call.
+                h.transport.send_turn = lambda facts: (h.transport.calls.append(dict(facts))
+                                                       or {'status': 'accepted'})
+                reopened.submit_next_turn(session_id=h.sid, generation=2,
+                                          request_id='after-terminal', text='x')
+                assert len(h.transport.calls) == 2
+    # A separate observing controller persists activity before append failure;
+    # the submitting controller must read it even with an empty journal.
+    h = Harness(base)
+    def send_other(facts):
+        h.transport.calls.append(dict(facts))
+        observer = h.open()
+        append = ml._append_owned
+        def fail_append(*args):
+            raise ml.Refusal('injected empty journal')
+        ml._append_owned = fail_append
+        try:
+            refuses(observer.observe_output, session_id=h.sid, generation=1,
+                    turn_id=facts['turn_id'], kind='lifecycle', data={'event': 'notice'})
+        finally:
+            ml._append_owned = append
+        return {'status': 'rejected'}
+    h.transport.send_turn = send_other
+    result = h.submit('other-observer')
+    assert result['state'] == 'uncertain'
+    assert h.open().status(session_id=h.sid)['state'] == 'outcome_unknown'
+    assert not h.session.journal_path.read_bytes() and len(h.transport.calls) == 1
+    print('ok output-before-reply matrix: all kinds, reopen, idempotence, reconciliation and save/append failures', flush=True)
+
+
 def main():
     base = Path(tempfile.mkdtemp(prefix='unio-managed-lead-'))
     os.chmod(base, 0o700)
@@ -903,6 +994,7 @@ def main():
         run_suite(base)
         correction_regressions(base)
         medium_review_regressions(base)
+        output_rejection_regressions(base)
     finally:
         shutil.rmtree(base, ignore_errors=True)
     print('all managed lead-session core checks passed')

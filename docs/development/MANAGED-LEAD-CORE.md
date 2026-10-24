@@ -191,3 +191,26 @@ terminal and owner events, checks reopen/status/output and terminal failure
 preservation, deletes every required state/nested key, covers reply/observation
 orderings, directly tests replacement destination defenses, and isolates the
 unsafe FIFO lock probe in a subprocess with a five-second timeout.
+
+## Matching output before a send reply — focused correction
+
+A valid matching active `agent_message`, `command_output` or `lifecycle`
+observation received while submission is pending first saves `outcome_unknown`,
+with delivery still `unknown`, before attempting its journal append. This is
+activity, not proof that generic lifecycle output means inference is running.
+A contradictory rejected reply records an uncertain result and retains that
+active turn. Accepted replies may establish running delivery; uncertain replies
+retain uncertainty. Matching start/terminal observations retain their prior
+semantics. Reopen and identical request IDs never resend; other IDs refuse until
+matching terminal reconciliation. Local activity evidence also survives a failed
+uncertainty save during the in-flight call, so a caught observation error on that
+controller cannot authorize release merely because the journal is empty.
+
+The focused regressions cover all three output kinds before accepted, uncertain
+and rejected replies, failed pre-append activity saves, empty failed appends,
+post-append save failures, reopen, duplicate suppression and terminal release.
+`Refusal` is a controlled error, not a guarantee of no effects: terminal state
+can already be durable when journal failure is reported. A typed committed-error
+API, transient journal-error recovery and remaining edge-path I/O wrapping
+(including path inspection and creation cleanup) are explicitly deferred. This
+change does not launch or integrate a native lead or grant review acceptance.

@@ -7,3 +7,4 @@ Correction: bind persisted identity/turn relationships, report journal/metadata
 mismatches without repair, and replace state using exclusive private temp files;
 add controlled corruption, unsafe-file and persistence-failure regressions.
 Independent-review correction: validate complete state before replacement, preserve conflicting observations as uncertain, distinguish journal failures from archive caps, reserve closing-marker space, and bound external lifecycle integers; add direct/fault-injection regressions and document unrepaired crash windows.
+Focused correction: preserve matching pending output activity across contradictory rejection and journal/save failures; test all output kinds, reopen and no-replay, clarify Refusal effects and deferred recovery/I/O limits.
