@@ -15,6 +15,7 @@ or synthesized, and no provider call is ever made.
 
 import argparse
 import datetime
+import decimal
 import fcntl
 import hashlib
 import importlib.util
@@ -688,9 +689,10 @@ def agent_admission(report, agent):
 def cmd_record(runner, root, args):
     if re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', args.timeout) is None:
         fail('--timeout must be finite numeric seconds in 1..300')
-    timeout = float(args.timeout)
-    if not math.isfinite(timeout) or not 1 <= timeout <= 300:
+    selected = decimal.Decimal(args.timeout)
+    if not selected.is_finite() or not 1 <= selected <= 300:
         fail('--timeout must be finite numeric seconds in 1..300')
+    timeout = float(selected)
     for label, value in (('worker', args.worker), ('task', args.task)):
         if not ident_ok(value):
             fail('invalid ' + label + ' ID: '

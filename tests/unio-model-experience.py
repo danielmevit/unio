@@ -204,7 +204,8 @@ class ExperienceSuite(unittest.TestCase):
                  self.assertRaises(SystemExit):
                 module.cmd_record(str(self.runner), self.project, args)
             self.assertEqual(fleet.observe.call_args.args[-1], 100 + seconds)
-        for value in ('0', '-1', '0.99', '300.01', '301', 'NaN', 'nan', 'inf',
+        for value in ('0', '-1', '0.99', '0.99999999999999999999',
+                      '300.00000000000000000001', '300.01', '301', 'NaN', 'nan', 'inf',
                       '-inf', 'Infinity', '1e999', 'bad', '', ' 60', '60 ', '1_0'):
             with self.subTest(value=value):
                 result = self.run_cli(*self.record_args('--timeout=' + value))
