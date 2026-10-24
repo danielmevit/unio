@@ -1,5 +1,44 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Latest correction checkpoint — 2026-10-24T17:17:15+02:00
+
+Read [the current review-dispatch assessment](REVIEW-DISPATCH-LEAD-ASSESSMENT-2026-10-24.md)
+before the older checkpoint below. Independent Opus5.5XHIGH audit of68304ca
+finished CLI/Source/native/artifactverify0 with REQUEST-CHANGES. Lead reproduced
+exit1-to2 change-request regression, exit2-to1 evidence/process classification
+and false zero counters after finalizer failure. Original no-false-success
+property holds; do not accept the incomplete compatibility patch. Old gate
+managed-lead-audited-batch-gate-20261024 is not_assembled_current_audit_requests_changes.
+
+Native correction pipeline review-dispatch-contract-correction-low-20261024,
+worker codex-review-dispatch-contract-low-20261024, task
+REVIEW-DISPATCH-CONTRACT-CORRECTION-SOL-LOW-0524-20261024: ChatGPT subscription /
+CodexCLI0.163.0 / gpt-6.1-sol LOW, actual Source17:14:55+02, checks/acceptance pending.
+One real shared-budget companion, exact task/config grant, temporary native
+medium with STOP closing unrelated admissions; restore low after idle. Fresh
+17:07 native allowance45primary/44weekly is dated evidence, not task usage.
+Preparation had one inline Python indentation error before any execution/effects;
+corrected setup passed AST and scope checks before native admission.
+
+New audit-review-dispatch-contract-opus-xhigh-20261024 observer waits correction
+Source/native/verify0, then freezes complete focused patch/enclosing source and
+starts one fresh Opus5.5XHIGH report-only audit (not native review readiness).
+Its required-artifact template passed actual module preflight. It uses the
+private fixture wrapper for tests instead of repeating mounted suites.
+New managed-lead-contract-corrected-gate-20261024 waits that bound APPROVE and
+reuses unchanged9431c78 Mistral/Vibe2.26.1 GLM5.3HIGH audit, all exits/checks0;
+then it prepares disjoint exact bytes and runs one full isolated gate. No
+automatic acceptance/main push/global install/publication. Both observers are
+launched; read current JSONs and do not duplicate Sources or gates.
+
+Next: actual corrected code/tests, fresh review findings, combined gate, existing
+lead assessment and private integration. The native ownership outline is at
+workspace coord/docs/NATIVE-LEAD-OWNERSHIP-NEXT-SLICE-20261024.md, not a dispatched
+assignment or installed command. Complete owned route still roughly2–4days;
+claim/policy slice1–2h plus review. Automatic-save60s failures remain open.
+Public/main/installed23 and private research/stable backup unchanged.
+
+
 Updated 2026-10-23T19:50:02+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
 ~/.config/unio/OWNER-WORKFLOW.md before acting.
 
