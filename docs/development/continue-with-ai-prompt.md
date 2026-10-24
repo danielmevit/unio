@@ -1,5 +1,43 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Current passing-review / active-gate checkpoint — 2026-10-24T21:23:07+02:00
+
+Review-dispatch544cfad now has independent Mistral subscription / Vibe2.26.1 /
+GLM5.3HIGH APPROVE, actualCLI/canonicaladapter/Source/native/artifactverify0.
+Audit source21:01:46→21:13:01, native2/2checks0; exact packet/hash/source binding
+and pristine target export confirmed. Independent checks17collection+9receipt
+tests,36parser tuples0. Two info-only combined drift/snapshot coverage notes
+are nonblocking; lead assessment saved in gate/lead-review-dispatch-assessment.json.
+
+CURRENT full gate managed-lead-ready-audited-gate-20261024 is offline_gate_running,
+started21:16:51, exactcandidateeddc5227d2ec563ef9352db58e39d486796c99c8. Frozen
+source/byte proof pins544 reviewdispatch and unchanged9431 transport. Pinned
+transport audit is earlier valid delivery, NOT the later failed canonical replay.
+One full quality gate in private tmpfs; no provider calls or autoacceptance.
+Read full-gate.json/log for actualexit. Private integration drymerge against
+94ea223 passed0/worktreeunchanged; do not integrate beforegate/leadacceptance.
+
+PARALLEL save fix finished e2f0afa0a4c9036567e3383220db8b8d637b71d5 on
+codex-save-attempt-reuse-low-20261024. ChatGPT/CodexCLI0.163.0/gpt6.1solLOW
+Source21:07:07→21:11:30 actualCLI/Source/native0, native4/4PASS0, four suites
+27+31+29+186=273checks0. Ordinary successful path skips last_good traversal,
+reuses metadata underrealstorelock with metadata-only fallback for deep-corrupt
+items, preservesfuture/ties/pins/caps/nonfatalwrite/restore. No timing/global
+speedup/all-timeout-cure claim. Initial harness SIGSTOP/failure and corrections
+are preserved; not a provider failure. Alloutside6helperfunctions unchanged.
+Native independent ClaudeCode2.1.309/Opus5.5XHIGH review actually started21:17:14
+via source-frozenconfig; pipeline save-attempt-lock-reuse-sol-low-20261024,
+review/source.json plus native-review.log and review-observer.json. No final
+review/acceptance yet. Tierlowrestored, STOP; CodeXworkeridle, existingleadretained.
+The save fix remains separate from the above frozen candidate; do not silently
+add it to an already-running gate. Integrate only exact reviewed/gated content.
+
+Next: actual foundation fullgate/leadassessment/privateintegration; actual Opus
+save findings, then appropriate combined save gate/leadassessment. No24mainpush,
+globalinstall or publication authority. Main/installed23 unchanged, Vecto/UI
+untouched. Nativeownedlead and remaining bounded operational backlog follow.
+
+
 ## Resumed verification and independent save correction — 2026-10-24T21:06:16+02:00
 
 Codex allowance reset: native99primary/37weekly20:51local. OpusLOW correction
