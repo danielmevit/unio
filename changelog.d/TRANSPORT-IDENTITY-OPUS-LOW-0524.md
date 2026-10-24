@@ -1,0 +1,1 @@
+- managed-lead-codex: quarantine reused/unresolved provider turn ids (mapping kept as evidence, explicit ambiguity marker, no wrong-turn writes before or after the ack), per-turn gap markers, and refuse binding a fresh bridge to an open session with prior provider history; repository negative control against ea8fae8.

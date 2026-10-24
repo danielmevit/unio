@@ -85,7 +85,7 @@ CAUTION = ('recorded state is not proof of task delivery, passing checks, '
 
 
 class Refusal(Exception):
-    """A deliberate refusal before any effect or an invalid observation."""
+    """A controlled refusal or persistence error; effects may already be committed."""
 
 
 def _now():
@@ -399,6 +399,7 @@ class LeadSession:
         self.ownership = ownership
         self._lock_fd = None
         self._state = None
+        self._output_activity = None  # retain local evidence even if its save fails
         with self._guard():
             pass  # load and validate only; zero transport/model calls
 
@@ -651,12 +652,14 @@ class LeadSession:
             prev = state['requests'].get(request_id)
             if prev is None or prev['state'] != 'pending':
                 raise Refusal('session state changed during submission')
-            # A proven start or terminal observation outranks a contradictory
-            # rejection. Keep the facts, but record the send result as uncertain.
+            # Matching activity is enough to contradict rejection, without
+            # claiming that generic lifecycle output proves running inference.
             turn = state.get('turn')
             observed = (state['generation'] > generation
                         or (turn and turn['turn_id'] == turn_id
-                            and turn['delivery'] == 'accepted'))
+                            and (turn['delivery'] == 'accepted'
+                                 or state['state'] == 'outcome_unknown'
+                                 or self._output_activity == turn_id)))
             if status == 'rejected' and observed:
                 status = 'uncertain'
             result = {'session_id': self.session_id, 'request_id': request_id,
@@ -667,7 +670,7 @@ class LeadSession:
                              'rejected': 'rejected'}.get(status, 'outcome_unknown')
             prev['result'] = result
             turn = state.get('turn')
-            if (state['state'] == 'pending' and turn
+            if (state['state'] in ('pending', 'outcome_unknown') and turn
                     and turn['turn_id'] == turn_id):
                 if status == 'accepted':
                     state['state'] = 'running'
@@ -784,6 +787,15 @@ class LeadSession:
                         and last.get('generation') == generation)):
                 raise Refusal('mismatched output observation')
             data = self._sanitize_output(kind, data)
+            # Write uncertainty BEFORE retention checks or journaling. Even a failed/absent append
+            # must not let a later contradictory rejection release this turn.
+            if (active.get('turn_id') == turn_id
+                    and active.get('generation') == generation
+                    and state['state'] == 'pending'):
+                self._output_activity = turn_id
+                state['state'] = 'outcome_unknown'
+                state['updated_at'] = _now()
+                self._save()
             if state['archive_limited']:
                 raise Refusal('output archive closed')
             rec = {'cursor': state['output_cursor'] + 1, 'kind': kind,

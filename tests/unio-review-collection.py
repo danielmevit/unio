@@ -43,14 +43,14 @@ if action=='hold':
 if action=='timeout':time.sleep(20)
 if action=='drift':(root/'project/wt/mock/hello.txt').write_text('changed during review')
 if action=='snapshot_fail':os.mkfifo(root/'project/wt/mock/unsupported')
-if action=='material':common.write_text('changed common material')
+if action in ('material','material_changes'):common.write_text('changed common material')
 if action=='break_child':
     c=max((root/'project/coord/reports').glob('evidence.review-set.*/collection.json'),key=lambda p:p.stat().st_mtime_ns)
     a=next(a for a in json.loads(c.read_text())['attempts'] if a['reviewer']==name)
     (c.parent.parent/a['raw_directory']/'attempt.json').mkdir()
 print('PRIVATE_COLLECTION_PROSE')
 print('PRIVATE_COLLECTION_ERROR',file=sys.stderr)
-print('VERDICT: '+('REQUEST-CHANGES' if action=='changes' else 'APPROVE'))
+print('VERDICT: '+('REQUEST-CHANGES' if action in ('changes','material_changes') else 'APPROVE'))
 if action=='unknown':print('VERDICT: APPROVE')
 raise SystemExit(7 if action=='fail' else 0)
 '''
@@ -164,6 +164,7 @@ class ReviewCollection(unittest.TestCase):
         self.assertEqual(len(self.calls().splitlines()),1)
         (self.root/'release').touch();stdout,stderr=p.communicate(timeout=25)
         self.assertEqual(p.returncode,2,(stdout,stderr))
+        self.assertIn('invoked=1/2 refused=1 invalid=0 dispatch_exit=2',stdout)
         records=self.attempts()
         self.assertEqual(len(records),2)
         self.assertEqual(sorted(r['process_exit_code'] for r in records if r['process_exit_code'] is not None),[0])
@@ -186,7 +187,8 @@ class ReviewCollection(unittest.TestCase):
         # Earlier proven pre-provider refusals stay visible without vetoing
         # a completed current collection. They never supply expected reviewers.
         refused_bytes={p:p.read_bytes() for p in self.receipts()}
-        self.collect()
+        granted=self.collect()
+        self.assertIn('invoked=2/2 refused=0 invalid=0 dispatch_exit=0',granted.stdout)
         observed=self.summary(expect='revone,revtwo')
         self.assertEqual(observed['counts']['unknown'],2)
         self.assertEqual(observed['counts']['approved'],2)
@@ -195,8 +197,12 @@ class ReviewCollection(unittest.TestCase):
                             for r in self.attempts()))
         history=json.loads((self.coord/'lead-budget.json').read_text())['grants']
         self.assertEqual([g['state'] for g in history],['used','used'])
-        before=self.calls();self.collect(code=2)
+        before=self.calls();replay=self.collect(code=2)
         self.assertEqual(self.calls(),before)
+        self.assertIn('invoked=0/2 refused=2 invalid=0 dispatch_exit=2',replay.stdout)
+        self.assertTrue(all(r['process_exit_code'] is None for r in self.attempts()))
+        # Historical approvals remain honest/current despite this dispatch refusal.
+        self.assertEqual(self.summary(expect='revone,revtwo')['counts']['approved'],2)
         # A single-review path uses the same owner task binding.
         self.unio('lead-budget','grant','revone','revone','evidence','review')
         self.unio('review','mock','evidence','revone')
@@ -204,6 +210,15 @@ class ReviewCollection(unittest.TestCase):
         self.assertEqual(self.calls(),before)
 
     def test_mixed_process_verdict_timeout_and_child_failure(self):
+        # Prior approvals cannot conceal an invoked process failure or verdict.
+        self.collect()
+        self.controls(revone='approve',revtwo='fail')
+        failed=self.collect(code=2)
+        self.assertIn('invoked=2/2 refused=0 invalid=0 dispatch_exit=2',failed.stdout)
+        self.assertIn(('failed',7),{(r['state'],r['process_exit_code']) for r in self.attempts()})
+        self.controls(revone='changes',revtwo='approve')
+        changes=self.collect(code=1)
+        self.assertIn('invoked=2/2 refused=0 invalid=0 dispatch_exit=1',changes.stdout)
         self.controls(revone='changes',revtwo='fail');self.collect(code=1)
         self.assertEqual({(r['state'],r['process_exit_code']) for r in self.attempts()},
                          {('changes_requested',0),('failed',7)})
@@ -211,10 +226,164 @@ class ReviewCollection(unittest.TestCase):
         env=dict(self.env,UNIO_REVIEW_TIMEOUT='1');self.collect(code=1,env=env)
         self.assertEqual({(r['state'],r['process_exit_code']) for r in self.attempts()},
                          {('unknown',0),('failed',124)})
-        self.controls(revone='break_child',revtwo='approve');self.collect(code=1)
+        self.controls(revone='break_child',revtwo='approve');broken=self.collect(code=1)
+        self.assertIn('invalid=1 dispatch_exit=2',broken.stdout)
         self.assertEqual(self.manifest()['state'],'unknown')
         self.assertIn('child_failed',self.manifest()['reasons'])
         self.assertIsNone(self.manifest()['attempts'][0]['receipt_id'])
+
+    def fault_engine(self,old,new):
+        # Faults are confined to a disposable installed script, never the source
+        # installer, shared installed fixture or production environment switches.
+        source=Path(self.__class__.engine).read_text()
+        self.assertEqual(source.count(old),1)
+        target=self.root/'fault-unio'
+        target.write_text(source.replace(old,new));target.chmod(0o700)
+        self.engine=str(target)
+
+    def assert_slots_empty(self):
+        self.assertFalse(json.loads(self.unio('policy','--json').stdout)['active_native_workflows'])
+
+    def test_current_changes_survive_fully_refused_replay(self):
+        self.controls(revone='changes');self.collect(code=1)
+        originals={p:p.read_bytes() for p in self.receipts()}
+        before=self.calls();self.unio('lead','revone');self.unio('lead','revtwo')
+        # Both aliases share the reserved account, so every attempt is refused.
+        self.unio('account','revone','beta')
+        result=self.collect(code=1)
+        self.assertIn('invoked=0/2 refused=2 invalid=0 dispatch_exit=2',result.stdout)
+        self.assertEqual(self.calls(),before)
+        for path,data in originals.items():self.assertEqual(path.read_bytes(),data)
+        self.assert_slots_empty()
+
+    def test_partial_admission_actual_changes(self):
+        self.unio('account','revone','shared');self.unio('account','revtwo','shared')
+        # Hold whichever reviewer wins admission, then emit a real change request.
+        provider=self.root/'provider.py'
+        provider.write_text(PROVIDER.replace("('changes','material_changes')", "('changes','material_changes','hold')"))
+        self.controls(revone='hold',revtwo='hold');p=self.start()
+        self.until(lambda:len(list(self.root.glob('*.started')))==1 and
+            any('budget-refused' in f.read_text() for f in (self.coord/'reports').glob('rset-*.md')))
+        (self.root/'release').touch();stdout,stderr=p.communicate(timeout=25)
+        self.assertEqual(p.returncode,1,(stdout,stderr))
+        self.assertIn('invoked=1/2 refused=1 invalid=0 dispatch_exit=2',stdout)
+        self.assertEqual(len(self.calls().splitlines()),1)
+        self.assertIn(('changes_requested',0),{(r['state'],r['process_exit_code']) for r in self.attempts()})
+        self.assert_slots_empty()
+
+    def test_invalid_child_without_current_change_request(self):
+        self.controls(revone='break_child');result=self.collect(code=2)
+        self.assertIn('invoked=1/2 refused=0 invalid=1 dispatch_exit=2',result.stdout)
+        self.assertEqual(len(self.calls().splitlines()),2)
+        self.assertIsNone(self.manifest()['attempts'][0]['receipt_id'])
+        self.assert_slots_empty()
+
+    def test_missing_child_without_current_change_request(self):
+        self.fault_engine('rs_child_result() {', 'rs_child_result() {\n  return 0')
+        result=self.collect(code=2)
+        self.assertIn('invoked=0/2 refused=0 invalid=2 dispatch_exit=2',result.stdout)
+        self.assertEqual(len(self.calls().splitlines()),2)
+        self.assertTrue(all(a['receipt_id'] is None for a in self.manifest()['attempts']))
+        self.assert_slots_empty()
+
+    def test_process_failure_without_prior_history(self):
+        self.controls(revone='fail');result=self.collect(code=2)
+        self.assertIn('invoked=2/2 refused=0 invalid=0 dispatch_exit=2',result.stdout)
+        records=self.attempts()
+        self.assertIn(('failed',7),{(r['state'],r['process_exit_code']) for r in records})
+        self.assertFalse(any(r['state']=='changes_requested' for r in records))
+        self.assertEqual(len(self.calls().splitlines()),2)
+        self.assert_slots_empty()
+
+    def test_mismatched_child_without_current_change_request(self):
+        self.fault_engine('rs_child_result() {',
+            'rs_child_result() {\n  set -- "$1" wrongreviewer "${@:3}"')
+        result=self.collect(code=2)
+        self.assertIn('invoked=0/2 refused=0 invalid=2 dispatch_exit=2',result.stdout)
+        self.assertEqual(len(self.calls().splitlines()),2)
+        self.assertTrue(all(a['receipt_id'] is None for a in self.manifest()['attempts']))
+        self.assert_slots_empty()
+
+    def test_finalizer_failure_keeps_unknown_counters(self):
+        self.fault_engine('quality() {', 'quality() {\n  [ "$1" != review-set-finalize ] || return 2')
+        result=self.collect(code=2)
+        self.assertIn('state=unknown invoked=unknown/2 refused=unknown invalid=unknown dispatch_exit=2',result.stdout)
+        self.assertEqual(len(self.calls().splitlines()),2)
+        self.assert_slots_empty()
+        self.controls(revone='changes')
+        self.unio('review','mock','evidence','revone',code=1)
+        before=len(self.calls().splitlines());result=self.collect(code=1)
+        self.assertIn('invoked=unknown/2 refused=unknown invalid=unknown dispatch_exit=2',result.stdout)
+        self.assertEqual(len(self.calls().splitlines())-before,2)
+        self.assert_slots_empty()
+
+    def test_malformed_finalizer_output_keeps_unknown_counters(self):
+        line='if out=$(quality review-set-finalize "$root" "$worker" "$task" "$cdir" "$state_arg" "$specs"); then'
+        # Actual providers and receipts run normally; corrupt only the installed
+        # helper's returned text at the CLI trust boundary, after finalization.
+        cases=('ffffffffffffffffffffffffffffffff completed 2 1 0 2 0 0',
+               '$cid running 2 1 0 2 0 0', '$cid completed 2 1 0 -1 0 0',
+               '$cid completed 2 1 0 999999999999999999999999 0 0',
+               '$cid completed 2 1 0 1 0 0', '$cid completed 3 1 0 2 0 0',
+               '$cid completed 2 1 0 2 0 0 extra', '$cid unknown 0 1 0 2 0 0',
+               '$cid completed 2 0 0 2 0 0', '$cid completed 2 1 0 2 0 0\nextra',
+               '$cid completed 2 1 0 2 0', '$cid completed 2 yes 0 2 0 0',
+               # Internally impossible: completed with invalid, change request
+               # without a verified invocation or alongside invalid evidence.
+               '$cid completed 2 0 2 0 0 2', '$cid unknown 0 0 1 0 2 0',
+               '$cid completed 2 0 1 0 0 2', '$cid unknown 1 0 2 0 0 2')
+        for output in cases:
+            with self.subTest(output=output):
+                self.fault_engine(line,line+'\n    out="'+output+'"')
+                before=len(self.calls().splitlines());result=self.collect(code=2)
+                self.assertIn('state=unknown invoked=unknown/2 refused=unknown invalid=unknown dispatch_exit=2',result.stdout)
+                self.assertEqual(len(self.calls().splitlines())-before,2)
+                self.assert_slots_empty()
+
+    def test_admitted_stop_before_invocation_preserves_approvals(self):
+        self.collect();before=self.calls()
+        originals={p:p.read_bytes() for p in self.receipts()}
+        marker='  # Recheck STOP immediately before this reviewer\'s provider starts.'
+        self.fault_engine(marker, '''  # Disposable fixture barrier: both genuine admissions hold their slots.
+  touch "$root/coord/admitted-$reviewer"
+  for ((n=0; n<500; n++)); do
+    [ -e "$root/coord/admitted-revone" ] && [ -e "$root/coord/admitted-revtwo" ] && break
+    sleep .01
+  done
+  touch "$root/coord/STOP"
+'''+marker)
+        result=self.collect(code=2)
+        self.assertIn('invoked=0/2 refused=2 invalid=0 dispatch_exit=2',result.stdout)
+        self.assertEqual(self.calls(),before)
+        records=self.attempts();self.assertEqual(len(records),2)
+        for record in records:
+            self.assertIsNone(record['process_exit_code'])
+            self.assertIn('stop_active',record['reasons'])
+        for attempt in self.manifest()['attempts']:
+            data=json.loads((self.coord/'reports'/attempt['raw_directory']/'attempt.json').read_text())
+            self.assertTrue(data['admitted']);self.assertFalse(data['invoked'])
+        self.assertEqual(self.summary(code=2,expect='revone,revtwo')['counts']['approved'],2)
+        for path,data in originals.items():self.assertEqual(path.read_bytes(),data)
+        self.assert_slots_empty()
+        # Admitted STOP rows stay conservative unknowns for this revision: a
+        # later all-approving batch on the clean engine cannot erase them.
+        stopped={p:p.read_bytes() for p in self.receipts()}
+        self.engine=self.__class__.engine;self.unio('resume')
+        result=self.collect(code=2)
+        self.assertIn('invoked=2/2 refused=0 invalid=0 dispatch_exit=0',result.stdout)
+        self.assertEqual(len(self.calls().splitlines())-len(before.splitlines()),2)
+        self.assertTrue(all(r['state']=='approved' for r in self.attempts()))
+        for path,data in stopped.items():self.assertEqual(path.read_bytes(),data)
+        self.assert_slots_empty()
+
+    def test_material_mutation_with_changes_is_not_a_dispatch_change_request(self):
+        self.controls(revone='material_changes')
+        result=self.collect(code=2)
+        self.assertIn('dispatch_exit=2',result.stdout)
+        mutated=next(r for r in self.attempts() if r['reviewer']=='revone')
+        self.assertEqual(mutated['state'],'unknown');self.assertIn('material_changed',mutated['reasons'])
+        self.assertIn('material_changed',self.manifest()['reasons'])
+        self.assert_slots_empty()
 
     def test_drift_material_mutation_and_failed_observation(self):
         wt=self.root/'project/wt/mock'

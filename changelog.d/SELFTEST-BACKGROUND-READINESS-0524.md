@@ -1,0 +1,1 @@
+Make mock selftest background readiness and completion bounded and tied to the launched child and fresh provider-start evidence; add installed-helper delayed/no-start/cleanup regressions and failure diagnostics.

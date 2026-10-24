@@ -25667,20 +25667,27 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
     if drift: reasons.append('candidate_changed_during_review')
     after_json=json.dumps(after,sort_keys=True,separators=(',',':')) if after is not None else ''
     bound=0
+    invoked=0; refused=0; invalid=0; unsuccessful=0; rejected=0; process_failed=0
     for i,attempt in enumerate(d['attempts']):
         raw=safe(root,'coord','reports',attempt['raw_directory'])
         result=None
         try: result=child_result_read(os.path.join(raw,'attempt.json'))
         except (ValueError,OSError,KeyError,TypeError): pass
         if specs[i]['exit']!=0 or result is None:
-            reasons.append('child_failed'); continue
+            invalid+=1; reasons.append('child_failed'); continue
         if result['reviewer']!=attempt['reviewer'] or result['policy_task']!=attempt['policy_task']:
-            reasons.append('child_failed'); continue
+            invalid+=1; reasons.append('child_failed'); continue
+        if (result['invoked'] and (not result['admitted'] or result['process_exit_code'] is None)
+                or not result['invoked'] and result['process_exit_code'] is not None):
+            invalid+=1; reasons.append('child_failed'); continue
         if not result['admitted']:
+            refused+=1
             state,code,complete,rreasons='unknown',None,'no',['budget_refused']
         elif not result['invoked']:
+            refused+=1
             state,code,complete,rreasons='unknown',None,'no',['stop_active']
         else:
+            invoked+=1
             code=result['process_exit_code']
             try:
                 stdout=safe(root,'coord','reports',attempt['raw_directory'],'stdout.log')
@@ -25690,6 +25697,7 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
             if code!=0: state='failed'
             rreasons=['reviewer_process_failed'] if code!=0 else ['unknown_verdict'] if state=='unknown' else []
             complete='yes'
+            if code!=0: process_failed+=1
         if drift: rreasons.append('candidate_changed_during_review')
         if after is None: rreasons.append('post_snapshot_failed')
         try:
@@ -25709,14 +25717,25 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
             fail('published receipt does not match its attempt')
         attempt['receipt_id']=receipt['id']
         bound+=1
+        # Decisions come from the durable published receipt, not stdout.
+        if result['invoked']:
+            if receipt['state']!='approved': unsuccessful+=1
+            if receipt['state']=='changes_requested': rejected+=1
         collection_valid(d)
         collection_atomic(os.path.join(directory,'collection.json'),d)
     final='unknown' if after is None or bound!=len(d['attempts']) else 'completed'
     d.update(state=final,finished_at=stamp(),after=after,reasons=sorted(set(reasons))[:16])
     collection_valid(d)
     collection_atomic(os.path.join(directory,'collection.json'),d)
-    ready=final=='completed' and after==d['before'] and not reasons
-    print('%s %s %d %d'%(d['id'],final,bound,int(ready)))
+    # Completed means descriptors were processed, not that providers ran.
+    # Keep historical receipts independent of this invocation's dispatch result.
+    ready=(final=='completed' and after==d['before'] and not reasons
+           and invoked==len(d['attempts']) and not unsuccessful)
+    durable_unknown='material_changed' in reasons or 'receipt_failed' in reasons
+    dispatch=(2 if refused or invalid or process_failed or durable_unknown
+              else 1 if rejected else 0 if ready else 2)
+    print('%s %s %d %d %d %d %d %d'%(d['id'],final,bound,int(ready),
+                                    dispatch,invoked,refused,invalid))
 
 
 # Static command audit: deliberately independent of agent_data's PATH/bench
@@ -33366,6 +33385,11 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
     echo 'retry, substitute, queue, merge or grant human acceptance. Exit 0 only'
     echo 'for a complete unchanged collection with every recorded reviewer approving,'
     echo '1 for current changes requested, 2 for any other outcome or invalid input.'
+    echo 'invoked counts VERIFIED invocations only; invalid attempts have unknown'
+    echo 'invocation status, so invoked=0 with invalid>0 does not prove no calls.'
+    echo 'Only exact budget_refused receipts leave current verdict history; admitted'
+    echo 'STOP refusals stay unknown rows for that revision/material/config and later'
+    echo 'approving batches do not erase them (inspect; the owner decides).'
     return 0
   fi
   # Argument validation precedes any project state read.
@@ -33456,14 +33480,30 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   rs_wait_children
   local state_arg=completed
   [ "$RS_SIGNALED" = 0 ] || state_arg=interrupted
-  local specs fin_state=unknown ready=0 bound=0
+  local specs fin_state=unknown ready=0 bound=0 dispatch=2 invoked=unknown refused=unknown invalid=unknown
   local -a spec_args=()
   for i in "${!pfs[@]}"; do spec_args+=("${pfs[$i]}" "${RS_EXIT[$i]:-1}"); done
   specs=$(python3 -c 'import json,sys; a=sys.argv[1:]; print(json.dumps([dict(pf=a[i],exit=int(a[i+1])) for i in range(0,len(a),2)]))' "${spec_args[@]}")
   if out=$(quality review-set-finalize "$root" "$worker" "$task" "$cdir" "$state_arg" "$specs"); then
-    local rid rstate
-    read -r rid rstate bound ready <<< "$out"
-    [ "$rid" = "$cid" ] && fin_state="$rstate"
+    # Treat the helper output as untrusted evidence. Do not publish counters
+    # until the entire single-line collection result is validated.
+    local result_pattern='^([0-9a-f]{32}) (completed|unknown) ([0-8]) ([01]) ([012]) ([0-8]) ([0-8]) ([0-8])$'
+    if [[ "$out" =~ $result_pattern ]]; then
+      local rid="${BASH_REMATCH[1]}" rstate="${BASH_REMATCH[2]}" rb="${BASH_REMATCH[3]}"
+      local rr="${BASH_REMATCH[4]}" rd="${BASH_REMATCH[5]}" ri="${BASH_REMATCH[6]}"
+      local rf="${BASH_REMATCH[7]}" rx="${BASH_REMATCH[8]}" total="${#reviewers[@]}"
+      # Invalid attempts are never bound; a change request needs a verified
+      # invocation and no refused or invalid attempt.
+      if [ "$rid" = "$cid" ] && (( rb <= total && ri + rf + rx == total && rb <= ri + rf )) \
+          && { [ "$rstate" != completed ] || { [ "$rb" = "$total" ] && [ "$rx" = 0 ]; }; } \
+          && { [ "$rd" != 1 ] || (( rf == 0 && rx == 0 && ri >= 1 )); } \
+          && { { [ "$rr" = 0 ] && [ "$rd" != 0 ]; } ||
+               { [ "$rr" = 1 ] && [ "$rd" = 0 ] && [ "$rstate" = completed ] \
+                 && [ "$rb" = "$total" ] && [ "$ri" = "$total" ]; }; }; then
+        fin_state="$rstate"; bound="$rb"; ready="$rr"; dispatch="$rd"
+        invoked="$ri"; refused="$rf"; invalid="$rx"
+      fi
+    fi
   fi
   # Release the worker lock before asking the read-only summary.
   exec 9>&-
@@ -33473,10 +33513,13 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   fi
   local csv
   csv=$(IFS=,; printf '%s' "${reviewers[*]}")
-  echo "review-set collection $cid: reviewers=$csv state=$fin_state"
+  echo "review-set collection $cid: reviewers=$csv state=$fin_state invoked=$invoked/${#reviewers[@]} refused=$refused invalid=$invalid dispatch_exit=$dispatch"
   local sum_rc=0
   quality reviews "$root" "$worker" "$task" "$csv" text || sum_rc=$?
+  # A current recorded change request retains the legacy CLI exit even when
+  # this dispatch is incomplete. History can never supply dispatch success.
   [ "$sum_rc" != 1 ] || return 1
+  [ "$dispatch" = 0 ] || return 2
   [ "$fin_state" = completed ] || return 2
   [ "$ready" = 1 ] && [ "$bound" = "${#reviewers[@]}" ] || return 2
   return "$sum_rc"
@@ -34390,6 +34433,149 @@ cmd_selftest() { # the whole loop, rehearsed with mock agents — zero quota
   [ -z "$missing" ] || die "selftest needs:$missing"
   [ -f "$TPL_DIR/TASK.md" ] || die "templates missing at $TPL_DIR — rerun the installer"
 
+  # ST_BACKGROUND_HELPERS_BEGIN — also exercised from the installed payload.
+  # Drive the public run -b frontend. Its detached runtime is not our child, so
+  # identity is proved, never inferred from kill -0: the published pid must be
+  # a session leader holding the worker lock, pinned by its start time. Signals
+  # go only through native kill or a pidfd re-checked against that identity.
+  ST_BG_LIMIT="${ST_BG_LIMIT:-40}"
+  ST_BG_PY='import os, signal, sys
+def stat(pid):
+    try:
+        with open("/proc/%d/stat" % pid) as f:
+            rest = f.read().rsplit(")", 1)[1].split()
+    except (OSError, IndexError):
+        return None
+    return rest[0], rest[3], rest[19]
+mode, args = sys.argv[1], sys.argv[2:]
+if mode == "ident":
+    try:
+        pid = int(open(args[0]).read().strip())
+        ino = os.stat(args[1]).st_ino
+    except (OSError, ValueError):
+        sys.exit(1)
+    info = stat(pid) if pid > 1 else None
+    if not info or info[0] == "Z" or info[1] != str(pid):
+        sys.exit(1)
+    try:
+        fds = os.listdir("/proc/%d/fdinfo" % pid)
+    except OSError:
+        sys.exit(1)
+    for fd in fds:
+        try:
+            text = open("/proc/%d/fdinfo/%s" % (pid, fd)).read()
+        except OSError:
+            continue
+        lines = text.splitlines()
+        if "ino:\t%d" % ino in lines and any(l.startswith("lock:") and " WRITE " in l for l in lines):
+            if stat(pid) == info:
+                print(pid, info[2])
+                sys.exit(0)
+    sys.exit(1)
+pid, start = int(args[0]), args[1]
+if mode == "alive":
+    info = stat(pid)
+    sys.exit(0 if info and info[0] != "Z" and info[2] == start else 1)
+try:
+    fd = os.pidfd_open(pid)
+except OSError:
+    sys.exit(1)
+try:
+    info = stat(pid)
+    if not info or info[0] == "Z" or info[2] != start:
+        sys.exit(1)
+    signal.pidfd_send_signal(fd, signal.SIGTERM)
+finally:
+    os.close(fd)'
+  st_bg_proc() { python3 -I -S -B -c "$ST_BG_PY" "$@"; }
+  st_bg_launch() {
+    ST_BG_WORKER="$1" ST_BG_TASK="$2" ST_BG_ID="" ST_BG_RC=0
+    rm -f "$ST/$2.started"
+    ST_BG_RUNS=$(grep -c "\"event\":\"run\",[^}]*\"task\":\"$2\"" ../coord/reports/ledger.jsonl 2>/dev/null) || true
+    UNIO_SELFTEST_STARTED="$ST/$2.started" timeout -k 5 "$ST_BG_LIMIT" \
+      "$0" run -b "$1" "$2" >"$ST/$2.launch.log" 2>&1 || ST_BG_RC=$?
+    [ "$ST_BG_RC" -eq 0 ] && grep -q "^started in background" "$ST/$2.launch.log"
+  }
+  st_bg_diagnostic() {
+    echo "selftest background: task=$ST_BG_TASK frontend=$ST_BG_RC identity=${ST_BG_ID:-none} phase=$1 elapsed=${SECONDS}s" >&2
+    ls -l "../coord/reports/$ST_BG_TASK.pid" "../coord/reports/$ST_BG_TASK.own" \
+      "$ST/$ST_BG_TASK.started" 2>&1 | sed 's/^/  /' >&2
+    tail -n 20 "$ST/$ST_BG_TASK.launch.log" "../coord/reports/$ST_BG_TASK.log" 2>/dev/null | sed 's/^/  /' >&2
+  }
+  st_bg_lock_free() { # only after the marker: probing earlier could steal it
+    [ -f "$ST/$ST_BG_TASK.started" ] &&
+      ( exec 9>>"../coord/.locks/$ST_BG_WORKER.lock"; flock -n 9 ) 2>/dev/null
+  }
+  st_bg_ended() {
+    if [ -n "$ST_BG_ID" ]; then
+      # shellcheck disable=SC2086
+      ! st_bg_proc alive $ST_BG_ID && st_bg_lock_free
+    else
+      st_bg_lock_free
+    fi
+  }
+  st_bg_wait() {
+    local phase="$1" deadline=$((SECONDS + ST_BG_LIMIT)) id
+    if [ "$ST_BG_RC" -ne 0 ] || ! grep -q "^started in background" "$ST/$ST_BG_TASK.launch.log"; then
+      st_bg_diagnostic "$phase-frontend"; return 1
+    fi
+    while [ "$SECONDS" -lt "$deadline" ]; do
+      if [ -z "$ST_BG_ID" ] && [ -s "../coord/reports/$ST_BG_TASK.own" ] &&
+         id=$(st_bg_proc ident "../coord/reports/$ST_BG_TASK.pid" "../coord/.locks/$ST_BG_WORKER.lock"); then
+        ST_BG_ID="$id"
+      fi
+      if [ "$phase" = ready ]; then
+        [ -n "$ST_BG_ID" ] && [ -f "$ST/$ST_BG_TASK.started" ] && return 0
+      elif st_bg_ended && [ ! -e "../coord/reports/$ST_BG_TASK.pid" ] &&
+           [ ! -e "../coord/reports/$ST_BG_TASK.own" ]; then
+        # Natural noop completion: exit 0 and a bound post-run snapshot.
+        [ "$(grep -c "\"event\":\"run\",[^}]*\"task\":\"$ST_BG_TASK\"" ../coord/reports/ledger.jsonl)" -gt "${ST_BG_RUNS:-0}" ] &&
+          grep "\"event\":\"run\",[^}]*\"task\":\"$ST_BG_TASK\"" ../coord/reports/ledger.jsonl | tail -n 1 |
+            grep -q '"exit":0,.*"snapshot_failed":0' && return 0
+        echo "selftest background: completion outcome was not exit 0 with a bound snapshot" >&2
+        break
+      fi
+      sleep 0.1
+    done
+    st_bg_diagnostic "$phase"
+    return 1
+  }
+  st_bg_cleanup() { # 0 only when the exact run is proved gone with its controls
+    local deadline=$((SECONDS + ST_BG_LIMIT)) id="" termed=0
+    if [ -z "$ST_BG_ID" ] && [ -s "../coord/reports/$ST_BG_TASK.own" ]; then
+      ST_BG_ID=$(st_bg_proc ident "../coord/reports/$ST_BG_TASK.pid" "../coord/.locks/$ST_BG_WORKER.lock") || ST_BG_ID=""
+    fi
+    if [ -z "$ST_BG_ID" ]; then
+      if st_bg_lock_free && [ ! -e "../coord/reports/$ST_BG_TASK.pid" ] && [ ! -e "../coord/reports/$ST_BG_TASK.own" ]; then
+        return 0
+      fi
+      echo "selftest background: cleanup Unknown — no proved runtime identity; nothing signaled, sandbox kept" >&2
+      return 1
+    fi
+    # shellcheck disable=SC2086
+    if st_bg_proc alive $ST_BG_ID; then
+      id=$(st_bg_proc ident "../coord/reports/$ST_BG_TASK.pid" "../coord/.locks/$ST_BG_WORKER.lock") || id=""
+      if [ "$id" = "$ST_BG_ID" ]; then
+        "$0" kill "$ST_BG_TASK" >>"$ST/$ST_BG_TASK.launch.log" 2>&1 ||
+          echo "selftest background: native kill failed; TERM to the proved runtime" >&2
+      fi
+    fi
+    while ! st_bg_ended || [ -e "../coord/reports/$ST_BG_TASK.pid" ] || [ -e "../coord/reports/$ST_BG_TASK.own" ]; do
+      if [ "$termed" = 0 ]; then
+        # Never an abandoned owned child: pidfd TERM only if the start still matches.
+        # shellcheck disable=SC2086
+        st_bg_proc term $ST_BG_ID 2>/dev/null || true
+        termed=1
+      fi
+      if [ "$SECONDS" -ge "$deadline" ]; then
+        echo "selftest background: cleanup Unknown — run or controls remain; sandbox kept" >&2
+        return 1
+      fi
+      sleep 0.1
+    done
+  }
+  # ST_BACKGROUND_HELPERS_END
+
   local ST; ST=$(mktemp -d)
   echo "== unio selftest — sandbox: $ST =="
   mkdir -p "$ST/conf/templates" "$ST/conf/lib"
@@ -34399,9 +34585,9 @@ cmd_selftest() { # the whole loop, rehearsed with mock agents — zero quota
   cat > "$ST/conf/agents.conf" <<'ST_CONF_EOF'
 mock=bash -c 'cat "$TASKFILE" >/dev/null; echo working; echo line >> hello.txt; git add hello.txt; git commit -q -m "selftest: mock"; echo ok'
 rogue=bash -c 'echo rogue; echo x > forbidden.txt; git add forbidden.txt; git commit -q -m "selftest: rogue"; echo ok'
-slow=bash -c 'echo napping; sleep 30; echo ok'
+slow=bash -c '[ -z "${UNIO_SELFTEST_STARTED:-}" ] || touch "$UNIO_SELFTEST_STARTED"; echo napping; sleep 60; echo ok'
 rev=bash -c 'cat "$TASKFILE" >/dev/null; echo reviewed; echo "VERDICT: APPROVE"'
-noop=bash -c 'echo did nothing at all; echo ok'
+noop=bash -c '[ -z "${UNIO_SELFTEST_STARTED:-}" ] || touch "$UNIO_SELFTEST_STARTED"; echo did nothing at all; echo ok'
 ST_CONF_EOF
 
   local repo="$ST/proj/repo"
@@ -34507,12 +34693,13 @@ n/a
 SUMMARY
 ST_T3_EOF
 
-  "$0" run -b slow T3-slow >/dev/null
-  sleep 2
-  st_chk "background run writes a pidfile" \
-    bash -c '[ -f ../coord/reports/T3-slow.pid ]'
+  st_bg_launch slow T3-slow || true
+  st_chk "background run -b starts, detaches and publishes ownership" st_bg_wait ready
   st_chk "kill terminates the background run" \
-    bash -c '"$0" kill T3-slow >/dev/null 2>&1 && [ ! -f ../coord/reports/T3-slow.pid ]' "$0"
+    bash -c '"$0" kill T3-slow && [ ! -e ../coord/reports/T3-slow.pid ] && [ ! -e ../coord/reports/T3-slow.own ]' "$0"
+  st_bg_cleanup || { ST_FAIL=$((ST_FAIL + 1)); st_bg_diagnostic cleanup; }
+  # slow exists only for T3: keep sabotage rotation from detaching its nap.
+  "$0" off slow >/dev/null
 
   git merge --no-ff -q agent/mock -m "merge T1" >/dev/null 2>&1 || true
   st_chk "post-merge hook records a merge event in the ledger" \
@@ -34570,10 +34757,10 @@ ST_T5_EOF
   # a background run that finishes on its OWN must remove its pidfile — the
   # kill path never exercises the natural-completion EXIT trap. noop commits
   # nothing, so this cannot perturb any branch-topology check.
-  "$0" run -b noop T5-noop >/dev/null 2>&1
-  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -f ../coord/reports/T5-noop.pid ] || break; sleep 1; done
-  st_chk "background run cleans up its own pidfile on natural completion" \
-    bash -c '[ ! -f ../coord/reports/T5-noop.pid ]'
+  st_bg_launch noop T5-noop || true
+  st_chk "background run -b completes with exit 0 and cleans its own controls" \
+    st_bg_wait complete
+  st_bg_cleanup || { ST_FAIL=$((ST_FAIL + 1)); st_bg_diagnostic cleanup; }
   st_chk "report command prints a task's history" \
     bash -c '"$0" report T1-mock 200 2>/dev/null | grep -q "worker=mock"' "$0"
   st_chk "version prints" \
@@ -34611,7 +34798,6 @@ ST_T5_EOF
     bash -c 'first=$(cat ../coord/.saboteur-last); sleep 1
              "$0" sabotage >/dev/null 2>&1; [ "$(cat ../coord/.saboteur-last)" != "$first" ]' "$0"
 
-  "$0" off slow >/dev/null   # keep smoke from sitting through slow's nap
   st_chk "smoke prints one row per agent" \
     bash -c '[ "$("$0" smoke 2>/dev/null | wc -l)" -ge 5 ]' "$0"
 
@@ -34621,11 +34807,13 @@ ST_T5_EOF
   # sabotage detaches real runs (run -b); on a slow drive they can still be
   # writing results when we delete the sandbox, and rm -rf then races them.
   # Each holds a pidfile until its EXIT trap, so wait for those to go.
+  local active=""
   for _ in $(seq 120); do
-    compgen -G "$ST/proj/coord/reports/*.pid" >/dev/null || break
+    active=$(compgen -G "$ST/proj/coord/reports/*.pid") || break
     sleep 0.5
   done
-  if [ "$ST_FAIL" -eq 0 ]; then
+  [ -z "$active" ] || echo "background runs still recorded: $active" >&2
+  if [ "$ST_FAIL" -eq 0 ] && [ -z "$active" ]; then
     rm -rf "$ST"
     echo "sandbox removed — all green."
   else
