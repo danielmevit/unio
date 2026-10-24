@@ -1,5 +1,32 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Active-job recovery checkpoint — 2026-10-24T18:16:44+02:00
+
+Latest Codex capacity4primary/38weekly at18:13local; reset20:26local. No Codex
+worker is active. OpusLOW correction ACTUAL Source started2026-10-24T18:13:59+02:00,
+stateprovider_running; worker claude-review-dispatch-contract-low-20261024, pipeline
+review-dispatch-contract-opus-low-20261024. Keep its current writer intact. Prior
+OpusXHIGH5c audit CLI/Source/native/artifactverify all0, REQUEST-CHANGES; its
+valid rejecting opinion and all16passing Sol checks remain distinct.
+
+Current follow-up independent reviewer is Mistral/Vibe2.26.1/GLM5.3HIGH via
+audit-review-dispatch-final-vibe-high-20261024. Waiting-only preparer was safely
+replaced before any model call to correct the copied controller's target metadata
+from old9431 to the actual future target. Exact profile/material hashing was
+already dynamic. Erratum and newPID are in observer-preparation-erratum.json;
+no model/provider interrupted. Current observerPID1641955. New gate observer
+managed-lead-opus-corrected-gate-20261024/PID1639976 waits actual current-code
+audit approval/checks; source controllerPID1639961. Read fresh JSONs, not PID
+alone, and do not duplicate tasks. No automatic acceptance/push/install/release.
+
+After any lead quota gap: inspect actual Opus Source/native/verify, Mistral
+auditSource/native/verify/opinion, then full-gate.json/log and frozen-source.json
+if present. Reproduce material findings; preserve original failures and exact
+reviewed content. Existing lead final assessment/private integration still
+required. Unmanaged current lead is NOT automatically resumed by these jobs.
+The public/installed release remains23; no24publication authority.
+
+
 ## Latest owner-approved Opus takeover — 2026-10-24T18:12:04+02:00
 
 Current5c2a5ae compatibility correction passed Source/native/4checks0 including
