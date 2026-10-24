@@ -1,0 +1,1 @@
+Fix review-set dispatch success to require its own actual approving invocations; retain historical receipt eligibility and report current invoked/refused/invalid counts. Add installed regressions for grant replay, prior approvals and invoked failures.
