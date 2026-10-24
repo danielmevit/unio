@@ -1,5 +1,26 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Corrected review launch, actual original failure preserved — 2026-10-24T22:11:01+02:00
+
+627117a OpusLOW nativeVerify4/4PASS0 at22:04:39. First nativeMistral review
+ended1 at22:06:04 BEFORE any model/CLI call: the lead wrapper assumed Git cwd,
+but native review correctly starts in a neutral directory. Raw failedreceipt
+c4a3d1e4316c4916bcba610c28ab3277/stderr retained. This is lead setup failure,
+not model quality or code rejection. Old wrapper archived with SHA.
+
+Corrected wrapper keeps the frozen command/config, explicitly pins checkout and
+627117a, proves clean source, uses Git -C and absolute source paths. Neutral-cwd
+preflight passed before new admission. New independent attempt only:
+review-observer-cwd-corrected.json and review-cwd-corrected/source.json in
+save-attempt-coverage-opus-low-20261024. Observer1949953; canonicaladapter began
+22:10:17. Mistral/Vibe2.26.1/GLM5.3HIGH, remaining/effectiveUnknown, noeffortraise.
+
+Both old save combined observers stopped honestly on failed dependency. CURRENT
+FINAL observer is reliability-save-reviewed-combined-gate-20261024/controller
+1950397, watches corrected independent native review and foundationfullgate.
+Foundationeddc has reached finalAPIgroups/no failure observed; still await real
+full-gate.json exit. Noacceptance/install/push/publication. Nextactualresults.
+
 ## Overall state and test-only correction — 2026-10-24T22:04:07+02:00
 
 Public/main/installed remain0.5.23/cd0b3a2. The original operator reliability
