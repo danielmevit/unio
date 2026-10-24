@@ -260,7 +260,7 @@ class ReviewCollection(unittest.TestCase):
         self.unio('account','revone','shared');self.unio('account','revtwo','shared')
         # Hold whichever reviewer wins admission, then emit a real change request.
         provider=self.root/'provider.py'
-        provider.write_text(PROVIDER.replace("action=='changes'", "action in ('changes','hold')"))
+        provider.write_text(PROVIDER.replace("('changes','material_changes')", "('changes','material_changes','hold')"))
         self.controls(revone='hold',revtwo='hold');p=self.start()
         self.until(lambda:len(list(self.root.glob('*.started')))==1 and
             any('budget-refused' in f.read_text() for f in (self.coord/'reports').glob('rset-*.md')))
