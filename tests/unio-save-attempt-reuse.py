@@ -163,8 +163,13 @@ with tempfile.TemporaryDirectory(prefix='save-attempt-reuse-') as directory:
     # A no-op current write must fail the same success assertion even though
     # the metadata-only winner remains the future save from the prior attempt.
     stale = attempt()
+    original_atomic = module.atomic_private
+    def skipped_attempt(path, data):
+        if '/attempts/' in path:
+            return None  # Silently discard only the current attempt publication.
+        return original_atomic(path, data)
     try:
-        with patch.object(module, 'write_attempt', return_value=None):
+        with patch.object(module, 'atomic_private', skipped_attempt):
             success('negative control skips current attempt write')
     except AssertionError as error:
         check('skipped current write detected by identity assertion',
