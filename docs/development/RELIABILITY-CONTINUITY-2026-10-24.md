@@ -4,6 +4,25 @@ Recorded 2026-10-24T01:49:33+02:00. Private development toward0.5.24; published 
 stable remains0.5.23. No0.5.24 main push, release or installation has occurred.
 Process success, delivery, native checks, review and lead acceptance are separate.
 
+## Latest disposition — 2026-10-24T02:23:02+02:00
+
+The first backend Opus review returned REQUEST-CHANGES, CLI/adapter0/native1,
+on da437194. Lead reproduced three additional state/journal defects. The staged
+4a744ca gate was deliberately stopped (actual-15), not a failed code test.
+Dedicated SolMEDIUM correction649fb89+c46170f completed Source/native0 and
+native4/4 PASS0; lead probes confirm the three material findings fixed. A fresh
+Opus5.5XHIGH review is now active with exact source snapshots/hashes. No final
+backend acceptance yet; earlier active-review wording below is historical.
+
+Mistral/VibeHIGH native integration proposal7280cad returned Source/native0;
+verification1 because the task mistakenly combined report-only with a required
+commit. Scope/doc checks2/2 passed. Local unchanged-artifact validation is a
+separate zero-model-call task. Read
+[the lead's integration decisions](MANAGED-LEAD-INTEGRATION-DECISIONS.md) before
+using that proposal; it corrects alias grouping and premature contract claims.
+Fresh Codex reading02:11:47+02:00: primary17%, weekly71% remaining, shared account
+observation only. No further Codex Source is planned in this window.
+
 ## Review-history correction
 
 The correction through755cb060 preserves proved pre-provider budget refusals as
