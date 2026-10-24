@@ -77,6 +77,26 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     def attempt():
         return json.loads((store/'attempts/mock-source.json').read_text())
 
+    restored = unio('save', 'restore', sid, 'mock-dest')
+    dest = root/'wt/mock-dest'
+    check('exact restoration including index and carried HEAD', restored.returncode == 0
+          and (dest/'file.txt').read_bytes() == (wt/'file.txt').read_bytes()
+          and (dest/'new.bin').read_bytes() == (wt/'new.bin').read_bytes()
+          and git(dest, 'ls-files', '--stage', '-z') == git(wt, 'ls-files', '--stage', '-z')
+          and git(dest, 'rev-parse', 'HEAD') == git(wt, 'rev-parse', 'HEAD'))
+
+    real_write = module.write_attempt
+    def locked_write(*args, **kwargs):
+        if kwargs.get('known_good') is not None:
+            with (root/'coord/.locks/saves.lock').open('rb') as lock:
+                try:
+                    module.fcntl.flock(lock, module.fcntl.LOCK_EX | module.fcntl.LOCK_NB)
+                except BlockingIOError:
+                    pass
+                else:
+                    raise AssertionError('successful attempt escaped publication lock')
+        return real_write(*args, **kwargs)
+
     real_load = module.load_save
     real_last = module.last_good
     loads = collections.Counter()
@@ -91,7 +111,7 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     # Every success is compared to a fresh installed metadata-only lookup.
     def success(label):
         loads.clear()
-        with patch.object(module, 'load_save', counted), patch.object(module, 'last_good', side_effect=AssertionError('redundant last_good')):
+        with patch.object(module, 'load_save', counted), patch.object(module, 'write_attempt', locked_write), patch.object(module, 'last_good', side_effect=AssertionError('redundant last_good')):
             check(label, create() == 0)
         expected = real_last(str(store), 'mock-source', False)
         check(label + ' metadata identity', attempt()['last_good_id'] == expected['id'])
@@ -115,6 +135,17 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     (tied_path/'manifest.json').write_text(json.dumps(doc)+'\n')
     with patch.object(module, 'stamp', return_value='2099-01-01T00:00:00+00:00'):
         success('tied publication times preserve ID ordering')
+
+    check('restore claim pin survives captures', original.exists())
+    with patch.object(module, 'CAP_PROJECT', 0):
+        check('project cap refusal preserved', create() != 0)
+    real_atomic = module.atomic_private
+    def failed_attempt(path, data):
+        if '/attempts/' in path:
+            raise OSError('injected attempt write failure')
+        return real_atomic(path, data)
+    with patch.object(module, 'atomic_private', failed_attempt):
+        check('attempt write failure remains nonfatal', create() == 0)
 
     # A fresh lookup remains mandatory on refusal, including publication faults.
     for fault in ('between-passes', 'publish-interrupt', 'publish-after-rename'):
