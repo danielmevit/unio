@@ -18,7 +18,7 @@ Frozen contract:
   core's authority/ownership callbacks remain required;
 - exactly one core session and one known provider thread are bound with
   bounded opaque ids; the pinned requested model/effort must match the
-  session record and the requested effort is sent explicitly with every
+  session record and both requested values are sent explicitly with every
   turn/start (requested config is never treated as effective proof; the
   effective model/effort remain Unknown);
 - a core-approved send_turn makes exactly one turn/start for the bound
@@ -149,7 +149,7 @@ class CodexLeadTransport:
         self._gap_recorded = False
         self._local = {}      # validated provider turn id -> local turn facts
         self._provider = {}   # local turn id -> validated provider turn id
-        self._order = []      # bounded mapping order, oldest first
+        self._activity = False  # potential new-turn activity, even if dropped
         self._last_send = None
 
     # -- binding and status (zero RPC calls) ------------------------------
@@ -186,6 +186,9 @@ class CodexLeadTransport:
             'gap': self._gap,
             'gap_recorded': self._gap_recorded,
             'turn_mappings': len(self._local),
+            'mapping_capacity': MAX_MAPPINGS,
+            'handoff_required': len(self._local) >= MAX_MAPPINGS,
+            'unbound_activity': self._activity,
             'supported_methods': list(SUPPORTED_METHODS),
             'last_send': dict(self._last_send) if self._last_send else None,
             'caution': CAUTION,
@@ -216,7 +219,11 @@ class CodexLeadTransport:
         text = _bounded(facts.get('text'), MAX_TEXT_BYTES, 'turn input')
         if turn_id in self._provider:
             raise Refusal('turn already mapped')
-        params = {'threadId': self._thread, 'effort': self._effort,
+        if len(self._local) >= MAX_MAPPINGS:
+            self._last_send = {'status': 'uncertain',
+                               'reason': 'mapping capacity exhausted; explicit handoff required'}
+            return dict(self._last_send)
+        params = {'threadId': self._thread, 'model': self._model, 'effort': self._effort,
                   'input': [{'type': 'text', 'text': text}]}
         self._inflight = {'turn_id': turn_id, 'generation': generation}
         self._buffer = []
@@ -225,11 +232,17 @@ class CodexLeadTransport:
         self._gap = False
         self._overflow = False
         self._gap_recorded = False
+        self._activity = False
         try:
             reply = self._rpc(START_METHOD, params)
         except self._rejection:
             dropped = self._release()
-            self._last_send = {'status': 'rejected', 'dropped_events': dropped}
+            self._last_send = {
+                'status': 'uncertain' if self._activity else 'rejected',
+                'reason': ('typed rejection with potential new-turn activity'
+                           if self._activity else 'typed rejection without new-turn activity'),
+                'dropped_events': dropped, 'gap': self._gap,
+                'unbound_activity': self._activity}
             return dict(self._last_send)
         except Exception:
             self._release()
@@ -242,6 +255,12 @@ class CodexLeadTransport:
             self._last_send = {
                 'status': 'uncertain',
                 'reason': 'turn/start acknowledgement missing, malformed or foreign'}
+            return dict(self._last_send)
+        if provider_turn in self._local:
+            self._release()
+            self._last_send = {
+                'status': 'uncertain',
+                'reason': 'reused provider turn id; original mapping retained; explicit handoff required'}
             return dict(self._last_send)
         self._bind_mapping(turn_id, provider_turn, generation)
         replayed, foreign, refused = self._replay(provider_turn)
@@ -268,27 +287,18 @@ class CodexLeadTransport:
         return turn['id']
 
     def _release(self):
-        """Discard unattributable buffered events; never resend them."""
+        """Release payloads but preserve bounded activity and gap evidence."""
         dropped = len(self._buffer) + self._dropped
         self._inflight = None
         self._buffer = []
         self._buffer_bytes = 0
-        self._dropped = 0
-        self._gap = False
-        self._overflow = False
-        self._gap_recorded = False
+        self._dropped = dropped
         return dropped
 
     def _bind_mapping(self, turn_id, provider_turn, generation):
         self._provider[turn_id] = provider_turn
         self._local[provider_turn] = {'turn_id': turn_id,
                                       'generation': generation}
-        self._order.append(provider_turn)
-        while len(self._order) > MAX_MAPPINGS:
-            old = self._order.pop(0)
-            facts = self._local.pop(old, None)
-            if facts is not None:
-                self._provider.pop(facts['turn_id'], None)
 
     def _replay(self, provider_turn):
         """Replay only events matching the validated provider turn, in order."""
@@ -340,6 +350,8 @@ class CodexLeadTransport:
             # Unknown mapping (for example after reopen) stays unknown; the
             # first observed provider id is never adopted.
             return {'action': 'ignored', 'reason': 'unbound provider turn'}
+        if inflight and not attributed:
+            self._activity = True
         if 'delta' in event and event['bytes'] > DELTA_BOUND:
             self._gap = True
             if attributed:

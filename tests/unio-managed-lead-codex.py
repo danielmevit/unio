@@ -157,6 +157,8 @@ def refuses(fn, *args, **kwargs):
 def only_turn_start(rpc):
     assert rpc.calls, 'expected at least one owned rpc call'
     assert all(method == br.START_METHOD for method, _ in rpc.calls), rpc.calls
+    assert all(params.get('model') == MODEL and params.get('effort') == EFFORT
+               for _, params in rpc.calls), rpc.calls
 
 
 def run_suite(base):
@@ -218,7 +220,7 @@ def run_suite(base):
     assert r1['state'] == 'accepted' and r1['generation'] == 1
     only_turn_start(h.rpc)
     method, params = h.rpc.calls[0]
-    assert params == {'threadId': THREAD, 'effort': EFFORT,
+    assert params == {'threadId': THREAD, 'model': MODEL, 'effort': EFFORT,
                       'input': [{'type': 'text', 'text': 'first turn input'}]}
     assert h.view()['state'] == 'running'
     assert h.notify(started(THREAD, 'prov-a'))['action'] == 'observed'
@@ -283,26 +285,42 @@ def run_suite(base):
     assert len(h2.rpc.calls) == 1
     print('ok refused authority/ownership, changed request and active pending make zero calls', flush=True)
 
-    # 5. Explicit typed rejection: rejected, early events discarded, no resend.
-    h3 = Harness(base)
-    h3.rpc.before = [started(THREAD, 'prov-r'), agent_delta(THREAD, 'prov-r', 'early\n')]
-    h3.rpc.behavior = ('reject', None)
-    rejected = h3.submit('rejected-one')
-    assert rejected['state'] == 'rejected'
-    assert len(h3.rpc.calls) == 1
-    send = h3.bridge.status()['last_send']
-    assert send['status'] == 'rejected' and send['dropped_events'] == 2
-    assert h3.bridge.status()['turn_mappings'] == 0
-    assert h3.view()['state'] == 'idle' and h3.view()['turn'] is None
-    assert h3.output()['records'] == []
-    # The identical request id never resends; a new id starts exactly one call.
-    assert h3.submit('rejected-one')['state'] == 'rejected'
-    assert len(h3.rpc.calls) == 1
-    h3.rpc.behavior = ('reply', ack('prov-r2'))
-    after = h3.submit('after-rejection')
-    assert after['state'] == 'accepted' and len(h3.rpc.calls) == 2
-    only_turn_start(h3.rpc)
-    print('ok explicit typed rejection with no contradictory matching activity', flush=True)
+    # 5. Unbound early activity contradicts rejection without proving binding.
+    rejection_cases = (
+        ('none', [], False, False),
+        ('foreign', [started('other-thread', 'new')], False, False),
+        ('early', [started(THREAD, 'new'), agent_delta(THREAD, 'new', 'x')], True, False),
+        ('oversized', [agent_delta(THREAD, 'new', 'x' * (br.DELTA_BOUND + 1))], True, True),
+        ('overflow-empty', [agent_delta(THREAD, 'new', 'x' * 1025)], True, True),
+        ('overflow', [started(THREAD, 'new')] * 3, True, True),
+    )
+    for name, events, activity, gap in rejection_cases:
+        h3 = Harness(base, buffer_events=1, buffer_bytes=1024)
+        h3.rpc.before = events
+        h3.rpc.behavior = ('reject', None)
+        result = h3.submit('rejected-one')
+        expected = 'uncertain' if activity else 'rejected'
+        assert result['state'] == expected, name
+        send = h3.bridge.status()['last_send']
+        assert send['status'] == expected and send['gap'] == gap, name
+        assert send['unbound_activity'] == activity, name
+        assert h3.bridge.status()['gap'] == gap, name
+        assert h3.bridge.status()['buffered_events'] == 0, name
+        assert h3.bridge.status()['turn_mappings'] == 0, name
+        assert h3.view()['state'] == ('outcome_unknown' if activity else 'idle'), name
+        assert h3.output()['records'] == [], name
+        assert h3.submit('rejected-one')['state'] == expected, name
+        assert len(h3.rpc.calls) == 1, name
+        if activity:
+            assert 'not open' in refuses(h3.submit, 'blocked-new')
+            assert h3.notify(completed(THREAD, 'new'))['action'] == 'ignored'
+            assert h3.view()['generation'] == 1
+        else:
+            h3.rpc.behavior = ('reply', ack('after-rejection'))
+            assert h3.submit('after-rejection')['state'] == 'accepted'
+            assert len(h3.rpc.calls) == 2
+        only_turn_start(h3.rpc)
+    print('ok typed rejection preserves early uncertainty and empty-buffer gap evidence', flush=True)
 
     # 6. Timeout/lost/malformed/wrong-thread acknowledgements stay uncertain.
     bad_acks = (
@@ -392,6 +410,49 @@ def run_suite(base):
     assert view['last_turn']['turn_id'] == r2['turn_id']
     assert view['history'][0]['turn_id'] == r1['turn_id']
     print('ok wrong, stale and duplicate turns cannot terminate another turn', flush=True)
+
+    # Reused identities never overwrite; capacity never evicts old evidence.
+    for count in (1, br.MAX_MAPPINGS):
+        reuse = Harness(base)
+        for index in range(count):
+            provider = 'remember-%d' % index
+            reuse.rpc.behavior = ('reply', ack(provider))
+            assert reuse.submit('remember-%d' % index)['state'] == 'accepted'
+            reuse.notify(completed(THREAD, provider))
+        original = dict(reuse.bridge._local['remember-0'])
+        reuse.rpc.behavior = ('reply', ack('remember-0'))
+        # Known stale activity cannot masquerade as a new unbound turn.
+        reuse.rpc.before = [started(THREAD, 'remember-0'),
+                            completed(THREAD, 'remember-0')]
+        uncertain = reuse.submit('reuse')
+        assert uncertain['state'] == 'uncertain'
+        assert reuse.bridge._local['remember-0'] == original
+        assert reuse.bridge.status()['turn_mappings'] == count
+        assert len(reuse.rpc.calls) == count + (count < br.MAX_MAPPINGS)
+        assert reuse.view()['state'] == 'outcome_unknown'
+        assert reuse.view()['generation'] == count + 1
+        before = reuse.output()['records']
+        reuse.notify(completed(THREAD, 'remember-0'))
+        assert reuse.view()['state'] == 'outcome_unknown'
+        assert reuse.view()['generation'] == count + 1
+        assert reuse.output()['records'] == before
+        assert reuse.submit('reuse')['state'] == 'uncertain'
+        assert 'not open' in refuses(reuse.submit, 'reuse-new')
+        assert len(reuse.rpc.calls) == count + (count < br.MAX_MAPPINGS)
+        assert 'handoff required' in reuse.bridge.status()['last_send']['reason']
+        only_turn_start(reuse.rpc)
+    # Old known identities alone do not contradict an explicit rejection.
+    stale = Harness(base)
+    stale.rpc.behavior = ('reply', ack('old'))
+    stale.submit('old')
+    stale.notify(completed(THREAD, 'old'))
+    stale.rpc.before = [started(THREAD, 'old'), completed(THREAD, 'old')]
+    stale.rpc.behavior = ('reject', None)
+    assert stale.submit('stale-rejected')['state'] == 'rejected'
+    assert stale.view()['state'] == 'idle' and stale.view()['generation'] == 2
+    assert stale.bridge.status()['unbound_activity'] is False
+    only_turn_start(stale.rpc)
+    print('ok reused identity stays ambiguous; four mappings require handoff without extra RPC', flush=True)
 
     # 9. Output bound: oversized delta refuses, marks an explicit gap.
     h7 = Harness(base)
