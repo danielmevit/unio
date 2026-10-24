@@ -3,114 +3,109 @@
 Updated 2026-10-23T19:50:02+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
 ~/.config/unio/OWNER-WORKFLOW.md before acting.
 
-## Active private development — 2026-10-24T15:49:15+02:00
+## Active private development — 2026-10-24T16:34:37+02:00
 
-Official/main/installed stable0.5.23 cd0b3a2, rechecked15:43. Main clean and
-unchanged. No0.5.24 main push/release/globalinstall authority. Existing lead's
-private integration branch agent/reliability-integration-20261024 carries guidance
-and diagnostic notes; runtime acceptance is still pending. Read newest log and
-~/.config/unio/OWNER-WORKFLOW.md. Do not duplicate healthy Source jobs.
+Official/main/installed0.5.23 cd0b3a2; main clean. No0.5.24 main push, release or
+globalinstall authority. Private integration branch agent/reliability-integration-20261024
+holds notes; runtime is not yet accepted/integrated. Read current owner workflow
+and newest log. All code implementation corrections finished; do not repeat them.
 
-### Current active corrections
+Current candidate components, both Source0/native0/native4of4PASS0:
+- review-set68304ca1e5dd716806674c5d5f199fb530f4da93, ChatGPT subscription/
+  Codex0.163.0/gpt-6.1-sol LOW, taskREVIEW-SET-DISPATCH-RESULT-SOL-LOW-0524-20261024,
+  worker codex-managed-lead-retention-low-20261024. Its own collection must actually
+  invoke all reviewers to succeed; valid historical approvals remain current.
+- transport9431c78ca55f7e73a451678e991e91ea115c95e1, Claude subscription/
+  ClaudeCode2.1.309/Opus5.5LOW, taskTRANSPORT-IDENTITY-OPUS-LOW-0524-20261024,
+  worker claude-managed-lead-tests-low-20261024. Quarantines ambiguous ID deltas
+  before/after ack, separates per-turn gaps and refuses unsafe fresh rebind.
+  Lead repeated all3original probes: allPASS, no provider calls/source changes;
+  transport-identity-opus-low-20261024/lead-positive-controls.json. Low sufficient.
+  Four-mapping/pre-intent policy and unsupported events remain explicit backlog.
 
-- ChatGPT subscription / CodexCLI0.163.0 / gpt-6.1-sol LOW:
-  REVIEW-SET-DISPATCH-RESULT-SOL-LOW-0524-20261024 in reused idle worker
-  codex-managed-lead-retention-low-20261024. New dedicated assignment/baseea8fae8;
-  earlier task receipts remain unchanged. Pipeline review-set-dispatch-low-20261024.
-  ActualSource started15:43:07+02; verify/review/acceptance pending. Fix the fresh
-  review-set dispatch borrowing historical approvals after its grants are spent.
-  Keep valid historical approvals, exact native consent and zero refused calls.
-- Claude subscription / ClaudeCode2.1.309 / claude-opus-5-5 LOW:
-  TRANSPORT-IDENTITY-OPUS-LOW-0524-20261024 in reused idle worker
-  claude-managed-lead-tests-low-20261024. Baseea8fae8, actualSource15:39:50+02,
-  pipeline transport-identity-opus-low-20261024. Conditional reviewer takeover after
-  Sol's reuse fix still allowed ambiguous deltas into old history. Scope: quarantine
-  reused identity including pre-ack output, per-turn gaps, refuse unsafe fresh
-  bridge rebind. No core/native-owner/installer changes. Other prototype limits
-  remain explicit; no silent cap expansion or persistence subsystem.
+The two prepared native reviews exited2 BEFORE model calls: accumulated whole
+branch material exceeds300000bytes. Original independent-opus-review and
+independent-vibe-glm-review logs/receipts remain unchanged. No approval exists
+from them. managed-lead-corrected-batch-gate-20261024 correctly did not assemble.
+Do not clip source, increase the cap, or relabel these refusals as code reviews.
 
-One shared Codex companion only; realcodexlead/group/native task/config-bound
-consent and temporary coordination medium, STOP closing other admissions, restore
-low when idle. Both Source wrappers pin model/LOW/version; effective Unknown.
-Fresh native15:28 observed98% primary/53%weekly after reset, not a current count or
-per-task savings claim. Other models idle/unrefreshed; no Mercury benchmarking.
+### Active independent report-only audits
 
-### Independent review and new gate preparation
+Existing v23 report-only tasks are used with the complete focused diff and exact
+full enclosing-source snapshots, hashes/base/target and required model-written
+review artifacts. These are NOT native review receipts and cannot set canonical
+machine review readiness. See [the operating workflow](SCOPED-CODE-AUDITS.md).
 
-Sol dispatch correction -> Claude subscription / Opus5.5XHIGH in its
-independent-opus-review, with exact enclosing Python/shell source snapshots.
-Opus transport correction -> Mistral subscription / Vibe2.26.1 / GLM5.3HIGH
-in independent-vibe-glm-review. This is the Mistral route, not OpenCode Go or
-Perplexity. Requested/effective remain separate. Both reviewers wait realSource/
-native/verify0 and free actual account slots. One external reviewer plus existing
-lead per change; no recursive review or duplicated lead reviewer.
+- Claude subscription/ClaudeCode2.1.309/Opus5.5XHIGH audits exact68304ca via
+  AUDIT-REVIEWSET-OPUS-XHIGH-CONTRACT-0524-20261024, pipeline
+  audit-reviewset-opus-xhigh-contract-20261024. Reviewer worker is
+  claude-managed-lead-tests-low-20261024 whose incidental checkout9431 differs
+  from the audited target; explicit audit binding prevents conflation.
+  Packet16655bytes, complete enclosing sources89301bytes.
+- Mistral subscription/Vibe2.26.1/GLM5.3HIGH audits exact9431 via
+  AUDIT-TRANSPORT-VIBE-GLM-HIGH-CONTRACT-0524-20261024, pipeline
+  audit-transport-vibe-high-contract-20261024, worker
+  vibeglm-managed-lead-transport-20261024 ff9431 before dispatch. Requested
+  route is Mistral, not OpenCode Go/Perplexity. Packet42391bytes, full enclosing
+  source194580bytes. Requested/effective Unknowns stay separate.
 
-Bounded observer: tmp/unio-next/managed-lead-corrected-batch-gate-20261024.
-After both current sources/checks/reviews0, it may prepare a separate staging
-branch/worktree managed-lead-corrected-batch-20261024, prove changed-path scopes
-are disjoint and bytes equal reviewed revisions, then run ONE full quality gate
-on the exact Git clone in a private tmpfs fixture. It does not accept, install,
-push or publish. Inspect controller.json, frozen-source.json and full-gate.json/log.
-Any failure/conflict/unknown stops it for the existing lead. No blind retries.
+Observed states at this checkpoint (read fresh JSONs before acting):
+{
+  "audit-reviewset-opus-xhigh-contract-20261024/controller.json": "native_started",
+  "audit-reviewset-opus-xhigh-contract-20261024/source/source.json": "provider_running",
+  "audit-transport-vibe-high-contract-20261024/controller.json": "native_started",
+  "audit-transport-vibe-high-contract-20261024/source/source.json": "provider_running"
+}
 
-### Previous checkpoint and confirmed remaining problems
+Both audits were admitted16:30. No recursive workers or paid API fallback.
+One external reviewer per change plus existing lead assessment. Real account
+mappings/lead/lowtier/STOP retained; no shared Codex companion remains active.
+The first audit preparation used RESERVED binding.json and was refused2 with
+zero model calls. Those attempts remain. Corrected tasks use audit-evidence.json,
+passed actual required-delivery module preflight before dispatch. A further
+preparation-only script wrongly parsed human CLI output as JSON; completed via
+module parser before any model call. Do not repeat or hide these lead errors.
 
-Both previous corrections finishedSource0/native0/native4of4PASS0:
-selftest5b9085c7c2e24829a1d5547ff627d0674ac323f9 (OpusLOW; other-lab Mistral
-Medium3.5HIGH APPROVE0/no findings) and bridge24a5c24fd57a8ac635f162b38fbd688c244f1dbe
-(SolLOW; OpusXHIGH APPROVE0 with one medium/four low/one info observations).
-They assembled provisionalea8fae809f58c4a8a89d11efaeb23e30f73fef65/tree979d626a.
-All exact-content proofs remain in managed-lead-batch-gate-20261024.
+### Gate and exact next action
 
-That full gate FAILED1 at13:58:03+02 after1712.91s. No final acceptance or public
-integration. Selftest passed; failure was tests/unio-review-collection.py
-ReviewCollection.test_shared_lead_requires_exact_owner_review_consent, line198:
-new refused collection returned0 after earlier approvals. Actual reviewers did
-not run. Source inspection confirms own-collection finalize ready can count bound
-refusal receipts, then aggregate historical approval produces success. The test
-is meaningful; do not waive it or make historical refusals permanently poison
-valid approvals. Dispatch outcome and historical verdict eligibility are distinct.
+Only new observer managed-lead-audited-batch-gate-20261024 is current. It waits
+both auditSource/native/verify0 plus bound APPROVE artifacts, then prepares
+wt/managed-lead-audited-batch-20261024, proves disjoint paths/exact component bytes
+and runs ONE full quality gate in a frozen private tmpfs clone, zero model calls.
+Source audit exits/opinions remain distinct from native review status. Any
+failure/REQUEST-CHANGES/conflict stops preparation. No automatic acceptance,
+main push, install or publication. Existing lead must inspect actual findings,
+controls, byte proofs and final full-gate.json/log before private integration.
 
-Lead independently reproduced three transport risks from Opus's observations:
-1. Reused ID returns uncertain but later delta still writes old local turn journal.
-2. Fresh bridge forgets old IDs; reused ack plus stale terminal completes a new turn.
-3. An old-turn gap marker suppresses a new-turn marker while last_send says recorded.
-Read tmp/unio-next/transport-ambiguity-lead-probes-20261024/reproduction.json.
-Zero provider calls, exactea8fae8, source unchanged. These need correction before
-acceptance despite the review's focused APPROVE. Four-mapping capacity before
-intent, unsupported event widening and broader native ownership remain backlog.
+Previous provisionalea8fae8 gateFAILED1 at13:58:03/1712.91s on review-collection
+shared-lead consumed-grant testline198. That was a real dispatch regression, not
+a stale test: bound refused receipts plus older aggregate approvals returned0.
+New68304ca preserves history but requires this dispatch's actual invocations.
+PreviousSource683/9431 baseea8 included verifiedselftest5b908 and bridge24a5;
+oldapprovals were focused, not blanket acceptance. Opus24a5 residual risks were
+reproduced by lead and fixed in9431. OriginalSource exits/reviews/gates unchanged.
 
-No Source or review failure is relabeled. Code remains protected by Git. Previous
-read-only selected WIP context under selftest-lifecycle-opus-low-20261024 is NOT a
-native save/commit/full backup. Automatic saves still hit60s helper deadlines;
-helper performance is separately diagnosed, not fixed.
+Other preserved evidence:9758 core/test current approval and six negative controls,
+its first gate failedselftest38of40; Sol88fe selftest mounted300s timeout/private
+native4of4 then OpusREQUEST-CHANGES; OpusLOW5b908 corrected6reported lifecycle
+issues. Mounted normal checks reached318s, still not claimed fixedperformance.
+GLMa07ddee Source/native0, native3of4 because LEAD validation quoting error;
+standalone scope/AST0 separate, three actual code defects independently proved.
+Oldquota1/stalereview2/interruptedgates-15 stay unchanged. Python imports must use
+-B: previous lead-generated pyc staled a review and the exact files were retained.
 
-Earlier preserved evidence:9758 core/test approval plus six negative controls;
-its gate failed selftest38of40. Sol88fe selftest Source/native0, mountedverify1 at
-300s then same private-fixture native4of4PASS0; OpusXHIGH REQUEST-CHANGES six
-coverage/cleanup/timing findings. OpusLOW5b908 corrected those and identifies old
-mounted selftest reaching T5 after318s: still too slow for300s, not claimed fixed.
-GLM bridgea07ddee Source/native0, nativeverify3of4 because LEAD shell-quoted a Python
-list repr incorrectly; original unchanged, separate standalone scope/AST0 erratum.
-Lead found three actual bridge defects; Sol24a5 fixed all three, lead controls0,
-while the residual risks above remained. Old quota1, stale2 and intentionally
-interrupted-15 gates remain exactly as recorded. Use Python -B for all imports:
-previous lead-generated pyc staled a review and its files were preserved.
+Helperdiagcabb1db plus [lead corrections](HELPER-LATENCY-LEAD-ASSESSMENT-2026-10-24.md)
+remain; no perf patch or timeout increase. Nativeexperience record for oldGLM
+bridge was attempted once and timed out2, nothingstored; its assessment JSON
+preserves actual failure and separate code-quality versus lead-contract error.
+Automatic saves still hit60s; Git/selectedread-onlycontext are not native saves.
 
-Helper diagnosiscabb1db and [lead corrections](HELPER-LATENCY-LEAD-ASSESSMENT-2026-10-24.md)
-remain: repeated store scans measured costly; full-save105–125s is a model,
-contention hypothesis unproved, some byte counts differ, publish unlocks before
-write_attempt. No timeout increase, perf patch or real-save cleanup authorized by
-that report. [Integration decisions](MANAGED-LEAD-INTEGRATION-DECISIONS.md) still
-apply: real account identity, frozen private dependency, supported mapping and
-owner authority, no automatic resume/ID adoption or strict-schema break.
-
-Next existing-lead assessment needs exact new sources/reviews, positive fault
-controls and actual final gate. Then private integration only. Native persistent
-lead claim/process still next useful feature (first route2–4working days total);
-core/bridge alone is not an installed lead command. Phone after ownership,
-Windows before macOS. Vecto read-only; UI/site separate; private research and
-stable23backup complete; Mercury trials closed. Do not publish unfinished24.
+After audit/gate/lead acceptance: private integration, then first usable native
+lead ownership/process claim (core/bridge alone expose no installed lead command;
+first supported route2–4workingdays total). Keep [integration decisions](MANAGED-LEAD-INTEGRATION-DECISIONS.md),
+real budgets, explicit owner authority and no automatic resume/ID adoption.
+Phone after ownership, Windows before macOS. Vecto read-only; UI/site separate;
+private research/stable23backup complete; Mercury closed. No unfinished24release.
 
 ## Release delivery complete
 
