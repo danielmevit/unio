@@ -132,9 +132,11 @@ class Harness:
 
     def submit(self, request_id, text='next turn input'):
         generation = self.session.status(session_id=self.sid)['generation']
-        return self.session.submit_next_turn(
+        result = self.session.submit_next_turn(
             session_id=self.sid, generation=generation,
             request_id=request_id, text=text)
+        only_turn_start(self.rpc)
+        return result
 
     def notify(self, msg):
         return self.bridge.handle_notification(msg)
@@ -289,7 +291,8 @@ def run_suite(base):
     rejection_cases = (
         ('none', [], False, False),
         ('foreign', [started('other-thread', 'new')], False, False),
-        ('early', [started(THREAD, 'new'), agent_delta(THREAD, 'new', 'x')], True, False),
+        ('early-start', [started(THREAD, 'new')], True, False),
+        ('early-output', [agent_delta(THREAD, 'new', 'x')], True, False),
         ('oversized', [agent_delta(THREAD, 'new', 'x' * (br.DELTA_BOUND + 1))], True, True),
         ('overflow-empty', [agent_delta(THREAD, 'new', 'x' * 1025)], True, True),
         ('overflow', [started(THREAD, 'new')] * 3, True, True),
