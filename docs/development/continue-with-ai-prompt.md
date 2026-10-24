@@ -1,5 +1,42 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Active test takeover and gate — 2026-10-24T21:51:47+02:00
+
+Foundation gate managed-lead-ready-audited-gate-20261024 remains running since
+21:16:51 exacteddc5227. No failure observed; read full-gate.json/log before any
+acceptance. It has passed collection/coherence and moved through adapters/browser
+launcher. Main/public/installed remain23.
+
+Original save runtimee2f0afa has nativeOpus5.5XHIGH APPROVE/actualCLI/adapter/
+native0. Two low test gaps led to a dedicated SolLOW test-only correction94c1d43,
+Source/native/4checks0, runtime/qualitybyteidentical. FreshOpusXHIGH native review
+then REQUEST-CHANGES/native1, CLI/adapter0: replacing the tie case lost prior
+new-ID-wins coverage (real no-ID mutant passed62checks). Do not relabel this
+qualityfinding as provider failure or count the earlier approval for changedtests.
+
+Owner-conditional Opus5.5LOW takeover active: task
+SAVE-ATTEMPT-TIE-COVERAGE-OPUS-LOW-0524-20261024, worker
+claude-save-attempt-coverage-low-20261024/base94c1d43. Pipeline
+save-attempt-coverage-opus-low-20261024, actualSource21:50:45+02, controller1879314.
+Onlytests/doc/newfragment; installer/qualityremainbyteidentical. Preserve both
+fixed-ID tie winners, reject a publish-only no-ID mutant without mutating oracle,
+and pin only16byte saveIDrandomness/delegateotherlengths. No additional Solloop.
+Its other-lab native reviewer is Mistral/Vibe2.26.1/GLM5.3HIGH afteractualchecks,
+using a source-frozen reviewwrapper and precreatedprivate receiptparent; exports
+actualfinalassistanttext, no fake reports. Observer1879315. Source and review
+routes were frozen together before admission.
+
+CURRENT FINAL save-inclusive gate observer ONLY
+reliability-save-opus-combined-gate-20261024/controller1879318. Older
+reliability-save-combined-gate stopped on94c rejection and stays unchanged.
+New observer waits foundationPASS and newOpusSource/native/checks0 plus actual
+Mistralnativeapproval; then merges exactseparatesavebranch, proves foundation
+installerprefix/suffix plus reviewedSAVESbody, exactlyonetestregistration and
+all7savefilesbyteidentity, runsonefullgate. Neverautoaccept/push/install/publish.
+Leadfinalassessment required. No24publicationauthorization. Nativeownedlead still
+notimplemented; currentcore/bridgeprototypeand savefixareprivate foundations.
+
+
 ## Current passing-review / active-gate checkpoint — 2026-10-24T21:23:07+02:00
 
 Review-dispatch544cfad now has independent Mistral subscription / Vibe2.26.1 /
