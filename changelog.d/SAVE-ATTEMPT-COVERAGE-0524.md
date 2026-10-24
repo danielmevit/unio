@@ -1,0 +1,1 @@
+Strengthen installed save-attempt regressions for successful archival, future archived history, deterministic existing-ID ties and fresh per-capture attempt identity, with a skipped-write negative control; runtime unchanged.

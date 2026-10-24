@@ -34,3 +34,24 @@ harness corrected to use catchable refusal injection. Existing suites separately
 exercise real publication/archival process faults. No provider retry occurred.
 Source completion awaits independent Opus XHIGH review and existing lead acceptance;
 these checks do not confer acceptance. No full quality gate or live probe was run.
+
+## Test-only coverage correction — 2026-10-24
+
+The installed-helper regression now checks each normal successful capture against
+its newly published ID, complete attempt status, exactly one known_good write, and
+a fresh installed last_good(False) result. Successful retention cases assert that
+active IDs actually move to archive with identical bytes, while source worktree,
+index, HEAD and claim pins remain intact. Already archived future history and a
+deterministic equal-timestamp tie won by existing fff… over new 111… are covered.
+A negative control silently skips the current attempt write with an unchanged
+last_good_id and must fail the current-attempt identity assertion. The deliberate
+nonfatal attempt-I/O case instead checks the one attempted complete write and new
+publication: persistent complete metadata cannot be required when I/O fails.
+
+Installer and quality registration remain byte-identical to e2f0afa. The original
+Claude Code 2.1.309 / requested Opus5.5 XHIGH runtime APPROVE remains historical
+evidence for that revision, not approval of this test delta. Fresh current-code
+Opus review and lead assessment are still required. Frozen sequential four-suite
+check logs and exact revision/exits are recorded in the delivery summary. The
+in-process fault cases remain catchable bookkeeping injections, distinct from
+the existing suites' real process-exit faults.
