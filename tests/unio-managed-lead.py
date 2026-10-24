@@ -588,12 +588,278 @@ def correction_regressions(base):
     print('ok correction regressions: journal integrity, identity, private temps, Unicode')
 
 
+def medium_review_regressions(base):
+    # Delete every persisted key, submitting directly (no Harness.status guard).
+    for phase in ('idle', 'running', 'terminal'):
+        h = Harness(base)
+        if phase != 'idle':
+            r = h.submit('required')
+            if phase == 'terminal':
+                h.finish(r, 'failed', 19)
+        original = h.session.meta_path.read_bytes()
+        doc = json.loads(original)
+        calls = len(h.transport.calls)
+        variants = []
+        for key in doc:
+            bad = json.loads(original)
+            del bad[key]
+            variants.append(bad)
+        nested = [('requests', 'required')] if phase != 'idle' else []
+        if phase == 'running':
+            nested.append(('turn',))
+        if phase == 'terminal':
+            nested.extend([('last_turn',), ('history', 0)])
+        if phase != 'idle':
+            nested.append(('requests', 'required', 'result'))
+        for path in nested:
+            node = doc
+            for part in path:
+                node = node[part]
+            for key in node:
+                bad = json.loads(original)
+                parent = bad
+                for part in path:
+                    parent = parent[part]
+                del parent[key]
+                variants.append(bad)
+        for bad in variants:
+            h.session.meta_path.write_text(json.dumps(bad))
+            refuses(h.session.status, session_id=h.sid)
+            refuses(h.session.submit_next_turn, session_id=h.sid,
+                    generation=doc['generation'], request_id='direct', text='x')
+            refuses(h.open)
+            assert len(h.transport.calls) == calls
+        h.session.meta_path.write_bytes(original)
+        with h.session._guard():
+            del h.session._state['last_turn']
+            refuses(h.session._save)
+        assert h.session.meta_path.read_bytes() == original
+    print('ok every required state/nested key refuses directly; save validates candidate', flush=True)
+
+    # Observations may arrive while send_turn is outside the lock.
+    for observation in ('none', 'started', 'terminal', 'started-terminal'):
+        for reply in ('accepted', 'uncertain', 'rejected'):
+            h = Harness(base)
+            def send(facts):
+                h.transport.calls.append(dict(facts))
+                args = {k: facts[k] for k in ('session_id', 'generation', 'turn_id')}
+                if observation in ('started', 'started-terminal'):
+                    h.session.observe_turn_started(**args)
+                if observation in ('terminal', 'started-terminal'):
+                    h.session.observe_terminal(**args, status='failed', exit_code=23)
+                return {'status': reply}
+            h.transport.send_turn = send
+            r = h.submit('ordering')
+            expected = 'uncertain' if reply == 'rejected' and observation != 'none' else reply
+            assert r['state'] == expected, (observation, reply, r)
+            reopened = h.open()
+            view = reopened.status(session_id=h.sid)
+            if 'terminal' in observation:
+                assert view['state'] == 'terminal' and view['last_turn']['exit_code'] == 23
+                assert view['turns_failed'] == 1 and view['generation'] == 2
+            elif observation == 'started':
+                assert view['state'] == 'running' and view['turn']['delivery'] == 'accepted'
+            assert reopened.submit_next_turn(session_id=h.sid, generation=1,
+                    request_id='ordering', text='next turn input') == r
+            assert len(h.transport.calls) == 1
+            if view['turn']:
+                refuses(reopened.submit_next_turn, session_id=h.sid, generation=1,
+                        request_id='blocked', text='x')
+                # A later proven start must not turn uncertainty into a replay.
+                reopened.observe_turn_started(session_id=h.sid, generation=1,
+                                               turn_id=r['turn_id'])
+                reopened.observe_terminal(session_id=h.sid, generation=1,
+                    turn_id=r['turn_id'], status='failed', exit_code=-9)
+                assert h.open().status(session_id=h.sid)['last_turn']['exit_code'] == -9
+                assert reopened.submit_next_turn(session_id=h.sid, generation=2,
+                        request_id='ordering', text='next turn input') == r
+                assert len(h.transport.calls) == 1
+    print('ok reply/start/terminal orderings preserve facts, uncertainty, reopen and idempotence', flush=True)
+
+    for operation in ('output', 'terminal', 'owner'):
+        h = Harness(base)
+        r = h.submit('append-save')
+        original_meta = h.session.meta_path.read_bytes()
+        replace = ml.os.replace
+        def fail_replace(*args):
+            raise OSError('injected between journal fsync and state replacement')
+        ml.os.replace = fail_replace
+        try:
+            if operation == 'output':
+                refuses(h.session.observe_output, session_id=h.sid, generation=1,
+                    turn_id=r['turn_id'], kind='agent_message', data={'delta': 'preserve'})
+            elif operation == 'terminal':
+                refuses(h.finish, r, 'failed', 37)
+            else:
+                refuses(h.session.observe_owner, session_id=h.sid, generation=1, owner='owner')
+        finally:
+            ml.os.replace = replace
+        assert h.session.meta_path.read_bytes() == original_meta
+        journal_bytes = h.session.journal_path.read_bytes()
+        assert journal_bytes
+        reopened = h.open()
+        view = reopened.status(session_id=h.sid)
+        assert not view['archive_limited'] and view['journal_status'] == 'journal_disagreement'
+        assert reopened.read_output(session_id=h.sid)['disagreement']
+        refuses(reopened.observe_output, session_id=h.sid, generation=1,
+                turn_id=r['turn_id'], kind='agent_message', data={'delta': 'no repair'})
+        assert 'terminal saved' in refuses(reopened.observe_terminal,
+            session_id=h.sid, generation=1, turn_id=r['turn_id'], status='failed', exit_code=37)
+        reopened = h.open()
+        view = reopened.status(session_id=h.sid)
+        assert view['state'] == 'terminal' and view['last_turn']['exit_code'] == 37
+        assert view['turns_failed'] == 1 and not view['archive_limited']
+        assert view['journal_error'] == view['journal_status'] == 'journal_disagreement'
+        assert reopened.read_output(session_id=h.sid)['gap']
+        assert h.session.journal_path.read_bytes() == journal_bytes
+        replay = reopened.submit_next_turn(session_id=h.sid, generation=2,
+                                           request_id='append-save', text='next turn input')
+        assert replay == r and len(h.transport.calls) == 1
+    print('ok output/terminal/owner append-save crash windows preserve bytes and terminal failure', flush=True)
+
+    # Craft an alignment leaving one byte beyond marker headroom after a valid
+    # record. The following tiny record fits, but must instead close the archive.
+    for close_with in ('output', 'lifecycle'):
+        h = Harness(base)
+        r = h.submit('alignment')
+        observe = lambda text: h.session.observe_output(session_id=h.sid,
+            generation=1, turn_id=r['turn_id'], kind='agent_message', data={'delta': text})
+        with h.session._guard():
+            marker_len = len(h.session._archive_marker())
+        archive_bound = ml.ARCHIVE_BOUND
+        try:
+            # Small real bound keeps this a fast alignment test; reader and
+            # writer use the same bound. Existing suite also fills the real 1 MiB.
+            ml.ARCHIVE_BOUND = 4096
+            sample = {'cursor': 1, 'kind': 'agent_message', 'data': {'delta': ''},
+                      'generation': 1, 'turn_id': r['turn_id'], 'timestamp': ml._now()}
+            overhead = len((json.dumps(sample) + '\n').encode())
+            delta = ml.ARCHIVE_BOUND - ml.MARKER_HEADROOM - 1 - overhead
+            observe('x' * delta)
+            assert h.session.journal_path.stat().st_size == ml.ARCHIVE_BOUND - ml.MARKER_HEADROOM - 1
+            if close_with == 'output':
+                result = observe('y' * (ml.MARKER_HEADROOM - marker_len))
+                assert result['state'] == 'archive_limit'
+            else:
+                h.session.observe_owner(session_id=h.sid, generation=1, owner='owner')
+            page = h.open().read_output(session_id=h.sid, after=1)
+            assert page['records'][-1]['kind'] == 'archive_limit' and not page['disagreement']
+            assert page['output_cursor'] == 2
+            assert h.session.journal_path.stat().st_size <= ml.ARCHIVE_BOUND
+        finally:
+            ml.ARCHIVE_BOUND = archive_bound
+    print('ok crafted near-boundary output/lifecycle markers remain complete within reader bound', flush=True)
+
+    h = Harness(base)
+    r = h.submit('bad-facts')
+    original_meta = h.session.meta_path.read_bytes()
+    for bad in (10 ** 5000, -(10 ** 5000), 2 ** 31, -(2 ** 31) - 1,
+                True, [], {}, 1.5, '\ud800'):
+        refuses(h.finish, r, 'failed', bad)
+        for key in ('event', 'status', 'exit_code', 'detail'):
+            refuses(h.session.observe_output, session_id=h.sid, generation=1,
+                    turn_id=r['turn_id'], kind='lifecycle', data={key: bad})
+        assert h.session.meta_path.read_bytes() == original_meta
+        assert h.session.journal_path.read_bytes() == b''
+    for key in ('delta',):
+        refuses(h.session.observe_output, session_id=h.sid, generation=1,
+                turn_id=r['turn_id'], kind='agent_message', data={key: '\ud800'})
+    for code in (ml.INT_MIN, ml.INT_MAX):
+        h2 = Harness(base)
+        r2 = h2.submit('real-code')
+        h2.finish(r2, 'failed', code)
+        assert h2.open().status(session_id=h2.sid)['last_turn']['exit_code'] == code
+    for operation in ('write', 'fsync'):
+        h2 = Harness(base)
+        r2 = h2.submit('io-failure')
+        previous = getattr(ml.os, operation)
+        def fail(*args):
+            raise OSError('controlled journal I/O failure')
+        setattr(ml.os, operation, fail)
+        try:
+            refuses(h2.session.observe_output, session_id=h2.sid, generation=1,
+                    turn_id=r2['turn_id'], kind='agent_message', data={'delta': 'x'})
+        finally:
+            setattr(ml.os, operation, previous)
+        assert len(h2.transport.calls) == 1
+    # Failed lifecycle persistence must preserve terminal facts and refuse.
+    h2 = Harness(base)
+    r2 = h2.submit('terminal-write')
+    append = ml._append_owned
+    def fail_append(*args):
+        raise ml.Refusal('output journal write failed')
+    ml._append_owned = fail_append
+    try:
+        assert 'terminal saved' in refuses(h2.finish, r2, 'failed', 44)
+    finally:
+        ml._append_owned = append
+    view = h2.open().status(session_id=h2.sid)
+    assert view['last_turn']['exit_code'] == 44 and not view['archive_limited']
+    assert view['journal_status'] == view['journal_error'] == 'journal_write_failed'
+    for operation in ('mkdir', 'chmod'):
+        previous = getattr(ml.Path if operation == 'mkdir' else ml.os, operation)
+        parent = ml.Path if operation == 'mkdir' else ml.os
+        def fail(*args, **kwargs):
+            raise OSError('controlled directory failure')
+        setattr(parent, operation, fail)
+        try:
+            refuses(h.open)
+        finally:
+            setattr(parent, operation, previous)
+    print('ok bounded external facts, Unicode/types, directory/journal I/O and honest persistence failure', flush=True)
+
+    # Exercise replacement-time destination checks directly, without _load.
+    for kind in ('fifo', 'hardlink', 'symlink', 'loose'):
+        h = Harness(base)
+        meta = h.session.meta_path
+        data = meta.read_bytes()
+        meta.unlink()
+        target = h.root / 'controlled-target'
+        target.write_bytes(data)
+        os.chmod(target, 0o600)
+        if kind == 'fifo':
+            os.mkfifo(meta, 0o600)
+        elif kind == 'hardlink':
+            os.link(target, meta)
+        elif kind == 'symlink':
+            meta.symlink_to(target)
+        else:
+            meta.write_bytes(data)
+            os.chmod(meta, 0o644)
+        refuses(ml._atomic_write, meta, b'forbidden replacement')
+        assert target.read_bytes() == data and not h.transport.calls
+        refuses(h.session.submit_next_turn, session_id=h.sid, generation=1,
+                request_id='direct-unsafe', text='x')
+        assert not h.transport.calls
+    # FIFO lock check is isolated with a hard timeout so a regression cannot
+    # hang this test process. No real provider, account or personal-file access.
+    h = Harness(base)
+    h.session.lock_path.unlink()
+    os.mkfifo(h.session.lock_path, 0o600)
+    import subprocess
+    probe = '''import importlib.util, pathlib, sys
+s = importlib.util.spec_from_file_location('ml', sys.argv[1])
+m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+try:
+    m._acquire_lock(pathlib.Path(sys.argv[2]))
+except m.Refusal:
+    sys.exit(0)
+sys.exit(1)
+'''
+    result = subprocess.run([sys.executable, '-B', '-c', probe,
+                             str(SOURCE / 'tools/managed-lead.py'), str(h.session.lock_path)],
+                            timeout=5, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    print('ok direct unsafe destination checks and bounded nonblocking FIFO lock refusal', flush=True)
+
+
 def main():
     base = Path(tempfile.mkdtemp(prefix='unio-managed-lead-'))
     os.chmod(base, 0o700)
     try:
         run_suite(base)
         correction_regressions(base)
+        medium_review_regressions(base)
     finally:
         shutil.rmtree(base, ignore_errors=True)
     print('all managed lead-session core checks passed')
