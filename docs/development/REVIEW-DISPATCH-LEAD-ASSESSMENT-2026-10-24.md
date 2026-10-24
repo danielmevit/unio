@@ -51,3 +51,16 @@ fresh bound Opus approval, byte-identical unchanged transport and a single
 combined full gate. They do not accept, push, install or publish. Preserve the
 old reviews, setup failures and gate outcomes. Existing lead assessment remains
 the final second assessment under the current personal workflow.
+
+## Correction verified, final assessment still pending
+
+2026-10-24T17:52:51+02:00: SolLOW completed5c2a5ae with actualCLI/Source/native0 and native4/4
+PASS0, including16 installed cases. Source suite completed391.642s. The exact
+scope checker passed; all unrelated installer bytes remain unchanged. Fresh
+Opus5.5XHIGH audit started2026-10-24T17:44:47+02:00; current stateprovider_running.
+No final code acceptance or full-gate pass is inferred. Real tierLOWrestored.
+
+Original683 quality_issue assessment is stored in native experience as
+6db08f90085d9c0920ac097aae01a86f. Default-context refusal2 is preserved separately;
+matching the unchanged Source-pinned configuration provedfresh and stored0.
+This is operator-reported task evidence, not a universal model ranking.

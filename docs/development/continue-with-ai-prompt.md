@@ -1,5 +1,43 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Current verification checkpoint — 2026-10-24T17:52:51+02:00
+
+Exact corrected revision5c2a5ae0ad5045f5e2308700f6de91e160b19823 is clean.
+ChatGPT/CodexCLI0.163.0/gpt-6.1-solLOW Source17:14:55→17:30:14, actualCLI0,
+Source0/native0; native4/4PASS0 including the16-case installed suite (Source
+run391.642s). Two installer functions only; strict checker proves every other
+installer byte unchanged. Real lead/group/grant preserved, STOPset, tierLOWrestored.
+No final acceptance or publication. Original683 compatibility rejection stays.
+
+Fresh Claude subscription/ClaudeCode2.1.309/Opus5.5XHIGH audit actualSource
+2026-10-24T17:44:47+02:00, observedprovider_running. Current pipeline
+workspace tmp/unio-next/audit-review-dispatch-contract-opus-xhigh-20261024.
+Audited target5c2a5ae differs from incidental reviewer checkout9431; exact
+packet27994bytes plus full enclosing107348bytes are hashed/bound. Native artifact
+contract passed preflight; no fake native-review receipt. Source effective
+model/effort remainUnknown. Fresh automatic capacity attempt1: onlyCodex refresh
+supported, so Claude allowance remainsUnknown rather than exhausted or verified.
+
+Only managed-lead-contract-corrected-gate-20261024 is the current gate observer.
+It waits actual fresh auditSource/native/artifactverify0 + APPROVE, preserves
+unchanged9431 Mistral/VibeGLM5.3HIGH approval, proves disjoint reviewed bytes,
+then runs one frozen full gate. Read actual JSONs; do not duplicate calls/gates.
+Earlier audited-batch observer correctly stopped on REQUEST-CHANGES, no gate run.
+
+Native experience quality_issue record6db08f90085d9c0920ac097aae01a86f for original
+68304ca/SolLOW is stored0, one correction. First default-config attempt2 correctly
+refused stale context; original Source-pinned config provedfresh and stored0.
+This was a context-selection issue, not a helper timeout. Both receipts remain
+in review-set-dispatch-low-20261024. Do not erase the first refusal or falsely
+score it as model failure. Pending corrected5c has no final accepted score yet.
+
+Next: current Opus actual findings/checks, one combined gate, existing-lead
+assessment, private integration. Do not push main, install or publish24 without
+new explicit owner authority. Public/installed23 and private studies unchanged.
+The native owned-lead outline remains not dispatched; save-helper60s failures,
+full lifecycle integration and prototype limits remain open. Older checkpoint
+below records the correction's preparation and failure history.
+
 ## Latest correction checkpoint — 2026-10-24T17:17:15+02:00
 
 Read [the current review-dispatch assessment](REVIEW-DISPATCH-LEAD-ASSESSMENT-2026-10-24.md)
