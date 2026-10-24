@@ -3,35 +3,44 @@
 Updated 2026-10-23T19:50:02+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
 ~/.config/unio/OWNER-WORKFLOW.md before acting.
 
-## Active private development — 2026-10-24T01:49:33+02:00
+## Active private development — 2026-10-24T02:01:01+02:00
 
-Published/installed remains0.5.23. No0.5.24 main push, release or global install
-authorized yet. Current private integration agent/reliability-integration-20261024
-contains reviewed755cb060, own release/handoff docs and b5a1b0e bundled-guide
-regeneration. The first870e649 gate failed before tests because that guide was
-stale; preserve it. generated-identity-proof.json proves the28new guide lines were
-already canonical at755 and all other installer bytes unchanged.
+Stable published/main/installed remains0.5.23. No0.5.24 main push/release/install
+authorized. Private candidate4a744ca stages the review-history fix plus the new
+backend for testing only; the backend is NOT accepted. Read the current round
+checkpoint and newest local log before acting; earlier "review active" text
+records the earlier phase, not approval.
 
-Read [the current round checkpoint](RELIABILITY-CONTINUITY-2026-10-24.md).
-SolLOW generator native4/4 PASS0. Mistral/Vibe2.26.1 GLM5.3HIGH original backend
-Source/native/verify0 but four actual lead-reproduced defects, stored natively as
-quality_issue. Dedicated Codex0.163/SolLOW correction01cb958+da43719 Source/
-native0, verify3/3 PASS0; lead original-defect probes pass. Blind independent
-ClaudeCode2.1.309/Opus5.5XHIGH native review now active on that exact correction.
-Pipeline managed-lead-core-correction-low-20261024/independent-opus-review-current.
-No corrected-code acceptance before its actual review and lead assessment.
+Claude subscription/ClaudeCode2.1.309/Opus5.5XHIGH review on exact da437194:
+CLI/adapter0, native1 REQUEST-CHANGES. Lead reproduced three real defects:
+missing nullable state keys can reach transport and crash status, a concurrent
+start then rejected reply persists unreadable state, and append/save failure is
+misreported as archive size limit. Additional low findings concern marker bounds,
+controlled input/I/O errors, tests and repeated scanning cost. Original four
+lead defects were fixed; these new findings still block acceptance.
 
-Next merge only accepted current code privately; freeze and run new direct backend
-tests plus complete quality gate once in managed-reliability-combined-20261024.
-Then build the owned Codex transport/native admission path. The module alone is
-not installed continuity. Automatic save60s timeouts remain operational backlog;
-commits preserve work. Completed privatehub e5be535 holds classified research and
-six official23 backup assets. Mercury trials remain closed.
+Dedicated CodexCLI0.163/gpt-6.1-sol MEDIUM task
+MANAGED-LEAD-OPUS-CORRECTIONS-SOL-MEDIUM-0524-20261024 is admitted through Unio
+in codex-managed-lead-review-medium-20261024, starting4a744ca. This is the next
+supported effort after demonstrated LOW reasoning/integration gaps, not a quota
+workaround. Real shared Codex group/lead/grant retained, temporary coordination
+medium separately, restore low when idle. Pipeline:
+tmp/unio-next/managed-lead-review-corrections-medium-20261024.
 
-Keep original failures/receipts, real accounts, Codex lead reservation, STOP and
-one focused CodexLOW companion. Read ~/.config/unio/OWNER-WORKFLOW.md: one
-independent Opus5.5XHIGH review plus existing lead, no routine extra reviewer.
-Effective identities/effort Unknown; no paid fallback, Vecto edits or worker restart.
+Combined4a744ca gate was deliberately stopped after review requested changes;
+new backend suite and embedding checks passed, broad gate incomplete. Preserve
+managed-reliability-combined-20261024/machine-gate, review-stop.json and old
+failed870e649 gate. No PASS claim; freeze corrected code for a NEW gate after
+Source/native/verify. Fresh current-code Opus review plus existing lead required.
+Do not rebind the old rejection/approval or start dependent transport work yet.
+The next transport slice is only a draft; full native ownership/continuity remains
+later, with no installed public command from this internal component.
+
+Review-history correction755cb060 retains its own Opus APPROVE and guide-only
+b5a1b0e identity proof. Save60s helper timeouts remain operational backlog; early
+commits preserve code. Classified studies/private stable backup complete in
+authorized privatehub e5be535. Mercury testing closed. No paid fallback, Vecto
+changes, auth changes, extra lead-account workflows or global upgrade.
 
 ## Release delivery complete
 
