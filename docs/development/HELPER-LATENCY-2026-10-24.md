@@ -1,5 +1,7 @@
 # Helper latency on Windows/WSL — diagnosis 2026-10-24
 
+Lead note: read [the assessment and corrections](HELPER-LATENCY-LEAD-ASSESSMENT-2026-10-24.md) with this original diagnosis. Complete-save timings and contention include hypotheses; the original diagnostic body is preserved below.
+
 `HELPER-LATENCY-PROFILE-VIBE-GLM-HIGH-0524-20261024` is a bounded,
 read-only diagnosis of the automatic-save and observation timeouts reported
 by real Unio 0.5.23 development on the Windows-mounted workspace. It changes

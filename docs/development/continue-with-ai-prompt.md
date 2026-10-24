@@ -3,102 +3,109 @@
 Updated 2026-10-23T19:50:02+02:00. Read applicable AGENTS.md, newest coord/AGENT-LOG.md and
 ~/.config/unio/OWNER-WORKFLOW.md before acting.
 
-## Active private development — 2026-10-24T11:54:21+02:00
+## Active private development — 2026-10-24T13:12:49+02:00
 
-Published/main/installed stable0.5.23 cd0b3a2. No0.5.24 main push, release or
-global installation is authorized. Lead integration branch retains staged8190057
-plus guidance commits. Latest separately reviewed candidate is
-9758f4224a73d8ee49dd3a85cfbefd8830e8f2a4 in
-wt/claude-managed-lead-tests-low-20261024. Do not duplicate its completed Source.
+Public/main/installed: official0.5.23 cd0b3a2. No0.5.24 main push, release or
+global install authority. Own private integration branch is
+agent/reliability-integration-20261024. Read newest coordination log and
+~/.config/unio/OWNER-WORKFLOW.md. Source work is in dedicated worker branches,
+not yet accepted or integrated here. Do not duplicate healthy active jobs.
 
-The managed-lead prototype now retains uncertainty when matching output arrives
-before a rejected acknowledgement, including closed-archive and oversized-output
-paths. SolLOW b89aa67 fixed the runtime ordering; OpusXHIGH confirmed that fix
-and found a test assertion swallowed by the fake transport's exception handler.
-Conditional owner takeover used Claude subscription/ClaudeCode2.1.309/
-claude-opus-5-5 LOW. Source0/native0/native4checksPASS0, commit9758f42 changes
-only tests/unio-managed-lead.py. Runtime is byte-identical to b89aa67. LOW was
-sufficient, no escalation. Preserve original Sol quota failures and prior reviews.
+### Active bounded corrections
 
-Independent final other-lab review: Mistral subscription/Vibe2.26.1/
-mistral-medium-3-5/HIGH via --thinking high, CLI0/adapter0/native review0,
-APPROVE with valid empty findings. Full frozen source116244bytes accompanied
-native diff material, separately hashed. Requested settings remain effective
-Unknown. One external reviewer plus existing lead; Opus authored the last fix,
-so this final external reviewer appropriately uses another AI lab.
+- Claude subscription / Claude Code2.1.309 / claude-opus-5-5 LOW:
+  SELFTEST-LIFECYCLE-OPUS-LOW-0524-20261024, worker
+  claude-selftest-lifecycle-low-20261024, base88fe824. Source started12:55:03+02
+  and is active at this checkpoint. Conditional reviewer takeover addresses the
+  OpusXHIGH findings that Sol's selftest patch lost public run -b coverage and
+  left cleanup/PID-reuse/timeout/timing-test gaps. LOW first; escalate only after
+  a demonstrated reasoning miss, not filesystem/auth/quota failure. Pipeline
+  tmp/unio-next/selftest-lifecycle-opus-low-20261024. Selected public-source WIP
+  was copied read-only to lead-context-rescue-20261024T131010+0200 there because
+  native capture deadlines still fail: this is unverified context, not a native
+  save, commit, complete snapshot or restore proof. Never modify the active WT.
+- ChatGPT subscription / Codex CLI0.163.0 / gpt-6.1-sol LOW:
+  MANAGED-LEAD-CODEX-CORRECTIONS-SOL-LOW-0524-20261024, worker
+  codex-managed-lead-transport-low-20261024, basea07ddee. ActualSource0 finished
+  13:02:39+02, latest saved24a5c24fd57a8ac635f162b38fbd688c244f1dbe. Native
+  finalization/verification pending: inspect controller.json. Lead repeated all
+  three original fake probes and confirmed they now pass, zero provider calls,
+  clean unchanged worktree. Pipeline managed-lead-codex-correction-low-20261024,
+  lead-correction-positive-controls.json. Do not relabel this as accepted code.
+  One shared-budget companion, actualcodexgroup/lead, task/config-bound grant,
+  temporary native medium tier and STOP; controller restores low when idle.
 
-Pipeline tmp/unio-next/managed-lead-test-takeover-opus-low-20261024 contains
-source/controller/verification proof, independent-mistral-review and machine-gate.
-Lead-negative-controls.json confirms six deterministic old/corrected tests:
-unchanged runtime passes both; injected wrong-turn activity and callback assertion
-are missed by old tests and caught by corrected tests. No provider calls or source
-changes. An initial operator fault-injection placement error is preserved separately.
+Both requested models/efforts remain effective Unknown. Other routes are idle;
+no new Mercury benchmarking. Source scripts pin CLI versions/configs and retain
+all old failures. Before another shared-budget Source, inspect actual jobs and
+fresh capacity; last preparation12:42 showed22% primary/56%weekly, not a current
+allowance or per-task savings claim. No extra Codex companion while this one runs.
 
-Full quality gate FAILED at11:58:00+02: exit1 after872.995s, exact9758f42.
-Managed-lead core passed; selftest38/40 failed its background pidfile and kill
-assertions. Fixed2s readiness sleep and a vacuous natural-completion check are
-suspects, not yet a proven native runtime failure. Preserve full-gate.json/log;
-no acceptance, integration or public24delivery from that failed gate.
+### Prepared independent reviews and one combined gate
 
-New native correction SELFTEST-BACKGROUND-READINESS-SOL-LOW-0524-20261024 uses
-ChatGPT subscription/Codex CLI0.163.0/gpt-6.1-sol LOW. Source active from12:04:45
-in registered worker codex-save-attempt-rescan-low-20261024, frozen9758f42. Worker
-was prepared for a save scan optimization but made0calls for that work; actual
-gate failure superseded it before assignment. New code scope is cmd_selftest,
-its installed regression, one doc/fragment; no worker/admission/kill/save runtime
-change. Pipeline selftest-background-readiness-low-20261024. Estimate30–60min plus
-checks/review. Fresh capacity preparation11:58 showed48% primary/61% weekly,
-not a per-task consumption claim. Native task/config-bound grant, one shared
-companion, realcodexlead/group/tempmedium; controller closes STOP and restores
-low when idle. No other Codex worker may be added concurrently.
+Opus-authored selftest correction gets Mistral subscription / Vibe2.26.1 /
+mistral-medium-3-5 / thinkingHIGH, under its independent-mistral-review.
+Sol-authored bridge correction gets Claude subscription / ClaudeCode2.1.309 /
+Opus5.5XHIGH, under its independent-opus-review. Both wait actualSource/native/
+verify0, exact clean revision and available real account slots. They provide
+full enclosing source snapshots/hashes, stay blind to peer verdicts and never
+accept code. One external worker plus existing lead per change; no duplicate
+lead reviewer or recursive worker delegation. Requested/effective remain separate.
 
-Separate disjoint feature MANAGED-LEAD-CODEX-TRANSPORT-VIBE-GLM-HIGH-0524-20261024
-was admitted through nativeUnio, pipeline managed-lead-codex-transport-vibe-20261024,
-worker vibeglm-managed-lead-transport-20261024. Mistral subscription/Vibe2.26.1/
-GLM5.3/thinkingHIGH, remaining/effective Unknown; fresh capacity query unsupported
-(actualexit1), recent genuine other-lab review0 is not a quota meter. Check
-source/source.json for actual inference start; admission is not provider execution.
-Estimate1–2h plus review. Frozen9758core bytes are reviewed and focused-tested;
-new bridge files/quality registration do not overlap the selftest correction.
-This is parallel prototyping, not final gated integration. It must issue only
-turn/start on an injected already-owned connection/thread, match provider/local
-IDs, bound early events and preserve ambiguity, with fake-only tests. No native
-lead claim, new process, thread adoption, auth/API/billing or UI change is allowed.
-Latest official installed runner was rechecked as0.5.23 before assignments.
+Bounded batch observer: tmp/unio-next/managed-lead-batch-gate-20261024.
+Only after BOTH current reviews approve0 and Source/native/verify0 does it prepare
+wt/managed-lead-reviewed-batch-20261024 on its own agent branch, require disjoint
+changed paths and exact reviewed-content identity, and run ONE full
+bash tools/quality-check.sh on the frozen combined candidate in private tmpfs.
+New quality registration covers both backend suites, so it does not repeat a
+separate direct core run. Any failure/conflict/Unknown stops that preparation;
+no Source retries, auto acceptance, main push, global install or publication.
+Read controller.json, frozen-source.json, full-gate.json/log. The final existing
+lead must inspect actual findings, checks, byte proofs and remaining limitations.
 
-Next: inspect actual selftest cause/fix/checks, obtain one fresh independent
-Opus5.5XHIGH current-code review, then run the exact corrected full gate. Freeze
-and review returned transport separately; no acceptance/merge/install/publication
-by observer processes. Preserve all previous failed gates/reviews/Source exits.
+### Preserved evidence, not current approvals
 
-Current personal workflow also contains conditional Opus takeover after repeated
-unresolved Sol corrections; read [the rule](../ai/REVIEWER-LED-CORRECTIONS.md).
-Sol remains ordinary correction defaultLOW. This is guidance, not native routing.
+- Review-history correction755cb060 has its own OpusAPPROVE; generatorb5a1b0e
+  passed4nativechecks and outside-guide identity proof. Core/test9758f42 received
+  MistralMedium3.5HIGH nativeAPPROVE0; lead six negative controls catch two faults
+  old tests missed. Its exact full gate FAILED1 at11:58 after872.995s:
+  managed-lead core0, selftest38/40 pidfile/kill checks failed. No fullPASS.
+- Sol selftest88fe824 Source0/native0, mountedverify1 at300s; same declared
+  checks on private tmpfs native4/4PASS0 in292.649s, no source change. Fresh
+  Claude/Opus5.5XHIGH CLI0/adapter0/native1 REQUEST-CHANGES, six findings at
+  selftest-background-readiness-low-20261024/independent-opus-review-tmpfs-verified.
+  The corresponding full-gate observer correctly did not launch. Moving fixtures
+  is not proof of mounted reliability or a replacement for lost coverage.
+- Mistral subscription/Vibe2.26.1/GLM5.3HIGH bridgea07ddee Source0/native0.
+  Nativeverify3/4: bridge/core suites and diff0, fourth scope/AST command failed
+  because LEAD used Python single-quote repr inside shell singlequotes. Original
+  task/verdict unchanged; corrected standalone scope/AST0 is separate in
+  lead-validation-contract-erratum.json. Independently, lead confirmed three REAL
+  code gaps: omitted model, early events discarded before rejection, reused
+  provider turn ID rebinding. See lead-contract-reproductions.json. New Sol task
+  addresses these; initial inference exit remains0, code was not accepted.
+- A prep-only validation quoting/type error in the new Sol task was fixed and
+  shell/Python-parsed BEFORE task/config freeze; no extra model invocation.
+- Older quota Source1, stale reviews, setup refusals and interrupted gates-15
+  remain unchanged. Every Python probe/import must use -B or no-bytecode env:
+  earlier lead-generated pyc staled one native review; exact files preserved.
 
-Helper diagnosis: Mistral subscription/Vibe2.26.1/GLM5.3/HIGH Source/native/verify0,
-commitcabb1db in wt/vibeglm-helper-latency-20261024. Read
-HELPER-LATENCY-2026-10-24.md there plus raw receipts under
-helper-latency-profile-vibe-20261024. Repeated save-store traversal on v9fs is
-measured expensive; full-save105–125seconds is a MODEL, not completed timing.
-Under-load result/experience contention is a hypothesis from one idle19.42s
-sample. Some original Sources failed quota/setup: do not call them all successful.
-Lead assessment is now tracked at
-[helper latency assessment](HELPER-LATENCY-LEAD-ASSESSMENT-2026-10-24.md). It also
-corrects unequal worktree byte counts and the false assumption of a held publish
-lock during write_attempt. The original report and its fragment are preserved
-unchanged. No timeout increase, performance patch or real-store cleanup applied;
-save optimization was deferred before Source for the actual failed selftest.
+Helper diagnosiscabb1db is retained with separate
+[lead corrections](HELPER-LATENCY-LEAD-ASSESSMENT-2026-10-24.md). Repeated store
+scans are measured expensive; full-save105–125s is a model, under-load result
+contention remains unproven, worktree byte counts differ and publish unlocks
+before write_attempt. No timeout increase/performance patch/real-store cleanup.
+The save optimization was deferred before any Source for the actual gate failure.
+Native saves still time out60s; Git commits and selected context are distinct.
 
-Separate review-history755cb060 has its own OpusAPPROVE; bundled-guideb5a1b0e
-passed4nativechecks and outside-guide identity proof; current full gate includes
-both. Old packaging failure1 and deliberate gate stops-15 remain unchanged.
-Native-plan7280cad Source/native0 but verify1 was a lead report-only/commit contract
-contradiction; separate local fixed artifact validation0 made no AI call.
-[Integration decisions](MANAGED-LEAD-INTEGRATION-DECISIONS.md) correct account-alias,
-private dependency, provider-ID and strict-schema assumptions. Native owned
-transport/lead claim remain to implement; this backend alone is not usable full
-lead continuity. Research/privatehub e5be535 and stable23 backup complete; Mercury
-trials closed. Vecto read-only. Do not publish or install an unfinished24.
+After current corrections/reviews/gate, existing lead assesses and integrates
+privately. Then complete the owned native lead claim and persistent process;
+this bridge/core alone does not provide a usable installed lead command.
+[Integration decisions](MANAGED-LEAD-INTEGRATION-DECISIONS.md) reject fake account
+aliases, publication dependencies and unproven provider/human identity. First
+supported route estimate remains2–4working days total; phone afterward, Windows
+before macOS. Keep Vecto read-only, UI/site separate, private research in the
+private hub and Mercury trials closed. Do not publish an unfinished24.
 
 ## Release delivery complete
 
