@@ -1,5 +1,27 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Overall state and test-only correction — 2026-10-24T22:04:07+02:00
+
+Public/main/installed remain0.5.23/cd0b3a2. The original operator reliability
+round shipped22/23; currentprivate24 work is review-dispatch truthfulness,
+managed-lead core/RPC foundations and save metadata reuse. Complete native
+lead lifecycle/ownership is not implemented. Research and stable23 private
+backup complete. Phone/Windows/macOS remain later; no24publication authority.
+
+OpusLOW/ClaudeCode2.1.309 test-only627117a actualCLI/Source/native0,
+Source reports78+31+29+186checks0. Native independent Verify still running;
+Mistral/Vibe2.26.1/GLM5.3HIGH native review observer waits actualVerify0.
+Lead inspected the diff and proved installer/quality bytes identical to approved
+e2f0afa; preliminary assessment saved in currentSource pipeline, not acceptance.
+Both fixed-ID winners and a publish-only no-ID mutant are checked; 8-byte
+nonces retain real randomness. Originaltestdevelopmentfailure preserved.
+
+Foundationeddc full gate remainsrunning since21:16:51, no failure observed.
+Current finalsave observer reliability-save-opus-combined-gate-20261024 waits
+actualfoundationPASS plus currentSourcechecks and independentreviewAPPROVE.
+Then one exact combined fullgate/leadassessment/privateintegration. Noautoaccept,
+mainpush, install or release. Nextactualcompletion/review/gate evidence.
+
 ## Active test takeover and gate — 2026-10-24T21:51:47+02:00
 
 Foundation gate managed-lead-ready-audited-gate-20261024 remains running since
