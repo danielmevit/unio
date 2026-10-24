@@ -1007,7 +1007,18 @@ def retention_activity_regressions(base):
                     ml.RECORD_BOUND = 1024 if boundary == 'oversized' else record_bound
                     data = ({'detail': 'x' * 1024} if kind == 'lifecycle'
                             else {'delta': 'x' * 1024})
+                    # submit_next_turn converts callback exceptions to
+                    # uncertainty, so failures and completion are checked outside.
+                    callback = {'failure': None, 'completed': False}
                     def send(facts):
+                        try:
+                            checks(facts)
+                        except BaseException as exc:
+                            callback['failure'] = exc
+                            raise
+                        callback['completed'] = True
+                        return {'status': 'rejected'}
+                    def checks(facts):
                         h.transport.calls.append(dict(facts))
                         observer = h.open() if separate else h.session
                         # Neither an arbitrary turn nor the previous terminal turn
@@ -1025,9 +1036,10 @@ def retention_activity_regressions(base):
                             generation=2, turn_id=facts['turn_id'], kind=kind, data=data)
                         assert error == ('output archive closed' if boundary == 'closed'
                                          else 'output record bound exceeded')
-                        return {'status': 'rejected'}
                     h.transport.send_turn = send
                     result = h.submit('retention-activity')
+                    assert callback['failure'] is None, repr(callback['failure'])
+                    assert callback['completed']
                     assert result['state'] == 'uncertain'
                     reopened = h.open()
                     view = reopened.status(session_id=h.sid)
