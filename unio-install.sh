@@ -25667,7 +25667,7 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
     if drift: reasons.append('candidate_changed_during_review')
     after_json=json.dumps(after,sort_keys=True,separators=(',',':')) if after is not None else ''
     bound=0
-    invoked=0; refused=0; invalid=0; unsuccessful=0; rejected=0
+    invoked=0; refused=0; invalid=0; unsuccessful=0; rejected=0; process_failed=0
     for i,attempt in enumerate(d['attempts']):
         raw=safe(root,'coord','reports',attempt['raw_directory'])
         result=None
@@ -25698,7 +25698,8 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
             rreasons=['reviewer_process_failed'] if code!=0 else ['unknown_verdict'] if state=='unknown' else []
             complete='yes'
             if state!='approved': unsuccessful+=1
-            if code!=0 or state=='changes_requested': rejected+=1
+            if code!=0: process_failed+=1
+            if state=='changes_requested': rejected+=1
         if drift: rreasons.append('candidate_changed_during_review')
         if after is None: rreasons.append('post_snapshot_failed')
         try:
@@ -25728,7 +25729,7 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
     # Keep historical receipts independent of this invocation's dispatch result.
     ready=(final=='completed' and after==d['before'] and not reasons
            and invoked==len(d['attempts']) and not unsuccessful)
-    dispatch=2 if refused else 1 if invalid or rejected else 0 if ready else 2
+    dispatch=2 if refused or invalid or process_failed else 1 if rejected else 0 if ready else 2
     print('%s %s %d %d %d %d %d %d'%(d['id'],final,bound,int(ready),
                                     dispatch,invoked,refused,invalid))
 
@@ -33470,14 +33471,27 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   rs_wait_children
   local state_arg=completed
   [ "$RS_SIGNALED" = 0 ] || state_arg=interrupted
-  local specs fin_state=unknown ready=0 bound=0 dispatch=2 invoked=0 refused=0 invalid=0
+  local specs fin_state=unknown ready=0 bound=0 dispatch=2 invoked=unknown refused=unknown invalid=unknown
   local -a spec_args=()
   for i in "${!pfs[@]}"; do spec_args+=("${pfs[$i]}" "${RS_EXIT[$i]:-1}"); done
   specs=$(python3 -c 'import json,sys; a=sys.argv[1:]; print(json.dumps([dict(pf=a[i],exit=int(a[i+1])) for i in range(0,len(a),2)]))' "${spec_args[@]}")
   if out=$(quality review-set-finalize "$root" "$worker" "$task" "$cdir" "$state_arg" "$specs"); then
-    local rid rstate
-    read -r rid rstate bound ready dispatch invoked refused invalid <<< "$out"
-    [ "$rid" = "$cid" ] && fin_state="$rstate"
+    # Treat the helper output as untrusted evidence. Do not publish counters
+    # until the entire single-line collection result is validated.
+    local result_pattern='^([0-9a-f]{32}) (completed|unknown) ([0-8]) ([01]) ([012]) ([0-8]) ([0-8]) ([0-8])$'
+    if [[ "$out" =~ $result_pattern ]]; then
+      local rid="${BASH_REMATCH[1]}" rstate="${BASH_REMATCH[2]}" rb="${BASH_REMATCH[3]}"
+      local rr="${BASH_REMATCH[4]}" rd="${BASH_REMATCH[5]}" ri="${BASH_REMATCH[6]}"
+      local rf="${BASH_REMATCH[7]}" rx="${BASH_REMATCH[8]}" total="${#reviewers[@]}"
+      if [ "$rid" = "$cid" ] && (( rb <= total && ri + rf + rx == total )) \
+          && { [ "$rstate" != completed ] || [ "$rb" = "$total" ]; } \
+          && { { [ "$rr" = 0 ] && [ "$rd" != 0 ]; } ||
+               { [ "$rr" = 1 ] && [ "$rd" = 0 ] && [ "$rstate" = completed ] \
+                 && [ "$rb" = "$total" ] && [ "$ri" = "$total" ]; }; }; then
+        fin_state="$rstate"; bound="$rb"; ready="$rr"; dispatch="$rd"
+        invoked="$ri"; refused="$rf"; invalid="$rx"
+      fi
+    fi
   fi
   # Release the worker lock before asking the read-only summary.
   exec 9>&-
@@ -33490,8 +33504,10 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   echo "review-set collection $cid: reviewers=$csv state=$fin_state invoked=$invoked/${#reviewers[@]} refused=$refused invalid=$invalid dispatch_exit=$dispatch"
   local sum_rc=0
   quality reviews "$root" "$worker" "$task" "$csv" text || sum_rc=$?
-  case "$dispatch" in 1) return 1;; 0) ;; *) return 2;; esac
+  # A current recorded change request retains the legacy CLI exit even when
+  # this dispatch is incomplete. History can never supply dispatch success.
   [ "$sum_rc" != 1 ] || return 1
+  [ "$dispatch" = 0 ] || return 2
   [ "$fin_state" = completed ] || return 2
   [ "$ready" = 1 ] && [ "$bound" = "${#reviewers[@]}" ] || return 2
   return "$sum_rc"
