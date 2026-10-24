@@ -164,6 +164,7 @@ class ReviewCollection(unittest.TestCase):
         self.assertEqual(len(self.calls().splitlines()),1)
         (self.root/'release').touch();stdout,stderr=p.communicate(timeout=25)
         self.assertEqual(p.returncode,2,(stdout,stderr))
+        self.assertIn('invoked=1/2 refused=1 invalid=0 dispatch_exit=2',stdout)
         records=self.attempts()
         self.assertEqual(len(records),2)
         self.assertEqual(sorted(r['process_exit_code'] for r in records if r['process_exit_code'] is not None),[0])
@@ -186,7 +187,8 @@ class ReviewCollection(unittest.TestCase):
         # Earlier proven pre-provider refusals stay visible without vetoing
         # a completed current collection. They never supply expected reviewers.
         refused_bytes={p:p.read_bytes() for p in self.receipts()}
-        self.collect()
+        granted=self.collect()
+        self.assertIn('invoked=2/2 refused=0 invalid=0 dispatch_exit=0',granted.stdout)
         observed=self.summary(expect='revone,revtwo')
         self.assertEqual(observed['counts']['unknown'],2)
         self.assertEqual(observed['counts']['approved'],2)
@@ -195,8 +197,12 @@ class ReviewCollection(unittest.TestCase):
                             for r in self.attempts()))
         history=json.loads((self.coord/'lead-budget.json').read_text())['grants']
         self.assertEqual([g['state'] for g in history],['used','used'])
-        before=self.calls();self.collect(code=2)
+        before=self.calls();replay=self.collect(code=2)
         self.assertEqual(self.calls(),before)
+        self.assertIn('invoked=0/2 refused=2 invalid=0 dispatch_exit=2',replay.stdout)
+        self.assertTrue(all(r['process_exit_code'] is None for r in self.attempts()))
+        # Historical approvals remain honest/current despite this dispatch refusal.
+        self.assertEqual(self.summary(expect='revone,revtwo')['counts']['approved'],2)
         # A single-review path uses the same owner task binding.
         self.unio('lead-budget','grant','revone','revone','evidence','review')
         self.unio('review','mock','evidence','revone')
@@ -204,6 +210,14 @@ class ReviewCollection(unittest.TestCase):
         self.assertEqual(self.calls(),before)
 
     def test_mixed_process_verdict_timeout_and_child_failure(self):
+        # Prior approvals cannot conceal an invoked process failure or verdict.
+        self.collect()
+        self.controls(revone='approve',revtwo='fail')
+        failed=self.collect(code=1)
+        self.assertIn('invoked=2/2 refused=0 invalid=0 dispatch_exit=1',failed.stdout)
+        self.controls(revone='changes',revtwo='approve')
+        changes=self.collect(code=1)
+        self.assertIn('invoked=2/2 refused=0 invalid=0 dispatch_exit=1',changes.stdout)
         self.controls(revone='changes',revtwo='fail');self.collect(code=1)
         self.assertEqual({(r['state'],r['process_exit_code']) for r in self.attempts()},
                          {('changes_requested',0),('failed',7)})
@@ -211,7 +225,8 @@ class ReviewCollection(unittest.TestCase):
         env=dict(self.env,UNIO_REVIEW_TIMEOUT='1');self.collect(code=1,env=env)
         self.assertEqual({(r['state'],r['process_exit_code']) for r in self.attempts()},
                          {('unknown',0),('failed',124)})
-        self.controls(revone='break_child',revtwo='approve');self.collect(code=1)
+        self.controls(revone='break_child',revtwo='approve');broken=self.collect(code=1)
+        self.assertIn('invalid=1 dispatch_exit=1',broken.stdout)
         self.assertEqual(self.manifest()['state'],'unknown')
         self.assertIn('child_failed',self.manifest()['reasons'])
         self.assertIsNone(self.manifest()['attempts'][0]['receipt_id'])

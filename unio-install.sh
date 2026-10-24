@@ -25667,20 +25667,27 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
     if drift: reasons.append('candidate_changed_during_review')
     after_json=json.dumps(after,sort_keys=True,separators=(',',':')) if after is not None else ''
     bound=0
+    invoked=0; refused=0; invalid=0; unsuccessful=0; rejected=0
     for i,attempt in enumerate(d['attempts']):
         raw=safe(root,'coord','reports',attempt['raw_directory'])
         result=None
         try: result=child_result_read(os.path.join(raw,'attempt.json'))
         except (ValueError,OSError,KeyError,TypeError): pass
         if specs[i]['exit']!=0 or result is None:
-            reasons.append('child_failed'); continue
+            invalid+=1; reasons.append('child_failed'); continue
         if result['reviewer']!=attempt['reviewer'] or result['policy_task']!=attempt['policy_task']:
-            reasons.append('child_failed'); continue
+            invalid+=1; reasons.append('child_failed'); continue
+        if (result['invoked'] and (not result['admitted'] or result['process_exit_code'] is None)
+                or not result['invoked'] and result['process_exit_code'] is not None):
+            invalid+=1; reasons.append('child_failed'); continue
         if not result['admitted']:
+            refused+=1
             state,code,complete,rreasons='unknown',None,'no',['budget_refused']
         elif not result['invoked']:
+            refused+=1
             state,code,complete,rreasons='unknown',None,'no',['stop_active']
         else:
+            invoked+=1
             code=result['process_exit_code']
             try:
                 stdout=safe(root,'coord','reports',attempt['raw_directory'],'stdout.log')
@@ -25690,6 +25697,8 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
             if code!=0: state='failed'
             rreasons=['reviewer_process_failed'] if code!=0 else ['unknown_verdict'] if state=='unknown' else []
             complete='yes'
+            if state!='approved': unsuccessful+=1
+            if code!=0 or state=='changes_requested': rejected+=1
         if drift: rreasons.append('candidate_changed_during_review')
         if after is None: rreasons.append('post_snapshot_failed')
         try:
@@ -25715,8 +25724,13 @@ def review_set_finalize(root,worker,task,directory,state_arg,attempts_json):
     d.update(state=final,finished_at=stamp(),after=after,reasons=sorted(set(reasons))[:16])
     collection_valid(d)
     collection_atomic(os.path.join(directory,'collection.json'),d)
-    ready=final=='completed' and after==d['before'] and not reasons
-    print('%s %s %d %d'%(d['id'],final,bound,int(ready)))
+    # Completed means descriptors were processed, not that providers ran.
+    # Keep historical receipts independent of this invocation's dispatch result.
+    ready=(final=='completed' and after==d['before'] and not reasons
+           and invoked==len(d['attempts']) and not unsuccessful)
+    dispatch=2 if refused else 1 if invalid or rejected else 0 if ready else 2
+    print('%s %s %d %d %d %d %d %d'%(d['id'],final,bound,int(ready),
+                                    dispatch,invoked,refused,invalid))
 
 
 # Static command audit: deliberately independent of agent_data's PATH/bench
@@ -33456,13 +33470,13 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   rs_wait_children
   local state_arg=completed
   [ "$RS_SIGNALED" = 0 ] || state_arg=interrupted
-  local specs fin_state=unknown ready=0 bound=0
+  local specs fin_state=unknown ready=0 bound=0 dispatch=2 invoked=0 refused=0 invalid=0
   local -a spec_args=()
   for i in "${!pfs[@]}"; do spec_args+=("${pfs[$i]}" "${RS_EXIT[$i]:-1}"); done
   specs=$(python3 -c 'import json,sys; a=sys.argv[1:]; print(json.dumps([dict(pf=a[i],exit=int(a[i+1])) for i in range(0,len(a),2)]))' "${spec_args[@]}")
   if out=$(quality review-set-finalize "$root" "$worker" "$task" "$cdir" "$state_arg" "$specs"); then
     local rid rstate
-    read -r rid rstate bound ready <<< "$out"
+    read -r rid rstate bound ready dispatch invoked refused invalid <<< "$out"
     [ "$rid" = "$cid" ] && fin_state="$rstate"
   fi
   # Release the worker lock before asking the read-only summary.
@@ -33473,9 +33487,10 @@ cmd_review_set() { # one explicitly requested reviewer set over the same materia
   fi
   local csv
   csv=$(IFS=,; printf '%s' "${reviewers[*]}")
-  echo "review-set collection $cid: reviewers=$csv state=$fin_state"
+  echo "review-set collection $cid: reviewers=$csv state=$fin_state invoked=$invoked/${#reviewers[@]} refused=$refused invalid=$invalid dispatch_exit=$dispatch"
   local sum_rc=0
   quality reviews "$root" "$worker" "$task" "$csv" text || sum_rc=$?
+  case "$dispatch" in 1) return 1;; 0) ;; *) return 2;; esac
   [ "$sum_rc" != 1 ] || return 1
   [ "$fin_state" = completed ] || return 2
   [ "$ready" = 1 ] && [ "$bound" = "${#reviewers[@]}" ] || return 2
