@@ -34390,6 +34390,70 @@ cmd_selftest() { # the whole loop, rehearsed with mock agents — zero quota
   [ -z "$missing" ] || die "selftest needs:$missing"
   [ -f "$TPL_DIR/TASK.md" ] || die "templates missing at $TPL_DIR — rerun the installer"
 
+  # ST_BACKGROUND_HELPERS_BEGIN — also exercised from the installed payload.
+  # Keep the actual background runtime as our child, rather than losing its
+  # identity at the detached -b frontend. UNIO_BG publishes native ownership.
+  st_bg_launch() {
+    local worker="$1" task="$2"
+    rm -f "$ST/$task.started"
+    UNIO_BG=1 UNIO_SELFTEST_STARTED="$ST/$task.started" \
+      "$0" run "$worker" "$task" >"$ST/$task.launch.log" 2>&1 &
+    ST_BG_PID=$!
+    ST_BG_TASK="$task"
+  }
+  st_bg_diagnostic() {
+    echo "selftest background: task=$ST_BG_TASK child=$ST_BG_PID phase=$1" >&2
+    ls -l "../coord/reports/$ST_BG_TASK.pid" "../coord/reports/$ST_BG_TASK.own" \
+      "$ST/$ST_BG_TASK.started" >&2 || true
+    tail -n 20 "$ST/$ST_BG_TASK.launch.log" >&2 || true
+  }
+  st_bg_wait() {
+    local phase="$1" deadline=$((SECONDS + 60))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+      if [ "$phase" = ready ]; then
+        if [ -s "../coord/reports/$ST_BG_TASK.own" ] &&
+           [ "$(cat "../coord/reports/$ST_BG_TASK.pid" 2>/dev/null)" = "$ST_BG_PID" ] &&
+           [ -f "$ST/$ST_BG_TASK.started" ] && kill -0 "$ST_BG_PID" 2>/dev/null; then
+          return 0
+        fi
+        kill -0 "$ST_BG_PID" 2>/dev/null || break
+      elif ! kill -0 "$ST_BG_PID" 2>/dev/null; then
+        local rc=0
+        wait "$ST_BG_PID" || rc=$?
+        # noop deliberately makes no diff; runtime exit may be nonzero.
+        # A fresh stub marker proves this invocation actually started.
+        if [ -f "$ST/$ST_BG_TASK.started" ] &&
+           [ ! -e "../coord/reports/$ST_BG_TASK.pid" ] &&
+           [ ! -e "../coord/reports/$ST_BG_TASK.own" ]; then
+          return 0
+        fi
+        echo "selftest background: child exit=$rc" >&2
+        break
+      fi
+      sleep 0.1
+    done
+    st_bg_diagnostic "$phase"
+    return 1
+  }
+  st_bg_cleanup() {
+    # Never enumerate operator jobs or signal a pid taken from an unchecked file.
+    # Native kill validates ownership; a pre-start child is ours by construction.
+    if kill -0 "$ST_BG_PID" 2>/dev/null; then
+      if [ -f "../coord/reports/$ST_BG_TASK.own" ]; then
+        "$0" kill "$ST_BG_TASK" >>"$ST/$ST_BG_TASK.launch.log" 2>&1 || return 1
+      else
+        kill -TERM "$ST_BG_PID" 2>/dev/null || true
+      fi
+    fi
+    local deadline=$((SECONDS + 70))
+    while kill -0 "$ST_BG_PID" 2>/dev/null; do
+      [ "$SECONDS" -lt "$deadline" ] || { st_bg_diagnostic cleanup; return 1; }
+      sleep 0.1
+    done
+    wait "$ST_BG_PID" 2>/dev/null || true
+  }
+  # ST_BACKGROUND_HELPERS_END
+
   local ST; ST=$(mktemp -d)
   echo "== unio selftest — sandbox: $ST =="
   mkdir -p "$ST/conf/templates" "$ST/conf/lib"
@@ -34399,9 +34463,9 @@ cmd_selftest() { # the whole loop, rehearsed with mock agents — zero quota
   cat > "$ST/conf/agents.conf" <<'ST_CONF_EOF'
 mock=bash -c 'cat "$TASKFILE" >/dev/null; echo working; echo line >> hello.txt; git add hello.txt; git commit -q -m "selftest: mock"; echo ok'
 rogue=bash -c 'echo rogue; echo x > forbidden.txt; git add forbidden.txt; git commit -q -m "selftest: rogue"; echo ok'
-slow=bash -c 'echo napping; sleep 30; echo ok'
+slow=bash -c 'touch "$UNIO_SELFTEST_STARTED"; echo napping; sleep 120; echo ok'
 rev=bash -c 'cat "$TASKFILE" >/dev/null; echo reviewed; echo "VERDICT: APPROVE"'
-noop=bash -c 'echo did nothing at all; echo ok'
+noop=bash -c '[ -z "${UNIO_SELFTEST_STARTED:-}" ] || touch "$UNIO_SELFTEST_STARTED"; echo did nothing at all; echo ok'
 ST_CONF_EOF
 
   local repo="$ST/proj/repo"
@@ -34507,12 +34571,11 @@ n/a
 SUMMARY
 ST_T3_EOF
 
-  "$0" run -b slow T3-slow >/dev/null
-  sleep 2
-  st_chk "background run writes a pidfile" \
-    bash -c '[ -f ../coord/reports/T3-slow.pid ]'
+  st_bg_launch slow T3-slow
+  st_chk "background run writes a pidfile" st_bg_wait ready
   st_chk "kill terminates the background run" \
-    bash -c '"$0" kill T3-slow >/dev/null 2>&1 && [ ! -f ../coord/reports/T3-slow.pid ]' "$0"
+    bash -c '"$0" kill T3-slow && [ ! -e ../coord/reports/T3-slow.pid ] && [ ! -e ../coord/reports/T3-slow.own ]' "$0"
+  st_bg_cleanup || { ST_FAIL=$((ST_FAIL + 1)); st_bg_diagnostic cleanup; }
 
   git merge --no-ff -q agent/mock -m "merge T1" >/dev/null 2>&1 || true
   st_chk "post-merge hook records a merge event in the ledger" \
@@ -34570,10 +34633,10 @@ ST_T5_EOF
   # a background run that finishes on its OWN must remove its pidfile — the
   # kill path never exercises the natural-completion EXIT trap. noop commits
   # nothing, so this cannot perturb any branch-topology check.
-  "$0" run -b noop T5-noop >/dev/null 2>&1
-  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -f ../coord/reports/T5-noop.pid ] || break; sleep 1; done
+  st_bg_launch noop T5-noop
   st_chk "background run cleans up its own pidfile on natural completion" \
-    bash -c '[ ! -f ../coord/reports/T5-noop.pid ]'
+    st_bg_wait complete
+  st_bg_cleanup || { ST_FAIL=$((ST_FAIL + 1)); st_bg_diagnostic cleanup; }
   st_chk "report command prints a task's history" \
     bash -c '"$0" report T1-mock 200 2>/dev/null | grep -q "worker=mock"' "$0"
   st_chk "version prints" \
