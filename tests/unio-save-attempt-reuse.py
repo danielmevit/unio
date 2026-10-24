@@ -147,6 +147,19 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
     with patch.object(module, 'atomic_private', failed_attempt):
         check('attempt write failure remains nonfatal', create() == 0)
 
+    real_capture = module.capture
+    observations = [0]
+    def changing(*args, **kwargs):
+        result = real_capture(*args, **kwargs)
+        observations[0] += 1
+        if observations[0] == 1:
+            (wt/'new.bin').write_bytes(b'changed between stable observations')
+        return result
+    with patch.object(module, 'capture', changing):
+        check('stable-byte refusal remains fresh', create() != 0 and observations[0] == 2
+              and attempt()['reason'] == 'unstable'
+              and attempt()['last_good_id'] == real_last(str(store), 'mock-source', False)['id'])
+
     # A fresh lookup remains mandatory on refusal, including publication faults.
     for fault in ('between-passes', 'publish-interrupt', 'publish-after-rename'):
         real_fault = module.fault
