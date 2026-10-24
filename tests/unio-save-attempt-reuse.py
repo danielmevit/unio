@@ -118,7 +118,12 @@ with tempfile.TemporaryDirectory(prefix='save-performance-') as directory:
 
     # A fresh lookup remains mandatory on refusal, including publication faults.
     for fault in ('between-passes', 'publish-interrupt', 'publish-after-rename'):
-        with patch.dict(os.environ, dict(env, UNIO_SAVE_TEST_FAULT=fault)), patch.object(module, 'last_good', wraps=real_last) as lookup:
+        real_fault = module.fault
+        def injected(name):
+            if name == fault:
+                raise module.Refuse('io_error', 'catchable test fault: ' + name)
+            return real_fault(name)
+        with patch.dict(os.environ, env), patch.object(module, 'fault', injected), patch.object(module, 'last_good', wraps=real_last) as lookup:
             result = module.cmd_create(str(root), 'mock-source', 'T')
         check(fault + ' refuses with fresh bookkeeping', result != 0 and lookup.call_count == 1)
         check(fault + ' identity remains equivalent', attempt()['last_good_id'] == real_last(str(store), 'mock-source', False)['id'])
