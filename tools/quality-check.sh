@@ -92,6 +92,7 @@ python3 -B tests/unio-remote-guard.py
 python3 -B tests/unio-project-root.py
 python3 -B tests/unio-save-walk.py
 python3 -B tests/unio-save-performance.py
+python3 -B tests/unio-save-attempt-reuse.py
 python3 -B tests/unio-work-saving.py
 python3 -B tests/unio-save-retention.py
 python3 -B tests/unio-save-benchmark.py
