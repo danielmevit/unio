@@ -23922,7 +23922,7 @@ cat > "$BIN_DIR/unio" <<'UNIO_BIN_EOF'
 #   PROJECT/coord/    board.md, base, docs/, tasks/, reports/, blockers.md, STOP
 set -euo pipefail
 
-UNIO_VERSION="0.5.23"
+UNIO_VERSION="0.5.24"
 CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
 CONF_FILE="$CONF_DIR/agents.conf"
 TPL_DIR="$CONF_DIR/templates"
@@ -29678,14 +29678,68 @@ def capture_child(root, worker, task, reason, run_id, provider_exit, interrupted
                 print('unio: could not record automatic save failure: %s' % e, file=sys.stderr)
 
 
+def emit_run_phase(phase, checkpoint=None, seconds=None, exit_code=None):
+    """Best-effort human diagnostics; never part of provider output."""
+    try:
+        if phase not in ('checkpoint attempt started', 'checkpoint attempt ended',
+                         'checkpoint attempt skipped', 'checkpoints skipped',
+                         'provider launch starting', 'provider launched',
+                         'provider launch failed', 'provider launch skipped',
+                         'provider command completed', 'owned cleanup started',
+                         'owned cleanup clear', 'supervisor finalization started',
+                         'supervisor finalization ended'):
+            return
+        message = 'unio: phase ' + phase
+        if checkpoint in ('baseline', 'periodic', 'final', 'final-failure'):
+            message += ' checkpoint=' + checkpoint
+        if type(seconds) in (int, float) and 1 <= seconds <= 300 and seconds == int(seconds):
+            message += ' budget=%ss' % int(seconds)
+        if type(exit_code) is int and -255 <= exit_code <= 255:
+            message += ' exit=%s' % exit_code
+        # Pin the target against close/replacement, but never change flags on
+        # this duplicate: it still shares stderr's open-file-description.
+        pinned = os.dup(sys.stderr.fileno())
+        independent = None
+        try:
+            info = os.fstat(pinned)
+            if stat.S_ISREG(info.st_mode):
+                # Preserve the shared offset and O_APPEND behavior. Ordinary
+                # file I/O has no portable hard latency bound (see RUN-PHASES).
+                target = pinned
+            elif stat.S_ISFIFO(info.st_mode) or (stat.S_ISCHR(info.st_mode) and os.isatty(pinned)):
+                # Linux procfs reopening creates an independent description.
+                # O_NONBLOCK applies at open, so even a concurrent writer that
+                # fills a pipe cannot turn the following write into a wait.
+                independent = os.open('/proc/self/fd/%s' % pinned,
+                                      os.O_WRONLY | os.O_NONBLOCK | os.O_NOCTTY)
+                reopened = os.fstat(independent)
+                if (info.st_dev, info.st_ino, info.st_rdev, info.st_mode) != (
+                        reopened.st_dev, reopened.st_ino, reopened.st_rdev, reopened.st_mode):
+                    return
+                target = independent
+            else:
+                return
+            os.write(target, (message + '\n').encode('ascii'))
+        finally:
+            try:
+                if independent is not None:
+                    os.close(independent)
+            finally:
+                os.close(pinned)
+    except Exception:
+        pass  # A closed, broken, full or replaced stream cannot change the run.
+
+
 def automatic_capture(root, worker, task, reason, run_id, provider_exit, interrupted, provider=None):
     try:
         seconds = capture_seconds()
     except Refuse as e:
+        emit_run_phase('checkpoint attempt skipped', reason)
         # Invalid capture configuration must not publish even failure bookkeeping.
         print('unio: automatic %s save could not start: %s; provider exit is independent'
               % (reason, e), file=sys.stderr)
         return
+    emit_run_phase('checkpoint attempt started', reason, seconds)
     try:
         capture_child(root, worker, task, reason, run_id, provider_exit, interrupted, provider, seconds)
     except (Refuse, OSError) as e:
@@ -29696,6 +29750,8 @@ def automatic_capture(root, worker, task, reason, run_id, provider_exit, interru
             write_attempt(store, worker, task, stamp(), 'io_error', 'failed', None, provider_exit)
         except (Refuse, OSError):
             pass  # Unsafe/unavailable storage is never repaired by a failed save.
+    finally:
+        emit_run_phase('checkpoint attempt ended', reason, seconds)
 
 
 def supervise_run(root, worker, task, timeout, command, claim_id=''):
@@ -29714,6 +29770,7 @@ def supervise_run(root, worker, task, timeout, command, claim_id=''):
     except (Refuse, OSError, ValueError) as e:
         print('unio: automatic saving unavailable: %s; provider execution remains independent' % e, file=sys.stderr)
         if claim_id:
+            emit_run_phase('provider launch skipped')
             return 2  # Continuation ownership/attempt admission must fail closed.
     finally:
         # The shell alone holds ownership. No provider or capture inherits it.
@@ -29723,7 +29780,11 @@ def supervise_run(root, worker, task, timeout, command, claim_id=''):
             pass
     if run_id:
         automatic_capture(root, worker, task, 'baseline', run_id, None, interrupted)
+    else:
+        emit_run_phase('checkpoints skipped')
     rc = interrupted[0]
+    if rc:
+        emit_run_phase('provider launch skipped', exit_code=rc)
     try:
         if not rc:
             if claim_id:
@@ -29737,7 +29798,9 @@ def supervise_run(root, worker, task, timeout, command, claim_id=''):
             log = under(root, 'coord', 'reports', task + '.log')
             with open(log, 'wb') as output:
                 # Identity is published only after setsid and before timeout execs.
+                emit_run_phase('provider launch starting')
                 provider = spawn_owned_provider(root, worker, task, timeout, command, output.fileno())
+                emit_run_phase('provider launched')
             next_capture, stopping = time.monotonic() + 60, None
             while provider.poll() is None:
                 now = time.monotonic()
@@ -29753,17 +29816,21 @@ def supervise_run(root, worker, task, timeout, command, claim_id=''):
                 time.sleep(0.05)
             rc = provider.wait()
             rc = 128 - rc if rc < 0 else rc
+            emit_run_phase('provider command completed', exit_code=rc)
             if interrupted[0]:
                 rc = interrupted[0]
     except Refuse as e:
+        emit_run_phase('provider launch skipped')
         print('unio: continuation refused: %s' % e.message, file=sys.stderr)
         rc = e.exit_code
     except OSError as e:
+        emit_run_phase('provider launch failed')
         print('unio: provider launch failed: %s' % e, file=sys.stderr)
         rc = 127
     finally:
         # Other groups in the provider session survive killpg. Sweep them before
         # the final save, which has its own session and its own capture budget.
+        emit_run_phase('owned cleanup started')
         grace = 5 if interrupted[0] else 1
         cleaned = finish_owned(root, worker, task, grace)
         noted = False
@@ -29777,6 +29844,8 @@ def supervise_run(root, worker, task, timeout, command, claim_id=''):
             cleaned = finish_owned(root, worker, task, 0)
         if provider is not None:
             provider.wait()
+        emit_run_phase('owned cleanup clear')
+    emit_run_phase('supervisor finalization started')
     if continuation is not None and provider is not None:
         try:
             transition_continue(root, continuation, 'calling', 'called', rc, 'called')
@@ -29784,6 +29853,7 @@ def supervise_run(root, worker, task, timeout, command, claim_id=''):
             print('unio: continuation completion Unknown: %s; no replay is permitted' % e, file=sys.stderr)
     if run_id:
         automatic_capture(root, worker, task, 'final' if rc == 0 else 'final-failure', run_id, rc, interrupted)
+    emit_run_phase('supervisor finalization ended', exit_code=rc)
     return rc
 
 

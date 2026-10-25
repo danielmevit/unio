@@ -97,6 +97,7 @@ python3 -B tests/unio-work-saving.py
 python3 -B tests/unio-save-retention.py
 python3 -B tests/unio-save-benchmark.py
 python3 -B tests/unio-work-saving-auto.py
+python3 -B tests/unio-run-phases.py
 python3 -B tests/unio-save-capture-budget.py
 python3 -B tests/unio-work-saving-continue.py
 python3 -B tests/unio-kill-pid.py

@@ -1,0 +1,1 @@
+Human run phases preserve shared stream flags, regular-file offsets and append behavior; full pipes drop diagnostics safely. Clarify background output and phase exit meanings, with focused shared-descriptor and STOP regressions.
