@@ -63,8 +63,8 @@ with tempfile.TemporaryDirectory(prefix='unio-run-phases-') as temporary:
     shim_dir.mkdir()
     shim = shim_dir / 'git'
     real_git = shutil.which('git')
-    shim.write_text('#!/usr/bin/env python3\nimport os,socket,sys\n'
-                    + "if '--show-object-format' in sys.argv and not os.path.exists(" + repr(str(base / 'claimed')) + '):\n'
+    shim.write_text('#!/usr/bin/env python3\nimport os,socket,sys\nfrom pathlib import Path\n'
+                    + "if '--show-object-format' in sys.argv and b'_supervise' in Path('/proc/%s/cmdline' % os.getppid()).read_bytes() and not os.path.exists(" + repr(str(base / 'claimed')) + '):\n'
                     + ' open(' + repr(str(base / 'claimed')) + ", 'w').close()\n"
                     + ' s=socket.socket(socket.AF_UNIX); s.connect(' + repr(endpoint) + "); s.sendall(b'baseline'); assert s.recv(1)==b'G'; s.close()\n"
                     + 'os.execv(' + repr(real_git) + ", ['git', *sys.argv[1:]])\n")
@@ -81,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix='unio-run-phases-') as temporary:
                 connection.settimeout(5)
                 assert connection.recv(8) == b'baseline'
                 before = err.read_text()
-                assert 'unio: phase checkpoint attempt started checkpoint=baseline budget=30s' in before
+                assert 'unio: phase checkpoint attempt started checkpoint=baseline budget=30s' in before, before
                 assert 'provider launch' not in before and not calls.exists()
                 connection.sendall(b'G')
             assert active.wait(timeout=30) == 23
