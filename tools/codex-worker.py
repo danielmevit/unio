@@ -624,10 +624,114 @@ class Server:
                 pass
 
 
+def effort_info_audit(args):
+    # Only a fresh native command audit supplies facts. Caller JSON is never evidence.
+    alias = args.worker.split('-', 1)[0]
+    facts = dict(provenance='static_agents_conf', scope='future_launch', alias=alias,
+                 tool='Unknown', requested_effort='Unknown', requested_model='Unknown',
+                 reason='static_evidence_unavailable')
+    conf_dir = os.environ.get('UNIO_CONF_DIR') or str(Path.home() / '.config' / 'unio')
+    project_conf = Path(args.project) / 'coord' / 'agents.conf'
+    global_conf = Path(conf_dir) / 'agents.conf'
+    if not os.path.lexists(project_conf) and not os.path.lexists(global_conf):
+        facts['reason'] = 'missing_agents_conf'
+        return facts
+    cli = os.environ.get('UNIO_EFFORT_CLI')
+    if not cli:
+        return facts
+    try:
+        # doctor uses command_audit's bounded, nonexecuting conservative parser.
+        # Spool its bounded output rather than accepting an argv JSON handoff.
+        with tempfile.TemporaryFile() as output:
+            completed = subprocess.run([cli, 'doctor', '--commands', '--json'],
+                                       cwd=args.project, stdout=output,
+                                       stderr=subprocess.DEVNULL, timeout=15)
+            if completed.returncode or output.tell() > 131072:
+                raise ValueError('invalid audit')
+            output.seek(0)
+            audit = json.loads(output.read(131073))
+        keys = {'schema_version', 'source', 'authentication', 'capacity',
+                'effective_model', 'effective_effort', 'agents'}
+        if (not isinstance(audit, dict) or set(audit) != keys
+                or type(audit['schema_version']) is not int or audit['schema_version'] != 1
+                or audit['source'] != 'local_static'
+                or any(audit[k] != 'Unknown' for k in
+                       ('authentication', 'capacity', 'effective_model', 'effective_effort'))
+                or not isinstance(audit['agents'], list) or len(audit['agents']) > 128):
+            raise ValueError('invalid audit')
+        matched = []
+        row_keys = {'alias', 'tool', 'requested_model', 'requested_effort', 'transport',
+                    'authentication', 'capacity', 'effective_model', 'effective_effort', 'issues'}
+        codes = {'command_unknown', 'whole_taskfile_argv', 'legacy_opencode_permission',
+                 'transport_unknown', 'selector_unknown', 'effort_ambiguous', 'auto_balance'}
+        for row in audit['agents']:
+            if (not isinstance(row, dict) or set(row) != row_keys
+                    or any(not isinstance(row[k], str) or len(row[k]) > 128
+                           for k in row_keys - {'issues'})
+                    or row['tool'] not in ('Unknown', 'codex', 'claude', 'opencode', 'grok', 'agy', 'vibe', 'copilot')
+                    or row['requested_effort'] not in (*LEVELS, 'Unknown')
+                    or not isinstance(row['issues'], list) or len(row['issues']) > len(codes)
+                    or any(not isinstance(it, dict) or set(it) != {'code', 'remedy'}
+                           or not isinstance(it['code'], str) or it['code'] not in codes
+                           or not isinstance(it['remedy'], str) or len(it['remedy']) > 256
+                           for it in row['issues'])):
+                raise ValueError('invalid audit')
+            if row['alias'] == alias:
+                matched.append(row)
+        if len(matched) > 1:
+            raise ValueError('invalid audit')
+        if not matched:
+            facts['reason'] = 'missing_alias'
+            return facts
+        row = matched[0]
+        facts.update({k: row[k] for k in ('tool', 'requested_model', 'requested_effort')})
+        facts['reason'] = None
+        if row['requested_effort'] == 'Unknown':
+            issues = {it['code'] for it in row['issues']}
+            facts['reason'] = next((c for c in ('effort_ambiguous', 'auto_balance',
+                                                'command_unknown', 'selector_unknown')
+                                    if c in issues), 'unknown_effort')
+    except (OSError, ValueError, TypeError, KeyError, RecursionError, subprocess.TimeoutExpired):
+        facts.update(tool='Unknown', requested_model='Unknown', requested_effort='Unknown',
+                     reason='invalid_agents_conf')
+    return facts
+
+
+def effort_info_unsupported_result(args):
+    config_facts = effort_info_audit(args)
+    return {
+        'worker': args.worker,
+        'state': 'unsupported',
+        'live_control': 'unsupported',
+        'channel': 'none',
+        'effective': 'Unknown',
+        'current_configuration': config_facts,
+    }
+
+
+def effort_info_present(result):
+    if result.get('state') != 'unsupported' or 'current_configuration' not in result:
+        return ' '.join(f'{k}={v}' for k, v in result.items())
+    worker = result.get('worker', '')
+    state = result.get('state', 'unsupported')
+    live = result.get('live_control', 'unsupported')
+    chan = result.get('channel', 'none')
+    eff = result.get('effective', 'Unknown')
+    cfg = result.get('current_configuration', {})
+    effort = cfg.get('requested_effort', 'Unknown')
+    reason = cfg.get('reason')
+    prov = cfg.get('provenance', 'static_agents_conf')
+    scope = cfg.get('scope', 'future_launch')
+    line1 = f'worker={worker} state={state} live_control={live} channel={chan} effective={eff}'
+    reason_clause = f' reason={reason}' if reason else ''
+    line2 = f'current_configuration: effort={effort}{reason_clause} provenance={prov} scope={scope} (model reasoning effort, distinct from coordination tier and review pace)'
+    return f'{line1}\n{line2}'
+
+
 def client(args):
     manifest = endpoint(args.project, args.worker)
     if not os.path.lexists(manifest):
-        return {'state': 'unsupported', 'effective': 'Unknown', 'worker': args.worker}
+        return effort_info_unsupported_result(args)
     doc, inode = read_private(manifest)
     if doc['project'] != str(Path(args.project).absolute()) or doc['worker'] != args.worker:
         raise Refusal('channel binding mismatch')
@@ -887,6 +991,7 @@ def main():
     get.add_argument('worker')
     get.add_argument('effort', nargs='?', choices=LEVELS)
     get.add_argument('--project', required=True)
+    get.add_argument('--audit-json', default=None)
     get.add_argument('--json', action='store_true')
 
     sess = sub.add_parser('session')
@@ -910,6 +1015,8 @@ def main():
     snd.add_argument('--json', action='store_true')
 
     args = parser.parse_args()
+    if args.action == 'effort' and args.audit_json is not None:
+        parser.error('--audit-json is not accepted from callers')
     if args.action == 'run' and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,127}', args.model):
         parser.error('invalid model label')
     if args.action == 'run':
@@ -955,7 +1062,7 @@ def main():
         result = client(args)
     except (Refusal, OSError, ValueError, KeyError, TypeError, RecursionError):
         result = {'worker': args.worker, 'state': 'stale-or-invalid', 'effective': 'Unknown'}
-    print(json.dumps(result) if args.json else ' '.join(f'{k}={v}' for k, v in result.items()))
+    print(json.dumps(result) if args.json else effort_info_present(result))
     return 0 if result['state'] in ('observed', 'acknowledged', 'unverified') else 2
 
 if __name__ == '__main__':

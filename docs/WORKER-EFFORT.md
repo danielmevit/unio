@@ -67,7 +67,19 @@ real shared-group mapping and lead reservation procedure for either example.
 `unio worker-effort WORKER high --json` requests a supported setting.
 Only low, medium, high and xhigh are accepted, intersected with the selected
 model's app-server catalog. This command cannot change model, permissions,
-sandbox or service tier. Legacy exec and other routes return unsupported.
+sandbox or service tier.
+
+When a worker has no active supported control channel (such as legacy exec or
+other routes without an owned control socket), `unio worker-effort WORKER [--json]`
+reports `state: unsupported` and `live_control: unsupported`, explaining the absence
+of an active channel. Where discoverable from `agents.conf`, read-only static facts
+are surfaced under `current_configuration` for future launches (`scope: future_launch`,
+`provenance: static_agents_conf`). Newly edited configuration is never attributed
+as what an already-running or frozen worker started with. Missing, ambiguous,
+compound or wrapped routes remain Unknown with an actionable reason. Live-set
+requests on unsupported routes continue to fail safely and never edit configuration.
+Model reasoning effort remains distinct from coordination tier (`unio tier`) and
+review pace, and effective inference effort stays Unknown.
 
 An empty update response means RPC success, not configured effort. Notification
 and readback acknowledge configuration for subsequent turns. A request during
@@ -84,3 +96,10 @@ returned to the client. Worker text streams into the ordinary native task log.
 This is a trusted-host boundary: same-user code execution is not an OS sandbox.
 Do not attach arbitrary existing Codex CLI sessions. Stale manifests fail closed;
 after verifying that the old run has ended, remove its stale manifest manually.
+
+Effort queries use the parsed worker name, so `worker-effort --json WORKER`
+and `worker-effort WORKER --json` report the same configuration. Native worker
+suffixes still select the alias before the first hyphen. Static evidence comes
+from a fresh bounded native command audit, never caller-supplied `--audit-json`
+(which is refused). The audit does not execute configured commands or probe a
+provider. An active owned channel remains authoritative.

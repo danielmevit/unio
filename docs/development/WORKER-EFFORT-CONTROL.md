@@ -1,10 +1,14 @@
 # Change a worker's reasoning effort during work
 
-Status: development source preview implemented on 2026-10-14; stable is 0.5.16.
-Full bundle release checks and publication remain pending. Native
-`unio worker-effort WORKER [low|medium|high|xhigh] [--json]` controls only that
-owned Source. See [usage and boundary](../WORKER-EFFORT.md). Legacy exec and
-other adapters remain unsupported; dashboard controls remain future work.
+Native worker effort control shipped in 0.5.17 and is included in installed
+stable 0.5.24. The private next-update addition provides configuration clarity
+when no live channel exists; full bundle release checks and publication for
+that addition remain pending. Native
+`unio worker-effort WORKER [low|medium|high|xhigh] [--json]` controls the
+owned Source when an active channel exists. The addition surfaces current
+future-launch configuration facts and unsupported live control otherwise.
+See [usage and boundary](../WORKER-EFFORT.md). Legacy exec and other adapters
+have no live channel; dashboard controls and UI remain planned future work.
 
 The backend owns a private stdio app-server, validates ChatGPT subscription
 authentication and model catalog support, and starts exactly one assigned turn.
@@ -73,16 +77,22 @@ boundary, actual outcome, revision/checkpoint and effective Unknowns. Record
 restarts and failures separately. Preserve STOP, attempt limits, owned-process
 cleanup, independent-review evidence and human control.
 
-## First bounded slice
+## Original bounded slice and remaining work
 
-Begin with Codex session control and one worker. Prove that a requested change
+The native slice shipped in 0.5.17 with Codex session control for one worker. Its goal was to prove that a requested change
 is applied at a supported boundary without losing edits or duplicating the
 workflow, and that unsupported changes fail clearly. Cover busy-tool handling,
 cancellation, restart-required routes, real budget accounting and truthful
 receipts with isolated tests. Use an owner-authorized small live acceptance
 only after offline checks. Add dashboard controls after the CLI behavior works.
 
-Initial estimate: 4–8 hours for a bounded Codex-first slice, subject to the
-capability audit. Additional adapters and dashboard controls need separate
-estimates. Implement after the current milestone and the owner's requested
-break; do not add this feature to the review-findings release.
+The original estimate was 4–8 hours for the bounded Codex-first slice, subject
+to the capability audit. Additional adapters and dashboard controls still need
+separate estimates and authorization.
+
+Effort queries use the parsed worker name, so `worker-effort --json WORKER`
+and `worker-effort WORKER --json` report the same configuration. Native worker
+suffixes still select the alias before the first hyphen. Static evidence comes
+from a fresh bounded native command audit, never caller-supplied `--audit-json`
+(which is refused). The audit does not execute configured commands or probe a
+provider. An active owned channel remains authoritative.
