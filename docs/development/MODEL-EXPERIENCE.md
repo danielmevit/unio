@@ -92,3 +92,14 @@ failure, a transport failure and an unaccepted Source cannot be conflated;
 small/empty samples must not create a confident recommendation. This belongs
 to the approved roadmap after core work controls and existing delivery work,
 with its own version assigned when the implementation scope is frozen.
+
+## Recording on slower workspaces
+
+`unio experience record ... --timeout SECONDS` explicitly bounds native result
+observation to finite numeric seconds 1..300 (default 30). For example, add
+`--timeout 60` when the default observation deadline is insufficient. Invalid
+values refuse before observation or store writes. A timeout records no assessment
+and leaves original task/Source evidence untouched; it does not retry or diagnose
+a filesystem, quota or Source failure. Existing evidence, freshness and acceptance
+checks still apply. The experience store lock wait stays five seconds; suggest's
+separate `--timeout` stays whole seconds 1..60, default 10.
