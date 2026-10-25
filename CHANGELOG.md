@@ -15,6 +15,10 @@ See [current scope and evidence](docs/development/OPERATIONAL-QUALITY-2026-10-25
   a redundant traversal while preserving validation, retention and restoration.
   Focused checks, independent reviews and the combined quality gate passed;
   this does not establish that every mounted-workspace capture meets its deadline.
+- Add an explicit `unio experience record --timeout SECONDS` bound (1–300,
+  default30), preserving result validation and recording nothing on timeout.
+  The candidate completed one real assessment lookup in46.58s with a120s bound
+  after earlier30s timeouts; this is not a general speedup claim.
 - Prioritize core operating improvements before managed lead ownership, dashboard
   expansion, phone pairing or native desktop interfaces. Their reviewed internal
   foundations remain preserved without claiming a usable managed lead feature.

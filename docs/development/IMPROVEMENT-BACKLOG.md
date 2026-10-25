@@ -13,15 +13,16 @@ This backlog consolidates pending, accepted, and shipped functional improvements
 - **Privately accepted checkpoint fix:** metadata reuse preserves validation,
   retention and restoration. Focused checks, independent reviews and exact94d29082
   combined gate passed. This does not claim all capture deadlines are repaired.
-- **Current task:** finish preserved experience-record timeout implementation and
-  obtain actual native validation plus independent Opus review. See the
-  [current batch](OPERATIONAL-QUALITY-2026-10-25.md).
+- **Privately accepted assessment timeout:** Source/native/Verify0, independent
+  Opus approval and lead byte proof; explicit120s completed one real46.58s lookup.
+- **Current final functional task:** human run-phase clarity, then one frozen
+  merged operational gate. See [current batch](OPERATIONAL-QUALITY-2026-10-25.md).
 - **Next:** operational improvements before ownership or interface work. Preserve
   the failed ownership invocation (infrastructure exit2, no edits), without retry.
 
 ### Operational queue
 
-1. Finish the assessment-observation timeout continuation and existing-lead assessment; checkpoint gate/assessment are complete.
+1. Finish current run-phase clarity/review and frozen combined batch gate; checkpoint and assessment-timeout private acceptance are complete.
 2. Validate remaining helper delays: mounted-workspace automatic captures still
    hit60s; result/experience observations may exceed caller deadlines. Diagnose
    the exact call/phase, reduce redundant work or add bounded configurable

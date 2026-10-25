@@ -26,19 +26,35 @@ These are private acceptance checkpoints, not public release or human approval.
 No universal full-save speedup, default capture success or real-store cleanup is
 claimed. Baseline/final save deadlines remain a separate observed problem.
 
-## In progress: bounded model-assessment observation
+## Privately accepted: bounded model-assessment observation
 
-The installed experience record helper has a fixed30second native result deadline.
-The proposed explicit --timeout1..300 option retains default30, result freshness,
-record schema, no-write-on-timeout, owned child cleanup and suggest's unchanged
-bounds. Original SolLOW Source/native1 stopped at an explicit usage limit after
-preserving implementation50a635b and partial passing checks; no review was called.
+SolLOW continuation from50a635b finished CLI/Source/native0 and native4/4PASS,
+including13experience15fleet tests, embeddings, branding and scope. No dummy
+commit or effort escalation. Original quota-stop1 and committed work remain.
+Claude subscription/Code2.1.310/Opus5.5XHIGH returned nativeAPPROVE0 and independently
+checked boundaries and cleanup. Lead accepted two low nonblocking notes: decimal
+precision in diagnostic wording and more specific refusal assertions in one test.
 
-An owner-authorized CodexCLI0.163.0/gpt6.1solLOW continuation from50a635b is active
-in its own worktree. It must finish native checks and real summary delivery. One
-independent Claude subscription/ClaudeCode2.1.310/Opus5.5XHIGH native review follows
-only actual Source/native/Verify0; then the existing lead assesses current code.
-Requested model/effort remain separate from effective Unknown.
+Lead byte proof shows only the reviewed experience module and admission guide
+changed in the installer; every other byte is preserved. A real component check
+used the original task/config/native runner and explicit120s, completed46.58s,
+and stored operator assessment1d191a3e090391c5f75ad2333e59d075. Earlier30s
+timeout receipts remain. No provider call/global install, no controlled speedup
+claim. Privately merged e10c48b.
+
+## Final functional slice: human run phase clarity
+
+Assigned 2026-10-25T05:40:06+01:00: CodexCLI0.163.0/gpt6.1solLOW on isolated public-base branch, task
+RUN-PHASE-CLARITY-SOL-LOW-0524-20261025. Add best-effort human stderr phases for
+baseline/periodic/final checkpoint attempts, provider command/cleanup/finalization.
+Preserve exits, validation, protocols, provider logs and permissions. Clearly
+distinguish an attempted save and completed provider command from accepted work.
+Include deterministic installed regressions and the single private0.5.24 version
+assignment; no public release or installation.
+
+One independent ClaudeCode2.1.310/Opus5.5XHIGH native review follows actual Source/
+Verify0, then existing lead assessment. Full merged batch quality gate runs only
+after this last slice. Do not add another feature to that frozen candidate.
 
 ## Deferred and next
 

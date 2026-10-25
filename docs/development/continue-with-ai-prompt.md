@@ -1,5 +1,40 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Helper accepted; LAST functional slice before final batch gate — 2026-10-25T05:40:06+01:00
+
+Goaloperations/QoL first, ownership/UIparked. Assessmenttimeout50a continuation
+CLI/Source/native0/4nativePASS0,13experience15fleet/branding/embedding/scope0.
+ClaudeCode2.1.310/Opus5.5XHIGH actualCLI/adapter/nativeReview0 APPROVE05:18:40.
+Lowwordingfractionprecision andtest-specificrefusalnotesacceptednonblocking,
+infoinstallercontextclosedby strictwholeinstallerbyteproof. Realcandidatehelper
+(originalglobalrunner/config, no globalinstall/modelcall) --timeout120 completed
+46.58s/storedacceptedoperatorrecord1d191a3e090391c5f75ad2333e59d075. Earlier30s
+timeouts preserved, differentload/cache notbenchmark. Leadacceptedandmerged
+e10c48b082c56849dc7282748e15be3bffd5b649; piplead-finalassessment exactevidence.
+
+Frozenbatchfourpieces: reviewtruth, checkpointmetadatareuse, assessmentbound,
+LASTrunphaseclarity. No largerfeaturemaydelaythisbatch. RunphaseSource task
+RUN-PHASE-CLARITY-SOL-LOW-0524-20261025/newworker codex-run-phase-low-20261025
+publicbasecd0 (supervisorfunctionsunchangedbyotheracceptedchanges), pipeline
+run-phase-clarity-sol-low-20261025/controller2199737. CodexCLI0.163.0/gpt6.1solLOW,
+effectiveUnknown. Exacttask/parser/hash/syntaxpreflightPASS; refreshcapacityat
+admission; realcodexlead/group/singlegrant/tempcoordmedium/STOP/finallylow.
+Sourcecallmustbeobservedfromsource/source.json; assignmentstarted05:38:13.
+
+Scope5paths: installeronlySAVES automatic_capture/supervise_run/newemit_run_phase
+AST, singleUNIO_VERSION23→24; newinstalledtest/onequalityregistration/doc/fragment.
+Humanstderr phasesonly, best-effort/no newcontrolstate/schema/providerlogchanges.
+Do not claimattemptendedissaved orproviderexitedisaccepted. NewfrozenScopeAST
+checker+phase/kill/nativeStop/brandingregressionsrequired; ETA20–40min+review.
+Observer2199739 waitsactualSource/native/Verify0/lowrestore thenClaude2.1.310/
+Opus5.5XHIGH review with completeownedfunctionContext+newtests/doc/hash.
+Do notreusewrongmodel-experience snapshots; reviewwrappercustomizedandASTchecked.
+
+AfterSource/currentreview/leadassessment, mergetheexactphase/versiondelta, update
+changelog acceptedscopethenONEfullqualitygate onfrozencandidate24. No version
+metadatachangeafterthatgate; no furtherfeatureadded. Noautoaccept/push/global
+install/release; main/installremain23. Nextgenuineoutcomes, notanotherplan.
+
 ## Checkpoint accepted; explicit quota-stop continuation active — 2026-10-25T05:11:05+01:00
 
 Currentgoal operationalQoL beforeownership/UI. Exact94d29082 savecombinedquality
