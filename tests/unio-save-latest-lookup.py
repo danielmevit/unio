@@ -11,6 +11,9 @@ import shutil
 import subprocess
 import tempfile
 import types
+import time
+import statistics
+from contextlib import ExitStack
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1]
@@ -153,7 +156,9 @@ with tempfile.TemporaryDirectory(prefix='save-latest-lookup-') as directory:
 
     def equivalent(label, directory, expected, worker='wanted'):
         for deep in (False, True):
-            result = outcome(lambda: module.last_good(str(directory), worker, deep))
+            with patch.object(module, 'latest_lookup_full_scan', wraps=module.latest_lookup_full_scan) as fallback:
+                result = outcome(lambda: module.last_good(str(directory), worker, deep))
+            check(label + ' path deep=' + str(deep), fallback.call_count == (1 if expected == 'refuse' else 0))
             check(label + ' complete shape/reference deep=' + str(deep),
                   result == outcome(lambda: reference(directory, worker, deep)))
             if expected == 'refuse':
@@ -299,9 +304,195 @@ with tempfile.TemporaryDirectory(prefix='save-latest-lookup-') as directory:
                 elif kind == 'duplicate-appears': put(d, foreign_key, 'foreign', archived=True)
                 else: shutil.rmtree(winner)
             return real_load_save(path, key, deep)
-        with patch.object(module, 'load_save', changing_load):
+        with patch.object(module, 'load_save', changing_load), patch.object(module, 'latest_lookup_full_scan', wraps=module.latest_lookup_full_scan) as fallback:
             raced = outcome(lambda: module.last_good(str(d), 'wanted', False))
-        check('bounded race fallback '+kind, raced == outcome(lambda: reference(d, 'wanted', False)))
+        check('bounded race fallback '+kind, raced == outcome(lambda: reference(d, 'wanted', False)) and fallback.call_count == 1)
+
+    d = fixture('deep-race'); put(d, low, stamp='2001-01-01T00:00:00+00:00')
+    put(d, high); foreign = put(d, 'f'*32, 'foreign')
+    deep_seen = []
+    def changing_deep(path, key, deep):
+        loaded = real_load_save(path, key, deep)
+        if deep:
+            deep_seen.append(key)
+            doc = json.loads((foreign/'manifest.json').read_text())
+            doc['worker'] = 'wanted'
+            (foreign/'manifest.json').write_text(json.dumps(doc)+'\n')
+        return loaded
+    with patch.object(module, 'load_save', changing_deep), \
+            patch.object(module, 'latest_lookup_full_scan', wraps=module.latest_lookup_full_scan) as fallback:
+        raced = module.last_good(str(d), 'wanted', True)
+    check('deep race actually validated and fell back once', deep_seen and deep_seen[0] == high
+          and fallback.call_count == 1 and raced == reference(d, 'wanted', True))
+
+    # A full-scan refusal must never be mistaken for a bad candidate. The
+    # discovery recheck would be back at its initial view in these controls.
+    for kind in ('shallow', 'deep', 'changed-restored'):
+        d = fixture('fallback-refusal-'+kind)
+        put(d, low, stamp='2001-01-01T00:00:00+00:00'); winner = put(d, high)
+        original_doc = json.loads((winner/'manifest.json').read_text())
+        refusal = module.Refuse('invalid_save', 'duplicate active/archive save ID injected')
+        seen = []
+        def mismatch_load(path, key, deep):
+            seen.append((key, deep))
+            if key == high and kind == 'changed-restored':
+                (winner/'manifest.json').write_text(json.dumps(dict(original_doc, task='changed'))+'\n')
+            loaded = real_load_save(path, key, deep)
+            if key == high and (kind != 'deep' or deep):
+                loaded = dict(loaded, manifest=dict(loaded['manifest'], task='changed'))
+            return loaded
+        initial_discovery = module.latest_lookup_discovery(str(d))
+        def refusing_scan(*args):
+            # Model the changed view restored before another discovery. The
+            # observed fallback failure remains authoritative nonetheless.
+            (winner/'manifest.json').write_text(json.dumps(original_doc)+'\n')
+            raise refusal
+        with patch.object(module, 'load_save', mismatch_load), \
+                patch.object(module, 'latest_lookup_discovery', wraps=module.latest_lookup_discovery) as discover, \
+                patch.object(module, 'latest_lookup_full_scan', side_effect=refusing_scan) as fallback:
+            try:
+                module.last_good(str(d), 'wanted', kind == 'deep')
+            except module.Refuse as error:
+                check(kind+' exact fallback refusal preserved', error is refusal)
+            else:
+                raise AssertionError(kind+' fallback refusal swallowed')
+            check(kind+' fallback once, no older success, no restored recheck',
+                  fallback.call_count == 1 and discover.call_count == 1
+                  and all(key == high for key, _ in seen))
+            check(kind+' validator mismatch reached', seen == [(high, False), (high, True)]
+                  if kind == 'deep' else seen == [(high, False)])
+
+    # Recheck changes also fall back once, outside its exception handler.
+    d = fixture('recheck-refusal'); put(d, low)
+    first = module.latest_lookup_discovery(str(d))
+    with patch.object(module, 'latest_lookup_discovery', side_effect=[first, (None, [], [], [])]), \
+            patch.object(module, 'latest_lookup_full_scan', side_effect=refusal) as fallback:
+        try:
+            module.last_good(str(d), 'wanted', False)
+        except module.Refuse as error:
+            check('recheck exact fallback refusal', error is refusal and fallback.call_count == 1)
+        else:
+            raise AssertionError('recheck fallback refusal swallowed')
+
+    # Count every file-operation category used by lookup, plus CPU work and
+    # explicit fast/fallback calls. Counts are deterministic; timings are not gates.
+    file_ops = ('open', 'close', 'stat', 'lstat', 'fstat', 'scandir', 'listdir', 'read', 'readlink', 'access')
+    def measured(call, target=module):
+        counts = collections.Counter({name: 0 for name in file_ops})
+        with ExitStack() as stack:
+            for name in file_ops:
+                original_op = getattr(os, name)
+                def count_op(*args, _op=original_op, _name=name, **kwargs):
+                    counts[_name] += 1
+                    return _op(*args, **kwargs)
+                stack.enter_context(patch.object(os, name, count_op))
+            for name in ('manifest_doc', 'strict_json', 'load_save', 'latest_lookup_discovery', 'latest_lookup_full_scan'):
+                original_op = getattr(target, name)
+                def count_helper(*args, _op=original_op, _name=name, **kwargs):
+                    counts[_name] += 1
+                    return _op(*args, **kwargs)
+                stack.enter_context(patch.object(target, name, count_helper))
+            for name in ('read_at', 'read_stored_at'):
+                original_op = getattr(target, name)
+                def count_manifest(fd, name, *args, _op=original_op, **kwargs):
+                    if name == 'manifest.json': counts['manifest_reads'] += 1
+                    return _op(fd, name, *args, **kwargs)
+                stack.enter_context(patch.object(target, name, count_manifest))
+            result = call()
+        return result, dict(counts)
+
+    evidence = []
+    for size in (1, 13):
+        for history in ('foreign', 'own', 'invalid-foreign'):
+            d = fixture('work-%s-%s' % (size, history))
+            put(d, high)
+            for number in range(1, size):
+                path = put(d, '%032x' % number, 'wanted' if history == 'own' else 'foreign',
+                           stamp='2001-01-01T00:00:00+00:00', archived=number % 2 == 0)
+                if history == 'invalid-foreign':
+                    if number % 3 == 0: (path/'manifest.json').write_text('{}\n')
+                    elif number % 3 == 1: (path/'manifest.json').chmod(0o644)
+                    else:
+                        shutil.rmtree(path)  # empty archive reservations are protected evidence
+            for worker in ('wanted', 'missing'):
+                fast, fast_counts = measured(lambda: module.last_good(str(d), worker, False))
+                old, old_counts = measured(lambda: module.latest_lookup_full_scan(str(d), worker, False))
+                check('work complete equivalence %s/%s/%s' % (size, history, worker), fast == old)
+                check('work fast path %s/%s/%s' % (size, history, worker),
+                      fast_counts.get('latest_lookup_full_scan', 0) == 0
+                      and fast_counts['latest_lookup_discovery'] == 2)
+                check('work validation/read bounds %s/%s/%s' % (size, history, worker),
+                      fast_counts.get('manifest_doc', 0) == (worker == 'wanted')
+                      and fast_counts.get('load_save', 0) == (worker == 'wanted')
+                      and fast_counts.get('manifest_reads', 0) <= 2*size + (worker == 'wanted'))
+                # Whole categories bounded, including directory work that grew
+                # in the prototype. No cherry-picking pool stats as total work.
+                bounds = dict(open=4*size+10, close=4*size+10, stat=12, lstat=5*size+4,
+                              fstat=2*size+2, scandir=2*size+4, listdir=3,
+                              read=4*size+2, readlink=0, access=0)
+                print('WORK ROW '+json.dumps(dict(saves=size, history=history, worker=worker, baseline=old_counts, corrected=fast_counts)), flush=True)
+                check('work all operation bounds %s/%s/%s' % (size, history, worker),
+                      all(fast_counts[k] <= v for k, v in bounds.items()))
+                evidence.append(dict(saves=size, history=history, worker=worker,
+                                     baseline=old_counts, corrected=fast_counts))
+    print('COMPLETE WORK COUNTERS '+json.dumps(evidence, sort_keys=True), flush=True)
+
+    if os.environ.get('UNIO_LOOKUP_MEASURE'):
+        import hashlib
+        prototype_source = subprocess.check_output(['git', '-C', str(SOURCE), 'show',
+            '74b1e22f6d37a3c0948fa34bce711b6ee0b9f18e:unio-install.sh'], text=True)
+        prototype_body = prototype_source.split("<<'SAVES_PY'\n", 1)[1].split('\nSAVES_PY\n', 1)[0]
+        prototype = types.ModuleType('preserved_prototype')
+        exec(compile(prototype_body.rsplit('sys.exit(main(sys.argv[1:]))', 1)[0], 'preserved-prototype', 'exec'), prototype.__dict__)
+        timings = []
+        for bodies in (4, 41, 401):
+            d = fixture('timing-'+str(bodies))
+            for number in range(1, 14):
+                key = '%032x' % number
+                path = put(d, key, 'wanted' if number == 13 else 'foreign', archived=number % 2 == 0)
+                doc = json.loads((path/'manifest.json').read_text())
+                for entry in range(bodies-4):
+                    content = ('body-%s' % entry).encode()
+                    digest = hashlib.sha256(content).hexdigest()
+                    (path/'pool'/digest).write_bytes(content); (path/'pool'/digest).chmod(0o600)
+                    doc['entries'].append(dict(path='zz-measure-%04d' % entry, index=None,
+                                              worktree=dict(mode='100644', sha256=digest, bytes=len(content))))
+                doc['entries'].sort(key=lambda e: e['path'])
+                doc['fingerprint'] = module.fingerprint(doc['git'], doc['entries'], doc['context'])
+                (path/'manifest.json').write_text(json.dumps(doc)+'\n')
+            functions = dict(baseline=module.latest_lookup_full_scan,
+                             prototype=prototype.last_good, corrected=module.last_good)
+            samples = {name: [] for name in functions}
+            cpus = {name: [] for name in functions}
+            operations = {}
+            expected = module.latest_lookup_full_scan(str(d), 'wanted', False)
+            for name, function in functions.items():
+                # Same instrumentation for prototype: measured() patches module
+                # helpers only, so collect prototype ops via its globals too.
+                result, operations[name] = measured(lambda: function(str(d), 'wanted', False),
+                                                      prototype if name == 'prototype' else module)
+                assert result == expected
+                function(str(d), 'wanted', False)  # explicit warmup, no cache flush
+            orders = []
+            names = list(functions)
+            for turn in range(9):
+                order = names[turn % 3:]+names[:turn % 3]
+                if turn % 2: order = list(reversed(order))
+                orders.append(order)
+                for name in order:
+                    start_cpu = time.process_time_ns(); start = time.perf_counter_ns()
+                    result = functions[name](str(d), 'wanted', False)
+                    samples[name].append((time.perf_counter_ns()-start)/1e6)
+                    cpus[name].append((time.process_time_ns()-start_cpu)/1e6)
+                    assert result == expected
+            timings.append(dict(saves=13, active=7, archived=6, bodies_per_save=bodies,
+                                manifest_bytes=(d/('%032x' % 13)/'manifest.json').stat().st_size,
+                                wall_ms=samples, cpu_ms=cpus, orders=orders, operations=operations,
+                                median_wall_ms={k: statistics.median(v) for k,v in samples.items()},
+                                median_cpu_ms={k: statistics.median(v) for k,v in cpus.items()}))
+        Path(os.environ['UNIO_LOOKUP_MEASURE']).write_text(json.dumps(dict(
+            cache='warmup per implementation; interleaved; no cache flush',
+            temp_root=str(base), evidence=evidence, timings=timings), indent=2)+'\n')
 
     # Real periodic skip keeps the prior attempt byte-identical. A catchable
     # stable-observation refusal records a fresh refused attempt and last good.
