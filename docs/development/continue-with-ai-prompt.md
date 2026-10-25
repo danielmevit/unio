@@ -1,5 +1,43 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Phase slice BLOCKED on reproduced stream-flag defect — 2026-10-25T05:51:46+01:00
+
+Operationalbatchscopefrozenfourpieces; no morefeatures/ownership/UI. Private
+acceptedreview/checkpoint/assessment code remainsin integration; global23.
+PhaseCodeX0.163/gpt6.1solLOW final6aae1d0b6a0730ebd4b04239f72356f23aa4cf0a
+CLI0at05:45:24/native0at05:47:22/native4PASS0/lowrestored. Newlabels+private24
+identity+149lineinstalledtest passedfocusedtests, but NOTaccepted/merged.
+
+Leadownzero-provider/disposablepipeprobe at05:48:29 confirms emit_run_phase
+setsO_NONBLOCK on stderr's SHAREDopen-file-description: duplicatepeer seesFalse
+blockingduringwrite; ifstderrclosedatwrite/restorefault, peerremainsnonblocking.
+OriginalflagsTrue. Reproduction: run-phase-lead-probe-20261025/reproduction.json
+exactrevision+installerhash, trackedsourceunchanged. Diagnostics mustnotalter
+executionstreams; holdcurrentphasecandidate, notScopefeatureexpansion.
+
+IndependentClaudeCode2.1.310/Opus5.5XHIGH nativeReview STARTED05:49:36/model
+actual05:50:27, oldrun-phase-clarity-sol-low-20261025/review/source.json. Reviewer
+NOTshownleadprobe; completeownedfunctionContext provided. Waitactualverdict,
+thenoneboundedSolLOW stream-safetycorrectionfrom6aae inNEWworktree/task, include
+anymaterialadditionalfindings beforefreeze. No unchangedretry/effortincrease.
+Newfixmustpreserveparent/peerdescriptorflags includingerror/replacement/full
+stream andordinaryregularfileoffset/appendsemantics, noqueue/thread/daemon,
+no all-NOOPfix, exactlabels/exit/control/protocolunchanged. Addmeaningfulnegative
+regressionscatchingoldhelper; currentcallerphasefunctionsunchanged. Future
+reviewonnewcode required; currentapprovalifanynottransferredtonewcode.
+
+Finalgateexecutor PREPARED ONLY operational-quality-final-gate-20261025, no
+frozen-source/nofullgate/currentcodeversion23 inintegration. Gatewaitsfixedphase
+currentreview+leadacceptance, exactmerged24Version, changelogfrozen. ONErequired
+combinedfullgate afterthislastslice; noextraFeatureadded. Noautoaccept/mainpush/
+globalinstall/release. Controllerold2199737/observer2199739 readcurrentfacts.
+
+BoundedcomponentrealScoreassessments succeeded withnewacceptedhelper120s:
+94c1quality_issue d2977b52f1f36566dc7207d128f74b02/45.335s;627testaccepted
+ac6280ae2b79d51868e2b33c603652d6/48.879s;50acontinuationaccepted
+529effa3c5c8ff07d4b8c32993f0ff6e/52.913s. Earlier30stimeouts allpreserved; no
+modelcall/globalinstall, no speedupclaim. NextcurrentOpusverdict/boundedfix.
+
 ## Helper accepted; LAST functional slice before final batch gate — 2026-10-25T05:40:06+01:00
 
 Goaloperations/QoL first, ownership/UIparked. Assessmenttimeout50a continuation
