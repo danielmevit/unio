@@ -1,5 +1,18 @@
 # Continue Unio after the 0.5.24 operational update
 
+## Native Windows performance clarification — 2026-10-25T12:52:44+01:00
+
+Owner asks whether the future non-WSL desktop fixes the measured issue. Updated
+CROSS-PLATFORM.md: a native Windows orchestration/file backend with appropriate
+native worker routes avoids the WSL crossing; a desktop wrapper calling the
+existing WSL engine retains it. No end-to-end speed promise. Temporary matched
+Linux-storage measurement is the useful current-host comparison; moving the real
+workspace still needs owner authorization. Product work stays on avoidable scans
+with all validation intact. Removed stale provisional Windows25/macOS26 numbers;
+operational priority and Windows-before-macOS ordering remain. Docs only, no
+runtime change, provider invocation, relocation, public push or new release.
+
+
 ## Current next-round checkpoint — 2026-10-25T12:20:59+01:00
 
 0.5.24 remains published, installed and unchanged. The owner asked whether

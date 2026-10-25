@@ -12,9 +12,10 @@ remain unassigned; continue the existing 0.5.x sequence.
 | Windows without WSL | Not supported yet | Native installation and execution from PowerShell, after a backend feasibility checkpoint. |
 
 Owner ordering update: prioritize native Windows before native macOS. The current
-[version plan](../VERSION-PLAN.md) provisionally places Windows in 0.5.25 and
-macOS in 0.5.26, following managed sessions/continuity and scoped phone access.
-These are planning checkpoints, subject to feasibility and actual host checks.
+[version plan](../VERSION-PLAN.md) and [operational backlog](IMPROVEMENT-BACKLOG.md)
+put operational reliability before ownership and platform expansion. Platform
+release numbers remain unassigned until feasibility and actual host checks;
+older provisional 0.5.25/0.5.26 labels are superseded.
 
 One engine should serve the CLI and the existing dashboard. A desktop window
 can eventually host the same interface. Native platform support does not
@@ -46,6 +47,37 @@ remain separate deliverables.
 References checked: [Tauri overview](https://v2.tauri.app/start/) and
 [Microsoft Store distribution](https://v2.tauri.app/distribute/microsoft-store/).
 These establish framework capabilities, not Unio compatibility or Store approval.
+
+## Filesystem performance and native acceptance — 2026-10-25T12:52:44+01:00
+
+The [matched C:/D: diagnostic](DRIVE-COMPARISON-2026-10-25.md) found no small-file
+read advantage from changing drive letters on this host: both partitions share
+one NVMe device and both WSL paths use the Windows-filesystem bridge. A native
+Windows control processed the same selected D: bytes quickly, using a different
+runtime/API. These are component measurements, not full Unio saves or a native
+Unio performance guarantee.
+
+For the current WSL engine, a temporary matched Linux-filesystem fixture is the
+useful next storage test. Microsoft recommends matching Linux tools with Linux
+storage: [WSL filesystem guidance](https://learn.microsoft.com/en-us/windows/wsl/filesystems).
+Moving a real workspace/store requires owner authorization, preservation and
+actual checks; do not silently relocate it. Reducing avoidable repeated scans
+remains a product improvement across hosts. Preserve validation, locking, STOP,
+admission and failure evidence; longer timeouts do not reduce work.
+
+Native Windows acceptance requires the orchestration backend and file operations
+to execute natively against Windows files. An installer, desktop window or
+WebView that calls the current WSL engine retains that boundary. Agent routes
+must also identify their execution host: a WSL worker reading Windows-mounted
+files can retain crossing costs even when the desktop shell is native. Do not
+assume every configured provider CLI supports native Windows without checking.
+
+Verify representative populated checkpoint stores, small-file metadata and
+actual save/restore workflows on the chosen native backend. Keep runtime,
+storage, provider and UI measurements separate. Reuse the existing coordination
+contracts and dashboard; the frontend framework alone does not determine file
+I/O performance. No native implementation, universal speedup or guaranteed
+end-to-end timing is established by this diagnostic.
 
 ## 1. Audit the runtime and define platform contracts
 
