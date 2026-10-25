@@ -8,13 +8,108 @@ import os
 from pathlib import Path
 import socket
 import tempfile
+import subprocess
+from types import SimpleNamespace
+from unittest.mock import patch
+from copy import deepcopy
 
 spec=importlib.util.spec_from_file_location('smoke',Path(__file__).with_name('unio-codex-worker.py'))
 smoke=importlib.util.module_from_spec(spec);spec.loader.exec_module(smoke)
 
+def audit_validator_checks(base):
+    """Reach the helper's native-evidence validator without a provider or delay."""
+    spec = importlib.util.spec_from_file_location('effort_worker', smoke.SOURCE / 'tools/codex-worker.py')
+    worker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(worker)
+    project = base / 'audit-project'
+    project.mkdir()
+    conf = base / 'audit-conf'
+    conf.mkdir()
+    (conf / 'agents.conf').write_text('legacy=codex exec -c model_reasoning_effort=medium\n')
+    args = SimpleNamespace(worker='legacy-17', project=str(project))
+    row = dict(alias='legacy', tool='codex', requested_model='gpt-6.1-sol',
+               requested_effort='medium', transport='stdin', authentication='Unknown',
+               capacity='Unknown', effective_model='Unknown', effective_effort='Unknown', issues=[])
+    audit = dict(schema_version=1, source='local_static', authentication='Unknown',
+                 capacity='Unknown', effective_model='Unknown', effective_effort='Unknown', agents=[row])
+    def invoke(payload, status=0, timeout=False):
+        def fake_run(argv, **kwargs):
+            assert argv == ['offline-audit-fixture', 'doctor', '--commands', '--json']
+            assert kwargs['cwd'] == str(project) and kwargs['timeout'] == 15
+            assert kwargs['stderr'] == subprocess.DEVNULL
+            if timeout:
+                raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
+            kwargs['stdout'].write(payload)
+            return SimpleNamespace(returncode=status)
+        with patch.dict(os.environ, {'UNIO_CONF_DIR': str(conf), 'UNIO_EFFORT_CLI': 'offline-audit-fixture'}), \
+                patch.object(worker.subprocess, 'run', side_effect=fake_run) as run:
+            result = worker.effort_info_audit(args)
+            assert run.call_count == 1
+            return result
+    valid = json.dumps(audit).encode()
+    accepted = invoke(valid)
+    assert accepted['requested_effort'] == 'medium' and accepted['reason'] is None
+    assert accepted['alias'] == 'legacy' and accepted['scope'] == 'future_launch'
+    invalid = [b'{bad', b'[' * 2000 + b']' * 2000, b' ' * 131073]
+    for change in ('extra', 'bool_schema', 'invalid_row', 'duplicate_alias'):
+        doc = deepcopy(audit)
+        if change == 'extra': doc['extra'] = True
+        elif change == 'bool_schema': doc['schema_version'] = True
+        elif change == 'invalid_row': doc['agents'][0]['requested_effort'] = True
+        else: doc['agents'].append(deepcopy(row))
+        invalid.append(json.dumps(doc).encode())
+    for payload, status, timeout in [(v, 0, False) for v in invalid] + [(valid, 7, False), (valid, 0, True)]:
+        result = invoke(payload, status, timeout)
+        assert result['reason'] == 'invalid_agents_conf', result
+        assert all(result[k] == 'Unknown' for k in ('tool', 'requested_model', 'requested_effort'))
+    with patch.dict(os.environ, {'UNIO_CONF_DIR': str(conf), 'UNIO_EFFORT_CLI': ''}), \
+            patch.object(worker.subprocess, 'run', side_effect=AssertionError('no CLI evidence')):
+        result = worker.effort_info_audit(args)
+        assert result['reason'] == 'static_evidence_unavailable'
+        assert result['requested_effort'] == 'Unknown'
+    print('ok direct native audit validator: status, bounds, JSON/schema/rows, duplicate, absent CLI and mocked timeout', flush=True)
+
+
+def isolated_native_home_checks(h):
+    # HOME is overridden only in child environments, never in this process.
+    home = h.base / 'isolated-home'
+    conf = home / '.config/unio'
+    conf.mkdir(parents=True)
+    (conf / 'agents.conf').write_text('legacy=codex exec -c model_reasoning_effort=medium - < "$TASKFILE"\n')
+    script = ("import importlib.util,json; from types import SimpleNamespace; "
+              "s=importlib.util.spec_from_file_location('worker'," + repr(str(h.helper)) + "); "
+              "m=importlib.util.module_from_spec(s); s.loader.exec_module(m); "
+              "print(json.dumps(m.effort_info_audit(SimpleNamespace(worker='legacy',project=" + repr(str(h.root)) + "))))")
+    def query(value):
+        env = dict(h.env, HOME=str(home), UNIO_EFFORT_CLI=h.unio)
+        if value is None: env.pop('UNIO_CONF_DIR', None)
+        else: env['UNIO_CONF_DIR'] = value
+        p = subprocess.run(['python3', '-B', '-c', script], cwd=h.repo, env=env,
+                           capture_output=True, text=True, timeout=20)
+        assert p.returncode == 0, p.stderr
+        return json.loads(p.stdout)
+    unset = query(None)
+    assert unset == query('')
+    assert unset['requested_effort'] == 'medium' and unset['reason'] is None, unset
+    project_conf = h.root / 'coord/agents.conf'
+    assert not project_conf.exists()
+    try:
+        project_conf.write_text('legacy=codex exec -c model_reasoning_effort=low - < "$TASKFILE"\n')
+        assert query('')['requested_effort'] == 'low'
+        project_conf.write_text('legacy=codex exec "unterminated\n')
+        malformed = query('')
+        assert malformed['requested_effort'] == 'Unknown'
+        assert malformed['reason'] == 'invalid_agents_conf', malformed
+    finally:
+        project_conf.unlink()
+    print('ok isolated native homes: empty/unset default, project precedence and malformed agents.conf Unknown', flush=True)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='unio-effort-') as directory:
         h=smoke.Harness(directory)
+        audit_validator_checks(h.base)
+        isolated_native_home_checks(h)
         socket_fd=None
         try:
             result=json.loads(h.call('worker-effort','legacy','--json',code=2).stdout)
