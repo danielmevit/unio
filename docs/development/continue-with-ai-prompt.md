@@ -1,5 +1,35 @@
 # Continue Unio after the 0.5.24 operational update
 
+## Current next-round checkpoint — 2026-10-25T12:20:59+01:00
+
+0.5.24 remains published, installed and unchanged. The owner asked whether
+remaining checkpoint delays are a slow D: drive problem and requested a C:
+comparison. Completed the matched diagnostic in
+`docs/development/DRIVE-COMPARISON-2026-10-25.md`: 2,048 files / 24,748,179 bytes,
+three rotated WSL samples, exact content hashes and actual supervisor exit 0.
+C:/D: read-hash medians are 72.634/70.488 seconds. Both are partitions on the
+same NVMe SSD. A later native Windows D: control passed all hashes, median
+0.387 seconds, with different runtime/API and uncontrolled cache caveats.
+RAM is a memory-backed reference, not a measured ext4 disk.
+
+The first full-store snapshot hit its 300-second preparation deadline before
+any C:/D: timing; preserve its exit 1 and raw logs separately. The new bounded
+sample is an explicitly changed diagnostic, not an identical hidden retry.
+Real saves/source/policy/auth were not changed. The exact C: temporary fixture
+was removed; evidence remains in drive-comparison-sample-20261025T120407+0100.
+No AI worker/provider invocation was used by these diagnostic processes.
+Python 3.12.3 and Windows PowerShell 5.1.26100.9711 are the measured local routes.
+
+This next-round branch is `agent/operational-next-20261025` in the existing lead worktree. Only
+operating docs changed. Main/release/installed code still belongs to 0.5.24;
+no 0.5.25 code or publication is claimed. Updated backlog starts with measured
+latest-checkpoint/periodic-lookup work, then effort clarity, review context,
+explicit artifacts and shared-account visibility. Ownership/UI/phone/desktop
+remain parked. Do not move the real workspace or weaken validations based on
+component timings. Any code correction must use a scoped Unio worker under
+current owner routing; independent current-code review plus lead assessment.
+
+
 ## v0.5.24 published and installed — 2026-10-25T11:29:51+01:00
 
 The owner explicitly authorized delivery. [Unio v0.5.24](https://github.com/danielmevit/unio/releases/tag/v0.5.24)

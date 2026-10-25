@@ -2,50 +2,48 @@
 
 This backlog consolidates pending, accepted, and shipped functional improvements for Unio, organized by priority. It acts as a detailed inventory supporting the [ROADMAP.md](ROADMAP.md) without assigning fixed deadlines or version numbers for unreleased work.
 
-## Current delivery and owner priority — 2026-10-24T22:52:32+02:00
+## Current delivery and owner priority — 2026-10-25T12:20:59+01:00
 
-- **Shipped and installed:**0.5.23, following the seven operator fixes in0.5.22.
-  See [the release evidence](../RELEASE-0.5.23.md). Older entries below retain
-  their dated context; shipped20/21/22 work is not an unfinished next batch.
-- **Privately accepted:** review-history/dispatch corrections and tested internal
-  lead core/RPC foundations. The complete foundation gate passed; these do not
-  provide installed native lead ownership.
-- **Privately accepted checkpoint fix:** metadata reuse preserves validation,
-  retention and restoration. Focused checks, independent reviews and exact94d29082
-  combined gate passed. This does not claim all capture deadlines are repaired.
-- **Privately accepted assessment timeout:** Source/native/Verify0, independent
-  Opus approval and lead byte proof; explicit120s completed one real46.58s lookup.
-- **Privately accepted run phases:** shared-stream correction, native checks,
-  fresh Opus approval and lead controls passed.
-- **Current task:** finish delivery of the fully gated0.5.24 batch; full gate
-  and final lead assessment passed. Public/global actions require owner authority. See [current batch](OPERATIONAL-QUALITY-2026-10-25.md).
-- **Next:** operational improvements before ownership or interface work. Preserve
-  the failed ownership invocation (infrastructure exit2, no edits), without retry.
+- **Shipped and installed:** [0.5.24](../RELEASE-0.5.24.md), including truthful
+  review dispatch/history, checkpoint metadata reuse, configurable bounded
+  experience-record observation and human foreground phases. Independent
+  component reviews, lead assessment, full gate and installation checks passed.
+- **Preserved foundations:** internal lead core/RPC work does not provide an
+  installed persistent lead session. Ownership/lifecycle and interface work
+  remain deferred by owner priority.
+- **Completed diagnosis:** [matched C:/D: file comparison](DRIVE-COMPARISON-2026-10-25.md).
+  Both letters share the same NVMe device. C: did not improve this small-file
+  workload; a native Windows control handled the same D: bytes quickly. These
+  component timings are not full Unio save or physical-disk speed measurements.
+- **Next implementation candidate:** avoidable latest-checkpoint/periodic lookup
+  metadata work. First validate the current 0.5.24 helper's call path and prove
+  equivalent outcomes; do not rewrite safety checks from timing alone.
 
 ### Operational queue
 
-1. Deliver the frozen, fully gated0.5.24 batch under explicit owner authority; no new feature enters that candidate.
-2. Validate remaining helper delays: mounted-workspace automatic captures still
-   hit60s; result/experience observations may exceed caller deadlines. Diagnose
-   the exact call/phase, reduce redundant work or add bounded configurable
-   observation deadlines where justified. Preserve freshness and failed exits;
-   no arbitrary timeout increase, data deletion or unproven speedup claim.
-3. Improve operating clarity where evidence is missing: supported stop reasons,
+1. Reduce measured repeated save/helper work on mounted filesystems while
+   preserving current freshness, full retention validation, both worktree
+   observations, corruption handling, duplicate/tied history and failed exits.
+   No deadline increase, real-store cleanup or workspace relocation is implied.
+   Rough first-slice estimate: 2–4 hours for implementation/focused validation,
+   then independent review; release timing depends on the resulting scope.
+2. Improve operating clarity where evidence is missing: supported stop reasons,
    receipt provenance, requested startup effort/live-control capability/pending
-   configuration/effective Unknown, separate from coordination tier. A custom
-   wrapper's Unknown is not proof the provider exported nothing; distinguish
-   route setup limitations from product defects before fixing them.
-4. Provide bounded enclosing review context with exact material hashes; keep
+   configuration/effective Unknown, separate from coordination tier. Distinguish
+   route limitations from product defects before fixing them.
+3. Provide bounded enclosing review context with exact material hashes; keep
    individual opinions, current change requests, stale evidence and lead
    acceptance separate. Preserve material caps; never silently clip.
-5. Follow with explicit analysis/asset delivery and honest cross-workspace
-   shared-account visibility when scoped. Do not weaken implementation no-op
-   gates or claim global account enforcement that does not exist.
+4. Follow with explicit analysis/asset delivery and honest cross-workspace
+   shared-account visibility. Preserve implementation no-op gates and do not
+   claim global account enforcement that does not exist.
 
-Ownership/lifecycle and UX work resume after the operational batch: existing
+Ownership/lifecycle and UX work follow the operational improvements: existing
 dashboard integration, session phone pairing and native Windows before macOS.
-No extra feature is added to an already running gate. Bundle coherent completed
-operational changes; run the required final combined gate on the frozen scope.
+Preserve earlier ended work; do not restart the failed ownership invocation.
+Bundle coherent completed changes and run the required final combined gate on
+frozen scope. The 0.5.24 tag stays fixed; future publication requires owner
+approval. Read the current personal review workflow before final acceptance.
 
 ## Functional Priorities
 
