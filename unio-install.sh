@@ -29553,15 +29553,39 @@ def emit_run_phase(phase, checkpoint=None, seconds=None, exit_code=None):
             message += ' budget=%ss' % int(seconds)
         if type(exit_code) is int and -255 <= exit_code <= 255:
             message += ' exit=%s' % exit_code
-        fd = sys.stderr.fileno()
-        blocking = os.get_blocking(fd)
+        # Pin the target against close/replacement, but never change flags on
+        # this duplicate: it still shares stderr's open-file-description.
+        pinned = os.dup(sys.stderr.fileno())
+        independent = None
         try:
-            os.set_blocking(fd, False)
-            os.write(fd, (message + '\n').encode('ascii'))
+            info = os.fstat(pinned)
+            if stat.S_ISREG(info.st_mode):
+                # Preserve the shared offset and O_APPEND behavior. Ordinary
+                # file I/O has no portable hard latency bound (see RUN-PHASES).
+                target = pinned
+            elif stat.S_ISFIFO(info.st_mode) or (stat.S_ISCHR(info.st_mode) and os.isatty(pinned)):
+                # Linux procfs reopening creates an independent description.
+                # O_NONBLOCK applies at open, so even a concurrent writer that
+                # fills a pipe cannot turn the following write into a wait.
+                independent = os.open('/proc/self/fd/%s' % pinned,
+                                      os.O_WRONLY | os.O_NONBLOCK | os.O_NOCTTY)
+                reopened = os.fstat(independent)
+                if (info.st_dev, info.st_ino, info.st_rdev, info.st_mode) != (
+                        reopened.st_dev, reopened.st_ino, reopened.st_rdev, reopened.st_mode):
+                    return
+                target = independent
+            else:
+                return
+            os.write(target, (message + '\n').encode('ascii'))
         finally:
-            os.set_blocking(fd, blocking)
+            try:
+                if independent is not None:
+                    os.close(independent)
+            finally:
+                os.close(pinned)
     except Exception:
         pass  # A closed, broken, full or replaced stream cannot change the run.
+
 
 
 def automatic_capture(root, worker, task, reason, run_id, provider_exit, interrupted, provider=None):

@@ -12,6 +12,53 @@ import tempfile
 import types
 from unittest.mock import patch
 
+def assert_shared_stream_safety(module):
+    """Check flags inside the write, where restoring them later cannot hide harm."""
+    real_os = os
+    for kind in ('file', 'pipe'):
+        for event in ('write', 'close', 'error', 'replacement'):
+            with contextlib.ExitStack() as stack:
+                if kind == 'file':
+                    stream = stack.enter_context(tempfile.TemporaryFile(mode='w+'))
+                else:
+                    reader, writer = os.pipe()
+                    stack.callback(os.close, reader)
+                    stream = stack.enter_context(os.fdopen(writer, 'w'))
+                original = stream.fileno()
+                peer = os.dup(original)
+                stack.callback(os.close, peer)
+                replacement = stack.enter_context(tempfile.TemporaryFile(mode='w+'))
+                observed = []
+                isolated = types.SimpleNamespace(**vars(os))
+
+                def write(fd, data):
+                    observed.append(real_os.get_blocking(peer))
+                    assert observed[-1] is True, (kind, event, 'peer became nonblocking during write')
+                    if event == 'close':
+                        stream.close()
+                    elif event == 'replacement':
+                        real_os.dup2(replacement.fileno(), original)
+                    elif event == 'error':
+                        raise BrokenPipeError
+                    return real_os.write(fd, data)
+
+                isolated.write = write
+                with patch.object(module, 'os', isolated), contextlib.redirect_stderr(stream):
+                    module.emit_run_phase('provider launched')
+                # The emitter deliberately swallows errors, including assertions.
+                assert observed == [True], (kind, event, observed)
+                assert real_os.get_blocking(peer) is True, (kind, event, 'peer flags left changed')
+                if event != 'error':
+                    if kind == 'file':
+                        real_os.lseek(peer, 0, os.SEEK_SET)
+                        actual = real_os.read(peer, 1024)
+                    else:
+                        actual = real_os.read(reader, 1024)
+                    assert actual == b'unio: phase provider launched\n', (kind, event, actual)
+                if event == 'replacement':
+                    assert replacement.tell() == 0
+
+
 SOURCE = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='unio-run-phases-') as temporary:
     base = Path(temporary)
@@ -101,8 +148,10 @@ with tempfile.TemporaryDirectory(prefix='unio-run-phases-') as temporary:
         good(unio('stop'))
         before_calls = calls.read_bytes()
         refused = unio('run', 'mock-refused', 'mock-refused')
-        assert refused.returncode != 0 and calls.read_bytes() == before_calls
-        assert 'unio: phase provider' not in refused.stderr
+        assert refused.returncode != 0, refused
+        assert 'STOP is active (unio resume to clear)' in refused.stderr, refused.stderr
+        assert calls.read_bytes() == before_calls
+        assert 'unio: phase ' not in refused.stderr, refused.stderr
         print('PASS installed baseline IPC visibility, completion/final ordering, log isolation, save failure and refused admission')
     finally:
         listener.close()
@@ -147,3 +196,54 @@ with tempfile.TemporaryDirectory(prefix='unio-run-phases-') as temporary:
         module.emit_run_phase('provider launched')
         assert write.call_count == 1
     print('PASS broken/replaced diagnostic streams preserve actual command exit')
+
+    assert_shared_stream_safety(module)
+    # Keep regular-file offset/append semantics, including bytes beyond the
+    # current offset. Reopening the file at offset zero would corrupt this.
+    for append in (False, True):
+        path = base / 'position-log'
+        path.write_bytes(b'prefix:TAIL')
+        with path.open('a+' if append else 'r+') as stream, contextlib.redirect_stderr(stream):
+            stream.seek(7)
+            module.emit_run_phase('provider launched')
+            expected = (b'prefix:TAIL' if append else b'prefix:') + b'unio: phase provider launched\n'
+            assert stream.tell() == len(expected), (append, stream.tell())
+            assert path.read_bytes() == expected
+
+    # A child timeout bounds a regression that accidentally blocks. The hook
+    # fills an initially empty pipe immediately before the emitter's write,
+    # covering the readiness-check/writer race as well as an already full pipe.
+    import ast
+    emitter = next(n for n in ast.parse(body).body if isinstance(n, ast.FunctionDef) and n.name == 'emit_run_phase')
+    source = ast.get_source_segment(body, emitter)
+    full_pipe = r"""
+import os, sys, stat, types
+from unittest.mock import patch
+SOURCE
+reader, writer = os.pipe()
+peer = os.dup(writer)
+filler = os.open('/proc/self/fd/%s' % writer, os.O_WRONLY | os.O_NONBLOCK)
+real_write = os.write
+observed = []
+def fill():
+    try:
+        while True:
+            real_write(filler, b'x' * 4096)
+    except BlockingIOError:
+        pass
+def write(fd, data):
+    fill()
+    observed.append(os.get_blocking(peer))
+    return real_write(fd, data)
+stream = os.fdopen(writer, 'w')
+for initially_full in (False, True):
+    if initially_full:
+        fill()
+    with patch.object(sys, 'stderr', stream), patch.object(os, 'write', write):
+        emit_run_phase('provider launched')
+    assert observed[-1] is True and os.get_blocking(peer) is True, observed
+assert observed == [True, True], observed
+""".replace('SOURCE', source)
+    full = subprocess.run(['python3', '-B', '-c', full_pipe], capture_output=True, text=True, timeout=5)
+    assert full.returncode == 0, full.stdout + full.stderr
+    print('PASS shared peer flags during/after writes, close, error, replacement; full-pipe race; regular-file offsets/append')
