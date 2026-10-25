@@ -1,5 +1,75 @@
 # Continue Unio after the 0.5.24 operational update
 
+## Active 0.5.25 operational round — 2026-10-25T14:29:17+01:00
+
+Stable/main/global remain0.5.24 at mainbd32914, dashboard41689. This private
+lead branch is agent/operational-next-20261025. No0.5.25 push/install/release
+authority. Next batch: checkpoint lookup efficiency, truthful effort status,
+then bounded enclosing review context; ownership/UI/platform remain parked.
+
+Checkpoint prototype: task SAVE-LATEST-LOOKUP-SOL-LOW-0525-20261025, worker
+codex-save-lookup-low-20261025, basebd32914, final74b1e22. ChatGPT/CodexCLI0.164.0/
+gpt6.1solLOW Source0/native0/Verify4PASS0/five suites. Independent ClaudeCode
+2.1.310/Opus5.5XHIGH CLI0/adapter0 REQUEST-CHANGES/nativeReview1 at13:57:43.
+No acceptance/merge. Pool52->4 counter hid higher manifest/dir work; reviewer
+reported small/native regressions; preserve original opinion and checks.
+Reviewer probe scripts were in engine-cleaned neutral tmpdir, so their timings
+are supporting reported evidence, not lead-reproduced durable benchmarks.
+Lead fault-injected exact-module reproduction proves shallow ANDdeep fallback
+Refuse can be swallowed and an older save returned; file in original pipeline.
+
+ACTIVE correction: SAVE-LATEST-LOOKUP-CORRECTION-SOL-LOW-0525-20261025,
+worker codex-save-lookup-fix-low-20261025/base74b1e22, pipeline
+save-latest-lookup-correction-low-20261025. Controller2479700/observer2479701;
+Source actual14:17:51, Codex0.164/gpt6.1solLOW. Partial96cc140 committed; fresh
+bounded D/tmpfs work measurements and focused suites ongoing at last read.
+Original invalid benchmark fixture retained by worker; not accepted data. New
+Claude2.1.310/Opus5.5XHIGH independent review automatically waits actual Source/
+native/Verify0 AND restoredlow; review-once.py checks real bench/first-party
+auth and records capacityUnknown (automatic capacity reader supports ONLYCodex).
+Do not blindly require automatic Claude refresh or change code after review.
+Fresh Codex observation at14:15 was primary10%/weekly86%, reset14:37:05Z
+(15:37:05+01), not a current guarantee. Do not launch another Codex worker or
+interrupt this one for the lead's budget. Controller preserves actual failure,
+closesSTOP and restoreslow when Codex workflow idle. Standing LOW continuations
+are owner-authorized after capacity permits; preserve every attempt separately.
+
+Parallel effort inventory: Mistral monthly/Vibe2.26.1/GLM5.3HIGH, task
+EFFORT-CAPABILITY-INVENTORY-VIBE-GLM-HIGH-0525-20261025, worker
+vibeglm-effort-inventory-20261025, report972562d. CLI/adapter/native0,3Validate
+commandsPASS, overallVerify1 invalid_report_artifact because LEAD combined
+readonly report-only with a requested doccommit. Gate behaved correctly; do not
+rewrite task/receipt or call it a model/code failure. Supporting proposal only,
+not an accepted merge. Important factual correction: static audit lives under
+`unio doctor --commands`, not `unio agents` as that proposal says. No probe calls
+were made by inventory tools, but the Mistral CLI invocation itself did call a
+model; qualify its 'No model calls' wording.
+
+NEW actual effort feature: WORKER-EFFORT-CLARITY-VIBE-GLM-HIGH-0525-20261025,
+worker vibeglm-effort-clarity-20261025/basebd32914, pipeline
+effort-clarity-vibe-glm-high-20261025. Proper implementation outcome, Vibe2.26.1/
+GLM5.3HIGH; monthly allowance/effectiveidentity Unknown. One existing monthly
+workflow, no Codex budget use by that worker. 12M tokens/$10 estimated safeguards,
+CLI7200/native7500. Matching runtime config snapshot, canonical adapter hash.
+Actual provider receipt under model-receipts is authoritative, not controller
+launch. Code scope: truthful current configured request for FUTURElaunch versus
+frozen/native requested/configured/pending/effectiveUnknown; no-channel reason;
+reuse conservative static parser safely, no command evaluation/provider call or
+Server/session/run/receipt/schema/SourceSAVES changes. Focused offline tests,
+embedding/scope, required summary. External Opus review still needs preparation
+AFTER actual Source/native/Verify and a free real Claude slot. Existing lead
+assessment required. No source retry/acceptance is implied by earlier inventory.
+
+Local preparation mistakes preserved: first Sol controller lacked runtime libs
+(no native run/model call) then fixed via runtime snapshot; first review observer
+mistakenly required unsupported Claude auto refresh (zero reviewer calls), then
+corrected to explicitUnknown + auth/bench checks. These are lead setup failures,
+not provider quality. Read controller/profile/task/source/verification/review
+receipts for each pipeline and newest AGENT-LOG. Do not repeat broad gates;
+run one final frozen-batch full gate when scope is accepted. No paid fallback,
+global auth/config edits, real-store cleanup or workspace relocation.
+
+
 ## Desktop security clarification — 2026-10-25T12:58:08+01:00
 
 Owner asks about WSL versus direct Windows installation and the product idea.
