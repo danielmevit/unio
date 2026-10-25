@@ -1,8 +1,10 @@
 # Unio 0.5.24 — operational quality of life
 
-Prepared 2026-10-25T10:41:44+01:00. Independent component reviews, existing-lead assessment and
-the complete quality gate passed. Public release and installation operations
-are separate from this evidence and require owner authorization.
+Released 2026-10-25 with owner authorization. Independent component reviews,
+existing-lead assessment and the complete quality gate passed. All six official
+release files were downloaded and verified against their checksums and GitHub
+digests. The installed 0.5.24 binary passed smoke checks with owner configuration
+and customized templates preserved. Delivery recorded 2026-10-25T11:29:51+01:00.
 
 ## SUMMARY
 
@@ -70,7 +72,8 @@ counts and complete managed lead ownership are not implemented.
 Code review, native regression checks, the full combined gate and lead assessment
 are complete. The isolated assembled installer reports0.5.24 and exposes the
 new record timeout option; global configuration and binary were preserved.
-Source archive members are verified against the exact Git revision and the
-release files have a SHA256SUMS manifest and provenance. No new feature is added
-after the gate. Publication, main push and global installation remain separately
-authorized actions; their actual outcomes belong to delivery receipts.
+Source archive members are verified against the exact tagged Git revision and
+the release files have a SHA256SUMS manifest and provenance. No new feature was
+added after the gate. Publication, main push and global installation completed
+with owner authorization; delivery notes after the tag change documentation
+only. Operational receipts preserve the actual outcomes.

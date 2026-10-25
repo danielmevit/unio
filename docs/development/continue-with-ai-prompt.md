@@ -1,4 +1,44 @@
-# Continue Unio after the 0.5.23 reliability round
+# Continue Unio after the 0.5.24 operational update
+
+## v0.5.24 published and installed — 2026-10-25T11:29:51+01:00
+
+The owner explicitly authorized delivery. [Unio v0.5.24](https://github.com/danielmevit/unio/releases/tag/v0.5.24)
+is the latest stable release, tagged at `e565abe405af426e811788502bd6f55a20e7e600`.
+The reviewed release source was pushed to main. All six official assets were
+downloaded and matched both the prepared checksums and GitHub asset digests.
+
+This machine now runs 0.5.24. The verified installer passed version, license and
+new `experience record --timeout` help checks. Its generated binary matches the
+isolated gated fixture. The prior binary and all 294 configuration files were
+backed up; agents.conf, OWNER-WORKFLOW.md and eight customized templates were
+preserved. The managed read-only dashboard was restarted and reports 0.5.24;
+use `unio dashboard status` for its current local URL. No provider invocation,
+authentication or billing change was needed for delivery. Lead reservation,
+real account mappings, yolo/low policy and STOP remain intact.
+
+The complete quality gate passed on f7415697bfdb45768552dcf2180f250abc3a36c8
+(exit 0, 3027.392 seconds). Release preparation and these delivery notes change
+only Markdown; runtime and test bytes remain identical. Independent component
+reviews and lead assessment are complete, with original failures preserved.
+Code/review routes are recorded in the earlier entries and component receipts;
+requested model/effort settings do not establish effective identity.
+
+Shipped: truthful review-dispatch/history results; safe checkpoint metadata
+reuse under the save-store lock; configurable bounded experience-record
+observation; and best-effort human foreground run phases. The Pages deployment
+for the release source also succeeded.
+
+Next functional work stays operational: measure remaining mounted-filesystem
+save/helper delays, clarify effort capabilities, bound enclosing review context,
+make asset delivery explicit, and improve honest cross-workspace account
+visibility. Managed lead ownership, dashboard expansion, desktop and phone work
+remain deferred by owner priority. Do not add another feature to the frozen
+0.5.24 tag or transfer its approvals to changed code.
+
+Local delivery evidence is under the operational-quality-final-gate-20261025
+pipeline: github-delivery.json, official-verification.json, global-install.json,
+dashboard-update.json, authorized-publication-assets.json and the final handoff.
+Earlier pending-authorization entries below describe historical checkpoints.
 
 ##0.5.24 release preparation complete; public/global authority pending — 2026-10-25T10:41:44+01:00
 
