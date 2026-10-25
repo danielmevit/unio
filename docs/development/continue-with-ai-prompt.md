@@ -1,5 +1,33 @@
 # Continue Unio after the 0.5.23 reliability round
 
+##0.5.24 release preparation complete; public/global authority pending — 2026-10-25T10:41:44+01:00
+
+User asks finishnewversion. FullgateactualPASS0 onf741569 at07:11:55+01,
+3027.392s/sourceunchanged/untracked[]. Finalizerv2completed07:12:04 allsix
+localassets/hashmanifest valid; finalleadbatchassessmentaccepted. Private
+installer/version24/recordhelp smoke0 preservesglobalbinary/config.
+
+Nowfinaldeliverylabels updatedforready0.5.24; onlyallowedMarkdown paths differ
+fromfullgate. RebuildSourcearchive/provenanceforfinaldoccommit, recordexact
+Gatef741 reuse/runtime+testsbyteidentity, runcheck-docs/diff. No code/test/version
+changesaftergate. Officialmain/installed/latestremain23, remoteSHAcd0confirmed
+read-only. No mainpush/tag/release/globalinstall has occurred.
+
+Earlierowner explicitlyrequirespermissionbeforemainpush/release/globalinstall.
+Prepareallconcretereviewablework before askingonefinalbundledauthorization;
+latest 'finishnewversion' alone doesnotexplicitlynamepublic/globalactions.
+Ifauthorized: backupinstalledbinary/config/OWNER-WORKFLOW, verifySHA/files,
+install/testcandidatewhenidlewithconfigurationpreservation, pushofficialtag
+andpublishsixverifiedassets, thenfastforwardmain afterreleaseavailable so
+websiteonlyadvertisesavailableversion. No force/noauth/billingchanges. Recheck
+remotes/branch fastforwardanddownloadallofficialhashes; globalfinalversion24
+mustuseverifiedofficialbytes. Ifnotauthorized, stopatreadyartifactsandstatewhy.
+
+Scopefour operationalfeaturesonly; managedownership/UI/phone/desktop remain
+deferred. No morefunctionalAIworkersorreviewsrequiredforMarkdown-onlylabels.
+Providerreceipts: CodeX0.163/gpt6.1solLOW, Claude2.1.310/Opus5.5XHIGH, Mistral/
+Vibe2.26.1/GLM5.3HIGH scopedcomponentreviews; effectiveUnknown preserved.
+
 ## FINAL24 gate ACTUALLY RUNNING; no features remain in this batch — 2026-10-25T06:33:20+01:00
 
 Frozenqualitysource f7415697bfdb45768552dcf2180f250abc3a36c8/version24/tree

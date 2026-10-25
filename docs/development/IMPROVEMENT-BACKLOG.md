@@ -17,13 +17,14 @@ This backlog consolidates pending, accepted, and shipped functional improvements
   Opus approval and lead byte proof; explicit120s completed one real46.58s lookup.
 - **Privately accepted run phases:** shared-stream correction, native checks,
   fresh Opus approval and lead controls passed.
-- **Current task:** one frozen merged0.5.24 operational gate. See [current batch](OPERATIONAL-QUALITY-2026-10-25.md).
+- **Current task:** finish delivery of the fully gated0.5.24 batch; full gate
+  and final lead assessment passed. Public/global actions require owner authority. See [current batch](OPERATIONAL-QUALITY-2026-10-25.md).
 - **Next:** operational improvements before ownership or interface work. Preserve
   the failed ownership invocation (infrastructure exit2, no edits), without retry.
 
 ### Operational queue
 
-1. Finish the frozen combined0.5.24 batch gate; all four functional pieces are privately accepted. No new feature enters that candidate.
+1. Deliver the frozen, fully gated0.5.24 batch under explicit owner authority; no new feature enters that candidate.
 2. Validate remaining helper delays: mounted-workspace automatic captures still
    hit60s; result/experience observations may exceed caller deadlines. Diagnose
    the exact call/phase, reduce redundant work or add bounded configurable

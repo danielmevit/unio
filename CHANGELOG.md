@@ -4,10 +4,10 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.24 — operational reliability and quality of life (unreleased)
+## 0.5.24 — operational reliability and quality of life — 2026-10-25
 
-Private development; no publication, main push or global installation is authorized.
-See [current scope and evidence](docs/development/OPERATIONAL-QUALITY-2026-10-25.md).
+Independent component reviews, lead assessment and the complete quality gate passed.
+See [scope, evidence and known limits](docs/development/OPERATIONAL-QUALITY-2026-10-25.md).
 
 - Keep a new review collection's actual dispatch outcome separate from historical
   approvals, retaining current change requests, unknowns and original failures.

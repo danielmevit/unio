@@ -61,8 +61,10 @@ include sockets, /dev/null, full pipes, paused terminals and descriptor leaks.
 Phase/version changes privately merged071b5c7. Final docs name unsupported
 socket/non-TTY streams explicitly; they safely drop diagnostics. The source now
 declares0.5.24, but published/installed remain23. The combined scope is frozen
-to the four operational pieces; the final whole quality gate is the only
-remaining machine gate. No new feature may be added to it.
+to the four operational pieces; the final whole quality gate passed0 onf741569 at07:11:55+01:00;
+tracked source was unchanged and untracked output empty. Final lead assessment
+accepted the frozen batch. Delivery metadata changes only Markdown; runtime and
+test bytes remain identical. No new feature may be added to it.
 
 ## Deferred and next
 
@@ -81,3 +83,12 @@ See [backlog](IMPROVEMENT-BACKLOG.md), [version plan](../VERSION-PLAN.md) and
 local operational receipts remain append-only; no approval transfers to changed
 code. A final release scope and combined gate must precede any owner-authorized
 publication. Do not keep adding work to an already frozen running gate.
+
+## Delivery checkpoint — 2026-10-25
+
+Full gate3027.392s/exit0, final lead assessment and isolated0.5.24 installer/help
+smoke passed. Exact source archive, installer, LICENSE, NOTICE, provenance and
+SHA256SUMS are prepared locally. The final release labels reuse the full gate
+only after proving documentation-only differences. Public main/release/global
+installation require explicit owner authorization; no approval is inferred from
+provider votes, process success or a prepared local asset.

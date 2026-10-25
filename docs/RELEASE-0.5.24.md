@@ -1,8 +1,8 @@
-# Unio 0.5.24 — operational quality of life (unreleased candidate)
+# Unio 0.5.24 — operational quality of life
 
-Recorded 2026-10-25T06:20:05+01:00. This is a private candidate, not a published release.
-Official/main/installed stable remains0.5.23. Publication, main push and global
-installation require owner authorization.
+Prepared 2026-10-25T10:41:44+01:00. Independent component reviews, existing-lead assessment and
+the complete quality gate passed. Public release and installation operations
+are separate from this evidence and require owner authorization.
 
 ## SUMMARY
 
@@ -31,8 +31,10 @@ and useful foreground run diagnostics.
   was reproduced by the lead, corrected by SolLOW and approved in a fresh
   independent Opus5.5XHIGH review.
 
-All four pieces are privately integrated. The final whole merged0.5.24 quality
-gate is pending. See [batch evidence](development/OPERATIONAL-QUALITY-2026-10-25.md).
+All four pieces are integrated and accepted. The complete quality gate exited0
+on f7415697bfdb45768552dcf2180f250abc3a36c8 at2026-10-25T07:11:55+01:00,
+in3027.392seconds. Tracked source remained unchanged; no untracked files remained.
+Final documentation-only preparation retains identical runtime and test bytes. See [batch evidence](development/OPERATIONAL-QUALITY-2026-10-25.md).
 An approval, passing test or process exit never grants human acceptance.
 
 ## ITEMS DEFERRED + WHY
@@ -65,7 +67,10 @@ counts and complete managed lead ownership are not implemented.
 
 ## NEEDS-REVIEW
 
-Finish the frozen full quality gate and final lead assessment. Then prepare
-reviewable release/install artifacts; do not publish, push main or replace the
-global runner without explicit owner authorization. No further feature is added
-to the frozen candidate.
+Code review, native regression checks, the full combined gate and lead assessment
+are complete. The isolated assembled installer reports0.5.24 and exposes the
+new record timeout option; global configuration and binary were preserved.
+Source archive members are verified against the exact Git revision and the
+release files have a SHA256SUMS manifest and provenance. No new feature is added
+after the gate. Publication, main push and global installation remain separately
+authorized actions; their actual outcomes belong to delivery receipts.
