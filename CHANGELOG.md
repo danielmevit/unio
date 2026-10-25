@@ -19,6 +19,10 @@ See [current scope and evidence](docs/development/OPERATIONAL-QUALITY-2026-10-25
   default30), preserving result validation and recording nothing on timeout.
   The candidate completed one real assessment lookup in46.58s with a120s bound
   after earlier30s timeouts; this is not a general speedup claim.
+- Explain foreground run phases on stderr: checkpoint attempts, provider command
+  completion, cleanup and finalization. Keep failed exits and save evidence
+  separate; safe best-effort output preserves shared stream flags. Background
+  `-b` runs do not retain these human phase lines.
 - Prioritize core operating improvements before managed lead ownership, dashboard
   expansion, phone pairing or native desktop interfaces. Their reviewed internal
   foundations remain preserved without claiming a usable managed lead feature.

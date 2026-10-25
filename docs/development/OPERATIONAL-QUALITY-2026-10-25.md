@@ -42,19 +42,27 @@ and stored operator assessment1d191a3e090391c5f75ad2333e59d075. Earlier30s
 timeout receipts remain. No provider call/global install, no controlled speedup
 claim. Privately merged e10c48b.
 
-## Final functional slice: human run phase clarity
+## Privately accepted: human run phase clarity
 
-Assigned 2026-10-25T05:40:06+01:00: CodexCLI0.163.0/gpt6.1solLOW on isolated public-base branch, task
-RUN-PHASE-CLARITY-SOL-LOW-0524-20261025. Add best-effort human stderr phases for
-baseline/periodic/final checkpoint attempts, provider command/cleanup/finalization.
-Preserve exits, validation, protocols, provider logs and permissions. Clearly
-distinguish an attempted save and completed provider command from accepted work.
-Include deterministic installed regressions and the single private0.5.24 version
-assignment; no public release or installation.
+Final source d843496 is accepted after Source/native4PASS0, fresh independent
+ClaudeCode2.1.310/Opus5.5XHIGH APPROVE/native0 and existing-lead assessment.
+The initial6aae approval is preserved separately: the lead reproduced persistent
+shared stderr flag mutation and withheld acceptance. Dedicated SolLOW correction
+removed that mutation; the old helper fails the new regression. No effort increase
+or unrelated feature was added.
 
-One independent ClaudeCode2.1.310/Opus5.5XHIGH native review follows actual Source/
-Verify0, then existing lead assessment. Full merged batch quality gate runs only
-after this last slice. Do not add another feature to that frozen candidate.
+The corrected helper pins the target, preserves regular-file offset/append
+semantics and uses independently opened nonblocking pipe/TTY descriptions.
+Source/native checks cover phases,12kill safety cases,52native-stop checks and
+branding. Lead positive controls verify flags before/during/after actual output,
+close/error behavior and regular-file bytes. Reviewer independent edge cases
+include sockets, /dev/null, full pipes, paused terminals and descriptor leaks.
+
+Phase/version changes privately merged071b5c7. Final docs name unsupported
+socket/non-TTY streams explicitly; they safely drop diagnostics. The source now
+declares0.5.24, but published/installed remain23. The combined scope is frozen
+to the four operational pieces; the final whole quality gate is the only
+remaining machine gate. No new feature may be added to it.
 
 ## Deferred and next
 

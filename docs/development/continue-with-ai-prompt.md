@@ -1,5 +1,32 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## All four operational pieces accepted; freezing final24 gate — 2026-10-25T06:20:05+01:00
+
+Correctedphased843496 Source/native4PASS0 and freshAnthropicClaudeCode2.1.310/
+Opus5.5XHIGH actualCLI/adapter/nativeReview0 APPROVE06:16:09. Leadpositive
+controls3PASS, exactbefore/afterprivateinstallerAST+version/onequalityline proof
+accepted. Privatelymerged071b5c74a97853670495adc6311bdad59012219a; otheraccepted
+save/review/experience codepreserved. Original6aae peerAPPROVE+leadrejection
+andquality_issuea780... remain. CorrectiveLOWresolvedsharedflags; noeffortraise.
+
+Source nowdeclares24, CHANGLEOG24unreleased; global/mainstill23. Lastdocclarifies
+sockets/nonTTYdropphases, no behaviorchanges/newfeature. Finalscopeexactfour:
+reviewtruth/checkpointreuse/recordbound/humanrunphases. NewRELEASE-0.5.24.md
+containsSUMMARY/LANDED/DEFERRED/FILES/RISKS/NEEDS-REVIEW, explicitlycandidate.
+
+Nextimmediate: finishdoccheck/diff, commitfinaldocs, freezeexactHEAD/tree into
+operational-quality-final-gate-20261025/frozen-source.json andrunprepared
+UID1000/cap0/privateTMPFS qualityexecutor once (bash tools/quality-check.sh,
+7200s supervisor), Sourcezero-provider. Readactualfull-gate.json/log, notassume
+PASS. No moremodels/featureswhilegatepending; noautoacceptance/pub/install/push.
+AfteractualPASSexisting-leadassessment/reviewablelocalartifacts/ownerauthority
+forofficialpush/release/globalinstall. PreservealloldfailedSources/reviews.
+
+Nextoperationalbacklog remainsseparatefromfrozencandidate; ownership/UIparked.
+NativeSourcegroupsidle/lowrestored/registeredcodexlead/STOPintact. Currentproofs
+run-phase-stream-safety-low-20261025/lead-final-assessment.json/integration-byte-proof.json,
+run-phase-lead-probe-20261025/positive-controls.json andcurrentPeer reporthash.
+
 ## Stream-safety correction active; old approval not acceptance — 2026-10-25T06:02:41+01:00
 
 Oldphase6aae native4PASS0 and independentClaudeCode2.1.310/Opus5.5XHIGH

@@ -35,3 +35,7 @@ JSON commands, receipts and provider-output parsing are unchanged.
 
 Version 0.5.24 is an unreleased private candidate for the combined operational
 batch; this slice does not authorize installation globally or publication.
+
+Socket-backed stderr and non-TTY character devices (including /dev/null)
+produce no phase output. This safely drops diagnostics without altering the
+stream or the run. Pipes and TTYs need supported Linux procfs reopening.

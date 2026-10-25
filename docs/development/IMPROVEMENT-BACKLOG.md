@@ -15,14 +15,15 @@ This backlog consolidates pending, accepted, and shipped functional improvements
   combined gate passed. This does not claim all capture deadlines are repaired.
 - **Privately accepted assessment timeout:** Source/native/Verify0, independent
   Opus approval and lead byte proof; explicit120s completed one real46.58s lookup.
-- **Current final functional task:** human run-phase clarity, then one frozen
-  merged operational gate. See [current batch](OPERATIONAL-QUALITY-2026-10-25.md).
+- **Privately accepted run phases:** shared-stream correction, native checks,
+  fresh Opus approval and lead controls passed.
+- **Current task:** one frozen merged0.5.24 operational gate. See [current batch](OPERATIONAL-QUALITY-2026-10-25.md).
 - **Next:** operational improvements before ownership or interface work. Preserve
   the failed ownership invocation (infrastructure exit2, no edits), without retry.
 
 ### Operational queue
 
-1. Finish current run-phase clarity/review and frozen combined batch gate; checkpoint and assessment-timeout private acceptance are complete.
+1. Finish the frozen combined0.5.24 batch gate; all four functional pieces are privately accepted. No new feature enters that candidate.
 2. Validate remaining helper delays: mounted-workspace automatic captures still
    hit60s; result/experience observations may exceed caller deadlines. Diagnose
    the exact call/phase, reduce redundant work or add bounded configurable
