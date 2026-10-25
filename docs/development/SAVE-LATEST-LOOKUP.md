@@ -102,15 +102,35 @@ Fixtures have 4/41/401 distinct pool bodies per save and manifests of
 Each implementation gets an explicit warmup, then nine samples in recorded,
 rotating/reversed interleaved order. No cache flush is attempted. Raw wall/process
 CPU samples, operation counts, order, fixture sizes and dated command/hash
-receipts are retained under the correction's project-owned scratch directory:
-`tmp/unio-next/save-latest-lookup-correction-low-20261025/`.
+receipts are retained under the continuation's project-owned scratch directory:
+`tmp/unio-next/save-latest-lookup-continuation-low-20261025/`.
+Earlier correction receipts remain untouched in the sibling
+`save-latest-lookup-correction-low-20261025/` directory. The retained final memory
+run matches the current installer and suite SHA256 hashes; the earlier explicitly
+invalid-fixture memory run is excluded. The continuation reruns both environments
+rather than filling the unfinished D: receipt from assumptions.
 `run-measurements.py`, `measurement-receipts.json`, `measure-final-memory.json`,
 `measure-final-d.json` and corresponding logs are the reproducible evidence.
 The delivery summary gives absolute paths and actual exits. Tmpfs is a memory
 reference, **not ext4**. D: is the existing Windows-mounted project fixture root;
 these measurements do not establish behavior on other filesystems or cold caches.
 
-TIMING_TABLE_PENDING
+The continuation rerun (2026-10-25 UTC) produced these medians in milliseconds.
+Each cell lists preserved full scan / original prototype / correction.
+
+| Fixture location | Bodies/save | Wall ms | Process CPU ms |
+| --- | ---: | --- | --- |
+| Private tmpfs | 4 | 4.20 / 6.89 / 2.20 | 4.32 / 7.08 / 2.27 |
+| Private tmpfs | 41 | 14.29 / 22.30 / 4.60 | 14.67 / 22.89 / 4.73 |
+| Private tmpfs | 401 | 107.23 / 153.04 / 24.29 | 110.00 / 157.00 / 24.92 |
+| D: project mount | 4 | 604.30 / 681.54 / 648.98 | 69.38 / 80.07 / 70.00 |
+| D: project mount | 41 | 1397.96 / 755.28 / 746.11 | 151.48 / 97.95 / 78.65 |
+| D: project mount | 401 | 9880.64 / 1637.90 / 1465.26 | 984.82 / 323.96 / 179.91 |
+
+Both bounded measurement commands exited 0. The measured small-pool D: result
+is a regression relative to the full scan; larger-pool improvements do not erase
+that cost. These samples are local observations with uncontrolled OS caches and
+scheduling, not a universal platform speedup or full-save measurement.
 
 Small stores can pay more recheck overhead even when CPU work falls; one-save
 requested-worker lookup uses 33 instrumented calls versus baseline 22. At 13
