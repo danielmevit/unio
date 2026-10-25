@@ -1,88 +1,135 @@
 # Latest checkpoint lookup
 
-`last_good(store, worker, deep)` now discovers bounded manifest hints before
-visiting body pools. This targets metadata work for unrelated workers and older
-history when looking up one worker. It does not change save eligibility, storage
-layout, retention, publication, locks, deadlines or version 0.5.24.
+`last_good(store, worker, deep)` discovers bounded manifest hints before visiting
+body pools. The private 0.5.24 prototype was **not accepted** after review; the
+2026-10-25 correction below still requires fresh independent review and lead
+acceptance. No full-save timeout cure or universal speedup is established.
 
-## Selection and conservative fallback
+## Selection and error behavior
 
-Discovery records active/archive names with the same exclusions as `scan_store`.
-Their intersection refuses globally duplicated IDs, even when a copy is malformed,
-foreign or an unknown entry. Archive root/wrapper checks, private directories,
-no-follow opens, private manifest descriptors and existing manifest/name bounds
-remain in use. Discovery never opens a pool or context directory.
+Discovery retains every active/archive name using the original exclusions.
+Intersecting names refuse globally, including corrupt, foreign and unknown
+copies. Global name bounds and private archive-root checks remain unchanged.
+Each snapshot directory and manifest uses existing private ownership/mode and
+no-follow checks. Discovery never visits context or body pools.
 
-A manifest is only a selection hint. Matching worker hints are ordered by
-`(published_at, ID)` descending, including future dates and timestamp ties.
-Candidates take the unchanged `load_save(..., False)` validator until one qualifies.
-For `deep=True`, that candidate must also pass unchanged byte validation; a failure
-tries older history. Metadata-valid same-size byte corruption remains eligible
-for `deep=False`. The complete original item shape, including metadata-derived
-`stored_bytes`, is returned.
+Safely read raw manifest bytes are untrusted hints. Strict JSON parsing happens
+once per readable hint; only matching worker and parseable publication time are
+necessary conditions for candidate ordering, never proof of eligibility. Every
+eligible old-validator save meets those conditions. Candidates are ordered by
+`(published_at, ID)` descending, including future dates and ties. The unchanged
+`load_save(..., False)` validates candidates until one qualifies. Deep lookups
+also use unchanged `load_save(..., True)`; ordinary invalid-save refusals skip
+that candidate. Shallow lookup still permits metadata-valid same-size body
+corruption and returns the original complete item, including `stored_bytes`.
 
-For stable storage, every possible eligible save has a valid manifest hint. A
-higher-ranked requested-worker hint either passes full validation and wins, or
-fails the same validator used by the old lookup. Foreign hints cannot qualify.
-Malformed/unreadable/unsafe manifest discovery takes the preserved original full
-scan instead of deciding eligibility from incomplete evidence. Unknown non-ID
-names cannot qualify, but still participate in duplicate detection.
+Malformed/unsafe manifests and invalid archive reservations cannot qualify under
+the old validator. They are recorded locally, with their names retained for
+duplicate checks, rather than forcing partial discovery and a permanent full
+scan. A second bounded discovery checks names, directory/wrapper validity,
+readability and raw bytes; it repeats neither JSON parsing nor schema/fingerprint
+validation. An invalid entry becoming readable changes the view. Arbitrary
+wrapper/lstat I/O errors retain the legacy full-scan error behavior.
 
-Full validation must agree with the selection manifest. A second bounded discovery
-rechecks all manifests and names, including foreign/older hints. A disagreement,
-missing entry or uncertain discovery takes one original full scan. There is no
-retry loop or persistent cache. This detects changes between the observed views;
-it does not create an atomic filesystem snapshot or remove the original lookup's
-concurrent-mutation limits. Existing callers' locking remains unchanged.
+Full candidate validation must agree with its initial parsed hint, and deep
+validation must agree with shallow validation. A disagreement or changed recheck
+discards the hints and invokes the preserved original full scan at most once.
+**No fallback invocation is inside the candidate-invalid or recheck exception
+handler.** A genuine fallback refusal propagates exactly, even if a later view
+would have returned to its initial state. There is no retry, persistent cache or
+atomic filesystem snapshot; existing locking and concurrent-mutation limits remain.
 
-## Observed work, 2026-10-25
+## Original prototype evidence, retained
 
-Installed isolated fixtures use real Git worktrees and an actual published save,
-then copies with valid identity/timestamp changes. Each save has four pool files.
-The initial frozen-baseline Windows-mounted fixture had 13 active saves, 12 for
-another worker: 13 full metadata loads, 12 foreign loads and 52 pool-file metadata
-checks for one shallow latest lookup.
+The original 13-save fixture (seven active, six archived, 12 foreign workers,
+four pool bodies per save) reported full metadata loads 13 → 1 and pool metadata
+checks 52 → 4, but manifest reads 13 → 27. Those original receipts and the early
+commits remain. Review correctly found this insufficient total-work accounting:
+the prototype also ran full manifest/schema/fingerprint validation 13 → 27.
+Its shallow/deep mismatch fallback could swallow a genuine refusal and return
+an older save. Original green suites did not establish acceptance. Reviewer-only
+platform timings are not reused as reproduced measurements here.
 
-A matched populated fixture has seven active and six archived saves, again 12
-foreign saves. Instrumentation through the installed helper reports:
+## Correction work accounting, 2026-10-25
 
-| Shallow latest lookup | Frozen baseline | Candidate lookup |
-| --- | ---: | ---: |
-| Full metadata loads | 13 | 1 |
-| Foreign-worker metadata loads | 12 | 0 |
-| Pool-file `private_at` checks | 52 | 4 |
-| Manifest reads | 13 | 27 |
+The installed suite instruments Python file-operation API calls, not kernel
+syscalls or hardware I/O. It reports every instrumented category, including zero
+categories. Matched 13-save/four-body valid fixtures give these complete counts:
 
-The candidate Windows-mounted run observed the right-hand counts. The private
-baseline negative control installed the frozen installer and failed precisely at
-`lookup avoids unrelated full metadata loads`, with the left-hand counts. That
-negative control ran under the private tmpfs wrapper; committed tests do not
-require a Git object. Counts, rather than elapsed-time thresholds, are the
-regression contract. Extra bounded manifest reads deliberately pay for change
-checks. A store with invalid manifests conservatively retains full-scan costs;
-invalid newest candidates may also require validation of multiple older saves.
+| Work category | Preserved full scan | Original prototype | Correction |
+| --- | ---: | ---: | ---: |
+| `open` | 52 | 56 | 56 |
+| `close` | 52 | 56 | 56 |
+| `stat` | 117 | 9 | 9 |
+| `lstat` | 32 | 65 | 65 |
+| `fstat` | 13 | 27 | 27 |
+| `scandir` | 8 | 16 | 16 |
+| `listdir` | 39 | 3 | 3 |
+| `read` | 26 | 54 | 54 |
+| `readlink` / `access` | 0 / 0 | 0 / 0 | 0 / 0 |
+| Sum of instrumented file-operation calls | 339 | 386 | 386 |
+| Manifest reads | 13 | 27 | 27 |
+| Strict JSON parses | 13 | 27 | 14 |
+| Full manifest/schema/fingerprint validations | 13 | 27 | 1 |
+| Full shallow save validations | 13 | 1 | 1 |
 
-This is component evidence, not a full-save speedup, a timeout cure or a hardware
-diagnosis. The lead’s separate `DRIVE-COMPARISON-2026-10-25.md` diagnostic measured
-matched small-file medians C: 72.634 / D: 70.488 seconds and a later native Windows
-control of 0.387 seconds with different APIs/caches. Both letters share one NVMe.
-Its original full-snapshot preparation failed before measurements. Those retained
-observations motivate examining access patterns; they do not quantify this change.
+Directory enumeration calls (`scandir` plus `listdir`) fall 47 → 19, but directory
+rechecks and raw reads still cost work. Total instrumented API calls increase for
+this small-pool fixture. For 41/401 bodies, baseline `stat` calls are 598/5278
+versus corrected 46/406; all other file-operation counts in this table stay the
+same. Corresponding complete call sums are 820/5500 versus 423/783. This is the
+work-count crossover; operation categories have different costs.
+
+Deterministic bounds cover one-save active, two-save active/archive and populated
+13-save fixtures, requested/missing workers, own history and malformed/unsafe
+foreign history with empty archive reservations. They assert manifest reads,
+parses, validations, every file-operation category and the actual fast/fallback
+path. Corrupt-history cases deliberately avoid permanent global fallback, though
+invalid requested-worker candidates may require several full validations.
+
+## Bounded timings and reproducibility
+
+Timing is optional measurement, never a regression threshold. Set
+`UNIO_LOOKUP_MEASURE` to a project-owned JSON output path and run
+`python3 -B tests/unio-save-latest-lookup.py`; set `TMPDIR` to the project fixture
+root. The supplied private tmpfs wrapper supplies the separate memory reference.
+The optional measurement reads the preserved prototype from commit `74b1e22`,
+compares it and the corrected helper against the byte-identical full-scan
+baseline, and asserts seven active/six archived eligible saves before timing.
+Fixtures have 4/41/401 distinct pool bodies per save and manifests of
+1698/7766/66806 bytes. Every implementation must return the same complete item.
+
+Each implementation gets an explicit warmup, then nine samples in recorded,
+rotating/reversed interleaved order. No cache flush is attempted. Raw wall/process
+CPU samples, operation counts, order, fixture sizes and dated command/hash
+receipts are retained under the correction's project-owned scratch directory:
+`tmp/unio-next/save-latest-lookup-correction-low-20261025/`.
+`run-measurements.py`, `measurement-receipts.json`, `measure-final-memory.json`,
+`measure-final-d.json` and corresponding logs are the reproducible evidence.
+The delivery summary gives absolute paths and actual exits. Tmpfs is a memory
+reference, **not ext4**. D: is the existing Windows-mounted project fixture root;
+these measurements do not establish behavior on other filesystems or cold caches.
+
+TIMING_TABLE_PENDING
+
+Small stores can pay more recheck overhead even when CPU work falls; one-save
+requested-worker lookup uses 33 instrumented calls versus baseline 22. At 13
+saves/four bodies the correction still uses more calls than baseline, whereas
+larger pools avoid enough metadata checks to reduce the sum. Timing and CPU
+tradeoffs depend on fixture size, storage APIs, caches and scheduling; no
+unsupported platform assumption is used to choose eligibility or fallback.
 
 ## Regression and operation
 
-Run `python3 -B tests/unio-save-latest-lookup.py`. It installs into an isolated
-fixture and extracts the installed helper like the neighboring suites. It checks
-complete returned items against the original scan/validator semantics, active and
-archived ordering, empty/foreign history, corrupt metadata and bytes, missing and
-unsafe files, duplicate IDs, archive roots/reservations, unknown entries, claims,
-bounds, injected races, real periodic skip and refusal attempt bookkeeping. A
-behavioral negative control makes an invalid newest hint appear validated and
-requires the winner assertion to fail.
+Run `python3 -B tests/unio-save-latest-lookup.py`. Existing semantic/restore,
+reuse, performance, retention and work-saving coverage remains. Added tests prove
+ordinary corrupt evidence stays on the fast path, deep validation and races
+actually execute, and shallow/deep/changed-then-restored fallback refusals cannot
+return an older save. Retained negative-control runs fail each refusal regression
+against the original prototype. Arbitrary wrapper I/O propagation is also checked.
 
-The quality gate registers this suite immediately after the reuse suite. Existing
-reuse, performance, retention and work-saving suites remain unchanged. The frozen
-five-suite check wrapper and final syntax/whitespace/scope checks are recorded with
-exact exits and revision in the worker delivery summary. No broad quality gate,
-provider probe, real-store cleanup or global installation is part of this task.
-Independent current-code review and lead acceptance remain required.
+The existing quality registration is byte-identical to the frozen base. Only
+the five focused suites and syntax/whitespace/scope checks run for this correction;
+there is no broad gate, provider probe, real-store repair, global installation,
+version change or release. The full-scan function body remains byte-identical.
+Independent current-code review and existing lead acceptance follow delivery.

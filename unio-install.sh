@@ -28680,16 +28680,19 @@ def latest_lookup_discovery(store):
                 path = archived_path(directory, name) if archived else os.path.join(directory, name)
                 if not private_dir(path, False):
                     raise Refuse('invalid_save', 'missing latest lookup candidate')
-                dfd = open_dir(path)
                 try:
-                    raw = read_stored_at(dfd, 'manifest.json', MAX_MANIFEST)[1]
-                finally:
-                    os.close(dfd)
+                    dfd = open_dir(path)
+                    try:
+                        raw = read_stored_at(dfd, 'manifest.json', MAX_MANIFEST)[1]
+                    finally:
+                        os.close(dfd)
+                except OSError as error:
+                    # load_save converts open/read errors to invalid-save too.
+                    # Earlier lstat/wrapper errors must escape to the old scan.
+                    raise Refuse('invalid_save', 'unreadable latest manifest: %s' % error.errno)
                 hints.append((name, archived, raw, None))
             except Refuse as error:
                 hints.append((name, archived, None, (error.code, error.message)))
-            except OSError as error:
-                hints.append((name, archived, None, ('os_error', error.errno)))
     return archive, active_names, archive_names, hints
 
 

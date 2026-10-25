@@ -269,6 +269,18 @@ with tempfile.TemporaryDirectory(prefix='save-latest-lookup-') as directory:
     with patch.object(module, 'bounded_names', bounded):
         equivalent('bounded discovery refusal preserved', d, 'refuse')
 
+    d = fixture('archive-wrapper-io-error'); put(d, low); put(d, high, archived=True)
+    real_archived_path = module.archived_path
+    wrapper_error = PermissionError('injected wrapper traversal failure')
+    with patch.object(module, 'archived_path', side_effect=wrapper_error), \
+            patch.object(module, 'latest_lookup_full_scan', wraps=module.latest_lookup_full_scan) as fallback:
+        try:
+            module.last_good(str(d), 'wanted', False)
+        except PermissionError as error:
+            check('wrapper I/O error retains legacy propagation', error is wrapper_error and fallback.call_count == 1)
+        else:
+            raise AssertionError('wrapper I/O error swallowed')
+
     # Mutation controls use the actual installed helper, with no alternate Git object.
     d = fixture('unvalidated-negative'); put(d, low, stamp='2001-01-01T00:00:00+00:00')
     bad = put(d, high); next((bad/'pool').iterdir()).unlink()
@@ -402,10 +414,10 @@ with tempfile.TemporaryDirectory(prefix='save-latest-lookup-') as directory:
         return result, dict(counts)
 
     evidence = []
-    for size in (1, 13):
+    for size in (1, 2, 13):
         for history in ('foreign', 'own', 'invalid-foreign'):
             d = fixture('work-%s-%s' % (size, history))
-            put(d, high)
+            put(d, high, archived=size == 2)
             for number in range(1, size):
                 path = put(d, '%032x' % number, 'wanted' if history == 'own' else 'foreign',
                            stamp='2001-01-01T00:00:00+00:00', archived=number % 2 == 0)
@@ -424,10 +436,11 @@ with tempfile.TemporaryDirectory(prefix='save-latest-lookup-') as directory:
                 check('work validation/read bounds %s/%s/%s' % (size, history, worker),
                       fast_counts.get('manifest_doc', 0) == (worker == 'wanted')
                       and fast_counts.get('load_save', 0) == (worker == 'wanted')
-                      and fast_counts.get('manifest_reads', 0) <= 2*size + (worker == 'wanted'))
+                      and fast_counts.get('manifest_reads', 0) <= 2*size + (worker == 'wanted')
+                      and fast_counts.get('strict_json', 0) <= size + (worker == 'wanted'))
                 # Whole categories bounded, including directory work that grew
                 # in the prototype. No cherry-picking pool stats as total work.
-                bounds = dict(open=4*size+10, close=4*size+10, stat=12, lstat=5*size+4,
+                bounds = dict(open=4*size+10, close=4*size+10, stat=12, lstat=5*size+8,
                               fstat=2*size+2, scandir=2*size+4, listdir=3,
                               read=4*size+2, readlink=0, access=0)
                 print('WORK ROW '+json.dumps(dict(saves=size, history=history, worker=worker, baseline=old_counts, corrected=fast_counts)), flush=True)
@@ -456,19 +469,22 @@ with tempfile.TemporaryDirectory(prefix='save-latest-lookup-') as directory:
                     digest = hashlib.sha256(content).hexdigest()
                     (path/'pool'/digest).write_bytes(content); (path/'pool'/digest).chmod(0o600)
                     doc['entries'].append(dict(path='zz-measure-%04d' % entry, index=None,
-                                              worktree=dict(mode='100644', sha256=digest, bytes=len(content))))
+                                              worktree=dict(mode='0644', sha256=digest, bytes=len(content))))
                 doc['entries'].sort(key=lambda e: e['path'])
                 doc['fingerprint'] = module.fingerprint(doc['git'], doc['entries'], doc['context'])
                 (path/'manifest.json').write_text(json.dumps(doc)+'\n')
+            valid_active, corrupt_active = module.scan_store(str(d))
+            valid_history, corrupt_history = module.scan_archive(module.archive_for_store(str(d)))
+            assert len(valid_active) == 7 and len(valid_history) == 6 and not (corrupt_active or corrupt_history)
             functions = dict(baseline=module.latest_lookup_full_scan,
                              prototype=prototype.last_good, corrected=module.last_good)
             samples = {name: [] for name in functions}
             cpus = {name: [] for name in functions}
             operations = {}
             expected = module.latest_lookup_full_scan(str(d), 'wanted', False)
+            assert expected is not None and expected['id'] == '%032x' % 13
             for name, function in functions.items():
-                # Same instrumentation for prototype: measured() patches module
-                # helpers only, so collect prototype ops via its globals too.
+                # Use the same OS/helper instrumentation for each implementation.
                 result, operations[name] = measured(lambda: function(str(d), 'wanted', False),
                                                       prototype if name == 'prototype' else module)
                 assert result == expected
