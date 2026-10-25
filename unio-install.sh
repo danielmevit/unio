@@ -28658,7 +28658,45 @@ def resolve_save_path(root, save_id):
     return archived_path(archive, save_id) if found[0] == historical else active
 
 
-def last_good(store, worker, deep):
+def latest_lookup_discovery(store):
+    """Bounded raw hints, with local invalid evidence excluded but named.
+
+    Global name bounds, duplicate IDs and archive-root refusals still escape.
+    Per-save failures cannot qualify under load_save; record them so a later
+    readable view differs. Never visit context or body pools here.
+    """
+    active_names = [name for name in bounded_names(store)
+                    if name not in ('attempts', 'claims', 'archive') and not name.startswith('.staging-')]
+    archive = archive_for_store(store)
+    archive_names = bounded_names(archive) if archive else []
+    if set(active_names) & set(archive_names):
+        raise Refuse('invalid_save', 'duplicate active/archive save ID')
+    hints = []
+    for directory, names, archived in ((store, active_names, False), (archive, archive_names, True)):
+        for name in names:
+            if not HEX32.fullmatch(name):
+                continue  # scan_store also cannot return an unknown name.
+            try:
+                path = archived_path(directory, name) if archived else os.path.join(directory, name)
+                if not private_dir(path, False):
+                    raise Refuse('invalid_save', 'missing latest lookup candidate')
+                try:
+                    dfd = open_dir(path)
+                    try:
+                        raw = read_stored_at(dfd, 'manifest.json', MAX_MANIFEST)[1]
+                    finally:
+                        os.close(dfd)
+                except OSError as error:
+                    # load_save converts open/read errors to invalid-save too.
+                    # Earlier lstat/wrapper errors must escape to the old scan.
+                    raise Refuse('invalid_save', 'unreadable latest manifest: %s' % error.errno)
+                hints.append((name, archived, raw, None))
+            except Refuse as error:
+                hints.append((name, archived, None, (error.code, error.message)))
+    return archive, active_names, archive_names, hints
+
+
+def latest_lookup_full_scan(store, worker, deep):
     active, active_corrupt = scan_store(store)
     archive = archive_for_store(store)
     historical, archive_corrupt = scan_archive(archive)
@@ -28677,6 +28715,57 @@ def last_good(store, worker, deep):
         except Refuse:
             continue
     return None
+
+
+def last_good(store, worker, deep):
+    try:
+        discovery = latest_lookup_discovery(store)
+    except (Refuse, OSError):
+        return latest_lookup_full_scan(store, worker, deep)
+    archive, _, _, hints = discovery
+    candidates = []
+    for name, archived, raw, error in hints:
+        if raw is None:
+            continue
+        try:
+            doc = strict_json(raw, MAX_MANIFEST, 'manifest')
+        except Refuse:
+            continue
+        # Necessary conditions only, never eligibility. Full schema/fingerprint
+        # and every selected-save check remain exclusively with load_save.
+        if isinstance(doc, dict) and doc.get('worker') == worker:
+            published = when(doc.get('published_at'))
+            if published is not None:
+                candidates.append((published, name, archived, doc))
+    candidates.sort(key=lambda hint: (hint[0], hint[1]), reverse=True)
+    selected = None
+    mismatch = False
+    for _, name, archived, hint_doc in candidates:
+        try:
+            path = archived_path(archive, name) if archived else os.path.join(store, name)
+            loaded = load_save(path, name, False)
+            doc = loaded['manifest']
+            mismatch = doc != hint_doc
+            if not mismatch and deep:
+                mismatch = load_save(path, name, True)['manifest'] != doc
+        except Refuse:
+            continue  # Only an ordinary candidate validation failure may skip.
+        if mismatch:
+            break
+        selected = dict(id=name, worker=doc['worker'], task=doc['task'],
+                        published=when(doc['published_at']), manifest=doc,
+                        archived=archived, stored_bytes=loaded['stored_bytes'])
+        break
+    # No full-scan call lives inside a candidate/recheck exception boundary:
+    # its genuine refusals must propagate, even if a later view is restored.
+    if not mismatch:
+        try:
+            mismatch = latest_lookup_discovery(store) != discovery
+        except (Refuse, OSError):
+            mismatch = True
+    if mismatch:
+        return latest_lookup_full_scan(store, worker, deep)
+    return selected
 
 
 # --------------------------------------------------------------- create
