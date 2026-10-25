@@ -50,46 +50,64 @@ then LOW continuation completed docs/checks at095b0d6. Earlier failure is not
 reclassified. Fresh pre-admission Codex reading16:24:43 was93%/83%, dated
 only; future admission must refresh again. No reasoning escalation for quota.
 
-### Effort status: independent Gemini implementation active
+### Effort status: Gemini gates passed; lead-confirmed correction active — 2026-10-25T17:34:40+01:00
 
-Task WORKER-EFFORT-CLARITY-AGY-GEMINI-MEDIUM-0525-20261025;
-worker antigravity-effort-clarity-20261025/basebd32914. Pipeline:
-`tmp/unio-next/effort-clarity-agy-gemini-medium-20261025/`.
-Antigravity subscription / agy1.4.7 / requested gemini-3.8-flash-medium /
-MEDIUM fixed selector; effective model/effort and allowance Unknown. Source
-actually started16:50:04 and is reading code; no implementation commit yet.
-Controller2499880, native7500s, same real antigravity group; STOP closed.
+Original task WORKER-EFFORT-CLARITY-AGY-GEMINI-MEDIUM-0525-20261025,
+worker antigravity-effort-clarity-20261025, final7abee32dfaca2167193735e86faaefbc52a7dd06.
+Antigravity subscription / agy1.4.7 / requested Gemini3.8Flash MEDIUM fixed
+selector. Source/adapter0 at17:18:07, native0 at17:21:21, native Verify0/five
+checks including four focused suites. Source effective identity/effort Unknown.
+Custom wrapper pins1.4.7, imports unchanged bounded I/O/terminal parser only;
+canonical main pins1.3.5 and was not called or patched. No canonical support claim.
+Preserve local version-change/help-stderr preparation receipts and prior route
+failures. Original Gemini task is NOT accepted despite its successful gates.
 
-Custom task-frozen wrapper pins1.4.7 and imports only unchanged bounded I/O and
-terminal parser from the canonical adapter; canonical main pins1.3.5 and is
-never called or patched. No canonical support claim or VERSION monkeypatch.
-Local preflights caught an intervening1.4.6->1.4.7 update and help-on-stderr;
-zero model calls occurred in those preparations. Keep their receipts.
+Lead independent installed mocked probe confirms valid CLI ordering difference:
+`worker-effort legacy --json` returns current medium, whereas
+`worker-effort --json legacy` returns empty alias/Unknown/missing_alias. Both
+remain unsupported/exit2/effectiveUnknown. Zero provider calls and no real
+project/account changes. Exact evidence:
+`tmp/unio-next/effort-clarity-agy-gemini-medium-20261025/lead-effort-order-probe.json`.
 
-Proper implementation outcome, six allowed paths: codex-worker client-only
-query plumbing, matching embeds, effort tests, two guides and one fragment.
-Reuse conservative static command_audit. CURRENT configuration is for a future
-launch, not proof of a frozen run's startup request. Preserve active native
-requested/configured/pending_next_turn/effective Unknown views, existing states,
-exits/protocol/server/session/run and unsupported-set refusal. No provider probes,
-command evaluation, secret reflection, parser broadening or SAVES changes.
-Static audit lives in doctor --commands, not agents. Focused offline checks,
-embed consistency and required summary must pass. Prepared review.py and
-review-once.py require finished Source/native/Verify0, tierlow and idle Claude;
-DO NOT launch until the checkpoint review releases that shared budget. One
-independent OpusXHIGH plus existing lead, no recursive/duplicate reviewers.
+NEW bounded correction WORKER-EFFORT-CLARITY-CORRECTION-SOL-LOW-0525-20261025,
+worker codex-effort-clarity-low-20261025/base7abee32, pipeline
+`tmp/unio-next/effort-clarity-correction-sol-low-20261025/`.
+ChatGPT subscription / CodexCLI0.164.0 / gpt-6.1-sol LOW; effectiveUnknown.
+Source started17:30:34. Controller2552982, review observer2554370. One real
+codex lead/group companion, narrow grant/temporary coordinationmedium, STOP
+closed after native dispatch, restorelow when idle. Fresh pre-admission reading
+was44%five-hour/75%weekly; exact timestamp/resets in controller.json. Not a
+current guarantee. No other Codex Source is active. No inline lead code fix.
 
-Earlier separate attempts remain failed: Mistral/Vibe2.26.1/GLM5.3 HIGH
-implementation adapter/native2 infrastructure, no edits; OpenCode Go1.19.4/
-opencode-go/glm-5.3 HIGH Source/native1, HTTP401 api_key_expired, no edits.
-Go catalog/listed credential did not prove auth/allowance. No retries/auth edits
-or paid Zen/Inception fallback. Grok1.0.62 catalog was inspected only; owner
-bench remains active, zero Grok inference. Copilot, Perplexity, Mercury and
-free Zen remain unassigned; capacities unverified. No extra Codex Source now.
+Scope: parsed worker selection for valid option orders, bounded truthful static
+handoff and tests for caller overrides/malformed inputs. No parser broadening,
+configured command execution, arbitrary wrapper reads, raw secret reflection,
+provider probes or changes to native server/session/run/SAVES/control protocol.
+Current configured request belongs to a FUTURE launch, not frozen startup;
+native active requested/configured/pending_next_turn remains authoritative and
+effective Unknown. Same six inherited allowed paths plus correction fragment,
+focused offline tests/embedding/scope, required summary. No broad gate/version/UI.
 
-Mistral inventory972562d remains proposal only: Source/adapter/native0 and three
-checks, but Verify1 because lead asked for doccommit under report-only. Gate
-correct; original task and receipt untouched. Not a model-quality failure.
+Its Opus5.5XHIGH review is only prepared: observer waits actual corrected
+Source/native/Verify0, tierlow restoration and the prior healthy checkpoint
+review's completion/free Claude slot. It checks native slots, real global bench,
+first-party auth metadata and Unknown Claude capacity; one call, no blind retry.
+Do not review or accept original7abee32 as the corrected code. Existing lead
+independently assesses the actual corrected revision and then integrates privately.
+
+Earlier attempts remain separate: Mistral/Vibe2.26.1/GLM5.3 HIGH implementation
+adapter/native2 infrastructure/no edits; OpenCode Go1.19.4/GLM5.3 HIGH
+Source/native1 HTTP401 api_key_expired/no edits. No auth edits, retry or paid
+Zen/Inception fallback. Grok1.0.62 remains owner-benched, zero inference.
+Copilot, Perplexity, Mercury and free Zen idle/unverified. Inventory972562d is
+supporting input only: lead's report-only/doccommit contract mistake made verify1,
+not a model-quality failure. Do not rewrite any historical receipt.
+
+Checkpoint review remains active at the last check. Its independent reviewer is
+running fuzz/race probes; no result is claimed. Copies of stable scripts were
+preserved at17:28:39 in review/preserved-probes-2026-10-25T172839+0100 before
+engine temporary cleanup. Copy final outputs once available without changing
+reviewer work; the manifest records exact hashes. Empty logs are not passing tests.
 
 ### History, docs and next step
 
@@ -234,7 +252,7 @@ mustuseverifiedofficialbytes. Ifnotauthorized, stopatreadyartifactsandstatewhy.
 
 Scopefour operationalfeaturesonly; managedownership/UI/phone/desktop remain
 deferred. No morefunctionalAIworkersorreviewsrequiredforMarkdown-onlylabels.
-Providerreceipts: CodeX0.163/gpt6.1solLOW, Claude2.1.310/Opus5.5XHIGH, Mistral/
+Providerreceipts: Codex0.163/gpt6.1solLOW, Claude2.1.310/Opus5.5XHIGH, Mistral/
 Vibe2.26.1/GLM5.3HIGH scopedcomponentreviews; effectiveUnknown preserved.
 
 ## FINAL24 gate ACTUALLY RUNNING; no features remain in this batch — 2026-10-25T06:33:20+01:00
@@ -342,7 +360,7 @@ Opus, exactintegrate/freezechangelogthenONEfullqualitygate.
 
 Operationalbatchscopefrozenfourpieces; no morefeatures/ownership/UI. Private
 acceptedreview/checkpoint/assessment code remainsin integration; global23.
-PhaseCodeX0.163/gpt6.1solLOW final6aae1d0b6a0730ebd4b04239f72356f23aa4cf0a
+PhaseCodex0.163/gpt6.1solLOW final6aae1d0b6a0730ebd4b04239f72356f23aa4cf0a
 CLI0at05:45:24/native0at05:47:22/native4PASS0/lowrestored. Newlabels+private24
 identity+149lineinstalledtest passedfocusedtests, but NOTaccepted/merged.
 
@@ -426,7 +444,7 @@ Verify/review. Existingexperience test0 atoneintermediatepoint; fleet/branding
 completion unconfirmed. Nativeexperience operational_failure4d3ac0cfa3b74d101a7e888b42ef7e58
 stored0; notqualityacceptance. Secondarylocalrolloutnotfounderrorpreserved too.
 
-FreshCodeX05:03primary99/weekly21 observation, notold14. Newowner-authorized
+FreshCodex05:03primary99/weekly21 observation, notold14. Newowner-authorized
 continuation EXPERIENCE-RECORD-DEADLINE-CONTINUE-SOL-LOW-0524-20261025, worker
 codex-experience-deadline-continue-low-20261025/base50a635b. Sourceactual
 2026-10-25T05:08:54+01:00, CodexCLI0.163.0/gpt6.1solLOW; no effortraise.
@@ -539,7 +557,7 @@ NativeSource task NATIVE-LEAD-OWNERSHIP-VIBE-GLM-HIGH-0524-20261024 throughinsta
 vibeglm-native-lead-ownership-20261024, basedde730e75bd7432086901ed3e632c64bda0d8e55,
 branchagent/vibeglm-native-lead-ownership-20261024. Mistralsubscription/Vibe2.26.1/
 GLM5.3 thinkingHIGH; CLI/model/effortrequested, effectiveUnknown. Separateactual
-mistralgroup, lowtier/codexleadunchanged, noCodeXcompanion, STOPrestored.
+mistralgroup, lowtier/codexleadunchanged, noCodexcompanion, STOPrestored.
 Canonicaladapter actualstart2026-10-24T22:28:23+02:00; modelprogressreadingfiles/shell
 observed. Noexit/commit/check/review/acceptanceyet. Sourcecontroller2010958,
 pipeline native-lead-ownership-vibe-high-20261024. Taskhash/bounds/CLI/version/
@@ -581,7 +599,7 @@ noautomaticacceptance. Earlierlocalreviewfailure/observers preserved.
 
 Mainfeaturegoal: manageandtrack thelead session throughUnio, aswellasworkers.
 Core/RPC aretestedfoundations; nativeownership/persistentCLI remainunfinished.
-Nextboundedclaim NOTdispatched. FreshCodeX22:17 observation31primary/27weekly;
+Nextboundedclaim NOTdispatched. FreshCodex22:17 observation31primary/27weekly;
 donotreuse99. Main/install23; no24publish/install/mainpushauthority.
 
 Owner requests goal-first CLIupdates: main goal anduserbenefit, currenttask
@@ -701,7 +719,7 @@ are preserved; not a provider failure. Alloutside6helperfunctions unchanged.
 Native independent ClaudeCode2.1.309/Opus5.5XHIGH review actually started21:17:14
 via source-frozenconfig; pipeline save-attempt-lock-reuse-sol-low-20261024,
 review/source.json plus native-review.log and review-observer.json. No final
-review/acceptance yet. Tierlowrestored, STOP; CodeXworkeridle, existingleadretained.
+review/acceptance yet. Tierlowrestored, STOP; Codexworkeridle, existingleadretained.
 The save fix remains separate from the above frozen candidate; do not silently
 add it to an already-running gate. Integrate only exact reviewed/gated content.
 
@@ -758,7 +776,7 @@ metadata work under REAL lock lifetime; preserve metadata-only last_good semanti
 for corrupt bodies/future times/ties, deepvalidation/caps/pins/failures/restore.
 No cache/cap/timeout/schema/real-store changes. Estimate1–2h+review. Native4checks
 include4sequential installed suites via frozen private fixture. Config freezes
-CodeXLOW Source and independentClaude/Opus5.5XHIGH review routes before grant;
+CodexLOW Source and independentClaude/Opus5.5XHIGH review routes before grant;
 realgroups/lead, narrowtempmedium/STOP/restorelow apply. No new perf native review
 or gate yet. Do not fold unfinished perf into the current frozen candidate.
 
