@@ -4,6 +4,21 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.24 — operational reliability and quality of life (unreleased)
+
+Private development; no publication, main push or global installation is authorized.
+See [current scope and evidence](docs/development/OPERATIONAL-QUALITY-2026-10-25.md).
+
+- Keep a new review collection's actual dispatch outcome separate from historical
+  approvals, retaining current change requests, unknowns and original failures.
+- Reuse successful checkpoint metadata under the real save-store lock, removing
+  a redundant traversal while preserving validation, retention and restoration.
+  Focused checks, independent reviews and the combined quality gate passed;
+  this does not establish that every mounted-workspace capture meets its deadline.
+- Prioritize core operating improvements before managed lead ownership, dashboard
+  expansion, phone pairing or native desktop interfaces. Their reviewed internal
+  foundations remain preserved without claiming a usable managed lead feature.
+
 ## 0.5.23 — clearer admission, reviews and delivery — 2026-10-23
 
 Owner-authorized release; the complete quality gate and independent runtime review

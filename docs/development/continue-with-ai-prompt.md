@@ -1,5 +1,40 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Checkpoint accepted; explicit quota-stop continuation active — 2026-10-25T05:11:05+01:00
+
+Currentgoal operationalQoL beforeownership/UI. Exact94d29082 savecombinedquality
+gatePASS0 at2026-10-24T23:10:22+02:00/sourceunchanged/untracked[]. Leadrechecked
+review/source/filehashes/wholegate/nonblockingdispositionsandprivatelymerged
+2b200a2ebfd1bb65a7a17bb32b97556c66bbed25. Extraownchangesonlydocs. No global
+install/mainpush/publication. New24unreleasedchangelog containsacceptedchanges
+only; sitewon'tadvertiseunreleased24. CurrentbatchOPERATIONAL-QUALITY-2026-10-25.
+
+Original experience deadline SolLOWSource/native1 ended23:03/23:05explicit
+providerusagelimit, fourcommits through50a635b preserved/cleanno summary/native
+Verify/review. Existingexperience test0 atoneintermediatepoint; fleet/branding
+completion unconfirmed. Nativeexperience operational_failure4d3ac0cfa3b74d101a7e888b42ef7e58
+stored0; notqualityacceptance. Secondarylocalrolloutnotfounderrorpreserved too.
+
+FreshCodeX05:03primary99/weekly21 observation, notold14. Newowner-authorized
+continuation EXPERIENCE-RECORD-DEADLINE-CONTINUE-SOL-LOW-0524-20261025, worker
+codex-experience-deadline-continue-low-20261025/base50a635b. Sourceactual
+2026-10-25T05:08:54+01:00, CodexCLI0.163.0/gpt6.1solLOW; no effortraise.
+Pipeline experience-record-deadline-continuation-low-20261025/controller2186827.
+Completes checks/summary, boundedcorrectiononlyifneeded, nodummycommit. Newtask
+Sourcefailurehistoryseparate. Ppublic_basecd0checkercoverscarried6paths, zero
+newdeltaallowedforvalidationcontinuation. Realcodexlead/group/task-configgrant/
+temporarycoordmedium/STOP/finallylow preserved. EffectiveUnknown.
+
+OpusCLI UPDATED2.1.310, requestedclaude-opus-5-5XHIGH; localhelpconfirmsflag.
+Observer2186829 waitsactualSource/native/Verify0+lowrestore, thenonecurrentcode
+nativeReview with exactsource/Git-Csnapshots, noimplicitcwd. Originaloldobserver
+not_launched_source_failure staysuntouched. Noautoacceptanceorpublications.
+
+Next actualcontinuationchecks/currentOpusfindings/existingleadassessment/private
+integration; bundlecoherentoperationalscopeandonefinalcombinedgate. Ownership
+parked/no newSource or UIchanges. Main/install23. Full provider/model/effort/
+checksdetails inprofile/receipts, score assessments stored separately.
+
 ## Active operational task: bounded assessment observation — 2026-10-24T23:02:36+02:00
 
 Goal: improve existing Unio operation before ownership/UI. Featurecurrentpiece

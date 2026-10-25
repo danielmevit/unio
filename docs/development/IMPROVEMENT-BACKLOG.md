@@ -10,15 +10,18 @@ This backlog consolidates pending, accepted, and shipped functional improvements
 - **Privately accepted:** review-history/dispatch corrections and tested internal
   lead core/RPC foundations. The complete foundation gate passed; these do not
   provide installed native lead ownership.
-- **Current task:** checkpoint metadata reuse, preserving validation/retention/
-  restoration. Focused checks and independent reviews passed; exact combined
-  gate is still running. Do not claim all capture deadlines are repaired.
+- **Privately accepted checkpoint fix:** metadata reuse preserves validation,
+  retention and restoration. Focused checks, independent reviews and exact94d29082
+  combined gate passed. This does not claim all capture deadlines are repaired.
+- **Current task:** finish preserved experience-record timeout implementation and
+  obtain actual native validation plus independent Opus review. See the
+  [current batch](OPERATIONAL-QUALITY-2026-10-25.md).
 - **Next:** operational improvements before ownership or interface work. Preserve
   the failed ownership invocation (infrastructure exit2, no edits), without retry.
 
 ### Operational queue
 
-1. Finish the current checkpoint candidate gate and existing-lead assessment.
+1. Finish the assessment-observation timeout continuation and existing-lead assessment; checkpoint gate/assessment are complete.
 2. Validate remaining helper delays: mounted-workspace automatic captures still
    hit60s; result/experience observations may exceed caller deadlines. Diagnose
    the exact call/phase, reduce redundant work or add bounded configurable
