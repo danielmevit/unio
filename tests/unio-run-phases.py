@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory(prefix='unio-run-phases-') as temporary:
     # A Unix socket handshake blocks the real baseline Git helper until the
     # parent has inspected diagnostics. No elapsed delay establishes success.
     listener = socket.socket(socket.AF_UNIX)
-    endpoint = str(base / 'gate.sock')
+    endpoint = '\0unio-run-phases-' + str(os.getpid())
     listener.bind(endpoint)
     listener.listen(1)
     listener.settimeout(25)
@@ -122,17 +122,21 @@ with tempfile.TemporaryDirectory(prefix='unio-run-phases-') as temporary:
         launched.append(True)
         return subprocess.Popen(['python3', '-B', '-c', 'raise SystemExit(19)'], stdout=fd, stderr=fd)
 
-    with patch.object(module, 'inherited_run', return_value='run'), \
+    with tempfile.TemporaryFile(mode='w+') as diagnostic, \
+         patch.object(module, 'inherited_run', return_value='run'), \
          patch.object(module, 'capture_child'), \
          patch.object(module, 'spawn_owned_provider', side_effect=spawn), \
          patch.object(module, 'finish_owned', return_value='clear'), \
          patch.object(module.signal, 'signal'), \
          patch.object(module.os, 'close'), \
          patch.object(module.os, 'write', side_effect=BrokenPipeError), \
-         contextlib.redirect_stderr(io.StringIO()):
+         contextlib.redirect_stderr(diagnostic):
         assert module.supervise_run(str(repo.parent), 'mock-order', 'mock-order', '30', 'unused') == 19
     assert launched == [True]
-    # Exercise the actual descriptor write failure as well as replaced streams.
+    # A replacement stream with no descriptor is equally harmless.
+    with contextlib.redirect_stderr(io.StringIO()):
+        module.emit_run_phase('provider launched')
+    # Also verify that descriptor writes really were attempted and failed.
     with tempfile.TemporaryFile(mode='w+') as stream, contextlib.redirect_stderr(stream), \
          patch.object(module.os, 'write', side_effect=BrokenPipeError) as write:
         module.emit_run_phase('provider launched')
