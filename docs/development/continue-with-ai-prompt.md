@@ -1,73 +1,83 @@
 # Continue Unio after the 0.5.24 operational update
 
-## Active 0.5.25 operational round — 2026-10-25T14:29:17+01:00
+## Active 0.5.25 operational round — 2026-10-25T16:30:08+01:00
 
-Stable/main/global remain0.5.24 at mainbd32914, dashboard41689. This private
-lead branch is agent/operational-next-20261025. No0.5.25 push/install/release
-authority. Next batch: checkpoint lookup efficiency, truthful effort status,
-then bounded enclosing review context; ownership/UI/platform remain parked.
+Goal: make current CLI operations faster and more legible before ownership,
+dashboard, desktop or phone work. Main/global/release remain0.5.24 at bd32914;
+private lead branch agent/operational-next-20261025. No0.5.25 main push, release
+or global install is authorized. Current priorities: checkpoint lookup, effort
+status, then bounded enclosing review context. No new ownership/UI assignment.
 
-Checkpoint prototype: task SAVE-LATEST-LOOKUP-SOL-LOW-0525-20261025, worker
-codex-save-lookup-low-20261025, basebd32914, final74b1e22. ChatGPT/CodexCLI0.164.0/
-gpt6.1solLOW Source0/native0/Verify4PASS0/five suites. Independent ClaudeCode
-2.1.310/Opus5.5XHIGH CLI0/adapter0 REQUEST-CHANGES/nativeReview1 at13:57:43.
-No acceptance/merge. Pool52->4 counter hid higher manifest/dir work; reviewer
-reported small/native regressions; preserve original opinion and checks.
-Reviewer probe scripts were in engine-cleaned neutral tmpdir, so their timings
-are supporting reported evidence, not lead-reproduced durable benchmarks.
-Lead fault-injected exact-module reproduction proves shallow ANDdeep fallback
-Refuse can be swallowed and an older save returned; file in original pipeline.
+Checkpoint prototype74b1e22: ChatGPT/CodexCLI0.164.0/gpt-6.1-solLOW Source0,
+native0, four native checksPASS and five focused suites. Independent Claude
+subscription/ClaudeCode2.1.310/claude-opus-5-5XHIGH CLI/adapter0 returned
+REQUEST-CHANGES/nativeReview1. It found performance-work regressions and a
+fallback-refusal control-flow bug. Lead independently reproduced swallowed
+Refuse in shallow/deep modes with a fault-injected exact-module probe; no real
+store race or reviewer timing reproduction is claimed. Original reviewer
+benchmark scripts were cleaned with engine scratch, so its timings remain
+reported supporting evidence only. No acceptance or integration.
 
-ACTIVE correction: SAVE-LATEST-LOOKUP-CORRECTION-SOL-LOW-0525-20261025,
-worker codex-save-lookup-fix-low-20261025/base74b1e22, pipeline
-save-latest-lookup-correction-low-20261025. Controller2479700/observer2479701;
-Source actual14:17:51, Codex0.164/gpt6.1solLOW. Partial96cc140 committed; fresh
-bounded D/tmpfs work measurements and focused suites ongoing at last read.
-Original invalid benchmark fixture retained by worker; not accepted data. New
-Claude2.1.310/Opus5.5XHIGH independent review automatically waits actual Source/
-native/Verify0 AND restoredlow; review-once.py checks real bench/first-party
-auth and records capacityUnknown (automatic capacity reader supports ONLYCodex).
-Do not blindly require automatic Claude refresh or change code after review.
-Fresh Codex observation at14:15 was primary10%/weekly86%, reset14:37:05Z
-(15:37:05+01), not a current guarantee. Do not launch another Codex worker or
-interrupt this one for the lead's budget. Controller preserves actual failure,
-closesSTOP and restoreslow when Codex workflow idle. Standing LOW continuations
-are owner-authorized after capacity permits; preserve every attempt separately.
+The first LOW correction, SAVE-LATEST-LOOKUP-CORRECTION-SOL-LOW-0525-20261025,
+worker codex-save-lookup-fix-low-20261025, stopped at an explicit Codex usage
+limit: SourceCLI1 at14:28:19/native1at14:30:28. Preserve96cc140 plus four dirty
+files in that original worktree. Exact binary patch/hash inventory is in
+save-latest-lookup-correction-low-20261025/preserved-after-limit.json and
+preserved-after-limit.patch (SHA746bd2a02cea2ac4041799d82c1996cf4abb3f7bb216c9e025472e6862429f49).
+The worker reported319 lookup checks but did not complete final gates/review.
+Do not reclassify this operational failure or escalate reasoning for quota.
 
-Parallel effort inventory: Mistral monthly/Vibe2.26.1/GLM5.3HIGH, task
-EFFORT-CAPABILITY-INVENTORY-VIBE-GLM-HIGH-0525-20261025, worker
-vibeglm-effort-inventory-20261025, report972562d. CLI/adapter/native0,3Validate
-commandsPASS, overallVerify1 invalid_report_artifact because LEAD combined
-readonly report-only with a requested doccommit. Gate behaved correctly; do not
-rewrite task/receipt or call it a model/code failure. Supporting proposal only,
-not an accepted merge. Important factual correction: static audit lives under
-`unio doctor --commands`, not `unio agents` as that proposal says. No probe calls
-were made by inventory tools, but the Mistral CLI invocation itself did call a
-model; qualify its 'No model calls' wording.
+ACTIVE authorized LOW continuation: SAVE-LATEST-LOOKUP-CONTINUE-SOL-LOW-0525-20261025,
+worker codex-save-lookup-continue-low-20261025, pipeline
+save-latest-lookup-continuation-low-20261025. Same CodexCLI0.164.0/SolLOW;
+new isolated worktree carries EXACT previous worker bytes at preservation
+commit f7c980081aa9a1ae91dff6b4fc9086694ee4e6a1. Lead made no code edits;
+preservation commit is unverified, not acceptance. Source actually started
+16:27:28, receipt source/source.json, CLIpid2489434. Controller2489003,
+review observer2489004; fresh native capacity at16:24:43 was93%fivehour/
+83%weekly, dated not guaranteed remaining. One real codex lead/group + task
+budget grant, temporary coordinationmedium, STOP closed after admission;
+restore priorlow when idle. Baseline checkpoint hit60s capture deadline,
+previous good save retained and Source was launched (separate from its exit).
+Finish existing benchmark table/qualified D and tmpfs measurements, focused
+checks and clean committed delivery. Fresh Opus5.5XHIGH review waits actual
+Source/native/Verify0 and low restoration. Read receipt for actual outcome.
+Do not create another simultaneous Codex job or interrupt this healthy worker.
 
-NEW actual effort feature: WORKER-EFFORT-CLARITY-VIBE-GLM-HIGH-0525-20261025,
-worker vibeglm-effort-clarity-20261025/basebd32914, pipeline
-effort-clarity-vibe-glm-high-20261025. Proper implementation outcome, Vibe2.26.1/
-GLM5.3HIGH; monthly allowance/effectiveidentity Unknown. One existing monthly
-workflow, no Codex budget use by that worker. 12M tokens/$10 estimated safeguards,
-CLI7200/native7500. Matching runtime config snapshot, canonical adapter hash.
-Actual provider receipt under model-receipts is authoritative, not controller
-launch. Code scope: truthful current configured request for FUTURElaunch versus
-frozen/native requested/configured/pending/effectiveUnknown; no-channel reason;
-reuse conservative static parser safely, no command evaluation/provider call or
-Server/session/run/receipt/schema/SourceSAVES changes. Focused offline tests,
-embedding/scope, required summary. External Opus review still needs preparation
-AFTER actual Source/native/Verify and a free real Claude slot. Existing lead
-assessment required. No source retry/acceptance is implied by earlier inventory.
+Effort inventory: Mistral monthly/Vibe2.26.1/GLM5.3HIGH delivered972562d,
+Source/adapter/native0 and3checksPASS, overallVerify1 invalid_report_artifact:
+lead wrongly combined report-only with doccommit. Gatecorrect, proposalonly,
+no rewriting historical task. Static audit is `unio doctor --commands`, NOT
+`unio agents` as the proposal says. Source itself made a model call; no extra
+probe calls is the qualified claim.
 
-Local preparation mistakes preserved: first Sol controller lacked runtime libs
-(no native run/model call) then fixed via runtime snapshot; first review observer
-mistakenly required unsupported Claude auto refresh (zero reviewer calls), then
-corrected to explicitUnknown + auth/bench checks. These are lead setup failures,
-not provider quality. Read controller/profile/task/source/verification/review
-receipts for each pipeline and newest AGENT-LOG. Do not repeat broad gates;
-run one final frozen-batch full gate when scope is accepted. No paid fallback,
-global auth/config edits, real-store cleanup or workspace relocation.
+Actual effort feature WORKER-EFFORT-CLARITY-VIBE-GLM-HIGH-0525-20261025 /
+vibeglm-effort-clarity-20261025 failed operationally: Vibe2.26.1/GLM5.3HIGH
+adapter2 infrastructure at14:43:27/native2at14:46:16. Worktreeclean atbd32914,
+no code changes/verification. Preserve original receipt; do not blindretry or
+infer a reasoning/token-cap failure. Its task/spec and offline scope/check
+scripts remain reusable input for a NEW independent route/task/worktree.
+Grok1.0.62 local metadata lists grok-4.7 and accepts effort argument; no Grok
+Source invocation yet. Qualify subscription-only auth before dispatch, request
+medium, do not enable API-key fallback. Other routes idle/unverified, no quota
+claims from installed binaries. Free models retain supporting-worker roles.
+
+Effort feature boundaries: bounded read-only CURRENT configured request for a
+FUTURE launch, not a frozen run's actual startup setting; native active views
+and pending_next_turn remain authoritative and effective effortUnknown. Reuse
+conservative command_audit; no configured command execution, provider probes,
+raw secret reflection, parser broadening, protocol/server/run/SAVES changes.
+Proper implementation outcome; six allowed paths, focused offline tests,
+embed-codex-worker --check, required summary. External eligible OpusXHIGH plus
+lead assessment after gates. Separate exact requested route/model/effort from
+effectiveUnknown and source exit/checks/review/acceptance.
+
+Preserve local preparation failures: missing per-run libs before any provider
+call, and unsupported automatic Claude capacity refresh before review calls.
+Corrected review eligibility uses native bench + first-party auth metadata,
+with Claude capacityUnknown (automatic reader is Codex-only). No paid fallback,
+auth/billing/global edits, public push or real-store cleanup. Run one final
+full gate only on the accepted frozen batch, not repeatedly per small change.
 
 
 ## Desktop security clarification — 2026-10-25T12:58:08+01:00
