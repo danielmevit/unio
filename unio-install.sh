@@ -24048,7 +24048,7 @@ cat > "$BIN_DIR/unio" <<'UNIO_BIN_EOF'
 #   PROJECT/coord/    board.md, base, docs/, tasks/, reports/, blockers.md, STOP
 set -euo pipefail
 
-UNIO_VERSION="0.5.24"
+UNIO_VERSION="0.5.25"
 CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
 CONF_FILE="$CONF_DIR/agents.conf"
 TPL_DIR="$CONF_DIR/templates"
@@ -38595,6 +38595,31 @@ LEAD_ESCALATION_TPL_EOF
 
 cat > "$TPL_DIR/MODEL-SCOREBOARD.md" <<'MODEL_SCOREBOARD_TPL_EOF'
 # Model scoreboard and delegation guide
+
+## Operational round observations — 2026-10-25T16:42:15+01:00
+
+Requested models/efforts below are not effective-identity or quota proof. These
+are separate attempts; the checkpoint and final effort changes are accepted privately, with delivery pending. Preserve
+original receipts under the enclosing workspace's tmp/unio-next, rather than
+publishing raw provider logs or private paths.
+
+| Route / CLI | Requested model / effort | Observed result and qualification |
+| --- | --- | --- |
+| ChatGPT / Codex0.164.0 | gpt-6.1-sol LOW | Lookup prototype74b1e22: Source/native0, four native checks and five focused suites passed. Independent ClaudeCode2.1.310/Opus5.5XHIGH returned REQUEST-CHANGES; lead reproduced swallowed fallback refusal. quality_issue, not acceptance despite green checks. |
+| ChatGPT / Codex0.164.0 | gpt-6.1-sol LOW | Correction96cc140 plus preserved four-file partial work: Source/native1 after explicit usage-limit evidence, final gates unfinished. Operational failure, not reasoning insufficiency. Exact bytes carried into new authorized LOW continuationf7c9800; continuation095b0d6 Source/native/Verify0/five suites, fresh Opus XHIGH APPROVE/native0; existing lead accepted runtime and privately integrated it, with shallow-only performance qualifiers. |
+| Mistral monthly / Vibe2.26.1 | glm-5-3 HIGH | Effort inventory972562d delivered Source/adapter/native0 and three checks, but overallverify1: lead requested a doccommit under report-only. Supporting proposal only; contract mistake is the lead's, not a model-quality defect. |
+| Mistral monthly / Vibe2.26.1 | glm-5-3 HIGH | Actual effort implementation ended adapter2 infrastructure/no edits. Preserve as operational_failure, no cap or reasoning claim. |
+| OpenCode Go / OpenCode1.19.4 | opencode-go/glm-5.3 HIGH | Actual replacement Source/native1 with HTTP401 api_key_expired, no implementation. Listed credentials/catalog did not prove authentication or allowance. No automatic retry/auth change/paid Zen fallback; no model-quality score. |
+| Antigravity subscription / agy1.4.7 | gemini-3.8-flash-medium / MEDIUM fixed selector | Effort feature7abee32 Source/adapter/native/Verify0 and four focused suites. Lead independent installed CLI probe found option-order alias mismatch; quality_issue/unaccepted. Native success is not acceptance. |
+| ChatGPT / Codex0.164.0 | gpt-6.1-sol LOW | Correction9277c76 Source/native/Verify0, positive installed option-order probe, Opus XHIGH APPROVE. Four low notes are being closed in a separate LOW polish; this does not relabel the reviewer opinion. |
+| ChatGPT / Codex0.164.0 | gpt-6.1-sol LOW | Final polish d73a5b6: Source/native/Verify0, all four low findings closed; fresh ClaudeCode2.1.310/Opus5.5XHIGH APPROVE/native0, then lead assessment accepted. Five-minute-forty-one-second Source invocation; separate task size, not a fair model speed comparison. Nonblocking evidence-reason wording and cleanup notes remain backlog. |
+| Grok subscription / Build1.0.62 | No Source invocation | Catalog listedgrok-4.7, but native owner bench remained active. Metadata-only inspection is not a usable-capacity observation or model result. |
+
+Comparable implementation acceptance, correction counts and actual elapsed time
+matter more than aggregate success exits. The lookup LOW continuation was independently reviewed and accepted privately;
+its measured D/tmpfs component timings do not establish per-task token savings
+or a universal model ranking. Native experience writes have independent receipts;
+failed observations stay failed and are not invented as stored assessments.
 
 Updated 2026-10-23 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task

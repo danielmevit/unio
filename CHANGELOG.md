@@ -4,6 +4,32 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.25 — checkpoint lookup and worker-effort clarity (unreleased)
+
+Private release candidate; the full combined quality gate, publication, main
+push and global installation are pending and are not claimed here. See
+[candidate scope, evidence and known limits](docs/RELEASE-0.5.25.md).
+
+- Look up a worker's latest checkpoint by validating requested-worker
+  candidates from bounded manifest hints before visiting unrelated body
+  pools, with a conservative fallback to the preserved original scan at most
+  once. Selection, validation, retention and STOP behavior are unchanged.
+  Shallow (`deep=False`) measurements on the 13-save D: fixture show medians
+  604→649ms with four bodies (slower), 1398→746ms with 41 bodies and
+  9881→1465ms with 401 bodies; deep lookup performance and full-save
+  deadlines remain unmeasured, and no universal speedup is claimed.
+- Surface truthful read-only configuration facts for
+  `unio worker-effort WORKER [--json]` when no active supported control
+  channel exists, explaining channel absence and tagging discovered
+  configuration as future-launch provenance. This distinguishes current
+  future-launch configuration from frozen startup settings, live channel
+  state, pending requests and effective Unknown; it makes no universal
+  live-control or model-identity claim. Native effort control shipped in
+  0.5.17; this release adds clarity, not new control.
+- An existing malformed deeply nested JSON RecursionError predates this
+  candidate and stays tracked separately; generic evidence-failure wording
+  and timeout cleanup remain backlog.
+
 ## 0.5.24 — operational reliability and quality of life — 2026-10-25
 
 Independent component reviews, lead assessment and the complete quality gate passed.
