@@ -79,6 +79,54 @@ contracts and dashboard; the frontend framework alone does not determine file
 I/O performance. No native implementation, universal speedup or guaranteed
 end-to-end timing is established by this diagnostic.
 
+## Worker isolation and desktop security — 2026-10-25T12:58:08+01:00
+
+This is an architecture proposal to evaluate, not a shipped sandbox or an
+immediate change to operating priority. Unio 0.5.24 uses trusted host execution;
+Git worktrees, scope checks, checkpoints and independent reviews do not restrict
+an agent's operating-system access. Preserve that honest boundary in UI/docs.
+
+[WSL's security model](https://wsl.dev/technical-documentation/security/)
+explicitly says ordinary WSL is not a sandbox for untrusted code or a security
+boundary from the associated Windows user. Disabling automount or normal Windows
+interop does not establish such a boundary. A native Windows installation is not
+automatically isolated either: [MSIX full-trust apps](https://learn.microsoft.com/en-us/windows/msix/msix-containerization-overview)
+can retain normal desktop access. Store packaging/signing is not proof that AI
+commands and their children are contained.
+
+Evaluate a native desktop/coordination backend, running as a standard user,
+with a separate, enforced execution boundary for agent tool commands. Cover
+worker commands, descendants and any lead tools that execute repository code;
+a sandboxed UI that launches unrestricted helpers does not contain that work.
+Limit project files, tools, network and credential access through verified host
+controls and narrow explicit grants. Keep trusted control/approval operations
+small and distinct from arbitrary generated shell commands.
+
+[AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation)
+is one Windows isolation primitive to investigate, not a selected compatible
+backend. Validate each supported provider CLI's sign-in, authentication files,
+network access, terminals, builds and child processes; those compatibility needs
+may require a broker or a different boundary. Do not expose an entire credential
+store just to make a route work, silently drop restrictions or label an
+unrestricted fallback sandboxed. Job Objects help manage process lifetimes and
+are not, alone, a complete filesystem/network security boundary.
+
+For stronger isolation of untrusted repositories and tools, evaluate a separately
+managed VM with minimal host sharing, restricted networking and explicit artifact
+export. A writable host folder grants meaningful access to that folder even
+inside a VM. [Windows Sandbox](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/)
+is useful for disposable checks, but closing it deletes its state; persistent
+agent login/checkpoint workflows need separate design. No VM product is selected.
+
+Keep execution isolation separate from YOLO/Balanced/Thorough review pace and
+coordination tier. Reviews and recovery remain valuable inside a restricted
+execution environment; they do not replace its OS boundary. Future UI should
+make actual execution host, enforced limits and any unrestricted route visible.
+Only claim containment after outside-project file/process/network denial tests
+and real supported-route acceptance. Keep ordinary trusted-host operation honest
+until that implementation exists. Do not change current permissions, security
+configuration, credentials or sandbox software as part of this documentation.
+
 ## 1. Audit the runtime and define platform contracts
 
 Map platform assumptions to their callers before replacing commands. The

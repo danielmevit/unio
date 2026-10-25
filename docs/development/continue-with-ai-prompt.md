@@ -1,5 +1,21 @@
 # Continue Unio after the 0.5.24 operational update
 
+## Desktop security clarification — 2026-10-25T12:58:08+01:00
+
+Owner asks about WSL versus direct Windows installation and the product idea.
+Checked current primary WSL/Microsoft documentation and existing README boundary:
+ordinary WSL is not an untrusted-code sandbox, and MSIX/Store packaging may be
+full trust. Added a planned security section to CROSS-PLATFORM.md: native desktop
+with separately enforced agent-tool execution boundaries; include lead commands
+and descendants, scoped project/network/credentials, honest unrestricted routes,
+and an optional restricted-VM investigation for untrusted workloads. AppContainer
+is only a feasibility candidate; CLI compatibility and OS denial checks must be
+proven. Review pace and coordination tier stay separate from isolation. Current
+0.5.24 trusted-host behavior and operational-first priorities unchanged. Docs
+only; no provider call, runtime/security configuration change, public push or
+installation. Do not present this architecture proposal as an available feature.
+
+
 ## Native Windows performance clarification — 2026-10-25T12:52:44+01:00
 
 Owner asks whether the future non-WSL desktop fixes the measured issue. Updated
