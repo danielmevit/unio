@@ -122,14 +122,19 @@ with tempfile.TemporaryDirectory(prefix='unio-run-phases-') as temporary:
         launched.append(True)
         return subprocess.Popen(['python3', '-B', '-c', 'raise SystemExit(19)'], stdout=fd, stderr=fd)
 
+    # Patch the supervisor's OS reference, never subprocess's shared os module.
+    isolated_os = types.SimpleNamespace(**vars(os))
+    isolated_os.close = lambda fd: None if fd == 9 else os.close(fd)
+    def broken_write(fd, data):
+        raise BrokenPipeError
+    isolated_os.write = broken_write
     with tempfile.TemporaryFile(mode='w+') as diagnostic, \
          patch.object(module, 'inherited_run', return_value='run'), \
          patch.object(module, 'capture_child'), \
          patch.object(module, 'spawn_owned_provider', side_effect=spawn), \
          patch.object(module, 'finish_owned', return_value='clear'), \
          patch.object(module.signal, 'signal'), \
-         patch.object(module.os, 'close'), \
-         patch.object(module.os, 'write', side_effect=BrokenPipeError), \
+         patch.object(module, 'os', isolated_os), \
          contextlib.redirect_stderr(diagnostic):
         assert module.supervise_run(str(repo.parent), 'mock-order', 'mock-order', '30', 'unused') == 19
     assert launched == [True]
