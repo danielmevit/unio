@@ -630,7 +630,7 @@ def effort_info_audit(args):
     facts = dict(provenance='static_agents_conf', scope='future_launch', alias=alias,
                  tool='Unknown', requested_effort='Unknown', requested_model='Unknown',
                  reason='static_evidence_unavailable')
-    conf_dir = os.environ.get('UNIO_CONF_DIR', str(Path.home() / '.config' / 'unio'))
+    conf_dir = os.environ.get('UNIO_CONF_DIR') or str(Path.home() / '.config' / 'unio')
     project_conf = Path(args.project) / 'coord' / 'agents.conf'
     global_conf = Path(conf_dir) / 'agents.conf'
     if not os.path.lexists(project_conf) and not os.path.lexists(global_conf):

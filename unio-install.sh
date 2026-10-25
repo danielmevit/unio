@@ -21422,7 +21422,7 @@ def effort_info_audit(args):
     facts = dict(provenance='static_agents_conf', scope='future_launch', alias=alias,
                  tool='Unknown', requested_effort='Unknown', requested_model='Unknown',
                  reason='static_evidence_unavailable')
-    conf_dir = os.environ.get('UNIO_CONF_DIR', str(Path.home() / '.config' / 'unio'))
+    conf_dir = os.environ.get('UNIO_CONF_DIR') or str(Path.home() / '.config' / 'unio')
     project_conf = Path(args.project) / 'coord' / 'agents.conf'
     global_conf = Path(conf_dir) / 'agents.conf'
     if not os.path.lexists(project_conf) and not os.path.lexists(global_conf):
@@ -26040,27 +26040,7 @@ def command_audit(conf, mode):
             effective_model='Unknown', effective_effort='Unknown', agents=rows)
         encoded = json.dumps(out, indent=2)
         if len(encoded.encode()) + 1 > 131072: invalid()
-        if mode.startswith('--agent='):
-            target = mode.split('=', 1)[1]
-            matched = [r for r in rows if r['alias'] == target]
-            if matched:
-                row = matched[0]
-                issue_codes = [it['code'] for it in row['issues']]
-                reason = None
-                if row['requested_effort'] == 'Unknown':
-                    if 'effort_ambiguous' in issue_codes: reason = 'effort_ambiguous'
-                    elif 'auto_balance' in issue_codes: reason = 'auto_balance'
-                    elif 'command_unknown' in issue_codes: reason = 'command_unknown'
-                    elif 'selector_unknown' in issue_codes: reason = 'selector_unknown'
-                    else: reason = 'unknown_effort'
-                handoff = dict(found=True, alias=row['alias'], tool=row['tool'],
-                               requested_model=row['requested_model'], requested_effort=row['requested_effort'],
-                               issues=issue_codes, reason=reason)
-            else:
-                handoff = dict(found=False, alias=target, tool='Unknown', requested_model='Unknown',
-                               requested_effort='Unknown', issues=[], reason='missing_alias')
-            rendered = json.dumps(handoff)
-        elif mode == '--json': rendered = encoded
+        if mode == '--json': rendered = encoded
         else:
             text = ['Local static command audit; not readiness or compatibility proof.',
                     'Authentication/capacity/effective model/effective effort: Unknown. No commands executed.']
