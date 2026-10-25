@@ -9,6 +9,26 @@ wt/reliability-integration-20261024. No 0.5.25 main push, global installation or
 release authority. Current batch: checkpoint lookup and effort status; enclosing
 review context follows, with old material/receipt compatibility preserved.
 
+### Both runtime features accepted — 2026-10-25T23:45:40+01:00
+
+Final effort d73a5b64ddca48f5b3fdb77e843a03a1759cebd8 Source/native/Verify0;
+ClaudeCode2.1.310/Opus5.5XHIGH CLI/adapter/nativeReview0 APPROVE completed18:47.
+Lead assessed canonical current approval, exact stable QUALITY bytes, unchanged
+native server/session/run and clean source, then integrated privately. Composition
+proof preserves checkpoint095b0d6 SAVES bytes and final d73 effort/other installer
+bytes exactly. Both semantic features are now accepted. Freeze scope; remaining
+nonblocking notes are backlog, not another review loop.
+
+Lead resumed after pause at23:40; main/global remain0.5.24, native groupsidle,
+yolo/low/real Codex lead/STOP intact. No new0.5.25 public or global authority.
+Next: one bounded mechanical release-preparation worker (prefer Mistral monthly /
+Vibe2.26.1 / GLM5.3 HIGH, current eligibility still to check), version25 metadata,
+scoreboard template regeneration and honest unreleased changelog/release guide.
+No code-function changes. Then exact combined source freeze and ONE full gate.
+Final gate executor prepared, not started, under
+operational-quality-0525-final-gate-20261025. Installation/publication still needs
+owner approval after concrete gated artifacts. No UI/platform/new feature work.
+
 ### Latest checkpoint — 2026-10-25T18:22:38+01:00
 
 0.5.24 remains installed/published; 0.5.25 is private and has no publication,

@@ -16,6 +16,7 @@ publishing raw provider logs or private paths.
 | OpenCode Go / OpenCode1.19.4 | opencode-go/glm-5.3 HIGH | Actual replacement Source/native1 with HTTP401 api_key_expired, no implementation. Listed credentials/catalog did not prove authentication or allowance. No automatic retry/auth change/paid Zen fallback; no model-quality score. |
 | Antigravity subscription / agy1.4.7 | gemini-3.8-flash-medium / MEDIUM fixed selector | Effort feature7abee32 Source/adapter/native/Verify0 and four focused suites. Lead independent installed CLI probe found option-order alias mismatch; quality_issue/unaccepted. Native success is not acceptance. |
 | ChatGPT / Codex0.164.0 | gpt-6.1-sol LOW | Correction9277c76 Source/native/Verify0, positive installed option-order probe, Opus XHIGH APPROVE. Four low notes are being closed in a separate LOW polish; this does not relabel the reviewer opinion. |
+| ChatGPT / Codex0.164.0 | gpt-6.1-sol LOW | Final polish d73a5b6: Source/native/Verify0, all four low findings closed; fresh ClaudeCode2.1.310/Opus5.5XHIGH APPROVE/native0, then lead assessment accepted. Five-minute-forty-one-second Source invocation; separate task size, not a fair model speed comparison. Nonblocking evidence-reason wording and cleanup notes remain backlog. |
 | Grok subscription / Build1.0.62 | No Source invocation | Catalog listedgrok-4.7, but native owner bench remained active. Metadata-only inspection is not a usable-capacity observation or model result. |
 
 Comparable implementation acceptance, correction counts and actual elapsed time
