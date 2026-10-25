@@ -28709,7 +28709,6 @@ def latest_lookup_full_scan(store, worker, deep):
     return None
 
 
-
 def last_good(store, worker, deep):
     try:
         discovery = latest_lookup_discovery(store)
