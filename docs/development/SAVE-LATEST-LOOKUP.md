@@ -67,17 +67,17 @@ categories. Matched 13-save/four-body valid fixtures give these complete counts:
 | `listdir` | 39 | 3 | 3 |
 | `read` | 26 | 54 | 54 |
 | `readlink` / `access` | 0 / 0 | 0 / 0 | 0 / 0 |
-| Sum of instrumented file-operation calls | 339 | 386 | 386 |
+| Sum of instrumented file-operation calls | 339 | 286 | 286 |
 | Manifest reads | 13 | 27 | 27 |
 | Strict JSON parses | 13 | 27 | 14 |
 | Full manifest/schema/fingerprint validations | 13 | 27 | 1 |
 | Full shallow save validations | 13 | 1 | 1 |
 
 Directory enumeration calls (`scandir` plus `listdir`) fall 47 → 19, but directory
-rechecks and raw reads still cost work. Total instrumented API calls increase for
-this small-pool fixture. For 41/401 bodies, baseline `stat` calls are 598/5278
+rechecks and raw reads still cost work. Total instrumented API calls decrease for
+this 13-save fixture, despite increased directory rechecks and raw reads. For 41/401 bodies, baseline `stat` calls are 598/5278
 versus corrected 46/406; all other file-operation counts in this table stay the
-same. Corresponding complete call sums are 820/5500 versus 423/783. This is the
+same. Corresponding complete call sums are 820/5500 versus 323/683. The one-save case below demonstrates a
 work-count crossover; operation categories have different costs.
 
 Deterministic bounds cover one-save active, two-save active/archive and populated
@@ -133,9 +133,9 @@ that cost. These samples are local observations with uncontrolled OS caches and
 scheduling, not a universal platform speedup or full-save measurement.
 
 Small stores can pay more recheck overhead even when CPU work falls; one-save
-requested-worker lookup uses 33 instrumented calls versus baseline 22. At 13
-saves/four bodies the correction still uses more calls than baseline, whereas
-larger pools avoid enough metadata checks to reduce the sum. Timing and CPU
+requested-worker lookup uses 44 instrumented calls versus baseline 26. At 13
+saves/four bodies the correction uses fewer total calls, yet its D: wall time
+regresses; larger pools avoid substantially more body metadata checks. Timing and CPU
 tradeoffs depend on fixture size, storage APIs, caches and scheduling; no
 unsupported platform assumption is used to choose eligibility or fallback.
 
