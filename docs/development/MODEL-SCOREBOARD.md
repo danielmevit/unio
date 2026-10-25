@@ -3,7 +3,7 @@
 ## Operational round observations — 2026-10-25T16:42:15+01:00
 
 Requested models/efforts below are not effective-identity or quota proof. These
-are separate attempts; none of this round's changes is accepted yet. Preserve
+are separate attempts; the checkpoint and final effort changes are accepted privately, with delivery pending. Preserve
 original receipts under the enclosing workspace's tmp/unio-next, rather than
 publishing raw provider logs or private paths.
 
