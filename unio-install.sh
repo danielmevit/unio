@@ -28585,7 +28585,7 @@ def lenient_worker(path):
         return None
 
 
-def scan_store(store, archived=False, budget=None, deep=False):
+def scan_store(store, archived=False, budget=None, deep=False, metadata=None):
     """Bounded metadata validation; corrupt evidence is counted and kept.
 
     A deep load already performs every metadata check this scan performs, so
@@ -28608,9 +28608,19 @@ def scan_store(store, archived=False, budget=None, deep=False):
                 saves.append(dict(id=name, worker=doc['worker'], task=doc['task'],
                                   published=when(doc['published_at']), manifest=doc,
                                   archived=archived, stored_bytes=loaded['stored_bytes']))
+                if metadata is not None:
+                    metadata.append(saves[-1])
                 continue
             except Refuse:
-                pass
+                if metadata is not None and deep:
+                    # Deep-invalid bodies may still qualify for last_good(False).
+                    try:
+                        loaded = load_save(path, name, False)
+                        doc = loaded['manifest']
+                        metadata.append(dict(id=name, worker=doc['worker'],
+                                             published=when(doc['published_at'])))
+                    except Refuse:
+                        pass
         corrupt.append(dict(id=name, worker=lenient_worker(path) if HEX32.fullmatch(name) else None))
     saves.sort(key=lambda item: (item['published'], item['id']), reverse=True)
     return saves, corrupt
@@ -28672,12 +28682,12 @@ def same(a, b):
             and a['repo'] == b['repo'] and a['git'] == b['git'])
 
 
-def retention_plan(store, worker, budget):
+def retention_plan(store, worker, budget, metadata=None):
     # One deep load per active save: a deep load performs every metadata
     # check the former separate scan performed, so classification, ordering
     # and byte validation come from the same single traversal. Deep failures
     # become protected corrupt evidence with the same accounting.
-    active, corrupt = scan_store(store, deep=True, budget=budget)
+    active, corrupt = scan_store(store, deep=True, budget=budget, metadata=metadata)
     if len(active) + len(corrupt) > CAP_PROJECT:
         raise Refuse('excessive', 'active store already exceeds the project cap; existing evidence was preserved')
     archive = archive_for_store(store)
@@ -28722,6 +28732,8 @@ def retention_plan(store, worker, budget):
     if sum(item['stored_bytes'] for item in historical + planned) > ARCHIVE_CAP_BYTES:
         raise Refuse('excessive', 'archive byte cap reached; no history was deleted')
     budget.remaining()
+    if metadata is not None:
+        metadata.extend(historical)
     return planned
 
 
@@ -28743,7 +28755,8 @@ def publish(root, store, worker, task, obs, task_bytes, observed_at, budget,
     staging = os.path.join(store, '.staging-' + save_id)
     try:
         clean_staging(store)
-        to_archive = retention_plan(store, worker, budget)
+        metadata = []
+        to_archive = retention_plan(store, worker, budget, metadata)
         os.mkdir(staging, 0o700)
         os.chmod(staging, 0o700)
         try:
@@ -28795,14 +28808,22 @@ def publish(root, store, worker, task, obs, task_bytes, observed_at, budget,
         os.rename(staging, os.path.join(store, save_id))
         fsync_dir(store)
         fault('publish-after-rename')
+        # Retention preserves every ID, including archived items. These metadata
+        # candidates and the validated new manifest remain under this same lock.
+        metadata.append(dict(id=save_id, worker=worker, published=when(manifest['published_at'])))
+        good = max((item for item in metadata if item['worker'] == worker),
+                   key=lambda item: (item['published'], item['id']))
+        write_attempt(store, worker, task, observed_at, reason, 'complete', save_id,
+                      provider_exit, known_good=good)
         return save_id, len(to_archive)
     finally:
         os.close(lock)
 
 
-def write_attempt(store, worker, task, observed_at, reason, status, save_id, provider_exit=None):
+def write_attempt(store, worker, task, observed_at, reason, status, save_id, provider_exit=None,
+                  known_good=None):
     try:
-        good = last_good(store, worker, False)
+        good = known_good if known_good is not None else last_good(store, worker, False)
         doc = dict(schema_version=1, worker=worker, task=task, observed_at=observed_at, reason=reason,
                    status=status, save_id=save_id, last_good_id=good['id'] if good else None, provider_exit=provider_exit)
         atomic_private(os.path.join(store, 'attempts', worker + '.json'),
@@ -28873,7 +28894,6 @@ def create_locked(root, worker, task, reason='manual', run_id=None, provider_exi
         write_attempt(store, worker, task, observed_at, r.code, status, None, provider_exit)
         print('unio: save %s (%s): %s' % (status, r.code, r.message), file=sys.stderr)
         return r.exit_code
-    write_attempt(store, worker, task, observed_at, reason, 'complete', save_id, provider_exit)
     g = second['git']
     print('saved %s: worker %s, task %s, %d paths, %d commits' % (save_id, worker, task, len(second['entries']), len(g['commit_ids'])))
     print('  base %s (%s), head %s' % (g['base_commit'][:12], 'frozen task base' if second['base_source'] == 'task' else 'coord/base', g['head_commit'][:12]))
