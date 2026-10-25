@@ -21417,51 +21417,76 @@ class Server:
 
 
 def effort_info_audit(args):
-    audit_raw = getattr(args, 'audit_json', None)
-    if audit_raw:
-        try:
-            doc = json.loads(audit_raw)
-            if isinstance(doc, dict):
-                found = doc.get('found', False)
-                reason = doc.get('reason')
-                if not found and not reason:
-                    reason = 'missing_alias'
-                return {
-                    'provenance': 'static_agents_conf',
-                    'scope': 'future_launch',
-                    'alias': doc.get('alias', args.worker.split('-', 1)[0]),
-                    'tool': doc.get('tool', 'Unknown'),
-                    'requested_effort': doc.get('requested_effort', 'Unknown'),
-                    'requested_model': doc.get('requested_model', 'Unknown'),
-                    'reason': reason,
-                }
-        except (ValueError, TypeError):
-            return {
-                'provenance': 'static_agents_conf',
-                'scope': 'future_launch',
-                'alias': args.worker.split('-', 1)[0],
-                'tool': 'Unknown',
-                'requested_effort': 'Unknown',
-                'requested_model': 'Unknown',
-                'reason': 'invalid_agents_conf',
-            }
+    # Only a fresh native command audit supplies facts. Caller JSON is never evidence.
     alias = args.worker.split('-', 1)[0]
+    facts = dict(provenance='static_agents_conf', scope='future_launch', alias=alias,
+                 tool='Unknown', requested_effort='Unknown', requested_model='Unknown',
+                 reason='static_evidence_unavailable')
     conf_dir = os.environ.get('UNIO_CONF_DIR', str(Path.home() / '.config' / 'unio'))
-    proj_conf = Path(args.project) / 'coord' / 'agents.conf'
-    glob_conf = Path(conf_dir) / 'agents.conf'
-    if not proj_conf.is_file() and not glob_conf.is_file():
-        reason = 'missing_agents_conf'
-    else:
-        reason = 'static_evidence_unavailable'
-    return {
-        'provenance': 'static_agents_conf',
-        'scope': 'future_launch',
-        'alias': alias,
-        'tool': 'Unknown',
-        'requested_effort': 'Unknown',
-        'requested_model': 'Unknown',
-        'reason': reason,
-    }
+    project_conf = Path(args.project) / 'coord' / 'agents.conf'
+    global_conf = Path(conf_dir) / 'agents.conf'
+    if not os.path.lexists(project_conf) and not os.path.lexists(global_conf):
+        facts['reason'] = 'missing_agents_conf'
+        return facts
+    cli = os.environ.get('UNIO_EFFORT_CLI')
+    if not cli:
+        return facts
+    try:
+        # doctor uses command_audit's bounded, nonexecuting conservative parser.
+        # Spool its bounded output rather than accepting an argv JSON handoff.
+        with tempfile.TemporaryFile() as output:
+            completed = subprocess.run([cli, 'doctor', '--commands', '--json'],
+                                       cwd=args.project, stdout=output,
+                                       stderr=subprocess.DEVNULL, timeout=15)
+            if completed.returncode or output.tell() > 131072:
+                raise ValueError('invalid audit')
+            output.seek(0)
+            audit = json.loads(output.read(131073))
+        keys = {'schema_version', 'source', 'authentication', 'capacity',
+                'effective_model', 'effective_effort', 'agents'}
+        if (not isinstance(audit, dict) or set(audit) != keys
+                or type(audit['schema_version']) is not int or audit['schema_version'] != 1
+                or audit['source'] != 'local_static'
+                or any(audit[k] != 'Unknown' for k in
+                       ('authentication', 'capacity', 'effective_model', 'effective_effort'))
+                or not isinstance(audit['agents'], list) or len(audit['agents']) > 128):
+            raise ValueError('invalid audit')
+        matched = []
+        row_keys = {'alias', 'tool', 'requested_model', 'requested_effort', 'transport',
+                    'authentication', 'capacity', 'effective_model', 'effective_effort', 'issues'}
+        codes = {'command_unknown', 'whole_taskfile_argv', 'legacy_opencode_permission',
+                 'transport_unknown', 'selector_unknown', 'effort_ambiguous', 'auto_balance'}
+        for row in audit['agents']:
+            if (not isinstance(row, dict) or set(row) != row_keys
+                    or any(not isinstance(row[k], str) or len(row[k]) > 128
+                           for k in row_keys - {'issues'})
+                    or row['tool'] not in ('Unknown', 'codex', 'claude', 'opencode', 'grok', 'agy', 'vibe', 'copilot')
+                    or row['requested_effort'] not in (*LEVELS, 'Unknown')
+                    or not isinstance(row['issues'], list) or len(row['issues']) > len(codes)
+                    or any(not isinstance(it, dict) or set(it) != {'code', 'remedy'}
+                           or not isinstance(it['code'], str) or it['code'] not in codes
+                           or not isinstance(it['remedy'], str) or len(it['remedy']) > 256
+                           for it in row['issues'])):
+                raise ValueError('invalid audit')
+            if row['alias'] == alias:
+                matched.append(row)
+        if len(matched) > 1:
+            raise ValueError('invalid audit')
+        if not matched:
+            facts['reason'] = 'missing_alias'
+            return facts
+        row = matched[0]
+        facts.update({k: row[k] for k in ('tool', 'requested_model', 'requested_effort')})
+        facts['reason'] = None
+        if row['requested_effort'] == 'Unknown':
+            issues = {it['code'] for it in row['issues']}
+            facts['reason'] = next((c for c in ('effort_ambiguous', 'auto_balance',
+                                                'command_unknown', 'selector_unknown')
+                                    if c in issues), 'unknown_effort')
+    except (OSError, ValueError, TypeError, KeyError, RecursionError, subprocess.TimeoutExpired):
+        facts.update(tool='Unknown', requested_model='Unknown', requested_effort='Unknown',
+                     reason='invalid_agents_conf')
+    return facts
 
 
 def effort_info_unsupported_result(args):
@@ -21782,6 +21807,8 @@ def main():
     snd.add_argument('--json', action='store_true')
 
     args = parser.parse_args()
+    if args.action == 'effort' and args.audit_json is not None:
+        parser.error('--audit-json is not accepted from callers')
     if args.action == 'run' and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,127}', args.model):
         parser.error('invalid model label')
     if args.action == 'run':
@@ -21932,6 +21959,13 @@ returned to the client. Worker text streams into the ordinary native task log.
 This is a trusted-host boundary: same-user code execution is not an OS sandbox.
 Do not attach arbitrary existing Codex CLI sessions. Stale manifests fail closed;
 after verifying that the old run has ended, remove its stale manifest manually.
+
+Effort queries use the parsed worker name, so `worker-effort --json WORKER`
+and `worker-effort WORKER --json` report the same configuration. Native worker
+suffixes still select the alias before the first hyphen. Static evidence comes
+from a fresh bounded native command audit, never caller-supplied `--audit-json`
+(which is refused). The audit does not execute configured commands or probe a
+provider. An active owned channel remains authoritative.
 UNIO_WORKER_EFFORT_MD
 cat > "$CONF_DIR/lib/MANAGED-SESSIONS.md" <<'UNIO_MANAGED_SESSIONS_MD'
 # Managed sessions and steering
@@ -36147,19 +36181,8 @@ case "${1:-help}" in
   worker-effort)
     shift
     root=$(find_root) || die "worker-effort requires a native workspace"
-    audit_json=""
-    if [ "$#" -gt 0 ]; then
-      audit_conf="$CONF_FILE"
-      if [ -e "$root/coord/agents.conf" ] || [ -L "$root/coord/agents.conf" ]; then
-        audit_conf="$root/coord/agents.conf"
-      fi
-      if [ ! -f "$audit_conf" ]; then
-        audit_json='{"found":false,"reason":"missing_agents_conf"}'
-      elif command -v python3 >/dev/null; then
-        audit_json=$(quality command-audit "$audit_conf" --agent="${1%%-*}" 2>/dev/null) || audit_json='{"found":false,"reason":"invalid_agents_conf"}'
-      fi
-    fi
-    exec python3 -I -S -B "$CONF_DIR/lib/codex-worker.py" effort --project "$root" ${audit_json:+--audit-json "$audit_json"} "$@";;
+    UNIO_EFFORT_CLI="$(readlink -f -- "$0")" \
+      exec python3 -I -S -B "$CONF_DIR/lib/codex-worker.py" effort --project "$root" "$@";;
   session)
     shift
     root=$(find_root) || die "session requires a native workspace"

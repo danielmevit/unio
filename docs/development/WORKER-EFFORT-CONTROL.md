@@ -87,3 +87,10 @@ Initial estimate: 4–8 hours for a bounded Codex-first slice, subject to the
 capability audit. Additional adapters and dashboard controls need separate
 estimates. Implement after the current milestone and the owner's requested
 break; do not add this feature to the review-findings release.
+
+Effort queries use the parsed worker name, so `worker-effort --json WORKER`
+and `worker-effort WORKER --json` report the same configuration. Native worker
+suffixes still select the alias before the first hyphen. Static evidence comes
+from a fresh bounded native command audit, never caller-supplied `--audit-json`
+(which is refused). The audit does not execute configured commands or probe a
+provider. An active owned channel remains authoritative.

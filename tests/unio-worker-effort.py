@@ -40,6 +40,28 @@ def main():
             assert r_med['current_configuration']['requested_effort'] == 'medium'
             assert r_med['current_configuration']['tool'] == 'codex'
             assert r_med['current_configuration']['reason'] is None
+            # Argparse, rather than argv[0], determines the worker at every option order.
+            for argv in [('--json', 'legacy'), ('legacy-17', '--json'), ('--json', 'legacy-17')]:
+                reordered = json.loads(h.call('worker-effort', *argv, code=2).stdout)
+                assert reordered['current_configuration'] == r_med['current_configuration']
+                assert reordered['worker'] == next(v for v in argv if v != '--json')
+            assert json.loads(h.call('worker-effort', '--json', 'absent-17', code=2).stdout)['current_configuration']['reason'] == 'missing_alias'
+            h.call('worker-effort', '--json', code=2)  # missing positional remains argparse failure
+            # Internal evidence cannot be injected by callers, even when shaped like a handoff.
+            sentinel = 'sk-secret-audit-override-998877'
+            for payload in ['{bad', '[' * 2000, 'x' * 20000,
+                            json.dumps({'found': True, 'alias': 'legacy', 'tool': sentinel,
+                                        'requested_effort': 'high', 'requested_model': sentinel}),
+                            json.dumps({'found': [], 'requested_effort': {'secret': sentinel}}),
+                            json.dumps({'found': True, 'unsupported': sentinel}),
+                            json.dumps({'found': True, 'alias': 'legacy', 'tool': 'codex',
+                                        'requested_model': 'gpt-6.1-sol', 'requested_effort': 'high',
+                                        'issues': [], 'reason': None})]:
+                refused = h.call('worker-effort', '--json', 'legacy', '--audit-json', payload, code=2)
+                assert not refused.stdout
+                assert '--audit-json is not accepted from callers' in refused.stderr
+                assert sentinel not in refused.stderr and payload not in refused.stderr
+            assert not h.receipt.exists()
             # Human presentation check:
             human = h.call('worker-effort','legacy',code=2).stdout
             assert 'worker=legacy state=unsupported live_control=unsupported channel=none effective=Unknown' in human
@@ -99,12 +121,14 @@ def main():
             (h.root / 'coord/STOP').write_text('frozen STOP\n')
             r_stop = json.loads(h.call('worker-effort','cop','--json',code=2).stdout)
             assert r_stop['state'] == 'unsupported'
+            assert json.loads(h.call('worker-effort','--json','cop',code=2).stdout) == r_stop
             assert (h.root / 'coord/STOP').read_text() == 'frozen STOP\n'
             (h.root / 'coord/STOP').unlink()
 
             # 8. Unsupported set unchanged/nonzero (cannot edit config):
             conf_path.write_text('legacy=codex exec -c model_reasoning_effort=medium - < "$TASKFILE"\n')
             r_set = json.loads(h.call('worker-effort','legacy','high','--json',code=2).stdout)
+            assert json.loads(h.call('worker-effort','--json','legacy','high',code=2).stdout) == r_set
             assert r_set['state'] == 'unsupported'
             assert r_set['live_control'] == 'unsupported'
             assert 'model_reasoning_effort=medium' in conf_path.read_text()
@@ -113,6 +137,10 @@ def main():
             conf_path.write_text(conf_backup)
             print('ok read-only effort clarity, provenance, fallback, bounds and safety verified',flush=True)
             h.start(extra={'FAKE_READ_ONLY':'1'})
+            native = json.loads(h.call('worker-effort', '--json', 'mock').stdout)
+            conventional = json.loads(h.call('worker-effort', 'mock', '--json').stdout)
+            assert native == conventional and 'current_configuration' not in native
+            assert native['effective'] == 'Unknown'
             original=h.manifest.read_bytes()
             doc=json.loads(original)
             socket_path=Path(doc['socket'])

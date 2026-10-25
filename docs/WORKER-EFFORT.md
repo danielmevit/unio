@@ -96,3 +96,10 @@ returned to the client. Worker text streams into the ordinary native task log.
 This is a trusted-host boundary: same-user code execution is not an OS sandbox.
 Do not attach arbitrary existing Codex CLI sessions. Stale manifests fail closed;
 after verifying that the old run has ended, remove its stale manifest manually.
+
+Effort queries use the parsed worker name, so `worker-effort --json WORKER`
+and `worker-effort WORKER --json` report the same configuration. Native worker
+suffixes still select the alias before the first hyphen. Static evidence comes
+from a fresh bounded native command audit, never caller-supplied `--audit-json`
+(which is refused). The audit does not execute configured commands or probe a
+provider. An active owned channel remains authoritative.
