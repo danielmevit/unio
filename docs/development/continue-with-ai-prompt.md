@@ -1,5 +1,44 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## FINAL24 gate ACTUALLY RUNNING; no features remain in this batch — 2026-10-25T06:33:20+01:00
+
+Frozenqualitysource f7415697bfdb45768552dcf2180f250abc3a36c8/version24/tree
+fromoperational-quality-final-gate-20261025/frozen-source.json. Gateactualstart
+06:21:27+01, launcher2242211/actualgate2242224, UID1000/cap0/privateTMPFS exact
+Gitclone, supervisor7200s. full-gate.json stateRUNNING (NOT PASS). Global/main23;
+GitHubofficiallatestv23rechecked06:26 with sixassetnames. NoAIworkersactive.
+No newfeature/Sourcecalltoextendthiscandidate. Waitactualgateonly.
+
+Source599filearchive individuallyGitblobverified, localcandidate-assets four
+provisionalfiles (installer/source.tar.gz/LICENSE/NOTICE). Privateassembled
+installsmoke0/version0shows24/recordhelp--timeout1..300visible; globalbinaryand
+agents.confSHAunchanged. No globalinstall/providercall. Smokeandassetreceipts
+infinalgatepipeline.
+
+CURRENT artifactfinalizer ONLY finalize-local-assets-after-gate-v2.py PID2277731,
+waitsactualgatePASS0+sourceunchanged/untracked[] thenlocalPROVENANCE.json and
+SHA256SUMS, verifiesallhashes, recordsready-for-LEADassessment. Noautoaccept/
+push/install/publication. Oldfinalizer2274380 superseded/terminatedexactpidfd
+beforeprovider0 becauseitwouldretainlocalassessmentpaths inpublicprovenance;
+oldscript+waitingstatepreserved. v2 keepscomponenthashes/targets, stripslocalpaths.
+
+AcceptedfourpiecesandexactcomponentassessmentSHAin frozen-source.json; current
+checks/reviews/leadprobes allpassedbeforefreeze. Streamfix Sourcequalityscore
+accepted952fe6db373aefcd658e9021fe503bdc stored0/54.22s viareviewedhelper120s;
+original6aae qualityissuea780... preservedalongsideitsOpusopinionAPPROVE.
+
+Thisnewhandoffcommit isDOCONLY afterfrozengatecommit; assertanychanges since
+f741 areonlydocs before reusinggate. Archive/provenance currentlyexactf741
+(privateunreleased labels). Finalpublicationwillneedownerpermissionandhonest
+doc-label/source-archive/provenance refresh withruntime/testbyteidentity proof.
+Neverpointcurrentgatesource to movingHEAD or claim gatecoverednewcode.
+
+NEXT read full-gate.json/log andartifact-finalization.json. If0 actualPASS,
+existing-leadfinalbatchassessment andartifactchecks. IfFAIL, preserveexact
+firstfailure anddelegateboundedcorrectionthroughUnio (defaultSolLOW), no blind
+repeat. Requiredownerauthorizationstillmissingforofficialmainpush/release/
+globalinstall; do allconcretereviewableprep beforeasking. Ownership/UIparked.
+
 ## All four operational pieces accepted; freezing final24 gate — 2026-10-25T06:20:05+01:00
 
 Correctedphased843496 Source/native4PASS0 and freshAnthropicClaudeCode2.1.310/
