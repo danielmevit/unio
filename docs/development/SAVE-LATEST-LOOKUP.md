@@ -41,7 +41,7 @@ atomic filesystem snapshot; existing locking and concurrent-mutation limits rema
 
 ## Original prototype evidence, retained
 
-The original 13-save fixture (seven active, six archived, 12 foreign workers,
+The original 13-save fixture (seven active, six archived, 12 foreign saves,
 four pool bodies per save) reported full metadata loads 13 → 1 and pool metadata
 checks 52 → 4, but manifest reads 13 → 27. Those original receipts and the early
 commits remain. Review correctly found this insufficient total-work accounting:
@@ -50,7 +50,13 @@ Its shallow/deep mismatch fallback could swallow a genuine refusal and return
 an older save. Original green suites did not establish acceptance. Reviewer-only
 platform timings are not reused as reproduced measurements here.
 
-## Correction work accounting, 2026-10-25
+## Shallow lookup work accounting, 2026-10-25
+
+All work-count and timing tables below measure `deep=False` (shallow lookup).
+For stable inputs, both implementations add the same existing deep validation
+of the selected save when `deep=True`; deep counts and wall/CPU performance
+have not been measured. These figures do not establish a periodic-checkpoint or
+`save inspect --worker` speedup.
 
 The installed suite instruments Python file-operation API calls, not kernel
 syscalls or hardware I/O. It reports every instrumented category, including zero
@@ -87,7 +93,7 @@ parses, validations, every file-operation category and the actual fast/fallback
 path. Corrupt-history cases deliberately avoid permanent global fallback, though
 invalid requested-worker candidates may require several full validations.
 
-## Bounded timings and reproducibility
+## Bounded shallow timings and reproducibility
 
 Timing is optional measurement, never a regression threshold. Set
 `UNIO_LOOKUP_MEASURE` to a project-owned JSON output path and run

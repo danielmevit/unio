@@ -19,6 +19,27 @@ This backlog consolidates pending, accepted, and shipped functional improvements
   metadata work. First validate the current 0.5.24 helper's call path and prove
   equivalent outcomes; do not rewrite safety checks from timing alone.
 
+### Private candidate and next follow-ups — 2026-10-25T18:22:38+01:00
+
+Checkpoint lookup is accepted on the private integration branch after native
+checks, Opus5.5XHIGH approval and lead assessment. Its measured speedups apply
+to shallow lookup fixtures; the small-pool mounted-drive regression and
+unmeasured deep production path remain explicit. Stable is still0.5.24.
+Effort-status clarity has also passed native checks and Opus approval; a bounded
+final polish closes four low review notes before freezing the next update.
+Neither addition is published or globally installed.
+
+After this coherent batch, prioritize graceful refusal of deeply nested JSON
+in save metadata: the unchanged strict_json function raises RecursionError for
+a synthetically bounded400001-byte input, confirmed independently without a
+real store. This predates both changes. Use a separate scoped correction and
+regression tests; do not fold it silently into the accepted lookup helper.
+Then implement bounded enclosing review context with exact hashes and preserved
+legacy material protocols. Two effort-review informational follow-ups remain:
+clarify that requested-model privacy relies on the trusted native audit parser,
+and make nested read-only audit-process cleanup exact on timeout. They are not
+new provider permissions, account enforcement or credential-exposure claims.
+
 ### Operational queue
 
 1. Reduce measured repeated save/helper work on mounted filesystems while

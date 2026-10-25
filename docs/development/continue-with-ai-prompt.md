@@ -9,6 +9,57 @@ wt/reliability-integration-20261024. No 0.5.25 main push, global installation or
 release authority. Current batch: checkpoint lookup and effort status; enclosing
 review context follows, with old material/receipt compatibility preserved.
 
+### Latest checkpoint — 2026-10-25T18:22:38+01:00
+
+0.5.24 remains installed/published; 0.5.25 is private and has no publication,
+main-push or global-install authority. Finish these two operational features;
+no new ownership/UI/platform work or extra feature scope during finalization.
+
+Checkpoint095b0d6 Source/native/Verify0, current ClaudeCode2.1.310/Opus5.5XHIGH
+CLI/adapter/nativeReview0 APPROVE at17:50/17:51. Lead accepted runtime with
+independent scope/refusal proofs, privately merged6f93b41. Lead doc-only edits
+now label every measurement shallow/deep=False, deep production-path performance
+unmeasured, and correct '12 foreign saves'. Runtime/tests match reviewed bytes.
+Old prototype REQUEST-CHANGES and provider-limit correction remain unchanged.
+
+Effort9277c76 Source/native/Verify0, lead option-order probe PASS, actual fresh
+Opus5.5XHIGH CLI/adapter/nativeReview0 APPROVE at18:10. First native review
+attempt hit a LOCAL context bound before any model call; preserved in
+review-dispatch-attempt-1, then exact context281450bytes was reviewed. No Opus
+quota/code-quality failure was inferred. Four LOW notes justify one final polish,
+not a fake REQUEST-CHANGES: empty UNIO_CONF_DIR default, remove dead audit mode,
+cover new validator, fix guide status. Two informational notes stay backlog.
+
+ACTIVE final polish task EFFORT-REVIEW-FINAL-POLISH-SOL-LOW-0525-20261025,
+worker codex-effort-polish-low-20261025/base9277c76, pipeline
+`tmp/unio-next/effort-clarity-review-polish-sol-low-20261025/`.
+ChatGPT/CodexCLI0.164.0/gpt-6.1-sol LOW; effectiveUnknown. Source state:
+provider_running / start 2026-10-25T18:21:01+01:00.
+Controller2579915, review observer2580584. One real Codex lead/group companion;
+fresh native observation18:18 showed17%five-hour/71%weekly, reset19:39:18Z
+(20:39:18 local). This is dated only. Keep work delegated and lead concise;
+no extra Codex worker. Native narrow grant/temporarymedium/STOP/restoredlow.
+Source's five gates/four focused suites and exact stable QUALITY-module byte
+identity must pass. A fresh current-code OpusXHIGH review waits real gates and
+idle Claude; packet omits the unchanged audit-test file but retains complete
+changed helper/test/fixture and audit/doctor context, bounded with exact hashes.
+
+No broad gate yet. After final polish review and lead assessment, merge exact
+runtime privately, consolidate docs/changelog/scoreboard and delegate mechanical
+version/template finalization. Scoreboard installer mirror remains pending.
+One final frozen-batch full gate follows. Prefer another funded account for
+routine release preparation if eligible; no paid API fallback or silent inline
+product fixes. Do not expand into a third feature before this candidate closes.
+
+Known pre-existing follow-up: lead pure-memory probe reproduced RecursionError
+on a400001-byte deeply nested JSON value; strict_json is byte-identical to
+public main. Exact evidence lead-existing-json-depth-probe.json in checkpoint
+pipeline. Plan bounded malformed-store parsing separately after25, not a hidden
+lookup regression or scope expansion. Deep performance remains unmeasured.
+Native audit descendant cleanup/model-pattern informational notes also stay
+explicit backlog. Then bounded enclosing review context, preserving legacy
+material/receipt protocols, before ownership/UI/platform work.
+
 ### Checkpoint lookup: gates passed, independent review active
 
 Current candidate: 095b0d6ca428b650f094b32f48d94d975c136f0e, clean worker

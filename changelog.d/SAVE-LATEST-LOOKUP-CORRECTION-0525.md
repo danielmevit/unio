@@ -1,1 +1,3 @@
 Correct latest-lookup fallback refusal propagation and use untrusted raw manifest hints with full selected-save validation. Complete file-operation counters expose the one-save overhead (26 → 44 calls), 13-save reduction (339 → 286 calls) and measured small-pool D: slowdown; retained interleaved D:/private-tmpfs measurements, fast-path/race regressions and limitations are documented in the guide. Original prototype evidence and provider-limit failure remain preserved; independent review and lead acceptance are pending.
+
+Performance counts and timings describe shallow lookup (`deep=False`) only. Deep production-path performance remains unmeasured; the documented small-pool mounted-drive regression remains.
