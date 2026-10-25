@@ -80,6 +80,43 @@ auth/billing/global edits, public push or real-store cleanup. Run one final
 full gate only on the accepted frozen batch, not repeatedly per small change.
 
 
+### Effort replacement authentication failure — 2026-10-25T16:42:15+01:00
+
+Grok remained owner-benched; CLI1.0.62/catalog inspected only, zero inference
+and no on/auth changes. New proper implementation task
+WORKER-EFFORT-CLARITY-GO-GLM-HIGH-0525-20261025, worker
+opencode-effort-clarity-20261025/basebd32914, pipeline
+effort-clarity-opencode-go-glm-high-20261025. OpenCode Go subscription /
+OpenCode1.19.4 / requested opencode-go/glm-5.3 HIGH, main/all helpers pinned
+GoGLM/high, Go only, plugins/MCP disabled and recursive task denied.
+Source actual16:39:04->16:40:00/CLI1: HTTP401 api_key_expired, no implementation.
+The credential being listed and catalog availability did not prove eligibility.
+Native finalization receipt remains authoritative for native exit. Preserve
+failure; no blind retry, auth manipulation or paid Zen/Inception fallback.
+Effective model/effort and remaining allowanceUnknown; no quality conclusion.
+
+Checking enabled Antigravity/agy1.4.6 and canonical worker adapter medium
+selector for a NEW independent effort task. No AGY inference yet. Reuse the
+existing spec/scope/tests, retain all failures and exact routes. New Source
+must finish implementation, native checks and a fresh eligible Opus5.5XHIGH
+review plus lead assessment. Do not claim launch preparation as delivery.
+
+Checkpoint LOW continuation actual source running, current095b0d6 includes
+measured documentation/counter corrections; implementation hashes unchanged.
+Both D and private-tmpfs measurement calls exited0. D13save medians604->649ms
+(4bodies, slower),1398->746ms(41),9881->1465ms(401); component-only, uncontrolled
+caches, no universal/full-save speed claim. Focused check wrapper currently
+reports lookup/attempt-reuse/performance passed, retention/work-saving pending.
+Original quota failure and old prototype review remain. Fresh independent
+Opus review waits actualSource/native/Verify0 and tierlow restoration.
+
+Local native experience recorder2493968 runs four sequential dated assessments
+with120s observation bounds. Read operational-round-experience-20261025/records.json
+for actual writes: prototypequality_issue, first correctionoperational_failure,
+inventoryunaccepted/lead contracterror, Vibe featureoperational_failure. Zero
+Source calls, no acceptance or historical failure overwrite.
+
+
 ## Desktop security clarification — 2026-10-25T12:58:08+01:00
 
 Owner asks about WSL versus direct Windows installation and the product idea.

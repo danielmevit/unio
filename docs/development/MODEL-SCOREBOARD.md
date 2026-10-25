@@ -1,5 +1,27 @@
 # Model scoreboard and delegation guide
 
+## Operational round observations — 2026-10-25T16:42:15+01:00
+
+Requested models/efforts below are not effective-identity or quota proof. These
+are separate attempts; none of this round's changes is accepted yet. Preserve
+original receipts under the enclosing workspace's tmp/unio-next, rather than
+publishing raw provider logs or private paths.
+
+| Route / CLI | Requested model / effort | Observed result and qualification |
+| --- | --- | --- |
+| ChatGPT / Codex0.164.0 | gpt-6.1-sol LOW | Lookup prototype74b1e22: Source/native0, four native checks and five focused suites passed. Independent ClaudeCode2.1.310/Opus5.5XHIGH returned REQUEST-CHANGES; lead reproduced swallowed fallback refusal. quality_issue, not acceptance despite green checks. |
+| ChatGPT / Codex0.164.0 | gpt-6.1-sol LOW | Correction96cc140 plus preserved four-file partial work: Source/native1 after explicit usage-limit evidence, final gates unfinished. Operational failure, not reasoning insufficiency. Exact bytes carried into new authorized LOW continuationf7c9800; current095b0d6 documentation and focused checks underway, no acceptance yet. |
+| Mistral monthly / Vibe2.26.1 | glm-5-3 HIGH | Effort inventory972562d delivered Source/adapter/native0 and three checks, but overallverify1: lead requested a doccommit under report-only. Supporting proposal only; contract mistake is the lead's, not a model-quality defect. |
+| Mistral monthly / Vibe2.26.1 | glm-5-3 HIGH | Actual effort implementation ended adapter2 infrastructure/no edits. Preserve as operational_failure, no cap or reasoning claim. |
+| OpenCode Go / OpenCode1.19.4 | opencode-go/glm-5.3 HIGH | Actual replacement Source1 with HTTP401 api_key_expired, no implementation. Listed credentials/catalog did not prove authentication or allowance. No automatic retry/auth change/paid Zen fallback; no model-quality score. |
+| Grok subscription / Build1.0.62 | No Source invocation | Catalog listedgrok-4.7, but native owner bench remained active. Metadata-only inspection is not a usable-capacity observation or model result. |
+
+Comparable implementation acceptance, correction counts and actual elapsed time
+matter more than aggregate success exits. The LOW continuation is unfinished;
+its measured D/tmpfs component timings do not establish per-task token savings
+or a universal model ranking. Native experience writes have independent receipts;
+failed observations stay failed and are not invented as stored assessments.
+
 Updated 2026-10-23 from real Unio work. Read this before delegation, alongside
 the project's latest capacity notes and owner instructions. Select by task
 fit and checked outcomes; an unavailable or owner-reserved model is not a

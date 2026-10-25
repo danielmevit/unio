@@ -1,18 +1,26 @@
 # Unio roadmap and development priorities
 
-## Current owner direction — 2026-10-24T22:52:32+02:00
+## Current delivery and owner direction — 2026-10-25T16:42:15+01:00
 
-Published and installed baseline is0.5.23. Prioritize operational reliability
-and quality of life in the next proposed0.5.24 batch. Finish current checkpoint
-and review fixes, then address evidenced helper delays and clear run/route/
-effort diagnostics. See [the current backlog](IMPROVEMENT-BACKLOG.md).
+Published and installed baseline is [0.5.24](https://github.com/danielmevit/unio/releases/tag/v0.5.24).
+The operational update delivered truthful review dispatch/history, checkpoint
+metadata reuse, a configurable experience-record observation bound and human
+foreground phases. Full gate, independent assessments, installation and official
+download checks passed. It does not guarantee that every mounted-drive save
+finishes inside its existing deadline.
 
-Managed lead ownership/lifecycle, dashboard expansion, phone access and native
-desktop interfaces follow the operational work. Preserve completed internal
-foundations and all failed attempts; do not start another ownership assignment
-now. Future feature release numbers are unassigned; Windows still precedes
-macOS. The [version plan](../VERSION-PLAN.md) supersedes earlier dated sequences
-below. No0.5.24 push, global installation or publication is authorized.
+The next private0.5.25 operational batch targets measured latest-checkpoint
+lookup overhead and clearer effort configuration/live-control status, followed
+by bounded enclosing review context. Current implementations are not accepted
+or shipped. See [the current backlog](IMPROVEMENT-BACKLOG.md) and
+[the continuation](continue-with-ai-prompt.md) for exact workers and evidence.
+
+The owner's2026-10-24 priority remains: operational reliability and quality of
+life before managed lead ownership/lifecycle, dashboard expansion, phone or
+native desktop interfaces. Preserve completed foundations and failed attempts;
+no new ownership assignment now. Windows precedes macOS. The
+[version plan](../VERSION-PLAN.md) supersedes historical dated sequences below.
+A new0.5.25 main push, global installation or release requires owner approval.
 
 
 Current delivery,2026-10-19: [v0.5.22](https://github.com/danielmevit/unio/releases/tag/v0.5.22)
