@@ -1,9 +1,12 @@
 # Latest checkpoint lookup
 
 `last_good(store, worker, deep)` discovers bounded manifest hints before visiting
-body pools. The private 0.5.24 prototype was **not accepted** after review; the
-2026-10-25 correction below still requires fresh independent review and lead
-acceptance. No full-save timeout cure or universal speedup is established.
+body pools. The original private prototype was **not accepted** after review.
+The corrected implementation at `095b0d6` passed fresh independent Claude Code
+2.1.310 / Opus 5.5 XHIGH review and the lead's assessment on 2026-10-25; it is
+accepted on the private 0.5.25 integration branch. Public delivery and the full
+combined gate remain separate steps. No full-save timeout cure or universal
+speedup is established.
 
 ## Selection and error behavior
 
@@ -154,8 +157,10 @@ actually execute, and shallow/deep/changed-then-restored fallback refusals canno
 return an older save. Retained negative-control runs fail each refusal regression
 against the original prototype. Arbitrary wrapper I/O propagation is also checked.
 
-The existing quality registration is byte-identical to the frozen base. Only
-the five focused suites and syntax/whitespace/scope checks run for this correction;
-there is no broad gate, provider probe, real-store repair, global installation,
-version change or release. The full-scan function body remains byte-identical.
-Independent current-code review and existing lead acceptance follow delivery.
+For the correction task itself, the quality registration remained byte-identical
+to its frozen base, and validation covered the five focused suites plus
+syntax/whitespace/scope checks. The full-scan function body remains byte-identical.
+That task did not perform a broad gate, provider probe, real-store repair, global
+installation, version change or release. Independent current-code review and
+lead acceptance subsequently passed; the separate assembled-candidate gate and
+release preparation are tracked in [the release guide](../RELEASE-0.5.25.md).

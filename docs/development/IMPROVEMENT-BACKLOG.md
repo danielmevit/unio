@@ -15,9 +15,11 @@ This backlog consolidates pending, accepted, and shipped functional improvements
   Both letters share the same NVMe device. C: did not improve this small-file
   workload; a native Windows control handled the same D: bytes quickly. These
   component timings are not full Unio save or physical-disk speed measurements.
-- **Next implementation candidate:** avoidable latest-checkpoint/periodic lookup
-  metadata work. First validate the current 0.5.24 helper's call path and prove
-  equivalent outcomes; do not rewrite safety checks from timing alone.
+- **Privately accepted 0.5.25 candidate:** reduced latest-checkpoint lookup work
+  with preserved selection/refusal semantics, and truthful current-configuration
+  versus live effort status. Component and mechanical-preparation reviews passed;
+  one combined gate and owner-authorized delivery remain. Shallow lookup timings
+  do not establish faster periodic saves or a full-save deadline guarantee.
 
 ### Private candidate and next follow-ups — 2026-10-25T18:22:38+01:00
 
@@ -25,8 +27,9 @@ Checkpoint lookup is accepted on the private integration branch after native
 checks, Opus5.5XHIGH approval and lead assessment. Its measured speedups apply
 to shallow lookup fixtures; the small-pool mounted-drive regression and
 unmeasured deep production path remain explicit. Stable is still0.5.24.
-Effort-status clarity has also passed native checks and Opus approval; a bounded
-final polish closes four low review notes before freezing the next update.
+Effort-status clarity's final polish also passed native checks, fresh Opus
+approval and lead acceptance. Both features and release metadata are frozen;
+no further semantic changes are included in this batch.
 Neither addition is published or globally installed.
 
 After this coherent batch, prioritize graceful refusal of deeply nested JSON

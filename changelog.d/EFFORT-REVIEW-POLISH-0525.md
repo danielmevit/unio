@@ -9,3 +9,8 @@ next-update configuration-clarity addition; dashboard controls remain planned.
 The prior independent Claude Code 2.1.310 / Opus5.5 XHIGH APPROVE remains the
 historical verdict. This bounded polish addresses its four LOW findings; fresh
 final-code review and lead acceptance remain separate follow-up steps.
+
+Current disposition, 2026-10-26T00:54:14+01:00: final component review by Claude Code 2.1.310 /
+Opus 5.5 XHIGH and the existing lead assessment passed; privately accepted.
+Earlier pending wording records task-delivery state. The assembled gate and
+public delivery remain separate; see docs/RELEASE-0.5.25.md.

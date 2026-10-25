@@ -11,8 +11,10 @@ finishes inside its existing deadline.
 
 The next private0.5.25 operational batch targets measured latest-checkpoint
 lookup overhead and clearer effort configuration/live-control status, followed
-by bounded enclosing review context. Current implementations are not accepted
-or shipped. See [the current backlog](IMPROVEMENT-BACKLOG.md) and
+by bounded enclosing review context. Both implementations passed independent
+Opus 5.5 XHIGH review and lead assessment and are privately integrated. Mechanical
+release preparation also passed review; the combined quality gate is running.
+Neither feature is published or globally installed. See [the current backlog](IMPROVEMENT-BACKLOG.md) and
 [the continuation](continue-with-ai-prompt.md) for exact workers and evidence.
 
 The owner's2026-10-24 priority remains: operational reliability and quality of
