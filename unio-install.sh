@@ -21416,10 +21416,89 @@ class Server:
                 pass
 
 
+def effort_info_audit(args):
+    audit_raw = getattr(args, 'audit_json', None)
+    if audit_raw:
+        try:
+            doc = json.loads(audit_raw)
+            if isinstance(doc, dict):
+                found = doc.get('found', False)
+                reason = doc.get('reason')
+                if not found and not reason:
+                    reason = 'missing_alias'
+                return {
+                    'provenance': 'static_agents_conf',
+                    'scope': 'future_launch',
+                    'alias': doc.get('alias', args.worker.split('-', 1)[0]),
+                    'tool': doc.get('tool', 'Unknown'),
+                    'requested_effort': doc.get('requested_effort', 'Unknown'),
+                    'requested_model': doc.get('requested_model', 'Unknown'),
+                    'reason': reason,
+                }
+        except (ValueError, TypeError):
+            return {
+                'provenance': 'static_agents_conf',
+                'scope': 'future_launch',
+                'alias': args.worker.split('-', 1)[0],
+                'tool': 'Unknown',
+                'requested_effort': 'Unknown',
+                'requested_model': 'Unknown',
+                'reason': 'invalid_agents_conf',
+            }
+    alias = args.worker.split('-', 1)[0]
+    conf_dir = os.environ.get('UNIO_CONF_DIR', str(Path.home() / '.config' / 'unio'))
+    proj_conf = Path(args.project) / 'coord' / 'agents.conf'
+    glob_conf = Path(conf_dir) / 'agents.conf'
+    if not proj_conf.is_file() and not glob_conf.is_file():
+        reason = 'missing_agents_conf'
+    else:
+        reason = 'static_evidence_unavailable'
+    return {
+        'provenance': 'static_agents_conf',
+        'scope': 'future_launch',
+        'alias': alias,
+        'tool': 'Unknown',
+        'requested_effort': 'Unknown',
+        'requested_model': 'Unknown',
+        'reason': reason,
+    }
+
+
+def effort_info_unsupported_result(args):
+    config_facts = effort_info_audit(args)
+    return {
+        'worker': args.worker,
+        'state': 'unsupported',
+        'live_control': 'unsupported',
+        'channel': 'none',
+        'effective': 'Unknown',
+        'current_configuration': config_facts,
+    }
+
+
+def effort_info_present(result):
+    if result.get('state') != 'unsupported' or 'current_configuration' not in result:
+        return ' '.join(f'{k}={v}' for k, v in result.items())
+    worker = result.get('worker', '')
+    state = result.get('state', 'unsupported')
+    live = result.get('live_control', 'unsupported')
+    chan = result.get('channel', 'none')
+    eff = result.get('effective', 'Unknown')
+    cfg = result.get('current_configuration', {})
+    effort = cfg.get('requested_effort', 'Unknown')
+    reason = cfg.get('reason')
+    prov = cfg.get('provenance', 'static_agents_conf')
+    scope = cfg.get('scope', 'future_launch')
+    line1 = f'worker={worker} state={state} live_control={live} channel={chan} effective={eff}'
+    reason_clause = f' reason={reason}' if reason else ''
+    line2 = f'current_configuration: effort={effort}{reason_clause} provenance={prov} scope={scope} (model reasoning effort, distinct from coordination tier and review pace)'
+    return f'{line1}\n{line2}'
+
+
 def client(args):
     manifest = endpoint(args.project, args.worker)
     if not os.path.lexists(manifest):
-        return {'state': 'unsupported', 'effective': 'Unknown', 'worker': args.worker}
+        return effort_info_unsupported_result(args)
     doc, inode = read_private(manifest)
     if doc['project'] != str(Path(args.project).absolute()) or doc['worker'] != args.worker:
         raise Refusal('channel binding mismatch')
@@ -21679,6 +21758,7 @@ def main():
     get.add_argument('worker')
     get.add_argument('effort', nargs='?', choices=LEVELS)
     get.add_argument('--project', required=True)
+    get.add_argument('--audit-json', default=None)
     get.add_argument('--json', action='store_true')
 
     sess = sub.add_parser('session')
@@ -21747,7 +21827,7 @@ def main():
         result = client(args)
     except (Refusal, OSError, ValueError, KeyError, TypeError, RecursionError):
         result = {'worker': args.worker, 'state': 'stale-or-invalid', 'effective': 'Unknown'}
-    print(json.dumps(result) if args.json else ' '.join(f'{k}={v}' for k, v in result.items()))
+    print(json.dumps(result) if args.json else effort_info_present(result))
     return 0 if result['state'] in ('observed', 'acknowledged', 'unverified') else 2
 
 if __name__ == '__main__':
@@ -21823,7 +21903,19 @@ real shared-group mapping and lead reservation procedure for either example.
 `unio worker-effort WORKER high --json` requests a supported setting.
 Only low, medium, high and xhigh are accepted, intersected with the selected
 model's app-server catalog. This command cannot change model, permissions,
-sandbox or service tier. Legacy exec and other routes return unsupported.
+sandbox or service tier.
+
+When a worker has no active supported control channel (such as legacy exec or
+other routes without an owned control socket), `unio worker-effort WORKER [--json]`
+reports `state: unsupported` and `live_control: unsupported`, explaining the absence
+of an active channel. Where discoverable from `agents.conf`, read-only static facts
+are surfaced under `current_configuration` for future launches (`scope: future_launch`,
+`provenance: static_agents_conf`). Newly edited configuration is never attributed
+as what an already-running or frozen worker started with. Missing, ambiguous,
+compound or wrapped routes remain Unknown with an actionable reason. Live-set
+requests on unsupported routes continue to fail safely and never edit configuration.
+Model reasoning effort remains distinct from coordination tier (`unio tier`) and
+review pace, and effective inference effort stays Unknown.
 
 An empty update response means RPC success, not configured effort. Notification
 and readback acknowledge configuration for subsequent turns. A request during
@@ -25914,7 +26006,27 @@ def command_audit(conf, mode):
             effective_model='Unknown', effective_effort='Unknown', agents=rows)
         encoded = json.dumps(out, indent=2)
         if len(encoded.encode()) + 1 > 131072: invalid()
-        if mode == '--json': rendered = encoded
+        if mode.startswith('--agent='):
+            target = mode.split('=', 1)[1]
+            matched = [r for r in rows if r['alias'] == target]
+            if matched:
+                row = matched[0]
+                issue_codes = [it['code'] for it in row['issues']]
+                reason = None
+                if row['requested_effort'] == 'Unknown':
+                    if 'effort_ambiguous' in issue_codes: reason = 'effort_ambiguous'
+                    elif 'auto_balance' in issue_codes: reason = 'auto_balance'
+                    elif 'command_unknown' in issue_codes: reason = 'command_unknown'
+                    elif 'selector_unknown' in issue_codes: reason = 'selector_unknown'
+                    else: reason = 'unknown_effort'
+                handoff = dict(found=True, alias=row['alias'], tool=row['tool'],
+                               requested_model=row['requested_model'], requested_effort=row['requested_effort'],
+                               issues=issue_codes, reason=reason)
+            else:
+                handoff = dict(found=False, alias=target, tool='Unknown', requested_model='Unknown',
+                               requested_effort='Unknown', issues=[], reason='missing_alias')
+            rendered = json.dumps(handoff)
+        elif mode == '--json': rendered = encoded
         else:
             text = ['Local static command audit; not readiness or compatibility proof.',
                     'Authentication/capacity/effective model/effective effort: Unknown. No commands executed.']
@@ -36035,7 +36147,19 @@ case "${1:-help}" in
   worker-effort)
     shift
     root=$(find_root) || die "worker-effort requires a native workspace"
-    exec python3 -I -S -B "$CONF_DIR/lib/codex-worker.py" effort --project "$root" "$@";;
+    audit_json=""
+    if [ "$#" -gt 0 ]; then
+      audit_conf="$CONF_FILE"
+      if [ -e "$root/coord/agents.conf" ] || [ -L "$root/coord/agents.conf" ]; then
+        audit_conf="$root/coord/agents.conf"
+      fi
+      if [ ! -f "$audit_conf" ]; then
+        audit_json='{"found":false,"reason":"missing_agents_conf"}'
+      elif command -v python3 >/dev/null; then
+        audit_json=$(quality command-audit "$audit_conf" --agent="${1%%-*}" 2>/dev/null) || audit_json='{"found":false,"reason":"invalid_agents_conf"}'
+      fi
+    fi
+    exec python3 -I -S -B "$CONF_DIR/lib/codex-worker.py" effort --project "$root" ${audit_json:+--audit-json "$audit_json"} "$@";;
   session)
     shift
     root=$(find_root) || die "session requires a native workspace"

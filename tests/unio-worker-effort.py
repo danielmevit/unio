@@ -25,6 +25,93 @@ def main():
             for option in ('--sandbox','--approval-policy','--model','--permissions','--service-tier'):
                 h.call('worker-effort','mock','high',option,'never','--json',code=2)
             assert not h.receipt.exists()
+            conf_path = h.base / 'conf/agents.conf'
+            conf_backup = conf_path.read_text()
+            # 1. Literal legacy medium startup config with unavailable live channel:
+            conf_path.write_text('legacy=codex exec -c model_reasoning_effort="medium" - < "$TASKFILE"\n')
+            r_med = json.loads(h.call('worker-effort','legacy','--json',code=2).stdout)
+            assert r_med['state'] == 'unsupported'
+            assert r_med['live_control'] == 'unsupported'
+            assert r_med['channel'] == 'none'
+            assert r_med['effective'] == 'Unknown'
+            assert r_med['worker'] == 'legacy'
+            assert r_med['current_configuration']['provenance'] == 'static_agents_conf'
+            assert r_med['current_configuration']['scope'] == 'future_launch'
+            assert r_med['current_configuration']['requested_effort'] == 'medium'
+            assert r_med['current_configuration']['tool'] == 'codex'
+            assert r_med['current_configuration']['reason'] is None
+            # Human presentation check:
+            human = h.call('worker-effort','legacy',code=2).stdout
+            assert 'worker=legacy state=unsupported live_control=unsupported channel=none effective=Unknown' in human
+            assert 'current_configuration: effort=medium' in human
+            assert 'provenance=static_agents_conf' in human
+            assert 'scope=future_launch' in human
+            assert 'model reasoning effort, distinct from coordination tier and review pace' in human
+
+            # 2. Config changed after a frozen request (correct current/future label):
+            conf_path.write_text('legacy=codex exec -c model_reasoning_effort=low - < "$TASKFILE"\n')
+            r_changed = json.loads(h.call('worker-effort','legacy','--json',code=2).stdout)
+            assert r_changed['current_configuration']['requested_effort'] == 'low'
+            assert r_changed['current_configuration']['scope'] == 'future_launch'
+            assert r_changed['current_configuration']['provenance'] == 'static_agents_conf'
+
+            # 3. Missing alias / missing config:
+            r_noalias = json.loads(h.call('worker-effort','unconfigured','--json',code=2).stdout)
+            assert r_noalias['state'] == 'unsupported'
+            assert r_noalias['current_configuration']['requested_effort'] == 'Unknown'
+            assert r_noalias['current_configuration']['reason'] == 'missing_alias'
+            # Missing config file:
+            saved_conf = conf_path.with_suffix('.bak')
+            conf_path.rename(saved_conf)
+            r_noconf = json.loads(h.call('worker-effort','legacy','--json',code=2).stdout)
+            assert r_noconf['state'] == 'unsupported'
+            assert r_noconf['current_configuration']['requested_effort'] == 'Unknown'
+            assert r_noconf['current_configuration']['reason'] == 'missing_agents_conf'
+            saved_conf.rename(conf_path)
+
+            # 4. Conflicting selectors:
+            conf_path.write_text('legacy=codex exec -c model_reasoning_effort=high -c model_reasoning_effort=low - < "$TASKFILE"\n')
+            r_conflict = json.loads(h.call('worker-effort','legacy','--json',code=2).stdout)
+            assert r_conflict['state'] == 'unsupported'
+            assert r_conflict['current_configuration']['requested_effort'] == 'Unknown'
+            assert r_conflict['current_configuration']['reason'] == 'effort_ambiguous'
+
+            # 5. Malicious shell/wrapper/secret values with zero execution and no secret reflection:
+            secret = "sk-priv-token-99887766"
+            conf_path.write_text(f'legacy=codex exec --model "{secret}" --api-key "{secret}" $(echo inject) - < "$TASKFILE"\n')
+            r_sec = h.call('worker-effort','legacy','--json',code=2)
+            assert secret not in r_sec.stdout and secret not in r_sec.stderr
+            sec_doc = json.loads(r_sec.stdout)
+            assert sec_doc['state'] == 'unsupported'
+            assert sec_doc['current_configuration']['requested_effort'] == 'Unknown'
+            assert sec_doc['current_configuration']['reason'] == 'command_unknown'
+            r_sec_h = h.call('worker-effort','legacy',code=2)
+            assert secret not in r_sec_h.stdout and secret not in r_sec_h.stderr
+
+            # 6. Auto Balance Unknown:
+            conf_path.write_text('cop=copilot -m auto-balance < "$TASKFILE"\n')
+            r_auto = json.loads(h.call('worker-effort','cop','--json',code=2).stdout)
+            assert r_auto['state'] == 'unsupported'
+            assert r_auto['current_configuration']['requested_effort'] == 'Unknown'
+            assert r_auto['current_configuration']['reason'] == 'auto_balance'
+
+            # 7. STOP / query behavior:
+            (h.root / 'coord/STOP').write_text('frozen STOP\n')
+            r_stop = json.loads(h.call('worker-effort','cop','--json',code=2).stdout)
+            assert r_stop['state'] == 'unsupported'
+            assert (h.root / 'coord/STOP').read_text() == 'frozen STOP\n'
+            (h.root / 'coord/STOP').unlink()
+
+            # 8. Unsupported set unchanged/nonzero (cannot edit config):
+            conf_path.write_text('legacy=codex exec -c model_reasoning_effort=medium - < "$TASKFILE"\n')
+            r_set = json.loads(h.call('worker-effort','legacy','high','--json',code=2).stdout)
+            assert r_set['state'] == 'unsupported'
+            assert r_set['live_control'] == 'unsupported'
+            assert 'model_reasoning_effort=medium' in conf_path.read_text()
+
+            # Restore original agents.conf:
+            conf_path.write_text(conf_backup)
+            print('ok read-only effort clarity, provenance, fallback, bounds and safety verified',flush=True)
             h.start(extra={'FAKE_READ_ONLY':'1'})
             original=h.manifest.read_bytes()
             doc=json.loads(original)

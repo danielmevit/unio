@@ -1,10 +1,11 @@
 # Change a worker's reasoning effort during work
 
-Status: development source preview implemented on 2026-10-14; stable is 0.5.16.
+Status: unaccepted candidate implemented on 2026-10-25; stable is 0.5.24.
 Full bundle release checks and publication remain pending. Native
-`unio worker-effort WORKER [low|medium|high|xhigh] [--json]` controls only that
-owned Source. See [usage and boundary](../WORKER-EFFORT.md). Legacy exec and
-other adapters remain unsupported; dashboard controls remain future work.
+`unio worker-effort WORKER [low|medium|high|xhigh] [--json]` controls that
+owned Source when an active channel exists, or surfaces truthful current configuration
+facts and unsupported live control when no channel exists. See [usage and boundary](../WORKER-EFFORT.md).
+Legacy exec and other adapters have no live channel; dashboard controls and UI remain planned future work.
 
 The backend owns a private stdio app-server, validates ChatGPT subscription
 authentication and model catalog support, and starts exactly one assigned turn.

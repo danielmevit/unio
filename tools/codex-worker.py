@@ -624,10 +624,89 @@ class Server:
                 pass
 
 
+def effort_info_audit(args):
+    audit_raw = getattr(args, 'audit_json', None)
+    if audit_raw:
+        try:
+            doc = json.loads(audit_raw)
+            if isinstance(doc, dict):
+                found = doc.get('found', False)
+                reason = doc.get('reason')
+                if not found and not reason:
+                    reason = 'missing_alias'
+                return {
+                    'provenance': 'static_agents_conf',
+                    'scope': 'future_launch',
+                    'alias': doc.get('alias', args.worker.split('-', 1)[0]),
+                    'tool': doc.get('tool', 'Unknown'),
+                    'requested_effort': doc.get('requested_effort', 'Unknown'),
+                    'requested_model': doc.get('requested_model', 'Unknown'),
+                    'reason': reason,
+                }
+        except (ValueError, TypeError):
+            return {
+                'provenance': 'static_agents_conf',
+                'scope': 'future_launch',
+                'alias': args.worker.split('-', 1)[0],
+                'tool': 'Unknown',
+                'requested_effort': 'Unknown',
+                'requested_model': 'Unknown',
+                'reason': 'invalid_agents_conf',
+            }
+    alias = args.worker.split('-', 1)[0]
+    conf_dir = os.environ.get('UNIO_CONF_DIR', str(Path.home() / '.config' / 'unio'))
+    proj_conf = Path(args.project) / 'coord' / 'agents.conf'
+    glob_conf = Path(conf_dir) / 'agents.conf'
+    if not proj_conf.is_file() and not glob_conf.is_file():
+        reason = 'missing_agents_conf'
+    else:
+        reason = 'static_evidence_unavailable'
+    return {
+        'provenance': 'static_agents_conf',
+        'scope': 'future_launch',
+        'alias': alias,
+        'tool': 'Unknown',
+        'requested_effort': 'Unknown',
+        'requested_model': 'Unknown',
+        'reason': reason,
+    }
+
+
+def effort_info_unsupported_result(args):
+    config_facts = effort_info_audit(args)
+    return {
+        'worker': args.worker,
+        'state': 'unsupported',
+        'live_control': 'unsupported',
+        'channel': 'none',
+        'effective': 'Unknown',
+        'current_configuration': config_facts,
+    }
+
+
+def effort_info_present(result):
+    if result.get('state') != 'unsupported' or 'current_configuration' not in result:
+        return ' '.join(f'{k}={v}' for k, v in result.items())
+    worker = result.get('worker', '')
+    state = result.get('state', 'unsupported')
+    live = result.get('live_control', 'unsupported')
+    chan = result.get('channel', 'none')
+    eff = result.get('effective', 'Unknown')
+    cfg = result.get('current_configuration', {})
+    effort = cfg.get('requested_effort', 'Unknown')
+    reason = cfg.get('reason')
+    prov = cfg.get('provenance', 'static_agents_conf')
+    scope = cfg.get('scope', 'future_launch')
+    line1 = f'worker={worker} state={state} live_control={live} channel={chan} effective={eff}'
+    reason_clause = f' reason={reason}' if reason else ''
+    line2 = f'current_configuration: effort={effort}{reason_clause} provenance={prov} scope={scope} (model reasoning effort, distinct from coordination tier and review pace)'
+    return f'{line1}\n{line2}'
+
+
 def client(args):
     manifest = endpoint(args.project, args.worker)
     if not os.path.lexists(manifest):
-        return {'state': 'unsupported', 'effective': 'Unknown', 'worker': args.worker}
+        return effort_info_unsupported_result(args)
     doc, inode = read_private(manifest)
     if doc['project'] != str(Path(args.project).absolute()) or doc['worker'] != args.worker:
         raise Refusal('channel binding mismatch')
@@ -887,6 +966,7 @@ def main():
     get.add_argument('worker')
     get.add_argument('effort', nargs='?', choices=LEVELS)
     get.add_argument('--project', required=True)
+    get.add_argument('--audit-json', default=None)
     get.add_argument('--json', action='store_true')
 
     sess = sub.add_parser('session')
@@ -955,7 +1035,7 @@ def main():
         result = client(args)
     except (Refusal, OSError, ValueError, KeyError, TypeError, RecursionError):
         result = {'worker': args.worker, 'state': 'stale-or-invalid', 'effective': 'Unknown'}
-    print(json.dumps(result) if args.json else ' '.join(f'{k}={v}' for k, v in result.items()))
+    print(json.dumps(result) if args.json else effort_info_present(result))
     return 0 if result['state'] in ('observed', 'acknowledged', 'unverified') else 2
 
 if __name__ == '__main__':
