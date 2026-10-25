@@ -28658,7 +28658,37 @@ def resolve_save_path(root, save_id):
     return archived_path(archive, save_id) if found[0] == historical else active
 
 
-def last_good(store, worker, deep):
+def latest_lookup_discovery(store):
+    """Untrusted manifest hints only; never visit context or body pools.
+
+    Keep all observed names for the global duplicate check, including unknown
+    and malformed evidence. Any uncertainty sends the caller to the old scan.
+    """
+    active_names = [name for name in bounded_names(store)
+                    if name not in ('attempts', 'claims', 'archive') and not name.startswith('.staging-')]
+    archive = archive_for_store(store)
+    archive_names = bounded_names(archive) if archive else []
+    if set(active_names) & set(archive_names):
+        raise Refuse('invalid_save', 'duplicate active/archive save ID')
+    hints = []
+    for directory, names, archived in ((store, active_names, False), (archive, archive_names, True)):
+        for name in names:
+            if not HEX32.fullmatch(name):
+                continue  # scan_store also cannot return an unknown name.
+            path = archived_path(directory, name) if archived else os.path.join(directory, name)
+            if not private_dir(path, False):
+                raise Refuse('invalid_save', 'missing latest lookup candidate')
+            dfd = open_dir(path)
+            try:
+                raw = read_stored_at(dfd, 'manifest.json', MAX_MANIFEST)[1]
+                doc, _ = manifest_doc(strict_json(raw, MAX_MANIFEST, 'manifest'), name)
+            finally:
+                os.close(dfd)
+            hints.append(dict(id=name, archived=archived, manifest=doc))
+    return archive, active_names, archive_names, hints
+
+
+def latest_lookup_full_scan(store, worker, deep):
     active, active_corrupt = scan_store(store)
     archive = archive_for_store(store)
     historical, archive_corrupt = scan_archive(archive)
@@ -28677,6 +28707,41 @@ def last_good(store, worker, deep):
         except Refuse:
             continue
     return None
+
+
+
+def last_good(store, worker, deep):
+    try:
+        discovery = latest_lookup_discovery(store)
+    except (Refuse, OSError):
+        return latest_lookup_full_scan(store, worker, deep)
+    archive, _, _, hints = discovery
+    candidates = sorted((hint for hint in hints if hint['manifest']['worker'] == worker),
+                        key=lambda hint: (when(hint['manifest']['published_at']), hint['id']), reverse=True)
+    selected = None
+    for hint in candidates:
+        try:
+            path = archived_path(archive, hint['id']) if hint['archived'] else os.path.join(store, hint['id'])
+            loaded = load_save(path, hint['id'], False)
+            doc = loaded['manifest']
+            if doc != hint['manifest']:
+                return latest_lookup_full_scan(store, worker, deep)
+            if deep and load_save(path, hint['id'], True)['manifest'] != doc:
+                return latest_lookup_full_scan(store, worker, deep)
+            selected = dict(id=hint['id'], worker=doc['worker'], task=doc['task'],
+                            published=when(doc['published_at']), manifest=doc,
+                            archived=hint['archived'], stored_bytes=loaded['stored_bytes'])
+            break
+        except Refuse:
+            continue
+    # Recheck all selection hints, including foreign/older manifests and names.
+    # A changed view takes one conservative full scan, never a retry loop.
+    try:
+        if latest_lookup_discovery(store) != discovery:
+            return latest_lookup_full_scan(store, worker, deep)
+    except (Refuse, OSError):
+        return latest_lookup_full_scan(store, worker, deep)
+    return selected
 
 
 # --------------------------------------------------------------- create
