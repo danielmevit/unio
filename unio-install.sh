@@ -29549,8 +29549,8 @@ def emit_run_phase(phase, checkpoint=None, seconds=None, exit_code=None):
         message = 'unio: phase ' + phase
         if checkpoint in ('baseline', 'periodic', 'final', 'final-failure'):
             message += ' checkpoint=' + checkpoint
-        if type(seconds) is int and 1 <= seconds <= 300:
-            message += ' budget=%ss' % seconds
+        if type(seconds) in (int, float) and 1 <= seconds <= 300 and seconds == int(seconds):
+            message += ' budget=%ss' % int(seconds)
         if type(exit_code) is int and -255 <= exit_code <= 255:
             message += ' exit=%s' % exit_code
         fd = sys.stderr.fileno()
