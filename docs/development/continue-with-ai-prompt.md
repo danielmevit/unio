@@ -1,5 +1,40 @@
 # Continue Unio after the 0.5.23 reliability round
 
+## Stream-safety correction active; old approval not acceptance — 2026-10-25T06:02:41+01:00
+
+Oldphase6aae native4PASS0 and independentClaudeCode2.1.310/Opus5.5XHIGH
+APPROVE/native0/CLIadapter0 at05:55:31. RevieweralsofoundsharedOFD risklow,
+weakSTOPassertlow/backgroundplacement+exitmeaning+contextcomment+oldplaninfo.
+Leadown05:48pipeprobe provespersistentFDflagmutationonclosedstderr/failedrestore,
+soLEADREJECTS6aae despiteopinionAPPROVE. Preserveboth, no voteaveraging/fake
+REQUEST-CHANGES/native failure. No phase merged/finalgate started.
+
+NewboundedSource RUN-PHASE-STREAM-SAFETY-SOL-LOW-0524-20261025, worker
+codex-phase-stream-safety-low-20261025/base6aae; CodexCLI0.163/gpt6.1solLOW
+actual06:00:39, controller2218516, pipeline run-phase-stream-safety-low-20261025.
+Rootprobe/privateTaskrequirementsincludepeerfieldswithoutpeerverdict. Scope
+emitterONLYAST+tests/doc/newfragment; no caller/version24/quality/controlchanges.
+PreserveallsharedFDflagsatalltimes, full/error/replacement/regularfileposition
+semantics, usefulphaseoutput; no backgroundproc/thread, no globaltogglevia dup.
+StrengthenSTOPreason/zeroallphaseassert; clarify-b discardsandexitfieldmeanings
+inDocs, notnewbgplumbing. Do not use select-then-blockingwriteasracyfix.
+
+Copiedprovenperruncontrollers/profiletaskhash/requiredartifact/syntaxpreflight
+PASS, realcodexlead/accounttaskgrant/tempcoordmedium/STOP/finallylow, fresh
+capacitybeforeadmission. Low stays; firstboundcorrective.No unchangedretry.
+Observer2218518 waitsactualSource/native/Verify0+lowrestore thenONEfreshOpus
+2.1.310/5.5XHIGHreview; sourceContextnowwholelinesincludesfinalinlinecomments.
+Do not changecurrentwrapper/configmidrun. Existingreview6aae not transferred.
+
+Phase-sourcepublicbase VERSION-PLAN ownership24 notealreadycorrectinPRIVATE
+integration; no extrastaleSourceplanedits. Finalbatchscopeunchangedfourpieces;
+finalgateexecutoronlypreparedoperational-quality-final-gate-20261025 awaits
+correctedcurrentreview/leadacceptance/exactmerged24version. NoextraSourcefeature.
+Acceptedcheckpoint/experience/reviewcode preserved private, global/main23,
+no24publish/install/mainpushauthority. NextactualcorrectiveSource/checks, rerun
+leadprobeagainstnewhelperwithallstdlibimports/positiveoutputcontrol, assessfresh
+Opus, exactintegrate/freezechangelogthenONEfullqualitygate.
+
 ## Phase slice BLOCKED on reproduced stream-flag defect — 2026-10-25T05:51:46+01:00
 
 Operationalbatchscopefrozenfourpieces; no morefeatures/ownership/UI. Private
