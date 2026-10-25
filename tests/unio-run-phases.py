@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline installed phase ordering plus isolated broken-diagnostic regression."""
 import contextlib
+import fcntl
 import io
 import os
 from pathlib import Path
@@ -29,9 +30,12 @@ def assert_shared_stream_safety(module):
                 stack.callback(os.close, peer)
                 replacement = stack.enter_context(tempfile.TemporaryFile(mode='w+'))
                 observed = []
+                original_flags = fcntl.fcntl(peer, fcntl.F_GETFL)
+                observed_flags = []
                 isolated = types.SimpleNamespace(**vars(os))
 
                 def write(fd, data):
+                    observed_flags.append(fcntl.fcntl(peer, fcntl.F_GETFL))
                     observed.append(real_os.get_blocking(peer))
                     assert observed[-1] is True, (kind, event, 'peer became nonblocking during write')
                     if event == 'close':
@@ -47,6 +51,8 @@ def assert_shared_stream_safety(module):
                     module.emit_run_phase('provider launched')
                 # The emitter deliberately swallows errors, including assertions.
                 assert observed == [True], (kind, event, observed)
+                assert observed_flags == [original_flags], (kind, event, observed_flags)
+                assert fcntl.fcntl(peer, fcntl.F_GETFL) == original_flags
                 assert real_os.get_blocking(peer) is True, (kind, event, 'peer flags left changed')
                 if event != 'error':
                     if kind == 'file':
@@ -198,6 +204,19 @@ with tempfile.TemporaryDirectory(prefix='unio-run-phases-') as temporary:
     print('PASS broken/replaced diagnostic streams preserve actual command exit')
 
     assert_shared_stream_safety(module)
+    # A real PTY remains usable without changing the original terminal flags.
+    master, terminal = os.openpty()
+    try:
+        terminal_flags = fcntl.fcntl(terminal, fcntl.F_GETFL)
+        with os.fdopen(os.dup(terminal), 'w') as stream, contextlib.redirect_stderr(stream):
+            module.emit_run_phase('provider launched')
+        assert fcntl.fcntl(terminal, fcntl.F_GETFL) == terminal_flags
+        import select
+        assert select.select([master], [], [], 1)[0] == [master]
+        assert os.read(master, 1024).replace(b'\r\n', b'\n') == b'unio: phase provider launched\n'
+    finally:
+        os.close(terminal)
+        os.close(master)
     # Keep regular-file offset/append semantics, including bytes beyond the
     # current offset. Reopening the file at offset zero would corrupt this.
     for append in (False, True):

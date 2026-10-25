@@ -29536,7 +29536,7 @@ def capture_child(root, worker, task, reason, run_id, provider_exit, interrupted
 
 
 def emit_run_phase(phase, checkpoint=None, seconds=None, exit_code=None):
-    """Bounded, nonblocking human diagnostics; never part of provider output."""
+    """Best-effort human diagnostics; never part of provider output."""
     try:
         if phase not in ('checkpoint attempt started', 'checkpoint attempt ended',
                          'checkpoint attempt skipped', 'checkpoints skipped',
@@ -29585,7 +29585,6 @@ def emit_run_phase(phase, checkpoint=None, seconds=None, exit_code=None):
                 os.close(pinned)
     except Exception:
         pass  # A closed, broken, full or replaced stream cannot change the run.
-
 
 
 def automatic_capture(root, worker, task, reason, run_id, provider_exit, interrupted, provider=None):

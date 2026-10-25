@@ -30,8 +30,8 @@ writes may lose diagnostics; no background writer or metadata scan is used. Ther
 no heartbeat and no phase persistence or machine protocol. Provider output stays
 in the freshly truncated `coord/reports/<task>.log`; `unio tail` follows that
 provider stream and does not contain all engine phases. With `-b`, the engine
-stdout and stderr are discarded, so these phase diagnostics are discarded too. JSON commands, receipts
-and provider-output parsing are unchanged.
+stdout and stderr are discarded, so these phase diagnostics are discarded too.
+JSON commands, receipts and provider-output parsing are unchanged.
 
 Version 0.5.24 is an unreleased private candidate for the combined operational
 batch; this slice does not authorize installation globally or publication.
