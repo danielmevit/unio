@@ -1,6 +1,7 @@
 # Unio 0.5.25 — checkpoint lookup and worker-effort clarity
 
-Prepared for owner-authorized delivery on 2026-10-26. Both runtime components
+[Official v0.5.25](https://github.com/danielmevit/unio/releases/tag/v0.5.25)
+was published and installed on 2026-10-26. Both runtime components
 and the mechanical release preparation passed independent review and lead
 assessment. The one combined quality gate passed (actual exit 0). The installed
 0.5.25 CLI passed version, help, license and policy checks before publication;
@@ -64,3 +65,14 @@ The installed binary matches the tested standalone payload. Six release files
 include an exact Git source archive, installer, license, notice, provenance and
 checksums. Publication and official-download results are recorded separately
 from build/test acceptance; the immutable package describes its preparation state.
+
+## VERIFIED DELIVERY
+
+Release source: `fae8caeebc40c32d20d7d917fe1a5895998d1ecd`. All six public
+assets were downloaded and matched both local SHA-256 checksums and GitHub
+digests. The installed binary matches the tested/published installer bytes;
+routing, owner workflow and 15 customized templates are preserved. The managed
+dashboard reports 0.5.25 and returned HTTP 200. Pages deployment succeeded.
+The full gate remains the existing passing run; later changes are documentation
+only. A draft tag-lookup returned 404 during delivery; the existing draft was
+verified through its release ID and published without repeating push/upload.

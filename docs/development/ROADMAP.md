@@ -2,12 +2,12 @@
 
 ## Current delivery and owner direction — 2026-10-26T08:34:39+01:00
 
-The 0.5.25 operational batch is gated, installed and authorized for official
-delivery. It reduces unrelated checkpoint body-pool metadata work and clarifies
+The [0.5.25 operational batch](../RELEASE-0.5.25.md) is published and installed;
+all six official downloads and GitHub digests were verified. It reduces unrelated checkpoint body-pool metadata work and clarifies
 current effort configuration versus active controls. Both components and the
 mechanical preparation passed current Opus 5.5 XHIGH review plus lead assessment;
-one full quality gate and installation checks passed. Official publication and
-download verification have separate delivery receipts. It does not guarantee
+one full quality gate and installation checks passed. Publication and download
+verification have separate completed delivery receipts. It does not guarantee
 faster small-pool mounted-drive saves or a full-save completion deadline.
 
 Next, plan 0.5.26 around graceful refusal of malformed deeply nested save JSON,

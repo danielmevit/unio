@@ -1,54 +1,54 @@
 # Continue Unio — private 0.5.25 reliability candidate
 
-## Current state — 2026-10-26T09:30:40+01:00
+## Current state — 2026-10-26T09:42:53+01:00
 
-Goal: deliver the completed 0.5.25 operational batch, then continue reliability
-before ownership, dashboard, desktop or phone work. The owner explicitly approved
-main push, official v0.5.25 and local installation. Do not ask again for these.
-The 0.5.25 binary is installed and smoke-tested; routing, OWNER-WORKFLOW (including
-the newly authorized Astra rule) and 15 custom templates are preserved in a
-private backup. No credential stores or billing settings were changed.
+Official v0.5.25 is published and installed, Source tag
+`fae8caeebc40c32d20d7d917fe1a5895998d1ecd`. All six official downloads match local
+checksums and GitHub digests. Installed CLI version/help/license/policy all0,
+helper/guide match source, routing/owner workflow and15customtemplates preserved.
+Managed dashboard reports25 at http://127.0.0.1:36823/ and HTTP200; Pages succeeded.
+No more installation/publication work is pending for25. Do not move its tag.
 
-Both runtime units are accepted: checkpoint `095b0d6` and effort `d73a5b6`,
-ChatGPT/Codex CLI0.164.0/requested gpt-6.1-sol LOW. Source/native/Verify exits0;
-current Claude subscription/Claude Code2.1.310/Opus5.5XHIGH APPROVE plus lead
-assessment for each. Mechanical preparation aa5e6d0: Mistral monthly/Vibe2.26.1/
-GLM5.3 HIGH, one Source invocation/no retries, process/adapter/native0, Verify5of5
-PASS, same current OpusXHIGH review/native0 APPROVE plus lead. Effective model,
-effort and allowance Unknown unless evidenced; original failures remain intact.
+Full gate aa5e6d007ae21e8a816af1cd38005c2c5899f6af actual0/4679.801s, clean
+source/untracked[]. Runtime/tools/tests remain exact through release-label/status
+Markdown changes. Each final component and mechanical preparation has current
+ClaudeCode2.1.310/Opus5.5XHIGH APPROVE plus this lead assessment. Sol6.1LOW/
+Codex0.164 authored corrections, Mistral monthly/Vibe2.26.1/GLM5.3HIGH prepared
+metadata; Source/native/check/review exits0. Effective settings/allowance Unknown.
+Original rejected/limited/operational failures remain; no model call for delivery.
 
-ONE full bash tools/quality-check.sh passed on aa5e6d007ae21e8a816af1cd38005c2c5899f6af,
-actual0, reported4679.801s, tracked source unchanged/untracked[]. Start00:43:02,
-finish08:33:01 on2026-10-26 includes an observation gap, not continuous work.
-Final release-label docs do not change runtime/tools/tests; preserve exact-byte
-proof and do not repeat the broad gate for status/label prose only. Gate directory:
-`tmp/unio-next/operational-quality-0525-final-gate-20261025/`.
+Exact receipts under tmp/unio-next/operational-quality-0525-final-gate-20261025/
+official-delivery-20261026/. github-delivery.json preserves the initial preflight
+failure after successful push/draft creation: draft GET-by-tag returned404.
+github-publication-resume.json proves the SAME six-digest-verified draft published
+by release ID without repeat push/upload. official-verification.json proves
+public downloads/tag/main/latest. Use release list/ID for draft checks in future.
+Backup: artifacts/install-backups/unio-0.5.24-to-0.5.25-20261026T092705+0100.
+Private candidate-ready receipts are historical. Native worker slots idle,
+low tier, registered Codex lead/real maps/owner holds/STOP retained.
 
-Delivery evidence under `official-delivery-20261026/`: owner-authorization.json,
-global-install.json, installed-smoke.json, exact source/archive/provenance/checksums
-and github-delivery.json/completed-delivery.json as each step actually succeeds.
-An absent publication receipt means publication is unfinished, even though it is
-authorized. The original private candidate-ready receipt remains historical.
-Native workers are idle, low tier, real registered Codex lead/accounts and STOP
-retained. No live provider call is required for delivery. Installed CLI version,
-help, license and policy all exited0; binary matches the tested standalone asset.
+Next authorized operational scope:0.5.26, first reproduce then delegate bounded
+malformed deeply nested save-JSON refusal. strict_json raises RecursionError on
+400001-byte pure-memory input; pre-existing, not the25lookup regression. No
+real-store corruption/cleanup or inline lead code fix. Dedicated Sol6.1LOW via
+installed Unio25, fresh capacity/CLI checks, isolated worktree/task, early commit,
+focused meaningful regressions/current cross-lab review/lead assessment.
 
-Next finish official six-asset packaging, push/tag/publish, verify downloaded
-bytes and update main delivery record. Install is already complete; do not
-reinstall blindly. Preserve private backup and all original failed attempts.
-After publication, carry new review policy into repository docs: owner requests
-occasional Astra XHIGH as an extra blind opinion, starting0.5.26. Current global
-~/.config/unio/OWNER-WORKFLOW.md and coord/docs/REVIEW-ROTATION-2026-10-26.md hold
-that rule. Keep cross-lab review; same-lab Astra must not bypass native vendor
-rules. Use a required report-only audit where necessary, with exact revision/
-material hashes and actual delivery checks. Shared-budget Sol fixes still LOW.
+Then validate current bounded review-context behavior before choosing a fix.
+Target enclosing code sufficient for review with exact material hashes/caps and
+legacy protocol compatibility. Preserve existing implementations; no duplicate
+feature. Rough batch4–7h including reviews/gate, adjust on findings. Remaining
+effort evidence wording/descendant cleanup are backlog. Ownership/UI/desktop/
+phone expansion follows operational priorities; Windows beforemacOS.
 
-Next0.5.26: scoped graceful refusal of deeply nested save JSON (pre-existing
-pure-memory RecursionError), then bounded enclosing review context with exact
-hashes/legacy compatibility. Small-pool D: shallow slowdown and unmeasured deep
-performance remain explicit; effort evidence wording/descendant cleanup backlog.
-No new ownership/UI/platform work before operational priorities; Windows before
-macOS. Read current OWNER-WORKFLOW before assigning or accepting new work.
+New owner request: add a blind GPT-6 Astra XHIGH second opinion for0.5.26 and
+occasionally thereafter, preserving cross-lab review and lead assessment. See
+[review rotation](../ai/REVIEW-ROTATION.md), current global OWNER-WORKFLOW.md and
+coord/docs/REVIEW-ROTATION-2026-10-26.md. No blanket third reviewer for every task,
+no SolLOW implementation-default change, fake lab/group or native vendor bypass.
+Same-lab Astra audit may require a separate report-only task with required
+artifact/exact hashes. Verify route support/actual allowance at assignment;
+requested settings are not effective identity. No max/ultra/paid fallback.
 
 ## Historical checkpoints below — superseded by current state above
 
