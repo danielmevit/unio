@@ -15,22 +15,23 @@ This backlog consolidates pending, accepted, and shipped functional improvements
   Both letters share the same NVMe device. C: did not improve this small-file
   workload; a native Windows control handled the same D: bytes quickly. These
   component timings are not full Unio save or physical-disk speed measurements.
-- **Privately accepted 0.5.25 candidate:** reduced latest-checkpoint lookup work
+- **Gated and installed 0.5.25 batch:** reduced latest-checkpoint lookup work
   with preserved selection/refusal semantics, and truthful current-configuration
   versus live effort status. Component and mechanical-preparation reviews passed;
-  the one combined gate passed. Owner-authorized delivery remains. Shallow lookup timings
+  the one combined gate passed. Official delivery is owner-authorized. Shallow lookup timings
   do not establish faster periodic saves or a full-save deadline guarantee.
 
-### Private candidate and next follow-ups — 2026-10-26T08:34:39+01:00
+### Accepted batch and next follow-ups — 2026-10-26T08:34:39+01:00
 
 Checkpoint lookup is accepted on the private integration branch after native
 checks, Opus5.5XHIGH approval and lead assessment. Its measured speedups apply
 to shallow lookup fixtures; the small-pool mounted-drive regression and
-unmeasured deep production path remain explicit. Stable is still0.5.24.
+unmeasured deep production path remain explicit. The local installation is now0.5.25.
 Effort-status clarity's final polish also passed native checks, fresh Opus
 approval and lead acceptance. Both features and release metadata are frozen;
 no further semantic changes are included in this batch.
-Neither addition is published or globally installed.
+Both additions passed the complete gate and installed smoke checks. The owner
+authorized publication; official delivery/download receipts establish completion.
 
 After this coherent batch, prioritize graceful refusal of deeply nested JSON
 in save metadata: the unchanged strict_json function raises RecursionError for

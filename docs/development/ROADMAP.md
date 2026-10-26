@@ -2,28 +2,27 @@
 
 ## Current delivery and owner direction — 2026-10-26T08:34:39+01:00
 
-Published and installed baseline is [0.5.24](https://github.com/danielmevit/unio/releases/tag/v0.5.24).
-The operational update delivered truthful review dispatch/history, checkpoint
-metadata reuse, a configurable experience-record observation bound and human
-foreground phases. Full gate, independent assessments, installation and official
-download checks passed. It does not guarantee that every mounted-drive save
-finishes inside its existing deadline.
+The 0.5.25 operational batch is gated, installed and authorized for official
+delivery. It reduces unrelated checkpoint body-pool metadata work and clarifies
+current effort configuration versus active controls. Both components and the
+mechanical preparation passed current Opus 5.5 XHIGH review plus lead assessment;
+one full quality gate and installation checks passed. Official publication and
+download verification have separate delivery receipts. It does not guarantee
+faster small-pool mounted-drive saves or a full-save completion deadline.
 
-The next private0.5.25 operational batch targets measured latest-checkpoint
-lookup overhead and clearer effort configuration/live-control status, followed
-by bounded enclosing review context. Both implementations passed independent
-Opus 5.5 XHIGH review and lead assessment and are privately integrated. Mechanical
-release preparation and the one full combined quality gate also passed.
-Owner-authorized public delivery remains.
-Neither feature is published or globally installed. See [the current backlog](IMPROVEMENT-BACKLOG.md) and
-[the continuation](continue-with-ai-prompt.md) for exact workers and evidence.
+Next, plan 0.5.26 around graceful refusal of malformed deeply nested save JSON,
+then bounded enclosing review context with exact hashes and legacy compatibility.
+The owner requests an extra independent GPT-6 Astra XHIGH opinion for that round;
+keep cross-lab coverage and real shared-account limits. See [the backlog](IMPROVEMENT-BACKLOG.md)
+and [the continuation](continue-with-ai-prompt.md) for evidence and next tasks.
 
 The owner's2026-10-24 priority remains: operational reliability and quality of
 life before managed lead ownership/lifecycle, dashboard expansion, phone or
 native desktop interfaces. Preserve completed foundations and failed attempts;
 no new ownership assignment now. Windows precedes macOS. The
 [version plan](../VERSION-PLAN.md) supersedes historical dated sequences below.
-A new0.5.25 main push, global installation or release requires owner approval.
+The owner authorized 0.5.25 delivery on 2026-10-26. Later release publication
+still requires its own authorization.
 
 
 Current delivery,2026-10-19: [v0.5.22](https://github.com/danielmevit/unio/releases/tag/v0.5.22)

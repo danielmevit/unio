@@ -4,11 +4,11 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.25 — checkpoint lookup and worker-effort clarity (unreleased)
+## 0.5.25 — checkpoint lookup and worker-effort clarity — 2026-10-26
 
-Private release candidate; independent reviews, lead assessment and the one
-full combined quality gate passed. Publication, main push and global
-installation still require owner authorization. See
+Independent reviews, lead assessment and the one full combined quality gate
+passed. Owner-authorized delivery includes installation and smoke checks before
+publication, with configuration preserved. See
 [candidate scope, evidence and known limits](docs/RELEASE-0.5.25.md).
 
 - Look up a worker's latest checkpoint by validating requested-worker

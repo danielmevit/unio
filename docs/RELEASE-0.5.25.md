@@ -1,14 +1,15 @@
-# Unio 0.5.25 — checkpoint lookup and worker-effort clarity (unreleased)
+# Unio 0.5.25 — checkpoint lookup and worker-effort clarity
 
-Private release candidate prepared 2026-10-25. Both runtime components and the
-mechanical release preparation passed independent review and lead assessment.
-The one combined quality gate passed on 2026-10-26 (actual exit 0);
-publication, main push and global installation still require owner approval.
-Runtime functions and tests are frozen at the accepted composition.
+Prepared for owner-authorized delivery on 2026-10-26. Both runtime components
+and the mechanical release preparation passed independent review and lead
+assessment. The one combined quality gate passed (actual exit 0). The installed
+0.5.25 CLI passed version, help, license and policy checks before publication;
+routing, owner workflow and 15 customized templates were preserved.
+Runtime functions and tests match the accepted, gated composition.
 
 ## SUMMARY
 
-Two privately accepted runtime changes, plus release preparation only:
+Two accepted runtime changes, plus release preparation only:
 
 - Latest-checkpoint lookup (checkpoint `095b0d6`) validates requested-worker
   candidates from bounded manifest hints before visiting unrelated body pools,
@@ -23,7 +24,7 @@ Two privately accepted runtime changes, plus release preparation only:
 
 - Both changes passed their native checks and focused suites, and each holds a
   current independent ClaudeCode2.1.310/Opus5.5XHIGH APPROVE plus lead
-  assessment. Acceptance is private; no public review is claimed.
+  assessment. Exact review and gate receipt hashes are recorded in provenance.
 - Shallow (`deep=False`) lookup measurements on the 13-save D: fixture report
   medians 604→649ms with four bodies (slower), 1398→746ms with 41 bodies and
   9881→1465ms with 401 bodies, with complete file-operation counters retained
@@ -48,7 +49,7 @@ Two privately accepted runtime changes, plus release preparation only:
   evidence-failure wording and timeout cleanup remain backlog.
 - Dashboard effort controls and UI remain planned future work.
 
-## PENDING
+## DELIVERY EVIDENCE
 
 The lead's one full combined gate passed on frozen commit `aa5e6d0` (installer
 SHA-256 `edbd7c95b6735168b93581939a32934206fa4803b83a380fa59e1361d9d26691`).
@@ -58,5 +59,8 @@ and embedded-file checks; global binary and configuration remained unchanged.
 The actual gate exit was 0 (reported elapsed 78.0 minutes), with tracked source unchanged
 and no untracked files in the isolated clone. The full log and dated receipt are
 preserved in the private workspace. No real provider was called by the gate.
-Public delivery awaits owner authorization; the changelog heading stays
-`unreleased` so the site does not advertise this version.
+The owner authorized official publication, main push and local installation.
+The installed binary matches the tested standalone payload. Six release files
+include an exact Git source archive, installer, license, notice, provenance and
+checksums. Publication and official-download results are recorded separately
+from build/test acceptance; the immutable package describes its preparation state.
