@@ -1,6 +1,6 @@
 # Unio roadmap and development priorities
 
-## Current delivery and owner direction — 2026-10-25T16:42:15+01:00
+## Current delivery and owner direction — 2026-10-26T08:34:39+01:00
 
 Published and installed baseline is [0.5.24](https://github.com/danielmevit/unio/releases/tag/v0.5.24).
 The operational update delivered truthful review dispatch/history, checkpoint
@@ -13,7 +13,8 @@ The next private0.5.25 operational batch targets measured latest-checkpoint
 lookup overhead and clearer effort configuration/live-control status, followed
 by bounded enclosing review context. Both implementations passed independent
 Opus 5.5 XHIGH review and lead assessment and are privately integrated. Mechanical
-release preparation also passed review; the combined quality gate is running.
+release preparation and the one full combined quality gate also passed.
+Owner-authorized public delivery remains.
 Neither feature is published or globally installed. See [the current backlog](IMPROVEMENT-BACKLOG.md) and
 [the continuation](continue-with-ai-prompt.md) for exact workers and evidence.
 

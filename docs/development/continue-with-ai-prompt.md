@@ -1,62 +1,59 @@
 # Continue Unio — private 0.5.25 reliability candidate
 
-## Current state — 2026-10-26T00:54:14+01:00
+## Current state — 2026-10-26T08:34:39+01:00
 
-Goal: finish faster checkpoint lookup and truthful effort status before ownership,
-dashboard, desktop or phone work. Main, official release and global installation
-remain 0.5.24 at main `bd32914`. No authority for a 0.5.25 main push, release or
-global install. Do not start another feature or repeat broad checks without cause.
+Goal: finish the 0.5.25 quality-of-life batch before ownership, dashboard,
+desktop or phone work. Main, official release and global installation remain
+0.5.24 at main `bd32914`. No authority for a 0.5.25 main push, release or global
+installation. Do not start another feature or repeat the broad gate without cause.
 
 Both runtime components are accepted privately: checkpoint `095b0d6` and final
-effort `d73a5b6`, each with native checks, independent Claude subscription /
-Claude Code 2.1.310 / requested Opus 5.5 XHIGH APPROVE and lead assessment.
-Requested settings are not proof of effective identity/effort or allowance.
-Original prototype rejection, usage-limit failure, infrastructure and expired
-OpenCode Go credentials remain separate preserved evidence.
+effort `d73a5b6`. Each passed native checks, current independent Claude
+subscription / Claude Code 2.1.310 / requested Opus 5.5 XHIGH review and the
+existing lead assessment. CLI/adapter/native-review exits 0, APPROVE. Effective
+model/effort/remaining allowance are Unknown unless separately evidenced.
 
-Mechanical release preparation: Mistral monthly / Vibe 2.26.1 / requested GLM
-5.3 HIGH, Source/adapter/native 0, native Verify 5/5 PASS, commit `aa5e6d0`.
-Current independent Claude Code 2.1.310 / Opus 5.5 XHIGH review exited CLI/adapter/
-nativeReview 0, APPROVE; lead normalization proof confirms only version metadata
-and the regenerated scoreboard payload changed in the installer. Privately
-fast-forwarded into `agent/operational-next-20261025`; public main untouched.
-Native groups are idle, tier low, registered Codex lead and real mappings intact,
-STOP set. Historical percentages below are not current capacity observations.
+Mechanical preparation: Mistral monthly / Vibe 2.26.1 / requested GLM 5.3 HIGH,
+one Source invocation/no retries, CLI/adapter/native exits 0, Verify 5/5 PASS,
+commit `aa5e6d0`. Current independent Claude Code 2.1.310 / Opus 5.5 XHIGH
+review exited CLI/adapter/nativeReview 0, APPROVE. The lead independently proved
+only the version literal and scoreboard payload changed in the installer; all
+other runtime bytes remained exact. Original rejected/limited/infrastructure/
+authentication failures and partial work remain separate, never reclassified.
 
-ONE full `bash tools/quality-check.sh` started at 2026-10-26T00:43:02+01:00 on
-exact commit `aa5e6d007ae21e8a816af1cd38005c2c5899f6af`, tree
-`e51a4226775b9a63b51a9a8015b5a1595ee7baca`, private project tmpfs/UID1000/caps0.
-It is running, not yet accepted. Evidence directory:
-`tmp/unio-next/operational-quality-0525-final-gate-20261025/`.
-Read `full-gate.json` and the actual log before claiming completion. Controller
-2621539 / gate 2621564 were owned processes at launch; recheck identity if needed.
-The gate clone is frozen and does not use or alter the global installed runner.
+ONE full `bash tools/quality-check.sh` PASSED, actual exit 0, reported elapsed
+78.0 minutes. The wall-time observation gap is not continuous work.
+Start 2026-10-26T00:43:02+01:00; finish 2026-10-26T08:33:01+01:00.
+Exact gated source `aa5e6d007ae21e8a816af1cd38005c2c5899f6af`, tree
+`e51a4226775b9a63b51a9a8015b5a1595ee7baca`; project-private tmpfs/UID1000/caps0,
+tracked source unchanged and no untracked files, zero real provider calls.
+No second broad gate is justified for documentation-only status updates; prove
+runtime/tools/tests byte identity to this source instead. Gate evidence:
+`tmp/unio-next/operational-quality-0525-final-gate-20261025/full-gate.json`
+and `full-gate.log`. The gate used an isolated runner; global stays0.5.24.
 
-Candidate archive verifies all 608 Git blobs and paths; standalone asset install,
-version/help/license and embedded canonical helper/guide/scoreboard checks pass.
-Global binary, agents.conf and OWNER-WORKFLOW hashes remain unchanged. Preserve
-`asset-attempt-1-*`: a local archive root-directory assertion prevented installer
-creation, and a premature dependent smoke failed missing-file; fixed locally,
-zero provider calls, no product-code failure or model retry.
+Standalone embedded installer passed install/version/help/license and canonical
+helper/guide/scoreboard equality. Global binary/config hashes remained unchanged.
+The local artifact builder's first root-prefix assertion and premature dependent
+smoke failure are retained under `asset-attempt-1-*`; no product or model failure.
+Native experience records contain accepted component and preparation assessments,
+plus original failures/quality issues; reported acceptance is not human approval.
 
-Next: let the existing gate finish; assess its actual exit and exact source state.
-If PASS, finalize private provenance/checksums, update pending status docs and
-handoff, then request bundled owner approval for main push, publication and
-installation. Do not publish or install a development snapshot autonomously.
-A documentation-only status change needs explicit runtime/test byte identity to
-the gated commit; do not transfer review approval to changed runtime code.
+Next: finalize/check private six-asset package and sanitized provenance with
+exact final Git archive bytes. `private-candidate-ready.json` in the gate evidence
+directory is authoritative for final source and all asset hashes when present;
+absence means packaging is still pending. Then request bundled owner approval
+for main push, public v0.5.25 and global installation. Do not perform those
+external/global actions without it. Read current OWNER-WORKFLOW before final
+acceptance. Default review is one independent external reviewer plus this lead.
 
-After this batch: separately scoped malformed deeply nested save-JSON refusal
-(pre-existing RecursionError, pure-memory reproduction), then bounded enclosing
-review context with exact material hashes/legacy compatibility. Small-pool D:
-shallow lookup regresses; deep production-path performance is unmeasured. No
-full-save deadline guarantee, sandbox or new UI/control capability is claimed.
-Effort evidence wording and nested read-only audit cleanup remain backlog.
-
-Read current ~/.config/unio/OWNER-WORKFLOW.md before final acceptance. The owner's
-review workflow is one independent external reviewer plus the existing lead.
-Code corrections go through a dedicated Sol 6.1 LOW worker via Unio; no silent
-inline product fix. The latest policy supersedes older copied review counts.
+After25: separately scoped graceful refusal of deeply nested save JSON
+(pre-existing pure-memory RecursionError reproduction), then bounded enclosing
+review context with exact hashes and legacy compatibility. Keep small-pool D:
+shallow slowdown and unmeasured deep production performance explicit. Remaining
+effort evidence wording/descendant cleanup are backlog. No new ownership/UI/
+platform work before operational priorities; Windows precedes macOS. Code fixes
+remain delegated through Unio to Sol6.1 LOW by current owner policy.
 
 ## Historical checkpoints below — superseded by current state above
 

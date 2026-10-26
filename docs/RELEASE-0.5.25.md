@@ -2,7 +2,7 @@
 
 Private release candidate prepared 2026-10-25. Both runtime components and the
 mechanical release preparation passed independent review and lead assessment.
-The single combined quality gate started on 2026-10-26 and is running;
+The one combined quality gate passed on 2026-10-26 (actual exit 0);
 publication, main push and global installation still require owner approval.
 Runtime functions and tests are frozen at the accepted composition.
 
@@ -50,11 +50,13 @@ Two privately accepted runtime changes, plus release preparation only:
 
 ## PENDING
 
-The lead's one full combined gate runs on frozen commit `aa5e6d0` (installer
+The lead's one full combined gate passed on frozen commit `aa5e6d0` (installer
 SHA-256 `edbd7c95b6735168b93581939a32934206fa4803b83a380fa59e1361d9d26691`).
 Documentation-only status reconciliation does not change runtime or test bytes.
 The packaged standalone installer passed isolated install/version/help/license
 and embedded-file checks; global binary and configuration remained unchanged.
-The gate's actual exit determines acceptance, followed by owner-authorized
-public delivery. Until then the changelog heading stays `unreleased` so the
-site does not advertise this version.
+The actual gate exit was 0 (reported elapsed 78.0 minutes), with tracked source unchanged
+and no untracked files in the isolated clone. The full log and dated receipt are
+preserved in the private workspace. No real provider was called by the gate.
+Public delivery awaits owner authorization; the changelog heading stays
+`unreleased` so the site does not advertise this version.

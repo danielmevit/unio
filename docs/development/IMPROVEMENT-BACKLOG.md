@@ -18,10 +18,10 @@ This backlog consolidates pending, accepted, and shipped functional improvements
 - **Privately accepted 0.5.25 candidate:** reduced latest-checkpoint lookup work
   with preserved selection/refusal semantics, and truthful current-configuration
   versus live effort status. Component and mechanical-preparation reviews passed;
-  one combined gate and owner-authorized delivery remain. Shallow lookup timings
+  the one combined gate passed. Owner-authorized delivery remains. Shallow lookup timings
   do not establish faster periodic saves or a full-save deadline guarantee.
 
-### Private candidate and next follow-ups — 2026-10-25T18:22:38+01:00
+### Private candidate and next follow-ups — 2026-10-26T08:34:39+01:00
 
 Checkpoint lookup is accepted on the private integration branch after native
 checks, Opus5.5XHIGH approval and lead assessment. Its measured speedups apply

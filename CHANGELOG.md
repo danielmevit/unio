@@ -6,8 +6,9 @@ version is released.
 
 ## 0.5.25 — checkpoint lookup and worker-effort clarity (unreleased)
 
-Private release candidate; the full combined quality gate, publication, main
-push and global installation are pending and are not claimed here. See
+Private release candidate; independent reviews, lead assessment and the one
+full combined quality gate passed. Publication, main push and global
+installation still require owner authorization. See
 [candidate scope, evidence and known limits](docs/RELEASE-0.5.25.md).
 
 - Look up a worker's latest checkpoint by validating requested-worker
