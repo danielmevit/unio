@@ -27665,6 +27665,10 @@ def strict_json(data, limit, what):
         raise Refuse('invalid_save', what + ' has a non-finite number')
     try:
         return json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
+    except RecursionError:
+        # Bounded bytes can still nest past the decoder's depth limit; that is
+        # malformed evidence like any other, never an uncaught traceback.
+        raise Refuse('invalid_save', what + ' is nested too deeply')
     except ValueError:
         raise Refuse('invalid_save', what + ' is not valid JSON')
 
@@ -28087,7 +28091,7 @@ def resolve_base(root, worker, task, repo, budget):
     # The frozen task base recorded by `unio run`, else the native coord/base.
     try:
         doc = json.loads(read_path(under(root, 'coord', 'results', worker, task + '.json'), MIB)[1])
-    except (OSError, Refuse, ValueError):
+    except (OSError, Refuse, ValueError, RecursionError):
         doc = None
     revisions = []
     if isinstance(doc, dict):
