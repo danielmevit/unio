@@ -63,7 +63,7 @@ with tempfile.TemporaryDirectory(prefix='unio-disk-unit-') as temporary:
     check('root directory is supported', True)
 
 
-with tempfile.TemporaryDirectory(prefix='unio-disk-installed-', dir='/tmp') as temporary:
+with tempfile.TemporaryDirectory(prefix='unio-disk-installed-') as temporary:
     base = Path(temporary)
     env = dict(os.environ, HOME=str(base), UNIO_BIN_DIR=str(base / 'bin'),
                UNIO_CONF_DIR=str(base / 'conf'), UNIO_COMPLETION_DIR=str(base / 'completion'),

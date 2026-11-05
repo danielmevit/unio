@@ -85,6 +85,8 @@ python3 -B bridge/tests/provider_capacity_test.py
 python3 -B tests/unio-provider-capacity.py
 python3 -B tests/unio-lead-budget.py
 python3 -B tests/unio-disk-preflight.py
+python3 -B tests/unio-host-space.py
+python3 -B tools/embed-host-space.py --check
 python3 -B tests/unio-work-policy.py
 python3 -B tests/unio-work-policy-guard.py
 python3 -B tests/unio-admission-deadline.py
