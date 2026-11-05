@@ -310,8 +310,11 @@ def worker_slots(root):
     return workers, known
 
 
-def activity(root, worker):
-    """Observe native activity; return (blocking reason or None, fingerprint)."""
+def activity(root, worker, slot_snapshot=None):
+    """Observe native activity; return (blocking reason or None, fingerprint).
+
+    The scan may share one slot snapshot; the final recheck always reads afresh.
+    """
     locks = os.path.join(root, 'coord', '.locks')
     state, lock_inode = probe_lock(os.path.join(locks, worker + '.lock'))
     if state == 'held':
@@ -322,7 +325,7 @@ def activity(root, worker):
         return 'activity_unknown_no_lock', None
     if os.path.lexists(os.path.join(locks, 'codex-worker-' + worker + '.json')):
         return 'native_session_manifest', None
-    slots, known = worker_slots(root)
+    slots, known = slot_snapshot if slot_snapshot is not None else worker_slots(root)
     if worker in slots:
         return 'work_policy_slot', None
     if not known:
@@ -778,6 +781,7 @@ def inventory(project, limits=None, hook=noop_hook, clock=time.monotonic):
     names.sort(key=os.fsencode)
     points = mount_points()
     stopped_at = None
+    slot_snapshot = worker_slots(root)
     for index, worker in enumerate(names):
         relative = 'wt/' + worker
         try:
@@ -790,7 +794,7 @@ def inventory(project, limits=None, hook=noop_hook, clock=time.monotonic):
             if reason:
                 report.exclude(relative, worker, reason)
                 continue
-            reason, fingerprint = activity(root, worker)
+            reason, fingerprint = activity(root, worker, slot_snapshot)
             if reason:
                 report.exclude(relative, worker, reason)
                 continue
@@ -909,7 +913,7 @@ def main(argv=None):
             sys.stdout.write(human(result))
         sys.stdout.flush()
     except BrokenPipeError:
-        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        os._exit(0)
     return 0
 
 
