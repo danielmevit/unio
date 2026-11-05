@@ -206,11 +206,11 @@ def _admission_only(row, projection):
             or not _matches(HEX64, context.get('config_sha256'))
             or not _matches(HEX64, context.get('command_sha256'))
             or type(receipt.get('schema_version')) is not int or receipt['schema_version'] != 2
-            or type(receipt.get('material_protocol')) is not int or receipt['material_protocol'] != 2
+            or type(receipt.get('material_protocol')) is not int or receipt['material_protocol'] not in (2, 3)
             or receipt.get('worker') != projection['worker'] or receipt.get('task') != projection['task']
             or receipt.get('before') != projection['current_revision']
             or receipt.get('after') != projection['current_revision']
-            or receipt.get('material_sha256') != projection['material_protocols']['2']
+            or receipt.get('material_sha256') != projection['material_protocols'][str(receipt['material_protocol'])]
             or not _matches(HEX64, receipt.get('material_sha256'))
             or any(receipt.get(key) != row.get(field) for key, field in
                    (('id', 'receipt_id'), ('reviewer', 'reviewer'), ('policy_group', 'policy_group')))
@@ -220,7 +220,7 @@ def _admission_only(row, projection):
             or receipt.get('reasons') != ['budget_refused'] or row.get('reasons') != ['budget_refused']
             or receipt.get('stdout') != empty or receipt.get('stderr') != empty
             or any(type(receipt[k]['bytes']) is not int for k in ('stdout', 'stderr'))
-            or row.get('protocol') != 2 or row.get('config_current') is not True
+            or row.get('protocol') != receipt['material_protocol'] or row.get('config_current') is not True
             or row.get('findings_state') != 'not_extracted' or row.get('findings_count') is not None
             or row.get('block_line') is not None):
         raise ValueError('invalid review admission binding')
@@ -266,7 +266,7 @@ def _current_review(projection, worker, task, current):
             or any(type(v) is not int or not 0 <= v <= 256 for v in counts.values())):
         raise ValueError('invalid current review counts')
     protocols = projection.get('material_protocols')
-    if (not isinstance(protocols, dict) or set(protocols) != {'1', '2'}
+    if (not isinstance(protocols, dict) or set(protocols) != {'1', '2', '3'}
             or any(value is not None and not _matches(HEX64, value) for value in protocols.values())
             or (projection.get('material_sha256') is not None
                 and not _matches(HEX64, projection['material_sha256']))):
@@ -288,7 +288,7 @@ def _current_review(projection, worker, task, current):
                     'unstructured_legacy', 'missing_block', 'invalid_block', 'multiple_blocks',
                     'oversized_block', 'overflow')
                 or (row.get('protocol') is not None and (type(row['protocol']) is not int
-                    or row['protocol'] not in (1, 2)))
+                    or row['protocol'] not in (1, 2, 3)))
                 or (row.get('findings_count') is not None and (type(row['findings_count']) is not int
                     or not 0 <= row['findings_count'] <= 4096))
                 or (row.get('block_line') is not None and (type(row['block_line']) is not int
@@ -318,9 +318,10 @@ def _current_review(projection, worker, task, current):
         and projection['verdict_decision'] == 'all_recorded_approved'
         and _matches(HEX64, projection.get('material_sha256'))
         and isinstance(projection.get('material_protocols'), dict)
-        and projection['material_protocols'].get('2') == projection['material_sha256']
+        and (projection['material_protocols'].get('3')
+             or projection['material_protocols'].get('2')) == projection['material_sha256']
         and all(r['state'] == 'approved' and r['process_exit_code'] == 0
-                and r.get('config_current') is True and r.get('protocol') == 2
+                and r.get('config_current') is True and r.get('protocol') in (2, 3)
                 and r.get('findings_state') == 'empty' and r.get('findings_count') == 0
                 and type(r.get('block_line')) is int and r['block_line'] > 0
                 and not r['reasons'] for r in verdicts))

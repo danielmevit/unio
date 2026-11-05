@@ -318,7 +318,7 @@ class ReviewCollection(unittest.TestCase):
         self.assert_slots_empty()
 
     def test_malformed_finalizer_output_keeps_unknown_counters(self):
-        line='if out=$(quality review-set-finalize "$root" "$worker" "$task" "$cdir" "$state_arg" "$specs"); then'
+        line='if out=$(quality review-set-finalize "$root" "$worker" "$task" "$cdir" "$state_arg" "$specs" "$protocol"); then'
         # Actual providers and receipts run normally; corrupt only the installed
         # helper's returned text at the CLI trust boundary, after finalization.
         cases=('ffffffffffffffffffffffffffffffff completed 2 1 0 2 0 0',

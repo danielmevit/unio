@@ -18,9 +18,10 @@ Human remains pending and integration not_attempted. Readiness is only a machine
 signal for inspection, never lead/human acceptance.
 
 Observation performs no provider calls or coordination writes. It remains outside
-`current()` so gate/material generation cannot recurse. Both exact material hash
-protocols are derived from one shared material body per observation, retaining
-protocol 1's pre-footer and protocol 2's whole-payload 300000-byte bounds. No
+`current()` so gate/material generation cannot recurse. All three exact material
+hash protocols are derived from one shared material body per observation,
+retaining protocol 1's pre-footer and the whole-payload 300000-byte bound of
+protocols 2 and 3. Protocol 3's bounded context is computed independently. No
 clipping occurs. Result uses its initial snapshot, material construction currently
 uses two more snapshots through changed/material, and the observer takes a closing
 snapshot (four total). Handoff additionally checks changed paths and a final
@@ -115,7 +116,7 @@ to result projection.
 
 Proven pre-provider budget refusals remain current operational history, rather
 than reviewer verdicts. Eligibility is deliberately narrow: a validated protocol-2
-receipt, schema-2 command/configuration context current for the selected config,
+or protocol-3 receipt, schema-2 command/configuration context current for the selected config,
 exact `budget_refused` reason, unknown state, null process exit, incomplete material,
 identical before/after/current revision and current material hash, and verified
 empty stdout/stderr. Closing stream, configuration, revision and lock checks still

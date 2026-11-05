@@ -69,7 +69,8 @@ you need the findings.
 
 For actionable local excerpts, add `--findings` (optionally `--json`). New
 review calls request a structured block using whole-payload material protocol
-2 and schema-2 receipts. Exact schema-1/protocol-1 receipts remain valid in
+3 (bounded enclosing source context; protocol 2 when none fits) and schema-2
+receipts. Exact schema-1/protocol-1 receipts remain valid in
 ordinary summaries; the findings view marks them incomplete/unstructured
 legacy evidence. See the [findings guide](REVIEW-FINDINGS.md) for its separate
 exit semantics, bounds and privacy rules.

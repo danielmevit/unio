@@ -156,7 +156,10 @@ Workers must not grant themselves retries. This is trusted-host coordination,
 not an access-control boundary or provider-quota approval.
 
 Review gate: `unio review` needs current passed validation. Its
-material is the task file plus the full committed diff against base. It is
+material is the task file plus the full committed diff against base. New
+reviews also receive bounded read-only source context for modified files from
+the candidate commit, with exact hashes, using only space left after the
+complete diff (material protocol 3; protocol 2 when none fits). It is
 refused (exit 2, review recorded `unknown`, `material_complete` false) for
 staged, unstaged or untracked work, binary changes, non-UTF-8 data, more than
 300000 bytes, or flagged index entries; nothing is ever clipped. The

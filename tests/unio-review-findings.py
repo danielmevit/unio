@@ -146,7 +146,13 @@ class ReviewFindings(unittest.TestCase):
         self.assertLessEqual(len(payload),300000)
         payload.decode('utf-8')
         self.assertEqual(hashes['1'],hashlib.sha256(body+footer).hexdigest())
-        self.assertEqual(hashes['2'],hashlib.sha256(payload).hexdigest())
+        # Protocol 3 inserts exactly one bounded context section directly after
+        # the body; removing it yields the exact protocol-2 payload.
+        middle=payload[len(body):-len(footer)]
+        self.assertTrue(middle.startswith(b'\nENCLOSING SOURCE CONTEXT\n'))
+        end=middle.index(b'END ENCLOSING SOURCE CONTEXT\n')+len(b'END ENCLOSING SOURCE CONTEXT\n')
+        self.assertEqual(hashes['2'],hashlib.sha256(body+middle[end:]+footer).hexdigest())
+        self.assertEqual(hashes['3'],hashlib.sha256(payload).hexdigest())
         return payload
 
     def test_current_findings_sources_and_schema_two_receipts(self):
@@ -155,7 +161,7 @@ class ReviewFindings(unittest.TestCase):
         self.unio('review','mock','evidence','revtwo')
         paths=self.receipts()
         records=[json.loads(p.read_text()) for p in paths]
-        self.assertTrue(all(r['schema_version']==2 and r['material_protocol']==2 for r in records))
+        self.assertTrue(all(r['schema_version']==2 and r['material_protocol']==3 for r in records))
         folders={r['id']:p.parent.name for p,r in zip(paths,records)}
         seen={n:json.loads((self.root/(n+'.material')).read_text())['sha256']
               for n in ('revone','revtwo')}
@@ -177,7 +183,7 @@ class ReviewFindings(unittest.TestCase):
         self.assertEqual(source['block_line'],2)
         self.assertEqual(source['finding_index'],0)
         self.assertEqual(d['findings'][1]['summary'],'General note')
-        self.assertEqual(d['material_sha256'],d['material_protocols']['2'])
+        self.assertEqual(d['material_sha256'],d['material_protocols']['3'])
         self.material_check('revone',d['current_revision'],d['material_protocols'])
         self.assertEqual((self.root/'revone.material.bin').read_bytes(),
                          (self.root/'revtwo.material.bin').read_bytes())
@@ -226,9 +232,9 @@ class ReviewFindings(unittest.TestCase):
         real=self.receipts()[0];real_bytes=real.read_bytes()
         base=json.loads(real_bytes)
         d=self.findings(code=0,expect='revone')
-        h1=d['material_protocols']['1'];h2=d['material_protocols']['2']
-        self.assertNotEqual(h1,h2)
-        self.assertEqual(d['material_sha256'],h2)
+        h1=d['material_protocols']['1'];h2=d['material_protocols']['2'];h3=d['material_protocols']['3']
+        self.assertEqual(len({h1,h2,h3}),3)
+        self.assertEqual(d['material_sha256'],h3)
         self.material_check('revone',d['current_revision'],d['material_protocols'])
         def write_receipt(name,material_hash,schema_version,material_protocol=None,
                           stdout=b'VERDICT: APPROVE\n'):
@@ -251,15 +257,26 @@ class ReviewFindings(unittest.TestCase):
         summary=self.summary(expect='revone')
         self.assertEqual(summary['decision'],'all_recorded_approved')
         self.assertEqual(summary['counts']['current'],2)
-        self.assertEqual(summary['material_sha256'],h2)
+        self.assertEqual(summary['material_sha256'],h3)
+        # An exact protocol-2 receipt from before protocol 3 stays current.
+        write_receipt('Proto002',h2,2,material_protocol=2)
+        summary=self.summary(expect='revone')
+        self.assertEqual(summary['decision'],'all_recorded_approved')
+        self.assertEqual(summary['counts']['current'],3)
+        shutil.rmtree(self.coord/'reports'/'evidence.review.Proto002')
         # Legacy bytes never bind a protocol-2 hash.
         write_receipt('Legacy02',h2,1)
         summary=self.summary(expect='revone')
         self.assertEqual(summary['decision'],'all_recorded_approved')
         self.assertEqual(summary['counts']['current'],2)
         self.assertEqual(summary['counts']['stale'],1)
+        # A protocol-3 claim never binds protocol-2 bytes; it is merely stale.
+        write_receipt('Proto003',h2,2,material_protocol=3)
+        summary=self.summary(expect='revone')
+        self.assertEqual(summary['counts']['stale'],2)
+        shutil.rmtree(self.coord/'reports'/'evidence.review.Proto003')
         # Unknown schema/protocol combinations stay invalid, never promoted.
-        write_receipt('Legacy03',h2,2,material_protocol=3)
+        write_receipt('Legacy03',h3,2,material_protocol=4)
         summary=self.summary(code=2,expect='revone')
         self.assertEqual(summary['decision'],'incomplete')
         self.assertEqual(summary['counts']['unresolved'],1)
@@ -318,7 +335,7 @@ class ReviewFindings(unittest.TestCase):
         d=self.findings(code=2,expect='revone')
         self.assertEqual(d['decision'],'unstructured_legacy')
         self.assertTrue(d['incomplete'])
-        self.assertEqual(d['material_protocols'],{'1':h1,'2':None})
+        self.assertEqual(d['material_protocols'],{'1':h1,'2':None,'3':None})
         # The exact historical pre-footer boundary is accepted, even though
         # footer bytes push the whole legacy material above 300000 bytes.
         size+=300000-len(self.legacy_body(d['current_revision']))
@@ -342,7 +359,7 @@ class ReviewFindings(unittest.TestCase):
         self.call(['git','commit','-qm','over legacy boundary'],cwd=worker)
         self.unio('verify','mock','evidence')
         d=self.findings(code=2,expect='revone')
-        self.assertEqual(d['material_protocols'],{'1':None,'2':None})
+        self.assertEqual(d['material_protocols'],{'1':None,'2':None,'3':None})
         self.assertIn('current_evidence_unavailable',d['reasons'])
 
     def test_invalid_blocks_and_bounds_never_promote_findings(self):
@@ -493,7 +510,7 @@ class ReviewFindings(unittest.TestCase):
               for n in ('revone','revtwo')}
         for r in records:
             self.assertEqual(r['schema_version'],2)
-            self.assertEqual(r['material_protocol'],2)
+            self.assertEqual(r['material_protocol'],3)
             self.assertEqual(r['material_sha256'],manifest['material_sha256'])
             self.assertEqual(r['material_sha256'],seen[r['reviewer']])
         d=self.findings(code=1)
@@ -610,7 +627,7 @@ def trace(frame,event,arg):
             fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);held.append(lock)
     elif event=='return' and name=='collection_read' and action=='collection':
         (root/'project/coord/tasks/evidence.md').write_text('changed during collection read')
-    elif event=='return' and name=='material_body' and action=='material':
+    elif event=='return' and name=='material_parts' and action=='material':
         p=root/'project/coord/tasks/evidence.md';p.write_text(p.read_text()+'\\nChanged during hashing.\\n')
     else:return trace
     fired=True;(root/'race-fired').write_text(action)

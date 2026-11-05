@@ -1,0 +1,7 @@
+# Give reviewers bounded, hash-bound enclosing source context
+
+- Add review material protocol 3: after the complete committed diff, `unio review` and `unio review-set` include read-only source from the candidate commit for modified text files. Files up to 64 KiB are shown whole; larger files show each hunk plus 40 lines either side. A one-line manifest lists every changed file (up to 128, with an unlisted count) with its status, full-file SHA-256, and each region's lines, bytes and SHA-256, plus explicit omission reasons.
+- Context only fills space left under the existing 300000-byte whole-payload bound. The diff is never clipped, and nothing new is refused: when no context fits, or for report-only tasks, reviews keep protocol 2. Receipts record the protocol actually used.
+- Context bytes come only from Git objects named by the exact revision, with every diff option pinned, so local diff configuration cannot change the hash.
+- Readers compute protocols 1, 2 and 3 independently and match each receipt to its own hash. Existing schema-1 and protocol-2 receipts stay current, and protocol 4 or other combinations stay invalid. `material_sha256` now reports the newest available protocol. The browser bridge accepts protocol-3 evidence with the same readiness rules.
+- Add `tests/unio-review-context.py`. Update existing review tests that pinned protocol 2 as the default, and the review-set fault-injection anchor.

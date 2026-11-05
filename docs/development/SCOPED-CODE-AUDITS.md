@@ -66,5 +66,10 @@ New failures require a concrete correction, not vote averaging or blind retries.
 A passing audit or gate does not grant human acceptance, push, installation or
 release authority. Keep unknowns and bounded limitations explicit.
 
-A native task-scoped review baseline and enclosing-context packet remains a
-future product enhancement; this manual path does not implement it.
+Native review now adds bounded enclosing source context with exact file and
+region hashes (material protocol 3; see the
+[receipt contract](../REVIEW-RECEIPTS-CONTRACT.md)). It fills only the space
+left under the 300000-byte bound after the complete diff and lists anything it
+omits. This manual packet remains the route when the material itself exceeds
+that bound or a reviewer needs complete files beyond what fits; a native
+task-scoped review baseline remains a future enhancement.

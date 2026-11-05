@@ -1,5 +1,30 @@
 # Independent review receipts: first implementation slice
 
+**2026-11-05 enclosing-context extension:** material protocol 3 appends one
+`ENCLOSING SOURCE CONTEXT` section to the protocol-2 body, before the
+structured instructions and verdict footer, under the same whole-payload
+300000-byte UTF-8 bound. It is built only from Git objects named by the exact
+revision (`base...candidate` raw diff, candidate blobs, blob-to-blob `-U0`
+hunks) with every diff option pinned, so readers recompute identical bytes
+regardless of local diff configuration. A one-line `MANIFEST` JSON object
+records the candidate and base commits, up to 128 changed files and an
+`unlisted` count. Each file has `full`, `regions` or `omitted` status, the full
+candidate file SHA-256, byte and line counts, and every included region's
+1-based inclusive start/end, bytes and SHA-256. Modified text files up to
+65536 bytes are included whole; larger ones get their hunks plus 40 lines each
+side, merged. Added, deleted, symlink, submodule, non-UTF-8, empty and
+over-4-MiB files, and large files with no content hunks, are listed as omitted
+with that reason. Files are filled
+greedily in path order only while the whole section fits the budget left after
+the complete diff; a file that does not fit is `omitted` with `size_bound`.
+The diff is never clipped. When no section fits, or for report-only tasks,
+writers keep protocol 2. Receipt schema 2 now accepts `material_protocol` 2 or
+3 and records the protocol actually used; `review-set` binds every attempt to
+the same protocol. Readers compute protocols 1, 2 and 3 independently and match
+each receipt to its own hash, so older receipts stay current and a protocol-3
+failure never makes them stale. `material_sha256` reports the newest available
+protocol. Protocol 4 or any other combination stays invalid.
+
 **2026-10-13 compatibility extension:** [structured findings](REVIEW-FINDINGS.md)
 add opt-in `--findings` to the CLI below without changing the default summary
 schema or exits. Old exact receipt schema 1 implies material protocol 1, with

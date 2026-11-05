@@ -71,13 +71,17 @@ valid current legacy reviews. The findings view marks them
 `unstructured_legacy` with `incomplete=true`, even when old prose resembles a
 structured block. It never rewrites the old receipt or raw streams.
 
-New reviews use receipt schema 2 and explicit `material_protocol=2`. Structured
+Receipt schema 2 records an explicit `material_protocol` of 2 or 3. Structured
 instructions and the unchanged verdict footer are included in the hashed
-common material, all within a whole-payload 300000-byte UTF-8 bound. Single
-and concurrent reviews use identical complete material. Unknown schema/protocol
-combinations are invalid. Currentness uses each receipt's own protocol hash;
-a new-protocol size refusal does not invalidate otherwise current legacy
-evidence. The findings JSON exposes both hashes in `material_protocols`.
+common material, all within a whole-payload 300000-byte UTF-8 bound. Protocol
+3 adds a bounded enclosing source context section between the complete diff
+and those instructions; new reviews use it whenever it fits and otherwise keep
+protocol 2, recording the one used. Single and concurrent reviews use identical
+complete material. Unknown schema/protocol combinations are invalid.
+Currentness uses each receipt's own protocol hash; a new-protocol size refusal
+does not invalidate otherwise current older evidence. The findings JSON exposes
+all three hashes in `material_protocols`; `material_sha256` is the newest
+available one, which a new review would receive.
 
 ## Limits and privacy
 
