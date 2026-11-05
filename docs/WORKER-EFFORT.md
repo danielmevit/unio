@@ -103,3 +103,12 @@ suffixes still select the alias before the first hyphen. Static evidence comes
 from a fresh bounded native command audit, never caller-supplied `--audit-json`
 (which is refused). The audit does not execute configured commands or probe a
 provider. An active owned channel remains authoritative.
+
+The reported `requested_model` is only as private as that trusted native audit
+parser: it reflects a selector value only when it matches the parser's fixed
+list of model-name patterns, and reports `Unknown` otherwise, so arbitrary
+command text is not echoed. The effort helper validates the audit's structure
+and bounds but does not re-check model names itself. The audit runs in its own
+process session with a 15-second and 128 KiB bound; on completion, timeout or
+oversized output its whole process group is killed before the result is read,
+so no audit descendant outlives the query.

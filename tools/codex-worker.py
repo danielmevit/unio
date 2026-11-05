@@ -624,6 +624,42 @@ class Server:
                 pass
 
 
+AUDIT_SECONDS = 15
+AUDIT_LIMIT = 131072
+
+
+def run_audit(argv, cwd, output):
+    """Run the read-only audit in its own session and leave no descendant.
+
+    The leader stays unreaped (WNOWAIT) until the whole group has been killed,
+    so its PID/PGID cannot be recycled. Output beyond the bound stops it early.
+    """
+    child = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=output,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+    outcome = 'timeout'
+    try:
+        deadline = time.monotonic() + AUDIT_SECONDS
+        while time.monotonic() < deadline:
+            if os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None:
+                outcome = 'exited'
+                break
+            if os.fstat(output.fileno()).st_size > AUDIT_LIMIT:
+                outcome = 'oversized'
+                break
+            time.sleep(.01)
+    finally:
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        status = child.wait()
+    if outcome == 'timeout':
+        raise subprocess.TimeoutExpired(argv, AUDIT_SECONDS)
+    if outcome == 'oversized':
+        raise ValueError('oversized audit')
+    return status
+
+
 def effort_info_audit(args):
     # Only a fresh native command audit supplies facts. Caller JSON is never evidence.
     alias = args.worker.split('-', 1)[0]
@@ -643,13 +679,11 @@ def effort_info_audit(args):
         # doctor uses command_audit's bounded, nonexecuting conservative parser.
         # Spool its bounded output rather than accepting an argv JSON handoff.
         with tempfile.TemporaryFile() as output:
-            completed = subprocess.run([cli, 'doctor', '--commands', '--json'],
-                                       cwd=args.project, stdout=output,
-                                       stderr=subprocess.DEVNULL, timeout=15)
-            if completed.returncode or output.tell() > 131072:
+            status = run_audit([cli, 'doctor', '--commands', '--json'], args.project, output)
+            if status or os.fstat(output.fileno()).st_size > AUDIT_LIMIT:
                 raise ValueError('invalid audit')
             output.seek(0)
-            audit = json.loads(output.read(131073))
+            audit = json.loads(output.read(AUDIT_LIMIT + 1))
         keys = {'schema_version', 'source', 'authentication', 'capacity',
                 'effective_model', 'effective_effort', 'agents'}
         if (not isinstance(audit, dict) or set(audit) != keys

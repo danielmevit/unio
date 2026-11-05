@@ -74,6 +74,7 @@ python3 -B tests/unio-fleet.py
 python3 -B tests/unio-model-experience.py
 python3 -B tests/unio-codex-worker.py
 python3 -B tests/unio-worker-effort.py
+python3 -B tests/unio-effort-audit-cleanup.py
 python3 -B tests/unio-managed-session.py
 python3 -B tests/unio-managed-lead.py
 python3 -B tests/unio-managed-lead-codex.py

@@ -32,17 +32,19 @@ def audit_validator_checks(base):
                capacity='Unknown', effective_model='Unknown', effective_effort='Unknown', issues=[])
     audit = dict(schema_version=1, source='local_static', authentication='Unknown',
                  capacity='Unknown', effective_model='Unknown', effective_effort='Unknown', agents=[row])
+    assert worker.AUDIT_SECONDS == 15 and worker.AUDIT_LIMIT == 131072
     def invoke(payload, status=0, timeout=False):
-        def fake_run(argv, **kwargs):
+        # The process-group runner has its own real-process regression
+        # (tests/unio-effort-audit-cleanup.py); here only its boundary is faked.
+        def fake_run(argv, cwd, output):
             assert argv == ['offline-audit-fixture', 'doctor', '--commands', '--json']
-            assert kwargs['cwd'] == str(project) and kwargs['timeout'] == 15
-            assert kwargs['stderr'] == subprocess.DEVNULL
+            assert cwd == str(project)
             if timeout:
-                raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
-            kwargs['stdout'].write(payload)
-            return SimpleNamespace(returncode=status)
+                raise subprocess.TimeoutExpired(argv, worker.AUDIT_SECONDS)
+            output.write(payload); output.flush()
+            return status
         with patch.dict(os.environ, {'UNIO_CONF_DIR': str(conf), 'UNIO_EFFORT_CLI': 'offline-audit-fixture'}), \
-                patch.object(worker.subprocess, 'run', side_effect=fake_run) as run:
+                patch.object(worker, 'run_audit', side_effect=fake_run) as run:
             result = worker.effort_info_audit(args)
             assert run.call_count == 1
             return result
@@ -63,7 +65,7 @@ def audit_validator_checks(base):
         assert result['reason'] == 'invalid_agents_conf', result
         assert all(result[k] == 'Unknown' for k in ('tool', 'requested_model', 'requested_effort'))
     with patch.dict(os.environ, {'UNIO_CONF_DIR': str(conf), 'UNIO_EFFORT_CLI': ''}), \
-            patch.object(worker.subprocess, 'run', side_effect=AssertionError('no CLI evidence')):
+            patch.object(worker, 'run_audit', side_effect=AssertionError('no CLI evidence')):
         result = worker.effort_info_audit(args)
         assert result['reason'] == 'static_evidence_unavailable'
         assert result['requested_effort'] == 'Unknown'
