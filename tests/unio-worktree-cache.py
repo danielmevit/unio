@@ -96,6 +96,20 @@ class Fixture(unittest.TestCase):
         return dict(schema_version=1, worker=worker, task=task,
                     process=dict(state=state, exit_code=code))
 
+    def inventory(self, limits=None, hook=cache.noop_hook, clock=None):
+        kwargs = dict(limits=limits, hook=hook)
+        if clock:
+            kwargs['clock'] = clock
+        return cache.inventory(str(self.root), **kwargs)
+
+    def reasons(self, result, path):
+        return [item['reason'] for item in result['excluded'] if item['path'] == path]
+
+    def paths(self, result):
+        return [item['path'] for item in result['candidates']]
+
+
+class CacheCase(Fixture):
     def test_native_result_shapes_and_identity(self):
         self.worker('idle')
         target = self.root / 'coord/results/idle/T1.json'
@@ -182,20 +196,6 @@ class Fixture(unittest.TestCase):
         (base / 'other').symlink_to(group)
         self.assertFalse(cache.worker_slots(str(self.root))[1])
 
-    def inventory(self, limits=None, hook=cache.noop_hook, clock=None):
-        kwargs = dict(limits=limits, hook=hook)
-        if clock:
-            kwargs['clock'] = clock
-        return cache.inventory(str(self.root), **kwargs)
-
-    def reasons(self, result, path):
-        return [item['reason'] for item in result['excluded'] if item['path'] == path]
-
-    def paths(self, result):
-        return [item['path'] for item in result['candidates']]
-
-
-class CacheCase(Fixture):
     def test_idle_generated_directory_schema(self):
         self.worker('idle', cache_bytes=123)
         (self.root / 'wt/idle/App/obj').mkdir()
