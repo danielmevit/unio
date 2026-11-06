@@ -12,7 +12,6 @@ import selectors
 import shutil
 import signal
 import subprocess
-import tempfile
 import time
 
 GIB = 1024 ** 3
@@ -140,31 +139,53 @@ def wsl_host():
         return unknown('wsl-host', 'Windows interop failed')
 
 
+FILESYSTEM_PROBE = r'''import json, os, sys
+path = json.loads(sys.stdin.readline())
+actual = os.path.abspath(path)
+while not os.path.exists(actual):
+    parent = os.path.dirname(actual)
+    if parent == actual:
+        raise OSError('no existing ancestor')
+    actual = parent
+info = os.statvfs(actual)
+print(json.dumps(dict(available_bytes=info.f_bavail * info.f_frsize,
+                      device=os.stat(actual).st_dev)))
+'''
+
+
 def filesystem(path, kind):
+    # Isolate potentially stalled filesystem syscalls behind the same bounded
+    # pipe reader. The child has no write operation or environment dump.
+    import sys
     try:
-        # statvfs reports bytes available to this user, not reserved root blocks.
-        actual = os.path.abspath(path)
-        while not os.path.exists(actual):
-            parent = os.path.dirname(actual)
-            if parent == actual:
-                raise OSError()
-            actual = parent
-        info = os.statvfs(actual)
-        free = info.f_bavail * info.f_frsize
-        if free < 0:
-            raise OSError()
-        # Do not disclose profile paths; the device ID distinguishes filesystems.
-        return dict(status='known', kind=kind, volume='device:' + str(os.stat(actual).st_dev),
+        payload = (json.dumps(os.path.abspath(path), ensure_ascii=True) + '\n').encode()
+        if len(payload) > LIMIT:
+            return unknown(kind, 'filesystem path exceeds observation bound')
+        doc = json.loads(bounded_probe([sys.executable, '-I', '-S', '-B', '-c', FILESYSTEM_PROBE],
+                                       payload, timeout=0.5))
+        free, device = doc['available_bytes'], doc['device']
+        if type(free) is not int or free < 0 or type(device) is not int or device < 0:
+            raise ValueError()
+        return dict(status='known', kind=kind, volume='device:' + str(device),
                     available_bytes=free, reason=None)
-    except OSError:
-        return unknown(kind, 'filesystem capacity unavailable')
+    except (OSError, ValueError, KeyError, TypeError):
+        return unknown(kind, 'filesystem capacity unavailable or observation timed out')
+
+
+def temp_directory():
+    # tempfile.gettempdir() performs writable probes. This command is read-only.
+    for path in (os.environ.get('TMPDIR'), os.environ.get('TEMP'), os.environ.get('TMP'),
+                 '/tmp', '/var/tmp', '/usr/tmp', os.getcwd()):
+        if path and os.path.isdir(path):
+            return path
+    return '/tmp'
 
 
 def observe(root, worker=''):
     configured = thresholds()
     measurements = [filesystem(os.path.join(root, 'wt', worker) if worker else root, 'project'),
                     filesystem(os.path.join(root, 'coord'), 'coordination'),
-                    filesystem(tempfile.gettempdir(), 'temp')]
+                    filesystem(temp_directory(), 'temp')]
     # WSL1 also yields Unknown, rather than calling virtual ext4 host capacity.
     if 'microsoft' in platform.release().lower() or os.environ.get('WSL_DISTRO_NAME'):
         measurements.append(wsl_host())
@@ -195,7 +216,8 @@ def admission(root, worker=''):
         raise ValueError('storage refused: critical disk space\n' + describe(doc))
     # Concise observations are visible even when adequate; Unknown warns.
     import sys
-    print('disk observation: ' + doc['overall'] + '\n' + describe(doc), file=sys.stderr)
+    print(('warning: ' if any(m['status'] == 'unknown' for m in doc['measurements']) or doc['overall'] == 'warning' else '')
+          + 'disk observation: ' + doc['overall'] + '\n' + describe(doc), file=sys.stderr)
 
 
 def command(root, mode='text'):

@@ -25,7 +25,9 @@ its VHDX file, and resolves the containing Windows volume via Get-Volume.
 Registry values are data, never executable script. Only a verified drive root
 and available bytes are returned. Missing interop, unsupported mappings,
 ambiguous metadata, probe failure, oversized output or timeout yield Unknown.
-The probe bounds output at 4096 bytes and uses a 4.5-second wall deadline.
+The Windows probe bounds output at 4096 bytes and uses a 4.5-second wall
+deadline. Each filesystem syscall probe runs in a read-only child with a
+0.5-second deadline; a stalled filesystem yields Unknown.
 Native Windows metadata validation is unit tested; this does not add native
 Windows CLI support. No user-disk scan or credential read is performed.
 
