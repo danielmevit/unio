@@ -291,11 +291,15 @@ def owner_state(doc, scan):
     sessions = scan.sessions()
     if sessions == 'unproved':
         return 'unproved'
-    for sid, status, start in ((doc['shell_sid'], shell if doc['shell_sid'] == doc['shell_pid'] else None, doc['shell_start']),
-                               (doc['provider_sid'], provider, doc['shell_start'])):
+    # A foreground shell's session is the user's terminal, which is not owned.
+    owned = [(doc['provider_sid'], provider)]
+    if doc['shell_sid'] == doc['shell_pid']:
+        owned.append((doc['shell_sid'], shell))
+    for sid, status in owned:
         if sid is None or status == 'reused':
             continue
-        if any(member['start'] >= start for member in sessions.get(sid, ())):
+        if any(member['start'] >= doc['shell_start'] and member['pid'] != os.getpid()
+               for member in sessions.get(sid, ())):
             return 'session_members'
     return 'reused' if 'reused' in (shell, provider) else 'absent'
 
