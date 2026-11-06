@@ -12905,15 +12905,94 @@ def probe_lock(path):
         os.close(fd)
 
 
-def worker_slots(root):
+class MetadataError(ValueError):
+    """A strict JSON failure with an inventory-safe explanatory reason."""
+
+
+def strict_metadata(raw):
+    """Small control JSON: no duplicate keys, nonfinite numbers or deep nesting."""
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise MetadataError('duplicate_key')
+            result[key] = value
+        return result
+
+    def finite(value):
+        raise MetadataError('nonfinite_number')
+
+    try:
+        value = json.loads(raw, object_pairs_hook=unique, parse_constant=finite)
+        pending = [(value, 0)]
+        while pending:
+            item, depth = pending.pop()
+            if depth > 64:
+                raise MetadataError('depth_limit')
+            if isinstance(item, dict):
+                pending.extend((child, depth + 1) for child in item.values())
+            elif isinstance(item, list):
+                pending.extend((child, depth + 1) for child in item)
+            elif isinstance(item, float) and not (-float('inf') < item < float('inf')):
+                raise MetadataError('nonfinite_number')
+        return value
+    except RecursionError as error:
+        raise MetadataError('recursion_limit') from error
+
+
+def metadata_names(directory, cap, check=None):
+    """No-follow listing, at most cap+1 entries observed, including non-JSON.
+
+    Exceeding the cap makes the entire observation Unknown; no partial listing
+    is used as evidence of inactivity.
+    """
+    fd = os.open(directory, DIR_FLAGS)
+    try:
+        names = []
+        with os.scandir(fd) as entries:
+            for entry in entries:
+                if check:
+                    check()
+                if len(names) >= cap:
+                    raise Refused('metadata_entry_limit')
+                names.append(entry.name)
+        return sorted(names)
+    finally:
+        os.close(fd)
+
+
+def native_process(document, worker, task):
+    if (not isinstance(document, dict)
+            or type(document.get('schema_version')) is not int
+            or document['schema_version'] != 1
+            or document.get('worker') != worker or document.get('task') != task
+            or not LABEL.fullmatch(worker) or not TASK.fullmatch(task)):
+        raise ValueError('invalid native identity')
+    process = document.get('process')
+    if not isinstance(process, dict) or 'exit_code' not in process:
+        raise ValueError('invalid native process')
+    state, code = process.get('state'), process['exit_code']
+    if not isinstance(state, str) or state not in TERMINAL_PROCESS_STATES | {'running'}:
+        raise ValueError('invalid native process state')
+    if state in ('not_run', 'running'):
+        valid = code is None
+    else:
+        valid = (type(code) is int and 0 <= code <= 2147483647
+                 and ((code == 0) == (state == 'succeeded')))
+    if not valid:
+        raise ValueError('invalid native process exit')
+    return state
+
+
+def worker_slots(root, check=None):
     """Return (workers with a work-policy slot, whether all slots were understood)."""
     base = os.path.join(root, 'coord', '.locks', 'work-policy-slots')
     workers, known, files = set(), True, 0
     try:
-        groups = sorted(os.listdir(base))
+        groups = metadata_names(base, MAX_SLOT_GROUPS, check)
     except FileNotFoundError:
         return workers, True
-    except OSError:
+    except (OSError, Refused):
         return workers, False
     if len(groups) > MAX_SLOT_GROUPS:
         return workers, False
@@ -12923,18 +13002,27 @@ def worker_slots(root):
             if stat.S_ISLNK(os.lstat(directory).st_mode):
                 known = False
                 continue
-            names = sorted(os.listdir(directory))
+            names = metadata_names(directory, MAX_SLOT_FILES - files, check)
+        except Refused:
+            return workers, False
         except OSError:
             known = False
             continue
+        files += len(names)
         for name in names:
+            if check:
+                check()
             if not name.endswith('.json'):
                 continue
-            files += 1
-            if files > MAX_SLOT_FILES:
-                return workers, False
             try:
-                value = json.loads(read_regular(os.path.join(directory, name), 65536)[0])
+                value = strict_metadata(read_regular(os.path.join(directory, name), 65536)[0])
+                if (not isinstance(value, dict)
+                        or type(value.get('schema_version')) is not int
+                        or value['schema_version'] != 1 or value.get('group') != group
+                        or any(not isinstance(value.get(key), str) or not pattern.fullmatch(value[key])
+                               for key, pattern in (('worker', LABEL), ('task', TASK), ('agent', LABEL)))
+                        or value.get('kind') not in ('run', 'review')):
+                    raise ValueError('invalid slot identity')
                 workers.add(value['worker'])
             except FileNotFoundError:
                 continue
@@ -12943,7 +13031,7 @@ def worker_slots(root):
     return workers, known
 
 
-def activity(root, worker, slot_snapshot=None):
+def activity(root, worker, slot_snapshot=None, check=None):
     """Observe native activity; return (blocking reason or None, fingerprint).
 
     The scan may share one slot snapshot; the final recheck always reads afresh.
@@ -12958,7 +13046,7 @@ def activity(root, worker, slot_snapshot=None):
         return 'activity_unknown_no_lock', None
     if os.path.lexists(os.path.join(locks, 'codex-worker-' + worker + '.json')):
         return 'native_session_manifest', None
-    slots, known = slot_snapshot if slot_snapshot is not None else worker_slots(root)
+    slots, known = slot_snapshot if slot_snapshot is not None else worker_slots(root, check)
     if worker in slots:
         return 'work_policy_slot', None
     if not known:
@@ -12967,9 +13055,12 @@ def activity(root, worker, slot_snapshot=None):
     try:
         if not stat.S_ISDIR(os.lstat(directory).st_mode):
             return 'activity_unknown_results', None
-        names = sorted(name for name in os.listdir(directory) if name.endswith('.json'))
+        names = metadata_names(directory, MAX_RESULTS, check)
+        names = [name for name in names if name.endswith('.json')]
     except FileNotFoundError:
         return 'activity_unknown_no_result', None
+    except Refused:
+        return 'activity_unknown_result_limit', None
     except OSError:
         return 'activity_unknown_results', None
     if not names:
@@ -12978,11 +13069,15 @@ def activity(root, worker, slot_snapshot=None):
         return 'activity_unknown_result_limit', None
     fingerprint = [lock_inode]
     for name in names:
+        if check:
+            check()
         try:
             raw, facts = read_regular(os.path.join(directory, name), MAX_RESULT_BYTES)
-            document = json.loads(raw)
-            process_state = document['process']['state']
+            document = strict_metadata(raw)
+            process_state = native_process(document, worker, name[:-5])
             sections = [document.get(key) for key in ('validation', 'review')]
+        except MetadataError as error:
+            return 'activity_unknown_metadata_' + str(error), None
         except (OSError, Refused, ValueError, KeyError, TypeError):
             return 'activity_unknown_results', None
         if process_state == 'running':
@@ -13341,7 +13436,14 @@ def final_recheck(root, report, budget, hook):
             report.exclude(item['path'], item['worker'], 'activity_recheck_unavailable')
             report.mark_partial('time_limit')
             continue
-        reason, fingerprint = activity(root, item['worker'])
+        def recheck_time():
+            if budget.clock() >= budget.hard_deadline:
+                raise Exhausted('time_limit')
+        try:
+            reason, fingerprint = activity(root, item['worker'], check=recheck_time)
+        except Exhausted:
+            reason, fingerprint = 'activity_recheck_unavailable', None
+            report.mark_partial('time_limit')
         if reason is None and fingerprint != report.fingerprints.get(item['worker']):
             reason = 'activity_changed'
         if reason is None and item['_identity'] is not None:
@@ -13414,7 +13516,11 @@ def inventory(project, limits=None, hook=noop_hook, clock=time.monotonic):
     names.sort(key=os.fsencode)
     points = mount_points()
     stopped_at = None
-    slot_snapshot = worker_slots(root)
+    try:
+        slot_snapshot = worker_slots(root, budget.tick)
+    except Exhausted as error:
+        report.mark_partial(error.reason)
+        slot_snapshot = (set(), False)
     for index, worker in enumerate(names):
         relative = 'wt/' + worker
         try:
@@ -13427,7 +13533,7 @@ def inventory(project, limits=None, hook=noop_hook, clock=time.monotonic):
             if reason:
                 report.exclude(relative, worker, reason)
                 continue
-            reason, fingerprint = activity(root, worker, slot_snapshot)
+            reason, fingerprint = activity(root, worker, slot_snapshot, budget.tick)
             if reason:
                 report.exclude(relative, worker, reason)
                 continue

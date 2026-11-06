@@ -13,6 +13,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from unittest.mock import patch
 import re
 import shutil
 import subprocess
@@ -87,7 +88,99 @@ class Fixture(unittest.TestCase):
     def result(self, name, state):
         directory = self.root / 'coord/results' / name
         directory.mkdir(exist_ok=True)
-        (directory / 'T1.json').write_text(json.dumps(dict(process=dict(state=state))))
+        (directory / 'T1.json').write_text(json.dumps(self.receipt(name, 'T1', state)))
+
+    @staticmethod
+    def receipt(worker, task='T1', state='succeeded'):
+        code = 0 if state == 'succeeded' else 1 if state == 'failed' else None
+        return dict(schema_version=1, worker=worker, task=task,
+                    process=dict(state=state, exit_code=code))
+
+    def test_native_result_shapes_and_identity(self):
+        self.worker('idle')
+        target = self.root / 'coord/results/idle/T1.json'
+        malformed = [None, [], {'process': {'state': 'succeeded'}}]
+        for key, value in [('schema_version', True), ('schema_version', 2),
+                           ('worker', 'other'), ('task', 'T2'), ('worker', [])]:
+            doc = self.receipt('idle')
+            doc[key] = value
+            malformed.append(doc)
+        for state, code in [([], 0), ({}, 0), (None, 0), ('succeeded', True),
+                            ('succeeded', None), ('succeeded', 1), ('failed', 0),
+                            ('failed', -1), ('failed', '1'), ('failed', None),
+                            ('not_run', 0), ('running', 0)]:
+            doc = self.receipt('idle')
+            doc['process'] = dict(state=state, exit_code=code)
+            malformed.append(doc)
+        for process in [[], None, {}, {'state': 'succeeded'}]:
+            doc = self.receipt('idle')
+            doc['process'] = process
+            malformed.append(doc)
+        for doc in malformed:
+            with self.subTest(document=doc):
+                target.write_text(json.dumps(doc))
+                self.assertEqual(cache.activity(str(self.root), 'idle')[0],
+                                 'activity_unknown_results')
+        for state in ('succeeded', 'failed', 'not_run'):
+            with self.subTest(state=state):
+                self.result('idle', state)
+                self.assertIsNone(cache.activity(str(self.root), 'idle')[0])
+        self.result('idle', 'running')
+        self.assertEqual(cache.activity(str(self.root), 'idle')[0], 'running_orphan_uncertain')
+
+    def test_strict_metadata_in_results_and_slots(self):
+        self.worker('idle')
+        target = self.root / 'coord/results/idle/T1.json'
+        slot_dir = self.root / 'coord/.locks/work-policy-slots/group'
+        slot_dir.mkdir(parents=True)
+        slot = slot_dir / 'slot.json'
+        malformed = ['[' * 15000 + '0' + ']' * 15000,
+                     '[' * 66 + '0' + ']' * 66,
+                     '{"worker":"idle","worker":"other"}',
+                     '{"x":NaN}', '{"x":Infinity}', '{"x":-Infinity}', '{"x":1e999}']
+        for raw in malformed:
+            with self.subTest(raw=raw[:70]):
+                target.write_text(raw)
+                self.assertTrue(cache.activity(str(self.root), 'idle')[0].startswith(
+                    'activity_unknown_metadata_'))
+                slot.write_text(raw)
+                self.assertFalse(cache.worker_slots(str(self.root))[1])
+                slot.unlink()
+        self.result('idle', 'succeeded')
+        base = dict(schema_version=1, group='group', worker='idle', task='T1',
+                    agent='codex', kind='run')
+        for key, value in [('schema_version', True), ('group', 'wrong'), ('task', []),
+                           ('worker', []), ('agent', None), ('kind', 'unknown')]:
+            doc = dict(base)
+            doc[key] = value
+            slot.write_text(json.dumps(doc))
+            self.assertFalse(cache.worker_slots(str(self.root))[1])
+            self.assertEqual(cache.activity(str(self.root), 'idle')[0], 'activity_unknown_slots')
+        slot.write_text(json.dumps(base))
+        self.assertEqual(cache.worker_slots(str(self.root)), ({'idle'}, True))
+
+    def test_metadata_enumeration_bounds(self):
+        self.worker('idle')
+        results = self.root / 'coord/results/idle'
+        (results / 'unrelated').touch()
+        with patch.object(cache, 'MAX_RESULTS', 1), patch.object(cache.os, 'listdir',
+                                                              side_effect=AssertionError('unbounded')):
+            self.assertEqual(cache.activity(str(self.root), 'idle')[0],
+                             'activity_unknown_result_limit')
+        base = self.root / 'coord/.locks/work-policy-slots'
+        group = base / 'group'
+        group.mkdir(parents=True)
+        for name in ('a', 'b'):
+            (group / name).touch()
+        with patch.object(cache, 'MAX_SLOT_FILES', 1):
+            self.assertFalse(cache.worker_slots(str(self.root))[1])
+        (base / 'other').mkdir()
+        with patch.object(cache, 'MAX_SLOT_GROUPS', 1):
+            self.assertFalse(cache.worker_slots(str(self.root))[1])
+        # Directory opens themselves must refuse symlinks.
+        (base / 'other').rmdir()
+        (base / 'other').symlink_to(group)
+        self.assertFalse(cache.worker_slots(str(self.root))[1])
 
     def inventory(self, limits=None, hook=cache.noop_hook, clock=None):
         kwargs = dict(limits=limits, hook=hook)
@@ -159,7 +252,8 @@ class CacheCase(Fixture):
         self.worker('slotted')
         slots = self.root / 'coord/.locks/work-policy-slots/claude'
         slots.mkdir(parents=True)
-        (slots / 'a.json').write_text(json.dumps(dict(worker='slotted')))
+        (slots / 'a.json').write_text(json.dumps(dict(schema_version=1, group='claude', worker='slotted',
+                                                        task='T1', agent='claude', kind='run')))
         result = self.inventory()
         self.assertEqual(self.paths(result), [])
         self.assertEqual(self.reasons(result, 'wt/nolock'), ['activity_unknown_no_lock'])
@@ -362,7 +456,7 @@ class CacheCase(Fixture):
         def hook(event, _detail):
             if event == 'before_present':
                 (self.root / 'coord/results/later/T2.json').write_text(
-                    json.dumps(dict(process=dict(state='succeeded'))))
+                    json.dumps(self.receipt('later', 'T2')))
         result = self.inventory(hook=hook)
         self.assertEqual(self.reasons(result, 'wt/later/App/bin'), ['activity_changed'])
 
