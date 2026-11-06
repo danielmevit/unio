@@ -21,13 +21,22 @@ Project/worktree, coordination and temporary filesystem observations use bytes
 available to the invoking user. In WSL, Linux free space is never presented as
 Windows host capacity. A fixed read-only PowerShell observer matches the current
 WSL distro name exactly against Lxss metadata, requires one WSL2 entry, verifies
-its VHDX file, and resolves the containing Windows volume via Get-Volume.
+its VHDX file, and normalizes extended DOS paths before path resolution. It rejects reparse
+files/ancestors (including folder mount points), then reads the verified fixed
+drive root through System.IO.DriveInfo. Unsupported paths remain Unknown.
 Registry values are data, never executable script. Only a verified drive root
 and available bytes are returned. Missing interop, unsupported mappings,
 ambiguous metadata, probe failure, oversized output or timeout yield Unknown.
 The Windows probe bounds output at 4096 bytes and uses a 4.5-second wall
-deadline. Each filesystem syscall probe runs in a read-only child with a
-0.5-second deadline; a stalled filesystem yields Unknown.
+deadline, plus at most 0.1 seconds for child reaping after group cleanup. The
+leader stays unreaped until that cleanup to prevent process-group reuse. Each
+filesystem syscall probe (including temp-path selection) runs in a read-only
+child with a 0.5-second deadline; a stalled filesystem yields Unknown.
+Deadlines bound supported subprocess execution and pipe reads, not synchronous
+OS process creation, executable lookup or an uninterruptible kernel operation.
+A child stuck in such an operation may remain pending after bounded cleanup.
+The retained writable-path/fsync probes also retain their synchronous syscall
+limits. No universal wall-time or crash-prevention guarantee is made.
 Native Windows metadata validation is unit tested; this does not add native
 Windows CLI support. No user-disk scan or credential read is performed.
 

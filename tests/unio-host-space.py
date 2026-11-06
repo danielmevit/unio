@@ -66,6 +66,10 @@ with patch.object(h, 'filesystem', side_effect=lambda p, k: known(k)), \
         with patch.object(h, 'wsl_host', return_value=known('wsl-host', free)):
             doc = h.observe('/fixture')
             check('huge ext4/host boundary ' + str(free), doc['overall'] == expected)
+    for low_kind in ('project', 'coordination', 'temp'):
+        with patch.object(h, 'filesystem', side_effect=lambda p, k: known(k, 0 if k == low_kind else 1024**4)), \
+             patch.object(h, 'wsl_host', return_value=known('wsl-host')):
+            check(low_kind+' critical independently', h.observe('/fixture')['overall'] == 'critical')
     with patch.object(h, 'wsl_host', return_value=h.unknown('wsl-host', 'ambiguous')):
         check('Unknown never adequate', h.observe('/fixture')['overall'] == 'unknown')
         with patch.object(h, 'filesystem', side_effect=lambda p, k: known(k, 0)):
@@ -92,7 +96,8 @@ with patch.object(h, 'bounded_probe', return_value='{"available_bytes":123,"devi
 with patch.object(h, 'bounded_probe', return_value='{"available_bytes":-1,"device":7}'):
     check('invalid filesystem metadata Unknown', h.filesystem('/fixture', 'project')['status'] == 'unknown')
 with patch.dict(os.environ, {'TMPDIR': '/definitely-missing-unio-temp-directory'}):
-    check('read-only temp selection fallback', h.temp_directory() != '/definitely-missing-unio-temp-directory')
+    check('read-only temp selection fallback',
+          h.filesystem(h.temp_directory(), 'temp')['status'] == 'known')
 
 for script, expected in (("import time; time.sleep(10)", 'timed out'),
                          ("import sys; sys.stdout.write('x'*100000); sys.stdout.flush()", 'exceeded bound')):
@@ -104,6 +109,40 @@ for script, expected in (("import time; time.sleep(10)", 'timed out'),
     else:
         raise AssertionError('probe accepted')
     check('bounded elapsed below 2 seconds', time.monotonic() - start < 2)
+
+# A finished leader must still be waitable at the exact moment killpg runs.
+# This catches reaping before group cleanup, even when the PID is not reused.
+real_killpg = os.killpg
+
+def owned_killpg(pid, sig):
+    ended = os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    check('leader ownership pinned through group cleanup', ended is not None)
+    return real_killpg(pid, sig)
+
+with patch.object(h.os, 'killpg', side_effect=owned_killpg):
+    check('successful probe output', h.bounded_probe([sys.executable, '-c',
+          "print('{}')"], b'{}\n').strip() == '{}')
+
+# Both pipe-held descendants and an exited stdout with a live leader are bounded.
+for script in (
+    "import os,time; pid=os.fork(); time.sleep(10) if pid == 0 else os._exit(0)",
+    "import os,time; os.close(1); os.close(2); time.sleep(10)",
+):
+    start = time.monotonic()
+    try:
+        h.bounded_probe([sys.executable, '-c', script], b'{}\n', timeout=0.2)
+    except ValueError as exc:
+        check('descendant/live leader deadline', 'timed out' in str(exc))
+    else:
+        raise AssertionError('unbounded child accepted')
+    check('total probe including cleanup below 2 seconds', time.monotonic()-start < 2)
+with patch.object(h.subprocess, 'Popen') as popen:
+    try:
+        h.bounded_probe(['unused'], b'x'*(h.LIMIT+1))
+    except ValueError:
+        check('oversized input refused before process', not popen.called)
+    else:
+        raise AssertionError('oversized payload accepted')
 
 with tempfile.TemporaryDirectory(prefix='host-space-') as temporary:
     base = Path(temporary)
@@ -181,6 +220,10 @@ else:
                        ('low-review', ('review','mock','low-review','rev1')),
                        ('low-set', ('review-set','mock','low-set','rev1','rev2'))):
         task(name)
+        retry_state = coord/'retries'/name/'state.json'
+        retry_state.parent.mkdir(parents=True, exist_ok=True)
+        retry_state.write_text(json.dumps(dict(schema_version=1, task=name, failed_attempts=2,
+                                              retry_granted=True, latest={})))
         grant_agent = 'mock' if args[0] == 'run' else 'rev1'
         grant_worker = 'mock' if args[0] == 'run' else 'rev1'
         out = cli('lead-budget','grant',grant_agent,grant_worker,name,'run' if args[0] == 'run' else 'review')
@@ -198,6 +241,13 @@ else:
                        ('bad-review', ('review','mock','bad-review','rev1')),
                        ('bad-set', ('review-set','mock','bad-set','rev1','rev2'))):
         task(name)
+        retry_state = coord/'retries'/name/'state.json'
+        retry_state.parent.mkdir(parents=True, exist_ok=True)
+        retry_state.write_text(json.dumps(dict(schema_version=1, task=name, failed_attempts=2,
+                                              retry_granted=True, latest={})))
+        out = cli('lead-budget','grant','mock' if args[0]=='run' else 'rev1',
+                  'mock' if args[0]=='run' else 'rev1',name,'run' if args[0]=='run' else 'review')
+        check(name+' real ready consent', out.returncode == 0, out.stderr)
         before = snapshot()
         out = cli(*args, extra={'UNIO_DISK_MIN_FREE_BYTES':'not-decimal'})
         check(name+' invalid settings before provider', out.returncode == 2 and 'decimal integer' in out.stderr

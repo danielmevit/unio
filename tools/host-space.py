@@ -20,6 +20,7 @@ TIMEOUT = 4.5
 # All registry strings remain data. Never interpolate them into PowerShell code.
 POWERSHELL = r'''
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 try {
   $request = [Console]::In.ReadLine() | ConvertFrom-Json
   $matches = @(Get-ChildItem -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' | ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath } | Where-Object { $_.DistributionName -ceq $request.distro })
@@ -30,15 +31,26 @@ try {
   $name = 'ext4.vhdx'
   if ($entry.VhdFileName) { $name = [string]$entry.VhdFileName }
   if ($name -notmatch '^[^\\/:]+\.vhdx$') { throw 'filename' }
-  $file = Join-Path -Path $base -ChildPath $name
-  if ($file.StartsWith('\\?\')) { $file = $file.Substring(4) }
+  # Normalize the extended DOS prefix before PowerShell's path provider sees it.
+  if ($base.StartsWith('\\?\')) { $base = $base.Substring(4) }
+  if ($base -notmatch '^[A-Za-z]:\\' -or $base.Contains('..')) { throw 'base' }
+  $file = [System.IO.Path]::Combine($base, $name)
   if ($file -notmatch '^[A-Za-z]:\\') { throw 'path' }
   $item = Get-Item -LiteralPath $file -Force
   if ($item.PSIsContainer -or $item.Length -le 0 -or $item.Extension -ine '.vhdx') { throw 'file' }
-  $volumes = @(Get-Volume -FilePath $item.FullName)
-  if ($volumes.Count -ne 1 -or -not $volumes[0].DriveLetter) { throw 'volume' }
-  $v = $volumes[0]
-  @{ verified = $true; volume = ([string]$v.DriveLetter + ':\'); available_bytes = $v.SizeRemaining } | ConvertTo-Json -Compress
+  # Reject junctions, symlinks and folder mount points rather than attributing
+  # their capacity to the drive-letter root. No volume enumeration/CIM startup.
+  $cursor = $item
+  while ($null -ne $cursor) {
+    if (($cursor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'reparse' }
+    if ($cursor -is [IO.FileInfo]) { $cursor = $cursor.Directory }
+    else { $cursor = $cursor.Parent }
+  }
+  $root = [IO.Path]::GetPathRoot($item.FullName)
+  if ($root -notmatch '^[A-Za-z]:\\$') { throw 'root' }
+  $v = New-Object System.IO.DriveInfo -ArgumentList $root
+  if (-not $v.IsReady -or $v.DriveType -ne [IO.DriveType]::Fixed) { throw 'volume' }
+  @{ verified = $true; volume = $root; available_bytes = $v.AvailableFreeSpace } | ConvertTo-Json -Compress
 } catch { '{"unknown":true}' }
 '''
 
@@ -63,6 +75,8 @@ def unknown(kind, reason):
 
 def bounded_probe(argv, payload, timeout=TIMEOUT):
     """Bound both output and wall time, including descendants retaining pipes."""
+    if len(payload) > LIMIT:
+        raise ValueError('host probe input exceeded bound')
     start = time.monotonic()
     proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, start_new_session=True)
@@ -87,8 +101,18 @@ def bounded_probe(argv, payload, timeout=TIMEOUT):
         remaining = timeout - (time.monotonic() - start)
         if remaining <= 0:
             raise ValueError('host probe timed out')
-        if proc.wait(timeout=remaining) != 0:
-            raise ValueError('host probe failed')
+        # Keep the exited leader unreaped until group cleanup: its PID pins
+        # ownership so killpg cannot target a newly reused process group.
+        while True:
+            ended = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            if ended is not None:
+                if ended.si_code != os.CLD_EXITED or ended.si_status != 0:
+                    raise ValueError('host probe failed')
+                break
+            remaining = timeout - (time.monotonic() - start)
+            if remaining <= 0:
+                raise ValueError('host probe timed out')
+            time.sleep(min(0.005, remaining))
         return bytes(data).decode('utf-8-sig')
     except subprocess.TimeoutExpired:
         raise ValueError('host probe timed out') from None
@@ -98,7 +122,12 @@ def bounded_probe(argv, payload, timeout=TIMEOUT):
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        proc.wait()
+        # A child stuck in an uninterruptible kernel syscall may not reap.
+        # Do not let cleanup turn an observation into an unbounded wait.
+        try:
+            proc.wait(timeout=0.1)
+        except subprocess.TimeoutExpired:
+            pass
         proc.stdout.close()
 
 
@@ -141,6 +170,8 @@ def wsl_host():
 
 FILESYSTEM_PROBE = r'''import json, os, sys
 path = json.loads(sys.stdin.readline())
+if isinstance(path, list):
+    path = next((p for p in path if os.path.isdir(p)), '/tmp')
 actual = os.path.abspath(path)
 while not os.path.exists(actual):
     parent = os.path.dirname(actual)
@@ -158,7 +189,8 @@ def filesystem(path, kind):
     # pipe reader. The child has no write operation or environment dump.
     import sys
     try:
-        payload = (json.dumps(os.path.abspath(path), ensure_ascii=True) + '\n').encode()
+        paths = [os.path.abspath(p) for p in path] if isinstance(path, list) else os.path.abspath(path)
+        payload = (json.dumps(paths, ensure_ascii=True) + '\n').encode()
         if len(payload) > LIMIT:
             return unknown(kind, 'filesystem path exceeds observation bound')
         doc = json.loads(bounded_probe([sys.executable, '-I', '-S', '-B', '-c', FILESYSTEM_PROBE],
@@ -174,11 +206,9 @@ def filesystem(path, kind):
 
 def temp_directory():
     # tempfile.gettempdir() performs writable probes. This command is read-only.
-    for path in (os.environ.get('TMPDIR'), os.environ.get('TEMP'), os.environ.get('TMP'),
-                 '/tmp', '/var/tmp', '/usr/tmp', os.getcwd()):
-        if path and os.path.isdir(path):
-            return path
-    return '/tmp'
+    # Selection uses isdir only inside the bounded filesystem child.
+    return [p for p in (os.environ.get('TMPDIR'), os.environ.get('TEMP'), os.environ.get('TMP'),
+                       '/tmp', '/var/tmp', '/usr/tmp', os.getcwd()) if p]
 
 
 def observe(root, worker=''):
