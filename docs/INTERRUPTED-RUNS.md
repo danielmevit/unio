@@ -32,9 +32,36 @@ review remain separate.
 
 - The worker lock is opened without creating it. A PID number alone never
   proves ownership: boot ID, start ticks, UID, session, worker and task must match.
+  A shell PID displayed in status or checked by doctor is certified only if that
+  exact shell PID's boot, start ticks, session, and UID match; surviving provider
+  ownership keeps the run state active, but never labels an unrelated or reused
+  shell PID as live.
 - `UNIO_ORPHAN_GRACE_SECONDS` defaults to 30 and accepts 1..3600. An invalid
   value, or a missing, naive or future `updated_at`, gives `unknown`.
 - Symlinked, special, hardlinked, oversized or non-private evidence gives `unknown`.
+- Strict bounded JSON parsing: Result and owner readers enforce bounded nesting
+  depth (max depth 64), reject duplicate keys, nonfinite constants (`NaN`,
+  `Infinity`), and invalid schemas/types without tracebacks. Malformed JSON
+  consistently resolves to `unknown` and `blocks_readiness=True`.
+- Native receipt invariants: Terminal exit codes must match recorded state. A
+  succeeded run requires exit code 0; a failed run requires a nonzero exit code
+  or `null` (legacy failed runs with `exit_code: null` keep `Source exit: Unknown`
+  without fabricating 0). Conflicting records (such as failed with exit 0, or
+  succeeded with nonzero exit) are treated as malformed.
+- Safe identifier compatibility: Native task and worker identifiers permitted by
+  `quality.ident` and `check_id` (including colons `T:1`, dots, hyphens, and safe
+  Unicode) are accepted and preserved across observation, status, and report,
+  with display output escaped.
+- Bounded enumeration: Scanning worker and record directories enforces strict
+  caps (`MAX_WORKERS=4096`, `MAX_RECORDS=20000`) while iterating, before
+  materializing, filtering or sorting. If an enumeration budget is exhausted or
+  entries are unreadable, status reports an incomplete observation (`Unknown`).
+- Operational system-call bounds: Bounded iteration counts protect against
+  unbounded traversal overhead in user space. However, low-level synchronous
+  system calls (`os.scandir`, `os.read`) on uninterruptible filesystems (such as
+  NFS, SMB, or hung kernel storage drivers) remain subject to OS kernel blocking;
+  Unio does not claim absolute hard wall-time guarantees against uninterruptible
+  filesystem waits.
 - Samples must match twice, which resists start and exit races.
 - A legacy record without owner metadata gets a cautious observation only.
 

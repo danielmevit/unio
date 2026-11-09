@@ -28,7 +28,7 @@ MAX_RECORDS = 20000
 MAX_OWNER_FILES = 4096
 MAX_PROC_ENTRIES = 65536
 MAX_PRINTED = 50
-IDENT = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}')
+MAX_JSON_DEPTH = 64
 BOOT = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 OWNER_KEYS = {'schema_version', 'boot_id', 'worker', 'task', 'shell_pid', 'shell_start', 'shell_sid',
               'provider_pid', 'provider_sid', 'provider_start'}
@@ -55,8 +55,62 @@ def grace_seconds(environ=None):
     return int(raw), None
 
 
+def _parse_pairs(pairs):
+    d = {}
+    for k, v in pairs:
+        if k in d:
+            raise ValueError('duplicate key: ' + str(k))
+        d[k] = v
+    return d
+
+
+def _reject_constant(value):
+    raise ValueError('nonfinite JSON constant')
+
+
+def _check_depth(text, max_depth=MAX_JSON_DEPTH):
+    depth = 0
+    in_string = False
+    escape = False
+    for ch in text:
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if ch in ('{', '['):
+                depth += 1
+                if depth > max_depth:
+                    raise ValueError('JSON depth exceeds limit')
+            elif ch in ('}', ']'):
+                depth -= 1
+
+
+def _safe_json_loads(data):
+    if isinstance(data, (bytes, bytearray)):
+        try:
+            data = data.decode('utf-8')
+        except UnicodeError:
+            raise ValueError('invalid UTF-8 encoding')
+    elif not isinstance(data, str):
+        raise ValueError('invalid JSON data type')
+    _check_depth(data)
+    try:
+        return json.loads(data, object_pairs_hook=_parse_pairs, parse_constant=_reject_constant)
+    except (ValueError, RecursionError) as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def _ident(value):
-    return isinstance(value, str) and IDENT.fullmatch(value) is not None
+    return (isinstance(value, str) and 0 < len(value) <= 200
+            and value not in ('.', '..') and '..' not in value
+            and not value.startswith('-')
+            and not any(c.isspace() or ord(c) < 32 or ord(c) == 127 or c in '/\\' for c in value))
 
 
 def _pid_ok(value):
@@ -246,8 +300,8 @@ def _read_owner(root, worker, task):
         if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
             return None, digest, 'unreadable'
         try:
-            doc = json.loads(data)
-        except ValueError:
+            doc = _safe_json_loads(data)
+        except (ValueError, RecursionError):
             return None, digest, 'malformed'
         if not _valid_owner(doc) or doc['task'] != task or doc['worker'] != worker:
             return None, digest, 'malformed'
@@ -333,15 +387,22 @@ def _read_record(root, worker, task):
         return None, type(exc).__name__
     digest = hashlib.sha256(data).hexdigest()
     try:
-        doc = json.loads(data)
-    except ValueError:
+        doc = _safe_json_loads(data)
+    except (ValueError, RecursionError):
         return None, digest
-    process = doc.get('process') if isinstance(doc, dict) else None
-    if (not isinstance(process, dict) or doc.get('worker') != worker or doc.get('task') != task
-            or process.get('state') not in PROCESS_STATES):
+    if not isinstance(doc, dict) or type(doc.get('schema_version')) is not int or doc['schema_version'] != 1:
+        return None, digest
+    if doc.get('worker') != worker or doc.get('task') != task:
+        return None, digest
+    process = doc.get('process')
+    if not isinstance(process, dict) or process.get('state') not in PROCESS_STATES:
         return None, digest
     code = process.get('exit_code')
-    if code is not None and type(code) is not int:
+    if code is not None and (type(code) is not int or code < 0):
+        return None, digest
+    if process['state'] == 'succeeded' and code != 0:
+        return None, digest
+    if process['state'] == 'failed' and code == 0:
         return None, digest
     if process['state'] in ('running', 'not_run') and code is not None:
         return None, digest
@@ -533,28 +594,47 @@ def project_observations(root):
     """Return (observations, truncated) for every native record, bounded."""
     out, truncated = [], False
     scan = Scan()
+    workers = []
     try:
         directory = _plain_dirs(root, ('coord', 'results'))
         with os.scandir(directory) as entries:
-            workers = sorted((e.name for e in entries if e.is_dir(follow_symlinks=False)))
+            for count, entry in enumerate(entries):
+                if count >= MAX_WORKERS:
+                    truncated = True
+                    break
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        workers.append(entry.name)
+                except OSError:
+                    truncated = True
     except FileNotFoundError:
         return out, False
     except (OSError, Evidence):
         return out, True
-    if len(workers) > MAX_WORKERS:
-        workers, truncated = workers[:MAX_WORKERS], True
+    workers.sort()
     for worker in workers:
         if not _ident(worker):
             continue
+        if len(out) >= MAX_RECORDS:
+            truncated = True
+            break
+        tasks = []
         try:
             with os.scandir(os.path.join(directory, worker)) as entries:
-                tasks = sorted(e.name[:-5] for e in entries if e.name.endswith('.json'))
+                for count, entry in enumerate(entries):
+                    if count >= MAX_RECORDS or len(out) + len(tasks) >= MAX_RECORDS:
+                        truncated = True
+                        break
+                    if entry.name.endswith('.json'):
+                        tasks.append(entry.name[:-5])
         except OSError:
             truncated = True
             continue
+        tasks.sort()
         for task in tasks:
             if len(out) >= MAX_RECORDS:
-                return out, True
+                truncated = True
+                break
             if _ident(task):
                 out.append(observe(root, worker, task, scan))
     return out, truncated
@@ -574,12 +654,22 @@ def pid_evidence(root, task):
     pid = int(raw)
     try:
         _, data = _read_evidence(os.path.join(root, 'coord', 'reports', task + '.own'), OWNER_LIMIT)
-        doc = json.loads(data)
-    except (OSError, Evidence, ValueError):
+        doc = _safe_json_loads(data)
+    except (OSError, Evidence, ValueError, RecursionError):
         return 'unproved', pid
     if not _valid_owner(doc) or doc['task'] != task or doc['shell_pid'] != pid:
         return 'unproved', pid
-    return ('live' if owner_state(doc, Scan()) == 'live' else 'not_live'), pid
+    scan = Scan()
+    if scan.boot is None:
+        return 'unproved', pid
+    if doc['boot_id'] != scan.boot:
+        return 'not_live', pid
+    shell = _identity(doc['shell_pid'], doc['shell_start'], doc['shell_sid'])
+    if shell == 'live':
+        return 'live', pid
+    if shell == 'unproved':
+        return 'unproved', pid
+    return 'not_live', pid
 
 
 def status_lines(root):
