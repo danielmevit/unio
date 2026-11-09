@@ -22,6 +22,7 @@ python3 -B tools/embed-capacity.py --check
 python3 -B tools/embed-readiness.py --check
 python3 -B tools/embed-fleet.py --check
 python3 -B tools/embed-task-plan.py --check
+python3 -B tools/embed-worktree-cache.py --check
 python3 -B tools/embed-task-outcomes.py --check
 python3 -B tools/embed-task-dispatch.py --check
 python3 -B tools/embed-continuous-delegation.py --check
@@ -77,6 +78,7 @@ python3 -B tests/unio-managed-session.py
 python3 -B tests/unio-managed-lead.py
 python3 -B tests/unio-managed-lead-codex.py
 python3 -B tests/unio-task-plan.py
+python3 -B tests/unio-worktree-cache.py
 python3 -B tests/unio-task-dispatch.py
 python3 -B tests/unio-task-dispatch-install.py
 python3 -B tests/unio-continuous-delegation.py
