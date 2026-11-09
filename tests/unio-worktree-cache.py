@@ -110,6 +110,76 @@ class Fixture(unittest.TestCase):
 
 
 class CacheCase(Fixture):
+    def test_cache_entry_case_and_tracked_aliases(self):
+        path = self.worker('idle', cache_bytes=None)
+        # No case-only test is skipped: rename through a distinct intermediate
+        # name so these index aliases exercise case-sensitive CI and drvfs.
+        for kind in ('bin', 'obj'):
+            upper = path / 'App' / kind.title()
+            upper.mkdir()
+            (upper / 'ThirdParty.dll').write_bytes(b'source')
+            run_git(path, 'add', '--', 'App/' + kind.title())
+        result = self.inventory()
+        for kind in ('bin', 'obj'):
+            self.assertNotIn('wt/idle/App/' + kind, self.paths(result))
+            self.assertEqual(self.reasons(result, 'wt/idle/App/' + kind), ['case_mismatch'])
+            upper = path / 'App' / kind.title()
+            temporary = path / 'App' / ('temporary-' + kind)
+            upper.rename(temporary)
+            temporary.rename(path / 'App' / kind)
+        # Exact lowercase entries now exist, but their mixed-case index aliases
+        # must still refuse both candidates, independent of core.ignorecase.
+        for ignorecase in ('false', 'true'):
+            run_git(path, 'config', 'core.ignorecase', ignorecase)
+            result = self.inventory()
+            for kind in ('bin', 'obj'):
+                self.assertEqual(self.reasons(result, 'wt/idle/App/' + kind), ['tracked_files'])
+        (path / 'Lib/bin').mkdir()
+        (path / 'Lib/bin/generated.dll').write_bytes(b'generated')
+        self.assertEqual(self.paths(self.inventory()), ['wt/idle/Lib/bin'])
+
+    def test_literal_magic_project_with_tracked_case_alias(self):
+        path = self.worker('idle', cache_bytes=None)
+        project = path / 'A[1]'
+        project.mkdir()
+        (project / 'App.csproj').write_text('project')
+        (project / 'Bin').mkdir()
+        (project / 'Bin/source.dll').write_text('source')
+        run_git(path, 'add', '--', ':(literal)A[1]')
+        (project / 'Bin').rename(project / 'temporary')
+        (project / 'temporary').rename(project / 'bin')
+        result = self.inventory()
+        self.assertEqual(self.reasons(result, 'wt/idle/A[1]/bin'), ['tracked_files'])
+        run_git(path, 'rm', '--cached', '-r', '--', ':(literal)A[1]/Bin')
+        self.assertIn('wt/idle/A[1]/bin', self.paths(self.inventory()))
+
+    def test_malformed_registration_paths_keep_healthy_worker_and_cli_json(self):
+        self.worker('good')
+        bad = self.worker('bad', cache_bytes=None)
+        gitfile = bad / '.git'
+        admin = Path(os.fsdecode(gitfile.read_bytes()[8:].strip()))
+        targets = [(gitfile, b'gitdir: /nonexistent\0x\n'),
+                   (admin / 'gitdir', os.fsencode(str(bad / '.git')) + b'\0x\n'),
+                   (admin / 'gitdir', os.fsencode(str(bad)) + b'\0x/.git\n'),
+                   (admin / 'commondir', b'../..\0x\n'),
+                   (admin / 'HEAD', b'ref: refs/heads/agent/bad\0x\n')]
+        for target, malformed in targets:
+            with self.subTest(metadata=target.name, malformed=malformed):
+                original = target.read_bytes()
+                try:
+                    target.write_bytes(malformed)
+                    result = self.inventory()
+                    self.assertEqual(self.paths(result), ['wt/good/App/bin'])
+                    self.assertEqual(self.reasons(result, 'wt/bad'), ['unregistered_worktree'])
+                    cli = subprocess.run([os.sys.executable, '-I', '-S', '-B', str(HELPER),
+                                          '--project', str(self.root), '--json'],
+                                         capture_output=True, text=True)
+                    self.assertEqual(cli.returncode, 0, cli.stderr)
+                    self.assertEqual(cli.stderr, '')
+                    self.assertEqual(self.paths(json.loads(cli.stdout)), ['wt/good/App/bin'])
+                finally:
+                    target.write_bytes(original)
+
     def test_native_result_shapes_and_identity(self):
         self.worker('idle')
         target = self.root / 'coord/results/idle/T1.json'

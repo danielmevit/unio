@@ -25,12 +25,19 @@ credential or private artifact names, or VHD/VHDX files.
 - **Worker identity:** the worker needs a matching `.unio-worker` marker, an
   `agent/WORKER` branch, and a two-way Git registration in the selected project's
   common Git directory. Unregistered, foreign, locked or copied worktrees are
-  excluded. So is a Git operation in progress.
+  excluded. Malformed registration paths (including embedded NUL bytes) exclude
+  that worker as `unregistered_worktree`; other workers are still inventoried.
+  So is a Git operation in progress.
 - **Activity:** a held worker or task lock, a work-policy slot, a native session
   manifest, or a `running` result excludes the worker. A stale `running` result
   with no process is reported as `running_orphan_uncertain`, never as inactive.
   A missing lock, missing result, unreadable record or unknown state is reported
   as `activity_unknown_*`.
+- **Cache names:** only exact lowercase `bin`/`obj` directory entries qualify.
+  Case aliases such as `Bin`/`Obj` are refused as `case_mismatch`, including on
+  Windows/WSL storage. Tracked-path checks use case-insensitive literal matching
+  on every platform, regardless of `core.ignorecase`; conservative exclusions
+  of distinct case aliases on case-sensitive storage are intentional.
 - **Cache contents:** tracked files, symlinks, hardlinked files, mount crossings,
   FIFOs and other special files, protected names, or entries that differ between
   two metadata observations refuse the whole candidate.

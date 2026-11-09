@@ -194,15 +194,17 @@ def registration(worktree, common):
         back = read_regular(os.path.join(admin, 'gitdir'), 8192)[0]
         head = read_regular(os.path.join(admin, 'HEAD'), 8192)[0]
         shared = read_regular(os.path.join(admin, 'commondir'), 8192)[0]
-    except (OSError, Refused):
+        if any(b'\0' in value for value in (raw, back, shared, head)):
+            return None
+        target = os.path.join(admin, os.fsdecode(back.rstrip(b'\n')))
+        if os.path.realpath(os.path.dirname(target)) != worktree or os.path.basename(target) != '.git':
+            return None
+        branch = head.strip()[5:].strip() if head.startswith(b'ref:') else b''
+        return dict(admin=admin, branch=os.fsdecode(branch),
+                    common=os.path.realpath(os.path.join(admin, os.fsdecode(shared.rstrip(b'\n')))),
+                    locked=os.path.lexists(os.path.join(admin, 'locked')))
+    except (OSError, Refused, ValueError, UnicodeError):
         return None
-    target = os.path.join(admin, os.fsdecode(back.rstrip(b'\n')))
-    if os.path.realpath(os.path.dirname(target)) != worktree or os.path.basename(target) != '.git':
-        return None
-    branch = head.strip()[5:].strip() if head.startswith(b'ref:') else b''
-    return dict(admin=admin, branch=os.fsdecode(branch),
-                common=os.path.realpath(os.path.join(admin, os.fsdecode(shared.rstrip(b'\n')))),
-                locked=os.path.lexists(os.path.join(admin, 'locked')))
 
 
 def find_clone(root, budget):
@@ -689,6 +691,22 @@ def project_file_present(worktree, project, budget):
     return False
 
 
+def exact_cache_entry(parent, kind, budget):
+    """Require the intended entry spelling, even on case-folding storage."""
+    exact = False
+    alias = False
+    with os.scandir(parent) as entries:
+        for entry in entries:
+            budget.entry()
+            if entry.name == kind:
+                exact = True
+            elif entry.name.casefold() == kind:
+                alias = True
+    if alias:
+        raise Refused('case_mismatch')
+    return exact
+
+
 def scan_worker(root, worker, worktree, budget, limits, report, points, hook):
     relative = 'wt/' + worker
     projects, unsafe = tracked_projects(worktree, budget)
@@ -706,8 +724,6 @@ def scan_worker(root, worker, worktree, budget, limits, report, points, hook):
             budget.tick()
             label = (relative + '/' + project if project else relative) + '/' + kind
             cache = cache_path(worktree, project, kind)
-            if not os.path.lexists(cache):
-                continue
             if project and (protected(project) or project in KINDS):
                 report.exclude(label, worker, 'protected_project_directory')
                 continue
@@ -730,13 +746,15 @@ def scan_worker(root, worker, worktree, budget, limits, report, points, hook):
                         raise Refused('mount_escape')
                     parent = open_child(fd, project, project_info)
                 try:
+                    if not exact_cache_entry(parent, kind, budget):
+                        continue
                     report.seen_candidates += 1
                     if not project_file_present(worktree, project, budget):
                         raise Refused('project_file_not_regular')
                     if mount_inside(points, cache):
                         raise Refused('mount_escape' if points is not None else 'mount_table_unknown')
-                    if git(worktree, budget, '--literal-pathspecs', 'ls-files', '-z', '--',
-                           (project + '/' + kind) if project else kind):
+                    if git(worktree, budget, 'ls-files', '-z', '--',
+                           ':(icase,literal)' + ((project + '/' + kind) if project else kind)):
                         raise Refused('tracked_files')
                     measured = measure(parent, kind, device, budget, hook, label)
                     if measured is None:
