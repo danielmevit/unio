@@ -12,6 +12,7 @@ import datetime
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import stat
@@ -68,6 +69,14 @@ def _reject_constant(value):
     raise ValueError('nonfinite JSON constant')
 
 
+def _finite_float(text):
+    # 1e999 parses as infinity without passing through parse_constant.
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError('nonfinite JSON number')
+    return value
+
+
 def _check_depth(text, max_depth=MAX_JSON_DEPTH):
     depth = 0
     in_string = False
@@ -101,16 +110,19 @@ def _safe_json_loads(data):
         raise ValueError('invalid JSON data type')
     _check_depth(data)
     try:
-        return json.loads(data, object_pairs_hook=_parse_pairs, parse_constant=_reject_constant)
+        return json.loads(data, object_pairs_hook=_parse_pairs, parse_constant=_reject_constant,
+                          parse_float=_finite_float)
     except (ValueError, RecursionError) as exc:
         raise ValueError(str(exc)) from exc
 
 
 def _ident(value):
-    return (isinstance(value, str) and 0 < len(value) <= 200
-            and value not in ('.', '..') and '..' not in value
+    # Exactly the native quality ident() acceptance: no extra length or grammar
+    # limit. An unsupported name (for example too long for the filesystem)
+    # fails on the actual read and becomes Unknown there.
+    return (isinstance(value, str) and bool(value) and value not in ('.', '..') and '..' not in value
             and not value.startswith('-')
-            and not any(c.isspace() or ord(c) < 32 or ord(c) == 127 or c in '/\\' for c in value))
+            and not any(c.isspace() or ord(c) < 32 or c in '/\\' for c in value))
 
 
 def _pid_ok(value):

@@ -41,7 +41,7 @@ review remain separate.
 - Symlinked, special, hardlinked, oversized or non-private evidence gives `unknown`.
 - Strict bounded JSON parsing: Result and owner readers enforce bounded nesting
   depth (max depth 64), reject duplicate keys, nonfinite constants (`NaN`,
-  `Infinity`), and invalid schemas/types without tracebacks. Malformed JSON
+  `Infinity`) and numbers that overflow to infinity (such as `1e999`), and invalid schemas/types without tracebacks. Malformed JSON
   consistently resolves to `unknown` and `blocks_readiness=True`.
 - Native receipt invariants: Terminal exit codes must match recorded state. A
   succeeded run requires exit code 0; a failed run requires a nonzero exit code
@@ -51,7 +51,9 @@ review remain separate.
 - Safe identifier compatibility: Native task and worker identifiers permitted by
   `quality.ident` and `check_id` (including colons `T:1`, dots, hyphens, and safe
   Unicode) are accepted and preserved across observation, status, and report,
-  with display output escaped.
+  with display output escaped. The observer adds no length or grammar limit of
+  its own (a 201-character task keeps its recorded exit); a name the filesystem
+  cannot hold fails on the actual read and gives `unknown`.
 - Bounded enumeration: Scanning worker and record directories enforces strict
   caps (`MAX_WORKERS=4096`, `MAX_RECORDS=20000`) while iterating, before
   materializing, filtering or sorting. If an enumeration budget is exhausted or

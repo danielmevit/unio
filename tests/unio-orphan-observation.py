@@ -274,8 +274,69 @@ def unit(base):
     # 2. Identifier compatibility (native-safe IDs including colon/Unicode/punctuation):
     for good_id in ('T:1', 'T.sub', 'T_1', 'T+1', 'T@1', 'T-α', 'T:sub:2'):
         check('native-safe identifier %r accepted by _ident' % good_id, ro._ident(good_id))
-    for bad_id in ('', '.', '..', 'a..b', '-leading', 'a/b', 'a\\b', 'a b', 'a\nb', 'a' * 201):
+    for bad_id in ('', '.', '..', 'a..b', '-leading', 'a/b', 'a\\b', 'a b', 'a\nb', 'a\x00b', 'a\u3000b', None, 7):
         check('unsafe identifier %r rejected by _ident' % bad_id, not ro._ident(bad_id))
+
+    # The observer accepts exactly what the native quality ident() accepts.
+    installer = (source / 'unio-install.sh').read_text()
+    native_src = installer[installer.index('def ident(value):\n    if not value'):]
+    native_src = native_src[:native_src.index('\ndef ')]
+    native_ns = {}
+    exec('def fail(msg):\n    raise SystemExit(msg)\n' + native_src, native_ns)
+
+    def native_ok(value):
+        try:
+            native_ns['ident'](value)
+        except SystemExit:
+            return False
+        return True
+    long_id = 'L' * 201
+    for sample in ('T:1', 'T-α', 'T,1!', 'T\x7f', long_id, 'L' * 250, '', '.', '..', 'a..b', '-x',
+                   'a/b', 'a\\b', 'a b', 'a\tb', 'a\x1fb', 'a\u2028b'):
+        check('observer and native ident agree on %r' % sample[:24], ro._ident(sample) == native_ok(sample))
+
+    # A 201-character native task with a recorded exit 124 keeps its exit.
+    long_dir = rp / 'coord/results/w'
+    (long_dir / (long_id + '.json')).write_text(json.dumps(dict(
+        schema_version=1, worker='w', task=long_id, updated_at=old(120), revision=rev,
+        process=dict(state='failed', exit_code=124, revision=rev))))
+    o_long = ro.observe(root, 'w', long_id)
+    check('201-character task keeps recorded terminal exit 124',
+          o_long['state'] == 'terminal' and o_long['source_exit'] == 124 and not o_long['blocks_readiness'])
+    check('201-character task reported by project_observations with exit 124',
+          any(o['task'] == long_id and o['source_exit'] == 124 for o in ro.project_observations(root)[0]))
+    # A name the filesystem cannot hold fails on the actual read: Unknown, no traceback.
+    o_huge = ro.observe(root, 'w', 'H' * 300)
+    check('filesystem-unsupported task name is Unknown via the actual read error',
+          o_huge['state'] == 'unknown' and o_huge['source_exit'] is None and o_huge['blocks_readiness'])
+    (long_dir / (long_id + '.json')).unlink()
+
+    # Overflowing JSON numbers are nonfinite and never accepted.
+    for text in ('1e999', '-1e999', '[1E400]', '{"a":-9.9e99999}'):
+        try:
+            ro._safe_json_loads(text)
+            refused = False
+        except ValueError:
+            refused = True
+        check('parser rejects overflowing number %s' % text, refused)
+    check('parser keeps finite floats, large ints and UTF-8',
+          ro._safe_json_loads(b'{"f":1.5e300,"n":-0.25,"i":%d,"s":"\xc3\xa9"}' % (10 ** 40))
+          == {'f': 1.5e300, 'n': -0.25, 'i': 10 ** 40, 's': '\u00e9'})
+    for text in ('{"a":1,"a":2}', '[' * 65 + ']' * 65, b'"\xff"', 'NaN'):
+        try:
+            ro._safe_json_loads(text)
+            refused = False
+        except ValueError:
+            refused = True
+        check('parser still rejects %r' % text[:12], refused)
+    result.write_text('{"schema_version":1,"worker":"w","task":"T1","updated_at":"x","process":{"state":"failed","exit_code":1},"cost":1e999}')
+    o = see()
+    check('record with overflowing number is Unknown, not terminal',
+          o['state'] == 'unknown' and o['source_exit'] is None and o['blocks_readiness'])
+    record('running')
+    own.write_text('{"schema_version":1e999}')
+    own.chmod(0o600)
+    check('owner with overflowing number is Unknown', see()['state'] == 'unknown')
 
     # Test observe, workers_for, status_lines with colon-separated task
     colon_dir = rp / 'coord/results/w:sub'
