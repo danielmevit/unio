@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
 """Installed save capacity preflight, refusal-only boundary and zero body reads."""
 import collections
+import contextlib
+import io
 import fcntl
 import hashlib
 import json
@@ -15,6 +17,8 @@ import tempfile
 import time
 import types
 from unittest.mock import patch
+
+MIB_T = 1024 * 1024
 
 SOURCE = Path(__file__).resolve().parents[1]
 passed = 0
@@ -81,13 +85,13 @@ with tempfile.TemporaryDirectory(prefix='save-cap-preflight-') as directory:
         return {p.relative_to(where).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in where.rglob('*') if p.is_file() and not p.is_symlink()}
 
-    def clone(where, number, worker, second, run_id=None):
+    def clone(where, number, worker, second, run_id=None, source=None):
         key = '%032x' % number
         dest = where/key
         if where == archive:
             dest.mkdir(mode=0o700)
             dest = dest/'snapshot'
-        shutil.copytree(template, dest)
+        shutil.copytree(source or template, dest)
         doc = json.loads((dest/'manifest.json').read_text())
         doc.update(save_id=key, worker=worker,
                    published_at='2026-10-10T10:%02d:%02d+00:00' % (second // 60, second % 60))
@@ -315,9 +319,15 @@ with tempfile.TemporaryDirectory(prefix='save-cap-preflight-') as directory:
     doc0['fingerprint'] = module.fingerprint(doc0['git'], doc0['entries'], doc0['context'])
     (store/initial[0]/'manifest.json').write_text(json.dumps(doc0) + '\n')
 
-    # Ensure worker[0] worktree matches fingerprint exactly
-    module.unio_restore_save = None  # Just use unio CLI restore
-    unio('save', 'restore', initial[0], workers[0])
+    # Explicitly put worker[0]'s worktree in the template state and prove the
+    # precondition (captured fingerprint equals the seeded manifest's).
+    git(wt0, 'reset', '-q', '--hard', 'HEAD')
+    (wt0/'file.txt').write_bytes(b'staged\0bytes\n'); git(wt0, 'add', 'file.txt')
+    (wt0/'file.txt').write_bytes(b'working\0bytes\n')
+    (wt0/'new.bin').write_bytes(bytes(range(256)))
+    probe_snap = real_capture(str(root), workers[0], 'T1', module.Budget(30))[0]
+    check('section 8 fixture: worker 0 worktree fingerprint matches seeded manifest',
+          probe_snap['fingerprint'] == doc0['fingerprint'])
 
     counts.clear()
     with os.fdopen(module.require_lock(str(root), workers[0]), 'rb'):
@@ -478,19 +488,45 @@ with tempfile.TemporaryDirectory(prefix='save-cap-preflight-') as directory:
     arch = store/'archive'
     arch.mkdir(mode=0o700, exist_ok=True)
     clone(arch, 999, workers[0], 0, run_id='run-arch')
-    expired_budget = module.Budget(0.001)
-    expired_budget.deadline = time.monotonic() - 1.0  # Already expired
-    deadline_refused = False
-    try:
-        module.capacity_preflight(str(store), workers[32], expired_budget, reason='periodic', run_id='unmatched')
-    except module.Refuse as r:
-        if r.code == 'excessive' and 'second bound' in r.message:
-            deadline_refused = True
-    check('expired budget during periodic archive scan raises excessive refusal', deadline_refused)
+    # Expire the deadline only once archive enumeration has started, so the
+    # per-entry archive deadline check is the only thing that can refuse.
+    real_bounded_names = module.bounded_names
+    hook = dict(budget=None, entered=0)
 
-    with patch.object(module, 'Budget', lambda sec: expired_budget):
+    def expiring_bounded_names(path, *a, **k):
+        names = real_bounded_names(path, *a, **k)
+        if Path(path) == arch and hook['budget'] is not None:
+            hook['entered'] += 1
+            hook['budget'].deadline = time.monotonic() - 1.0
+        return names
+
+    live_budget = module.Budget(30)
+    hook['budget'] = live_budget
+    deadline_refused = None
+    with patch.object(module, 'bounded_names', expiring_bounded_names):
+        try:
+            module.capacity_preflight(str(store), workers[32], live_budget, reason='periodic', run_id='unmatched')
+        except module.Refuse as r:
+            deadline_refused = r
+    check('section 13: archive enumeration was entered before expiry', hook['entered'] == 1)
+    check('expired deadline inside archive enumeration raises the second-bound refusal',
+          deadline_refused is not None and deadline_refused.code == 'excessive'
+          and 'second bound' in deadline_refused.message)
+
+    made = []
+
+    def budget_factory(sec, *a, **k):
+        b = real_budget_cls(sec, *a, **k)
+        made.append(b); hook['budget'] = b
+        return b
+
+    real_budget_cls = module.Budget
+    hook['entered'] = 0
+    with patch.object(module, 'Budget', budget_factory), patch.object(module, 'bounded_names', expiring_bounded_names):
         with os.fdopen(module.require_lock(str(root), workers[32]), 'rb'):
             rc = module.create_locked(str(root), workers[32], 'T1', reason='periodic', run_id='unmatched')
+    hook['budget'] = None
+    check('section 13: create_locked reached archive enumeration (%r, %d)' % (hook['entered'], len(made)), hook['entered'] >= 1 and len(made) == 1)
 
     attempt_file = store/'attempts'/(workers[32] + '.json')
     attempt_doc = json.loads(attempt_file.read_text()) if attempt_file.exists() else {}
@@ -521,5 +557,145 @@ with tempfile.TemporaryDirectory(prefix='save-cap-preflight-') as directory:
 
     check('archived same-run periodic unchanged returns exit 0', rc == 0)
     check('archived same-run unchanged did not increase active store count', len(ids(store)) == 32)
+
+    # -------------------------------------------------------------------------
+    # 15. Unrelated invalid archive evidence falls through (finding 2).
+    #     8 active saves; w00's same-run save is only archived; an unrelated
+    #     archive wrapper that sorts first is unsafe (0755) or has a 0644
+    #     manifest. Unchanged periodic must stay a no-op and keep the old
+    #     final attempt outcome.
+    # -------------------------------------------------------------------------
+    for variant in ('wrapper-0755', 'manifest-0644'):
+        clear_store()
+        for i in range(8):
+            clone(store, 0x100 + i, workers[i + 1], i)
+        arch.mkdir(mode=0o700, exist_ok=True)
+        bad = clone(arch, 1, workers[20], 50)
+        if variant == 'wrapper-0755':
+            os.chmod(arch/bad, 0o755)
+        else:
+            os.chmod(arch/bad/'snapshot'/'manifest.json', 0o644)
+        clone(arch, 0xfff, workers[0], 0, run_id='run-c')
+        att = store/'attempts'/(workers[0] + '.json')
+        before = att.read_bytes() if att.exists() else None
+        direct = None
+        try:
+            module.capacity_preflight(str(store), workers[0], module.Budget(30), reason='periodic', run_id='run-c')
+        except module.Refuse as r:
+            direct = r
+        check('%s: preflight falls through to the archived same-run save' % variant, direct is None)
+        counts.clear()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), os.fdopen(module.require_lock(str(root), workers[0]), 'rb'):
+            rc = module.create_locked(str(root), workers[0], 'T1', reason='periodic', run_id='run-c')
+        check('%s: unchanged periodic no-op returns 0' % variant,
+              rc == 0 and 'periodic state unchanged' in out.getvalue())
+        check('%s: final attempt outcome not replaced' % variant,
+              (att.read_bytes() if att.exists() else None) == before and len(ids(store)) == 8)
+        # With no matching archived save, the refusal reason is the cap, not
+        # the unrelated evidence error.
+        clear_store()
+        seed_32_distinct()
+        arch.mkdir(mode=0o700, exist_ok=True)
+        bad = clone(arch, 1, workers[20], 50)
+        if variant == 'wrapper-0755':
+            os.chmod(arch/bad, 0o755)
+        else:
+            os.chmod(arch/bad/'snapshot'/'manifest.json', 0o644)
+        reason_err = None
+        try:
+            module.capacity_preflight(str(store), workers[32], module.Budget(30), reason='periodic', run_id='none')
+        except module.Refuse as r:
+            reason_err = r
+        check('%s: unmatched refusal keeps cap reason excessive' % variant,
+              reason_err is not None and reason_err.code == 'excessive' and 'cap' in reason_err.message)
+
+    # -------------------------------------------------------------------------
+    # 16. Preflight never charges capture's byte allowance (finding 1).
+    #     Large manifests (2300-path repo); 8 workers x 4 saves. Baseline
+    #     (preflight disabled, equivalent to 0c9827f) and current must both
+    #     publish a 20 MiB manual save and a 6 MiB-changed periodic save.
+    # -------------------------------------------------------------------------
+    clear_store()
+    big_worker = workers[34]
+    big_wt = root/'wt'/big_worker
+    deep = big_wt/'many'/('d' * 60)
+    deep.mkdir(parents=True)
+    for i in range(2300):
+        (deep/('file-%05d-%s.txt' % (i, 'p' * 120))).write_bytes(b'x\n')
+    big = unio('save', 'create', big_worker, 'T1')
+    big_match = re.search(r'^saved ([0-9a-f]{32}):', big.stdout, re.M)
+    check('large-manifest template save succeeds', big.returncode == 0 and big_match is not None)
+    big_template = base/'big-template'
+    shutil.copytree(store/big_match[1], big_template)
+    shutil.rmtree(store/big_match[1])
+    manifest_size = (big_template/'manifest.json').stat().st_size
+    check('large template manifest is ~0.9 MiB (%d bytes)' % manifest_size, manifest_size > 800 * 1024)
+
+    def seed_big(run_id=None):
+        clear_store()
+        for i in range(32):
+            clone(store, i + 1, workers[i // 4], i, source=big_template,
+                  run_id=run_id if (i // 4 == 0 and i % 4 == 3) else None)
+
+    def charge_recorder():
+        seen = []
+        real = module.capacity_preflight
+
+        def wrapped(store_arg, worker_arg, budget_arg, *a, **k):
+            left = budget_arg.left
+            try:
+                return real(store_arg, worker_arg, budget_arg, *a, **k)
+            finally:
+                seen.append((left, budget_arg.left))
+        return seen, wrapped
+
+    noop = lambda *a, **k: None
+    wt8 = root/'wt'/workers[8]
+    for i in range(20):
+        (wt8/('blob-%02d.bin' % i)).write_bytes(os.urandom(MIB_T))
+    results = {}
+    for mode in ('baseline', 'current'):
+        seed_big()
+        seen, wrapped = charge_recorder()
+        with patch.object(module, 'capacity_preflight', noop if mode == 'baseline' else wrapped):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+                with os.fdopen(module.require_lock(str(root), workers[8]), 'rb'):
+                    rc = module.create_locked(str(root), workers[8], 'T1', reason='manual')
+        results[mode] = (rc, len(ids(store)), len(ids(archive)), err.getvalue(), seen)
+    check('A baseline: 20 MiB manual save publishes', results['baseline'][:3] == (0, 32, 1))
+    check('A current: 20 MiB manual save publishes like baseline (%r)' % results['current'][3],
+          results['current'][:3] == (0, 32, 1))
+    check('A current: preflight left capture byte allowance unchanged',
+          len(results['current'][4]) == 1 and all(a == b for a, b in results['current'][4]))
+
+    p_run = 'fedcba9876543210fedcba9876543210'
+    results = {}
+    for mode in ('baseline', 'current'):
+        seed_big(run_id=p_run)
+        git(wt0, 'reset', '-q', '--hard', 'HEAD')
+        for n in range(2):  # MAX_BODY is 4 MiB per file
+            (wt0/('changed-%d.bin' % n)).write_bytes(os.urandom(3 * MIB_T))
+        seen, wrapped = charge_recorder()
+        with patch.object(module, 'capacity_preflight', noop if mode == 'baseline' else wrapped):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+                with os.fdopen(module.require_lock(str(root), workers[0]), 'rb'):
+                    rc = module.create_locked(str(root), workers[0], 'T1', reason='periodic', run_id=p_run)
+        results[mode] = (rc, len(ids(store)), len(ids(archive)), err.getvalue(), seen)
+    check('B baseline: 6 MiB changed periodic save publishes', results['baseline'][:3] == (0, 32, 1))
+    check('B current: changed periodic save publishes like baseline (%r)' % results['current'][3],
+          results['current'][:3] == (0, 32, 1))
+    check('B current: both preflight passes left capture byte allowance unchanged',
+          len(results['current'][4]) == 2 and all(a == b for a, b in results['current'][4]))
+
+    # Preflight-local allowance exhaustion falls through instead of refusing.
+    seed_big()
+    tiny = None
+    with patch.object(module, 'PREFLIGHT_META_BYTES', 1):
+        try:
+            module.capacity_preflight(str(store), workers[0], module.Budget(30), reason='manual')
+        except module.Refuse as r:
+            tiny = r
+    check('exhausted preflight metadata allowance falls through (no refusal)', tiny is None)
 
     print('Save capacity preflight: %d checks passed' % passed)

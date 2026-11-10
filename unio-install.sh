@@ -29090,17 +29090,53 @@ def require_lock(root, worker):
     return fd
 
 
+PREFLIGHT_META_BYTES, PREFLIGHT_ARCHIVE_ENTRIES = 48 * MIB, 2 * ARCHIVE_CAP_SAVES
+
+
+class PreflightBound(Exception):
+    """Preflight-local metadata allowance exhausted: fall through, never refuse."""
+
+
+class PreflightBudget:
+    """Shares the capture deadline but never charges capture's byte allowance."""
+
+    def __init__(self, budget, reads=None):
+        self.budget = budget
+        self.left = PREFLIGHT_META_BYTES if reads is None else reads
+
+    def remaining(self):
+        return self.budget.remaining() if self.budget is not None else None
+
+    def charge(self, n):
+        self.left -= n
+        if self.left < 0:
+            raise PreflightBound()
+
+
+def preflight_must_raise(error):
+    # Deadline and lock/cancellation outcomes are real; other per-entry
+    # evidence errors are ambiguity and must fall through to the old path.
+    return (error.code in ('lock_busy', 'unknown')
+            or (error.code == 'excessive' and 'second bound' in error.message))
+
+
 def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
     """Refusal-only bounded capacity check before expensive capture.
 
     Proves whether a save cannot be published under unchanged retention
-    rules. Reads strict metadata only (no body/bundle/context reads).
-    Falls through on ambiguity or if archival/unchanged periodic is possible.
+    rules. Reads strict metadata only (no body/bundle/context reads), charged
+    to a separate preflight allowance; exhausting it falls through.
     """
+    try:
+        return _capacity_preflight(store, worker, PreflightBudget(budget), reason, run_id)
+    except PreflightBound:
+        return
+
+
+def _capacity_preflight(store, worker, budget, reason, run_id):
     if store is None:
         return
-    if budget is not None:
-        budget.remaining()
+    budget.remaining()
     active_names = [name for name in bounded_names(store)
                     if name not in ('attempts', 'claims', 'archive') and not name.startswith('.staging-')]
     if len(active_names) < CAP_WORKER and len(active_names) <= CAP_PROJECT:
@@ -29121,8 +29157,7 @@ def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
     valid_candidates = []
     corrupt_entries = []
     for name in active_names:
-        if budget is not None:
-            budget.remaining()
+        budget.remaining()
         if not HEX32.fullmatch(name):
             corrupt_entries.append((name, None))
             continue
@@ -29157,9 +29192,7 @@ def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
                 raise ValueError('invalid published timestamp')
             valid_candidates.append(dict(id=name, worker=w, published=pub, run_id=doc.get('run_id')))
         except Refuse as error:
-            if error.code == 'excessive' and ('second bound' in error.message or '64 MiB' in error.message):
-                raise
-            if error.code in ('lock_busy', 'unknown'):
+            if preflight_must_raise(error):
                 raise
             if not os.path.exists(path):
                 return
@@ -29179,9 +29212,10 @@ def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
             return
         if archive:
             try:
-                for name in bounded_names(archive):
-                    if budget is not None:
-                        budget.remaining()
+                for index, name in enumerate(bounded_names(archive)):
+                    budget.remaining()
+                    if index >= PREFLIGHT_ARCHIVE_ENTRIES:
+                        return
                     if HEX32.fullmatch(name):
                         try:
                             wrapper = under(archive, name)
@@ -29198,12 +29232,20 @@ def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
                                             return
                                     finally:
                                         os.close(m_fd)
-                        except Refuse:
+                        except PreflightBound:
                             raise
+                        except Refuse as error:
+                            if preflight_must_raise(error):
+                                raise
+                            continue
                         except Exception:
                             continue
-            except Refuse:
+            except PreflightBound:
                 raise
+            except Refuse as error:
+                if preflight_must_raise(error):
+                    raise
+                return
             except Exception:
                 return
 

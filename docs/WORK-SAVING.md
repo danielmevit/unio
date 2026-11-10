@@ -119,7 +119,11 @@ refuses immediately with exit 1 (`excessive`) without reading worktree files, ru
 git capture or rereading stored file bodies. On ambiguity (such as concurrent
 archive/publish interleavings or listings modified during inspection), eligible archival
 history or matching same-run periodic saves, preflight falls through to the existing safe
-path; once capture proves a periodic save changed, a bounded post-capture capacity
+path. Preflight manifest reads are charged to a separate bounded metadata allowance
+(48 MiB, at most 256 archive entries), never to the 64 MiB capture read allowance;
+exhausting that allowance falls through. Only the capture deadline and lock/unknown
+outcomes propagate from per-entry inspection; unrelated unsafe or invalid archive
+entries are skipped as ambiguity; once capture proves a periodic save changed, a bounded post-capture capacity
 preflight check refuses early if the store remains full, preventing full-store deep body
 rereads, while final publication and retention validation always remains under the
 publication lock. Early refusal alone does not unblock an already-full store; retention
@@ -265,8 +269,14 @@ claim pins, unreadable claims, corrupt/symlink evidence) refuse with zero captur
 zero body/bundle reads and zero deep loads; eligible history archives and publishes;
 unchanged periodic no-ops return 0; changed periodic saves avoid full-store deep rereads;
 concurrent archive/publish interleavings fall through on ambiguity without false refusal;
-deadline exhaustion during archive enumeration preserves attempt status `refused` and
-reason `excessive`.
+a deadline that expires after archive enumeration has started (hooked on the archive
+listing) is refused by the per-entry archive deadline check with attempt status `refused`
+and reason `excessive`; unrelated unsafe (0755) or invalid (0644 manifest) archive entries
+do not block an archived same-run unchanged periodic no-op or replace the attempt outcome.
+Real-capture differentials on a store of 32 large (~0.84 MiB) manifests compare the
+preflight disabled (baseline) against current: a 20 MiB manual save and a 6 MiB changed
+periodic save both publish and archive one save, and preflight leaves the capture byte
+allowance unchanged on both periodic passes.
 
 `tests/unio-work-saving-continue.py` drives real offline native runs: exact
 restored state and separately authorized task text, real exits, replay and
