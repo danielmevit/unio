@@ -12,6 +12,11 @@ QUALITY_CHECK_DIR=$(mktemp -d)
 trap 'rm -rf -- "$QUALITY_CHECK_DIR"' EXIT
 cd "$QUALITY_REPO"
 export UNIO_AUTO_VERIFY=0 UNIO_AUTO_OFF=0 UNIO_AUTO_SYNC=0
+# The whole quality gate is an offline fixture environment: no suite may
+# perform CLI-update metadata fetches, even though awareness lines are
+# cached-facts-only for noninteractive invocations by design. This is an
+# explicit env bound, never a claim that an isolated tmpfs blocks network.
+export UNIO_CLI_UPDATES_OFFLINE=1
 for dependency in python3 shellcheck node; do
   command -v "$dependency" >/dev/null || { echo "missing dependency: $dependency" >&2; exit 1; }
 done
@@ -31,6 +36,7 @@ python3 -B tools/embed-adapters.py --check
 python3 -B tools/embed-model-experience.py --check
 python3 -B tools/embed-codex-worker.py --check
 python3 -B tools/embed-run-observation.py --check
+python3 -B tools/embed-cli-updates.py --check
 UNIO_BIN_DIR="$QUALITY_CHECK_DIR/bin" UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" \
   UNIO_COMPLETION_DIR="$QUALITY_CHECK_DIR/completion" bash unio-install.sh > "$QUALITY_CHECK_DIR/install.log"
 shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
@@ -53,6 +59,7 @@ python3 -B tests/unio-orphan-observation.py
 python3 tests/unio-opencode.py
 python3 -B tests/unio-prompt-transport.py
 python3 -B tests/unio-command-audit.py
+python3 -B tests/unio-cli-updates.py
 python3 -B tests/unio-perplexity.py
 python3 -B tests/unio-vibe.py
 python3 -B tests/unio-copilot.py
