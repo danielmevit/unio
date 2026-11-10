@@ -96,7 +96,7 @@ ROUTES = {
         'name': 'vibe', 'group': 'mistral',
         'aliases': ('vibe', 'mistral-vibe', 'mistral-vibe-cli'), 'binary': 'vibe',
         'version_argv': ('--version',),
-        'update_argv': None,  # resolved at update time: uv tool upgrade mistral-vibe
+        'update_argv': None,  # manual plan only: uv tool upgrade mistral-vibe
         'update_label': 'uv tool upgrade mistral-vibe (verified uv-managed install only)',
         'update_support': 'uv-tool', 'latest': ('pypi', 'mistral-vibe'),
         'latest_any_method': False,
