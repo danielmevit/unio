@@ -148,10 +148,14 @@ METHOD_MARKERS = (
     ('/uv/tools/mistral-vibe/', 'uv-tool'),
 )
 UV_TOOL_PACKAGE = 'mistral-vibe'
-BUSY_NOTE = ('busy detection covers this project (worker locks, STOP) and same-uid '
-             'native processes with the exact executable identity; other users, '
-             'other hosts and cross-workspace unmanaged sessions are invisible '
-             '(docs/CLI-UPDATES.md)')
+UV_TOOL_ROOT_MARKER = '/uv/tools/mistral-vibe/'
+BUSY_NOTE = ('busy facts are observations, never permission and never idle proof: '
+             'detection covers this project (worker locks, STOP) and same-uid native '
+             'processes with exact validated executable identity (a verified uv-managed '
+             'vibe covers both its bin launcher and its site-packages native binary); a '
+             'nonzero count of unidentifiable same-uid processes means Unknown. Other '
+             'users, other hosts and cross-workspace unmanaged sessions stay unknown; '
+             'unio refuses installs regardless (docs/CLI-UPDATES.md)')
 
 
 class UsageError(Exception):
@@ -453,16 +457,47 @@ def held_worker_locks(project):
     return held
 
 
+def native_identity_candidates(real):
+    """Exact executable identities for a route's install. Only the validated
+    uv-managed vibe layout adds a second candidate — the `bin/vibe` launcher
+    and `lib/pythonX/site-packages/vibe/_bin/vibe-rs` belong to one install
+    (verified live on 2026-11-10: a live Source matched the native identity,
+    never the launcher). Everything else is a single exact path; identities
+    are never inferred from process names or guessed paths."""
+    if not real:
+        return []
+    candidates = [real]
+    index = real.find(UV_TOOL_ROOT_MARKER)
+    if index >= 0 and real.endswith('/bin/vibe'):
+        root = Path(real[:index + len(UV_TOOL_ROOT_MARKER)])
+        try:
+            lib = root / 'lib'
+            if not lib.is_symlink() and lib.is_dir():
+                for python_dir in sorted(lib.glob('python*/site-packages'))[:8]:
+                    native = python_dir / 'vibe' / '_bin' / 'vibe-rs'
+                    if native.is_symlink() or not native.is_file():
+                        continue
+                    resolved = os.path.realpath(str(native))
+                    if resolved not in candidates:
+                        candidates.append(resolved)
+        except OSError:
+            pass
+    return candidates
+
+
 def native_identity(real, exclude_pids=()):
     """Minimal-privilege /proc scan; exact executable identity only. /proc
-    <pid>/exe or an exact cmdline element must equal the resolved binary
-    path — never a process-name guess. Other users' processes are invisible
-    and reported as such; same-uid non-dumpable processes (system daemons)
-    cannot be identified either and are counted as an honestly stated
-    visibility limit: they are never silently treated as idle permission."""
+    <pid>/exe or an exact cmdline element must equal one of the validated
+    candidate paths — never a process-name guess. Other users' processes
+    are invisible and reported as such; same-uid non-dumpable processes
+    (system daemons) cannot be identified either and are counted as an
+    honestly stated visibility limit: the count is Unknown cover, never a
+    confirmed-idle statement."""
     active, obscured = [], 0
     if not real or not os.path.isdir('/proc'):
         return active, None  # no identity scan possible: busy state unknown
+    candidates = [os.fsencode(item) for item in native_identity_candidates(real)]
+    candidateset = set(candidates)
     self_pid = os.getpid()
     try:
         entries = os.listdir('/proc')
@@ -490,7 +525,7 @@ def native_identity(real, exclude_pids=()):
             continue
         if exe.endswith(DELETED_SUFFIX):
             exe = exe[:-len(DELETED_SUFFIX)]
-        if exe == real:
+        if os.fsencode(exe) in candidateset:
             active.append(pid)
             continue
         try:
@@ -498,7 +533,7 @@ def native_identity(real, exclude_pids=()):
         except OSError:
             continue
         parts = [part for part in text.split(b'\0')[:6]]
-        if os.fsencode(real) in parts:
+        if any(candidate in parts for candidate in candidates):
             active.append(pid)
     return active, obscured
 
@@ -522,16 +557,19 @@ def build_route(route, conf, project, max_age, timeout, cache, allow_tool_exec):
     installed = {'name': name, 'version': None, 'exit': None, 'checked_at': None}
     present_busy = []  # exact-identity findings only
     obscured = 0
+    identities = []
     if path:
         version, code = probe_version(route, path, str(conf))
         installed = {'name': name, 'version': version, 'exit': code, 'checked_at': iso()}
         active, hidden = native_identity(real)
+        identities = native_identity_candidates(real)
         if active:
             present_busy.append('native-process-active')
-        if hidden is None:
+        if hidden is None or hidden > 0:
+            # Unreadable or unidentifiable same-uid processes mean Unknown;
+            # a zero-or-obscured scan never confirms idle.
             present_busy.append('busy-identity-unknown')
-        else:
-            obscured = hidden
+        obscured = hidden if hidden is not None else 0
     latest, from_cache = latest_for(route, method, path, conf, timeout,
                                     allow_tool_exec, cache, max_age)
     reasons = []
@@ -562,7 +600,8 @@ def build_route(route, conf, project, max_age, timeout, cache, allow_tool_exec):
         'latest_from_cache': from_cache,
         'update_support': supported, 'update_label': route['update_label'],
         'update_state': state, 'update_blocked_reasons': reasons,
-        'obscured_processes': obscured, 'visibility_note': BUSY_NOTE,
+        'obscured_processes': obscured, 'native_identities_checked': identities,
+        'visibility_note': BUSY_NOTE,
         'compatibility': 'unknown',
     }
 
@@ -585,10 +624,12 @@ def human_route(row):
         lines.append('    install deferred: unio never runs any updater until a shared '
                      'maintenance lease exists — use the manual plan above when idle')
     if row['update_blocked_reasons']:
-        lines.append('    update request refused by: %s' % ', '.join(row['update_blocked_reasons']))
+        lines.append('    busy observations (never permission, and never idle proof): %s'
+                     % ', '.join(row['update_blocked_reasons']))
     if row.get('obscured_processes'):
-        lines.append('    visibility: %d same-uid process(es) unidentifiable (/proc); '
-                     'other users and other hosts are invisible' % row['obscured_processes'])
+        lines.append('    visibility: busy fact Unknown beside %d unidentifiable same-uid '
+                     'process(es) (/proc); other users, other hosts and cross-workspace '
+                     'sessions stay unknown' % row['obscured_processes'])
     lines.append('    compatibility unknown — updating never proves route/adapter compatibility '
                  '(guards and pins are not touched by unio)')
     return '\n'.join(lines)

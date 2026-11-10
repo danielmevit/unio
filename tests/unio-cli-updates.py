@@ -9,6 +9,8 @@ session is touched, executed or updated. PATH is restricted to the fixture
 bin plus /usr/bin:/bin, so a missing fake can never fall back to the real
 ~/.local/bin, ~/.opencode, ~/.grok or nvm CLIs.
 """
+import errno
+import importlib.util
 from datetime import datetime, timedelta, timezone
 import http.server
 import json
@@ -23,6 +25,15 @@ import time
 import unittest
 
 SOURCE = Path(__file__).resolve().parents[1]
+
+
+def load_canonical_helper():
+    """Import the canonical helper in-process for exact identity-scan tests."""
+    spec = importlib.util.spec_from_file_location(
+        'unio_cli_updates_canonical', SOURCE / 'tools' / 'cli-updates.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 FAKE_TEMPLATE = '''#!/usr/bin/env python3
 import json, os, sys, time
@@ -469,6 +480,92 @@ class CliUpdatesTests(unittest.TestCase):
         self.assertIn('claude: skipped — absent on PATH', done.stdout)
         self.assertIn('antigravity: refused — maintenance_not_implemented', done.stdout,
                       'the human report uses route names, not aliases')
+
+    def test_unidentifiable_same_uid_processes_mean_busy_unknown_not_idle(self):
+        # Base negative from the lead's live probe: obscured same-uid processes
+        # used to leave the route looking idle; they must mean Unknown.
+        helper = load_canonical_helper()
+        self.fresh_fakes()
+        if self.record.exists():
+            self.record.unlink()
+        sleeper = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])
+        self.addCleanup(self.stop_proc, sleeper)
+        real_listdir, real_readlink = os.listdir, os.readlink
+
+        def fake_listdir(path):
+            if path == '/proc':
+                return [str(sleeper.pid), str(os.getpid())]
+            return real_listdir(path)
+
+        def fake_readlink(path):
+            if path.startswith('/proc/%d/' % sleeper.pid):
+                raise PermissionError(errno.EACCES, 'identity unreadable')
+            return real_readlink(path)
+
+        os.environ['UNIO_CLI_UPDATES_OFFLINE'] = '1'  # build_route must stay offline
+        self.addCleanup(os.environ.pop, 'UNIO_CLI_UPDATES_OFFLINE', None)
+        real_path = os.environ['PATH']
+        os.environ['PATH'] = str(self.fakebin) + ':/usr/bin:/bin'  # never resolve a real CLI
+        self.addCleanup(os.environ.__setitem__, 'PATH', real_path)
+        os.listdir = fake_listdir
+        os.readlink = fake_readlink
+        try:
+            active, obscured = helper.native_identity(str(self.fakebin / 'copilot'))
+            self.assertEqual(active, [])
+            self.assertEqual(obscured, 1,
+                             'a nonzero unidentifiable same-uid count is reported')
+            row = helper.build_route(helper.ROUTES['copilot'], self.conf,
+                                    self.outside, 60, 5, None, False)
+        finally:
+            os.listdir = real_listdir
+            os.readlink = real_readlink
+        self.assertIn('busy-identity-unknown', row['update_blocked_reasons'],
+                      'an obscured count must never confirm idle')
+        self.assertEqual(row['obscured_processes'], 1)
+        self.assertNotIn(row['update_state'],
+                         ('supported', 'current-refused', 'idle'))
+
+    def test_uv_vibe_launcher_and_native_binary_are_both_exact_identities(self):
+        # Live lead evidence 2026-11-10: a real Source session was missed because
+        # the launcher .../bin/vibe differs from .../site-packages/vibe/_bin/vibe-rs.
+        helper = load_canonical_helper()
+        tool_root = self.root / 'an exact uv' / 'uv' / 'tools' / 'mistral-vibe'
+        native = tool_root / 'lib' / 'python3.12' / 'site-packages' / 'vibe' / '_bin' / 'vibe-rs'
+        native.parent.mkdir(parents=True)
+        native.write_text('native binary stub\n')
+        launcher_dir = tool_root / 'bin'
+        launcher_dir.mkdir()
+        launcher = launcher_dir / 'vibe'
+        launcher.write_text('#!/bin/sh\nexec true\n')
+        candidates = helper.native_identity_candidates(str(launcher))
+        self.assertEqual(len(candidates), 2, candidates)
+        self.assertIn(str(launcher), candidates)
+        self.assertIn(str(native), candidates,
+                       'the validated uv layout pairs launcher and native identity')
+        # A process whose exact cmdline element is the native binary is busy,
+        # even though it never touches the launcher path.
+        session = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)',
+                                    str(native)])
+        self.addCleanup(self.stop_proc, session)
+        real_listdir = os.listdir
+
+        def fake_listdir(path):
+            if path == '/proc':
+                return [str(session.pid)]
+            return real_listdir(path)
+
+        os.listdir = fake_listdir
+        try:
+            active, obscured = helper.native_identity(str(launcher))
+        finally:
+            os.listdir = real_listdir
+        self.assertEqual(active, [session.pid])
+        self.assertEqual(obscured, 0)
+        # Outside the validated layout no second identity is guessed.
+        other = self.root / 'some other' / 'bin' / 'vibe'
+        other.parent.mkdir(parents=True)
+        other.write_text('#!/bin/sh\nexec true\n')
+        self.assertEqual(helper.native_identity_candidates(str(other)), [str(other)])
 
     def test_unverifiable_version_probe_is_unknown_and_nonzero(self):
         self.fresh_fakes()
