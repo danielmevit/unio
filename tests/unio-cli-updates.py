@@ -307,6 +307,89 @@ class CliUpdatesTests(unittest.TestCase):
         self.assertIn('a-hostile-cached-command', threat.read_text(),
                       'no cached command text was executed or removed')
 
+    def test_deep_duplicate_nonfinite_oversized_caches_stay_unknown_without_traceback(self):
+        # Base negative from the lead's probe: a 200000-byte deep cache raised
+        # RecursionError; every hostile cache must now be quiet Unknown.
+        self.fresh_fakes()
+        directory = Path(self.conf) / 'cli-updates'
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / 'cache.json'
+        hostile = [
+            '[' * 200000,  # deep nesting well inside the byte cap
+            ('{"schema_version": 1, "kind": "unio-cli-updates", "startup_checked_at": %s,'
+             ' "routes": {"antigravity": {"latest": %s, "latest": %s}}}'
+             % (json.dumps(now_iso()), json.dumps(seeded_latest('9.9.9', 0)),
+                json.dumps(seeded_latest('9.9.9', 0)))),  # duplicate keys
+            ('{"schema_version": 1, "kind": "unio-cli-updates", "startup_checked_at": %s,'
+             ' "routes": {"antigravity": {"latest": {"version": "9.9.9", "status": "ok",'
+             ' "source": "github-release:google-antigravity/antigravity-cli",'
+             ' "checked_at": NaN}}}}' % json.dumps(now_iso())),  # nonfinite literal
+            json.dumps({'schema_version': 1, 'kind': 'unio-cli-updates',
+                        'startup_checked_at': now_iso(),
+                        'routes': {'antigravity': {'latest': seeded_latest('9.9.9', 0)},
+                                   'filler': 'A' * 300000}}),  # valid but oversized
+        ]
+        for poison in hostile:
+            path.write_text(poison)
+            done = self.module('check', '--json', 'antigravity')
+            self.assertEqual(done.returncode, 0, (done.stdout, done.stderr))
+            self.assertNotIn('Traceback', done.stderr,
+                             'a hostile cache must never leak a traceback')
+            row = json.loads(done.stdout)['routes'][0]
+            self.assertEqual(row['installed_version'], '1.5.4',
+                             'a hostile cache never blocks the ordinary check')
+            self.assertNotEqual(row['latest_version'], '9.9.9',
+                                'invalid cache content is never trusted')
+            self.assertIs(row['latest_from_cache'], False)
+        # Safe-small ordinary cache: a fresh TTL entry is reused verbatim.
+        seed_cache(self.conf, routes={'antigravity': {'latest': seeded_latest('1.5.4', 30)}})
+        done = self.module('check', '--json', 'antigravity')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertEqual((row['latest_version'], row['latest_from_cache']), ('1.5.4', True))
+
+    def test_concurrent_checks_use_unique_private_temps_and_never_clobber(self):
+        self.fresh_fakes()
+        shutil.rmtree(Path(self.conf) / 'cli-updates', ignore_errors=True)
+        first = subprocess.Popen(
+            [sys.executable, '-I', '-S', '-B', str(self.installed_helper),
+             '--conf', str(self.conf), 'check', '--json', 'antigravity'],
+            env=self.env, cwd=self.outside, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True)
+        second = subprocess.Popen(
+            [sys.executable, '-I', '-S', '-B', str(self.installed_helper),
+             '--conf', str(self.conf), 'check', '--json', 'grok'],
+            env=self.env, cwd=self.outside, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True)
+        for proc in (first, second):
+            self.addCleanup(self.stop_proc, proc)
+        for proc in (first, second):
+            out, _err = proc.communicate(timeout=60)
+            self.assertEqual(proc.returncode, 0, out)
+            self.assertTrue(json.loads(out)['cache_writable'],
+                            'independent concurrent checks must both succeed')
+        leftovers = sorted((Path(self.conf) / 'cli-updates').glob('.cache-*.tmp'))
+        self.assertEqual(leftovers, [], 'no temp file collisions may linger')
+        cache = json.loads((Path(self.conf) / 'cli-updates' / 'cache.json').read_text())
+        self.assertEqual(cache['schema_version'], 1)
+
+    def test_symlinked_state_directory_is_never_written_through(self):
+        self.fresh_fakes()
+        directory = Path(self.conf) / 'cli-updates'
+        shutil.rmtree(directory, ignore_errors=True)
+        target = self.root / 'hostile state target'
+        target.mkdir()
+        directory.symlink_to(target)
+        self.addCleanup(directory.unlink)
+        done = self.module('check', '--json', 'antigravity')
+        self.assertEqual(done.returncode, 0, (done.stdout, done.stderr))
+        document = json.loads(done.stdout)
+        self.assertFalse(document['cache_writable'],
+                         'a symlinked state directory must never be followed')
+        self.assertIn('symlink', document['cache_write_refused'])
+        self.assertEqual(os.listdir(target), [],
+                         'nothing may be written through the hostile symlink')
+
     def test_aliases_dedupe_onto_one_route_report(self):
         self.fresh_fakes()
         done = self.module('check', '--json', 'antigravity', 'agy', 'vibe', 'mistral-vibe')

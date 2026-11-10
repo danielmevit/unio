@@ -38275,8 +38275,10 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import URLError
@@ -38287,6 +38289,10 @@ SOURCE_LABEL = 'cli-updates'
 UA = 'unio-cli-updates/1 (+https://github.com/danielmevit/unio)'
 VERSION_RE = re.compile(r'(\d+\.\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.]+)?)')
 DELETED_SUFFIX = ' (deleted)'
+# The cache is data, never a command: bytes are bounded BEFORE any read
+# (fstat) and again during the read (stat/read race), and nothing that is
+# not a small regular file is ever parsed.
+CACHE_MAX_BYTES = 262144
 
 # One entry per recognized route. update_argv exists only to build the
 # frozen MANUAL plan a refusal prints; no code path executes it (installs
@@ -38438,19 +38444,62 @@ def cache_path(conf):
     return state_dir(conf) / 'cache.json'
 
 
+def _reject_nonfinite_constant(name):
+    raise ValueError('nonfinite constant %r refuses the cache' % name)
+
+
+def _checked_number(text):
+    value = float(text)
+    if value != value or value == float('inf') or value == float('-inf'):
+        raise ValueError('nonfinite number refuses the cache')
+    return value
+
+
+def _reject_duplicate_keys(pairs):
+    seen = set()
+    for key, _ in pairs:
+        if key in seen:
+            raise ValueError('duplicate key %r refuses the cache' % key)
+        seen.add(key)
+    return dict(pairs)
+
+
 def load_cache(conf):
-    """Strict-additive cache load. Corrupt/missing is Unknown; a symbol link
-    or nonregular cache is refused outright because it is never data we
-    execute — but writing through one would let hostile bytes swap paths."""
+    """Strict-additive cache load with bounded, no-follow reads. The byte
+    bound is enforced BEFORE any read (fstat size) and again during the read
+    (a stat/read race cannot exceed the cap); O_NOFOLLOW refuses a symlink
+    outright. Malformed, deep (RecursionError), duplicate-keyed or nonfinite
+    documents and nonregular or oversized files all mean Unknown — never a
+    traceback, never a trust decision, and nothing is ever executed."""
     path = cache_path(conf)
     try:
-        if path.is_symlink() or not path.is_file():
+        handle = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+    data = b''
+    try:
+        try:
+            meta = os.fstat(handle)
+            if not stat.S_ISREG(meta.st_mode) or meta.st_size > CACHE_MAX_BYTES:
+                return None
+            while len(data) <= CACHE_MAX_BYTES:
+                block = os.read(handle,
+                                min(65536, CACHE_MAX_BYTES + 1 - len(data)))
+                if not block:
+                    break
+                data += block
+        except OSError:
             return None
-        text = path.read_text()
-        if len(text) > 262144:
-            return None
-        document = json.loads(text)
-    except (OSError, ValueError):
+    finally:
+        os.close(handle)
+    if len(data) > CACHE_MAX_BYTES:
+        return None
+    try:
+        document = json.loads(data.decode('utf-8'),
+                             object_pairs_hook=_reject_duplicate_keys,
+                             parse_constant=_reject_nonfinite_constant,
+                             parse_float=_checked_number)
+    except (ValueError, UnicodeError, RecursionError):
         return None
     if not isinstance(document, dict) or document.get('schema_version') != SCHEMA_VERSION \
             or document.get('kind') != 'unio-cli-updates' or not isinstance(document.get('routes'), dict):
@@ -38465,26 +38514,42 @@ def load_cache(conf):
 
 
 def save_cache(conf, cache):
-    """Atomic replace; a symlinked or unexpectedly shaped state directory is
-    refused, never followed (no hostile file swaps)."""
+    """Atomic replace through a private unique temp file: no fixed-name
+    collisions, and independent concurrent checks can never unlink or
+    overwrite unrelated files. A symlinked state directory or cache is
+    refused, never followed (no hostile file swaps through this code)."""
     directory = state_dir(conf)
     path = cache_path(conf)
+    tmp_name = None
+    payload = json.dumps(cache, indent=2, sort_keys=True) + '\n'
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        check = directory
-        if check.is_symlink():
+        if directory.is_symlink():
             return False, 'refused: state directory is a symlink'
-        tmp = directory / 'cache.json.tmp'
-        if tmp.exists() or tmp.is_symlink():
-            tmp.unlink()
-        tmp.write_text(json.dumps(cache, indent=2, sort_keys=True) + '\n')
         if path.is_symlink():
-            tmp.unlink()
             return False, 'refused: cache is a symlink'
-        os.replace(tmp, path)
+        tmp_handle, tmp_name = tempfile.mkstemp(dir=str(directory),
+                                                prefix='.cache-', suffix='.tmp')
+        try:
+            with os.fdopen(tmp_handle, 'w', encoding='utf-8') as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except OSError:
+            return False, 'cache write failed'  # tmp cleaned in finally
+        if path.is_symlink():  # raced into a symlink after the pre-check
+            return False, 'refused: cache is a symlink'
+        os.replace(tmp_name, path)
+        tmp_name = None
+        return True, ''
     except OSError as failure:
         return False, 'cache write failed: %s' % failure
-    return True, ''
+    finally:
+        if tmp_name is not None:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
 
 
 def merge_route_entry(cache, name, entry):
