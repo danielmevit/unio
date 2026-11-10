@@ -34646,6 +34646,11 @@ cmd_doctor() { # preflight: catch what would otherwise waste a run or quota
                          || ok "disk headroom: ${avail}MB free"
   fi
 
+  # AI CLI update awareness: one read-only cache-freshness line, never an
+  # install (UNIO_CLI_UPDATES_OFF=1 disables; docs/CLI-UPDATES.md). A slow
+  # or offline host never blocks: the bounded refresh is backgrounded.
+  cli_updates_awareness doctor || true
+
   echo
   if [ "$bad" -gt 0 ]; then
     echo "doctor: $bad error(s), $warn warning(s) — fix the errors before dispatching."
@@ -34655,6 +34660,38 @@ cmd_doctor() { # preflight: catch what would otherwise waste a run or quota
     return 0
   fi
   echo "doctor: all clear."
+}
+
+# ------------------------------------------------------- update clis (payload)
+cli_updates_awareness() { # $1 = human entry label; read-only facts, never installs
+  [ "${UNIO_CLI_UPDATES_OFF:-0}" = "1" ] && return 0
+  command -v python3 >/dev/null 2>&1 || return 0
+  local helper="$CONF_DIR/lib/cli-updates.py"
+  if [ ! -f "$helper" ]; then
+    echo "cli-updates: awareness unavailable (helper missing at $CONF_DIR/lib/cli-updates.py — reinstall Unio to enable 'unio update clis')" >&2
+    return 0
+  fi
+  python3 -I -S -B "$helper" --conf "$CONF_DIR" startup --label "$1" || true
+}
+
+cmd_update() { # `unio update clis`: explicit CLI fact checks and held-safe updates
+  if [ "${1:-}" != clis ]; then
+    echo "usage: unio update clis [--check] [--json] [agents...]" >&2
+    return 2
+  fi
+  shift
+  command -v python3 >/dev/null 2>&1 || { echo "unio update clis: Python 3 required" >&2; return 2; }
+  local helper="$CONF_DIR/lib/cli-updates.py"
+  if [ ! -f "$helper" ]; then
+    echo "unio update clis: helper missing at $helper — reinstall Unio, or update the CLI manually (docs/CLI-UPDATES.md)" >&2
+    return 2
+  fi
+  local mode=update root
+  if [ "${1:-}" = --check ]; then mode=check; shift; fi
+  root=$(find_root 2>/dev/null) || root=""
+  local args=()
+  [ -n "$root" ] && args+=(--project "$root")
+  exec python3 -I -S -B "$helper" --conf "$CONF_DIR" "${args[@]}" "$mode" "$@"
 }
 
 # -------------------------------------------------------------------- new
@@ -35140,7 +35177,7 @@ ST_T5_EOF
 }
 
 cmd_stop()   { local root; root=$(find_root) || die "not in a project"; touch "$root/coord/STOP"; echo "STOP set — new runs blocked (running tasks finish or hit timeout)"; }
-cmd_resume() { local root; root=$(find_root) || die "not in a project"; rm -f "$root/coord/STOP"; echo "STOP cleared"; }
+cmd_resume() { local root; root=$(find_root) || die "not in a project"; rm -f "$root/coord/STOP"; echo "STOP cleared"; cli_updates_awareness resume || true; }
 
 cmd_license() {
   cat "$CONF_DIR/legal/NOTICE" "$CONF_DIR/legal/LICENSE"
@@ -36013,6 +36050,24 @@ setup / health
   unio doctor                   preflight a project: base branch, agent
                                      binaries, python3, worktree health, stale
                                      state, disk — catch what would waste a run
+  unio update clis [--check] [--json] [agents...]
+                                     report installed/latest/age/install method
+                                     of the recognized AI CLIs, and their busy/
+                                     lead-held, supported and Unknown facts;
+                                     --check and the doctor/resume awareness
+                                     line are read-only facts (cache <24 h old:
+                                     no network; never a model or auth call).
+                                     Without --check the request runs only each
+                                     CLI's official updater (agy update, uv tool
+                                     upgrade mistral-vibe when verified
+                                     uv-managed, grok update --stable, copilot
+                                     update stable, opencode upgrade without
+                                     --major); missing tools are skipped, busy/
+                                     lead-held or unverifiable installs refuse
+                                     with a manual plan; claude/codex stay
+                                     check-only. Compatibility stays Unknown:
+                                     route version guards and adapter pins are
+                                     never touched (docs/CLI-UPDATES.md)
 
 work
   unio run [-b] <w> <task>      run coord/tasks/<task>.md in w's worktree
@@ -36229,6 +36284,7 @@ case "${1:-help}" in
   report)   shift; cmd_report "$@";;
   score)    shift; cmd_score "$@";;
   doctor)   shift; cmd_doctor "$@";;
+  update)   shift; cmd_update "$@";;
   new)      shift; cmd_new "$@";;
   version|-V|--version) cmd_version;;
   license)  cmd_license;;
@@ -38145,6 +38201,957 @@ if __name__ == "__main__":
 UNIO_REMOTE_GUARD_PY
 chmod +x "$CONF_DIR/lib/remote-guard.py"
 # END EMBEDDED REMOTE GUARD
+# BEGIN EMBEDDED CLI UPDATES
+# Check every generated destination before replacing any CLI update file.
+for cli_updates_dir in "$CONF_DIR/lib"; do
+  if [ -L "$cli_updates_dir" ] || { [ -e "$cli_updates_dir" ] && [ ! -d "$cli_updates_dir" ]; }; then
+    echo "unio: refusing unsafe CLI update directory: $cli_updates_dir" >&2
+    exit 1
+  fi
+done
+for cli_updates_name in cli-updates.py; do
+  cli_updates_file="$CONF_DIR/lib/$cli_updates_name"
+  if [ -L "$cli_updates_file" ] || { [ -e "$cli_updates_file" ] && { [ ! -f "$cli_updates_file" ] || [ "$(stat -c '%h' -- "$cli_updates_file")" != 1 ]; }; }; then
+    echo "unio: refusing unsafe CLI update file: $cli_updates_file" >&2
+    exit 1
+  fi
+done
+mkdir -p "$CONF_DIR/lib"
+cat > "$CONF_DIR/lib/cli-updates.py" <<'UNIO_CLI_UPDATES_PY'
+#!/usr/bin/env python3
+# Unio — Copyright (C) 2026 Daniel Mitev
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms: NOTICE.
+"""Machine-level AI CLI version facts and explicit, held-safe updates.
+
+Installed by tools/embed-cli-updates.py as $CONF_DIR/lib/cli-updates.py and
+driven by `unio update clis`. Standard library only; no shell, no eval.
+
+Safety contract (frozen 2026-11-10):
+- `check` records facts only: installed version, latest-version metadata,
+  cache age, install method, busy/lead holds, support and compatibility
+  Unknown. A check NEVER calls an installing updater. The only tool
+  commands it may run are a plain read-only `--version` and grok's
+  documented read-only `update --check --json`. Nothing from agents.conf,
+  task files, reports, cache text or downloaded URLs is ever executed or
+  evaluated; every subprocess is a fixed argv array from the table below.
+- `update` is the explicit request to run a CLI's official updater, and
+  only through that updater's own command (or, for uv-managed Vibe, the
+  verified `uv tool upgrade mistral-vibe`). Never a major-version switch,
+  never an installation-method switch, never a guessed method: unsupported
+  or unverifiable installs are refused with a manual plan. Updating is
+  refused while a route is busy (active worker run, STOP owner hold, a
+  native process with the exact executable identity, or an unavailable
+  /proc identity scan) BEFORE any updater call. One failed tool never
+  hides other results.
+  Updates runDangerously never touch route/adapter version guards or pins:
+  compatibility stays Unknown until proven by real use.
+- `startup` prints one read-only freshness line for human entry points
+  (doctor, resume). Missing/fresh caches cause no network; a stale cache
+  (default 24 h) spawns one bounded background refresh (own lock, hard
+  deadline, no stdout). The background refresh never executes any CLI
+  binary or updater — only filesystem metadata and official metadata URLs.
+  Corrupt/missing cache means Unknown, never authorization to run
+  anything. No secrets or account identifiers are ever stored or read.
+
+Routes and commands below were verified read-only on the host on
+2026-11-10 (agy 1.5.4, vibe 3.1.1 via `uv tool list`, grok 1.0.77,
+copilot 1.0.108, opencode 1.19.5, claude 2.1.322 npm, codex 0.167.0).
+That is a dated observation, not a pin on any version.
+
+Env: UNIO_CONF_DIR-dir default is UNIO_CONF_DIR then ~/.config/unio;
+UNIO_CLI_UPDATES_MAX_AGE (seconds, default 86400);
+UNIO_CLI_UPDATES_TIMEOUT (metadata seconds per request, default 10);
+UNIO_CLI_UPDATES_DEADLINE (startup refresh total seconds, default 45);
+UNIO_CLI_UPDATES_INSTALL_TIMEOUT (updater seconds, default 1800);
+UNIO_CLI_UPDATES_OFF=1 disables startup awareness entirely (offline/tests);
+UNIO_CLI_UPDATES_OFFLINE=1 forbids all network metadata fetches honestly.
+"""
+import argparse
+import errno
+import fcntl
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+
+SCHEMA_VERSION = 1
+SOURCE_LABEL = 'cli-updates'
+UA = 'unio-cli-updates/1 (+https://github.com/danielmevit/unio)'
+VERSION_RE = re.compile(r'(\d+\.\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.]+)?)')
+DELETED_SUFFIX = ' (deleted)'
+
+# One entry per recognized route. update_argv is executed only by the
+# explicit update path behind the busy gate; version_argv and the grok
+# check argv are read-only. latest is the official metadata strategy:
+# (kind, repo/package) resolved only when the detected install method
+# makes that source authoritative, otherwise latest stays Unknown.
+ROUTES = {
+    'antigravity': {
+        'name': 'antigravity', 'group': 'google',
+        'aliases': ('antigravity', 'agy'), 'binary': 'agy',
+        'version_argv': ('--version',),
+        'update_argv': ('update',), 'update_label': 'agy update',
+        'update_support': 'native', 'latest': ('github', 'google-antigravity/antigravity-cli'),
+        'latest_any_method': True,
+    },
+    'vibe': {
+        'name': 'vibe', 'group': 'mistral',
+        'aliases': ('vibe', 'mistral-vibe', 'mistral-vibe-cli'), 'binary': 'vibe',
+        'version_argv': ('--version',),
+        'update_argv': None,  # resolved at update time: uv tool upgrade mistral-vibe
+        'update_label': 'uv tool upgrade mistral-vibe (verified uv-managed install only)',
+        'update_support': 'uv-tool', 'latest': ('pypi', 'mistral-vibe'),
+        'latest_any_method': False,
+    },
+    'grok': {
+        'name': 'grok', 'group': 'xai',
+        'aliases': ('grok',), 'binary': 'grok',
+        'version_argv': ('--version',),
+        'check_argv': ('update', '--check', '--json'),  # documented read-only
+        'update_argv': ('update', '--stable'), 'update_label': 'grok update --stable',
+        'update_support': 'native', 'latest': ('grok-check', ''),
+        'latest_any_method': True,
+    },
+    'copilot': {
+        'name': 'copilot', 'group': 'github',
+        'aliases': ('copilot', 'github-copilot', 'copilot-cli'), 'binary': 'copilot',
+        'version_argv': ('--version',),
+        'update_argv': ('update', 'stable'), 'update_label': 'copilot update stable',
+        'update_support': 'native', 'latest': ('npm', '@github/copilot'),
+        'latest_any_method': False,
+    },
+    'opencode': {
+        'name': 'opencode', 'group': 'zen',
+        'aliases': ('opencode', 'open-code', 'opencode-ai'), 'binary': 'opencode',
+        'version_argv': ('--version',),
+        'update_argv': ('upgrade',),  # never --major: that is a separate migration
+        'update_label': 'opencode upgrade (no --major)',
+        'update_support': 'native', 'latest': ('npm', 'opencode-ai'),
+        'latest_any_method': False,
+    },
+    'claude': {
+        'name': 'claude', 'group': 'anthropic',
+        'aliases': ('claude', 'claude-code'), 'binary': 'claude',
+        'version_argv': ('--version',),
+        'update_argv': None, 'update_label': 'manual (claude update; unio only checks)',
+        'update_support': 'check-only', 'latest': ('npm', '@anthropic-ai/claude-code'),
+        'latest_any_method': False,
+    },
+    'codex': {
+        'name': 'codex', 'group': 'openai',
+        'aliases': ('codex', 'codex-cli'), 'binary': 'codex',
+        'version_argv': ('--version',),
+        'update_argv': None, 'update_label': 'manual (lead-only route; unio only checks)',
+        'update_support': 'check-only', 'latest': ('npm', '@openai/codex'),
+        'latest_any_method': False,
+    },
+}
+ROUTE_ORDER = ('antigravity', 'vibe', 'grok', 'copilot', 'opencode', 'claude', 'codex')
+ALIAS_TO_ROUTE = {alias: route['name'] for route in ROUTES.values() for alias in route['aliases']}
+# Path facts used to label an install method honestly. A label only states
+# where the resolved executable lives; it never authorizes an update.
+METHOD_MARKERS = (
+    ('/node_modules/', 'npm'),
+    ('/.grok/', 'grok-managed'),
+    ('/.codex/packages/', 'codex-standalone'),
+    ('/.opencode/', 'opencode-native'),
+    ('/uv/tools/mistral-vibe/', 'uv-tool'),
+)
+UV_TOOL_PACKAGE = 'mistral-vibe'
+BUSY_NOTE = ('busy detection covers this project (worker locks, STOP) and same-uid '
+             'native processes with the exact executable identity; other users, '
+             'other hosts and cross-workspace unmanaged sessions are invisible '
+             '(docs/CLI-UPDATES.md)')
+
+
+class UsageError(Exception):
+    pass
+
+
+class NetworkDisabled(Exception):
+    pass
+
+
+def now():
+    return datetime.now(timezone.utc)
+
+
+def iso(dt=None):
+    return (dt or now()).replace(microsecond=0).isoformat()
+
+
+def parse_iso(text):
+    try:
+        stamp = datetime.fromisoformat(text)
+        if stamp.tzinfo is None:
+            raise ValueError('naive timestamp')
+        return stamp
+    except (TypeError, ValueError):
+        return None
+
+
+def age_seconds(text):
+    stamp = parse_iso(text) if isinstance(text, str) else None
+    if stamp is None:
+        return None
+    return max(0.0, (now() - stamp).total_seconds())
+
+
+def env_int(name, default, low, high):
+    raw = os.environ.get(name, '')
+    if not raw:
+        return default
+    try:
+        value = int(raw, 10)
+    except ValueError:
+        return default
+    return max(low, min(high, value))
+
+
+def opt_off():
+    return os.environ.get('UNIO_CLI_UPDATES_OFF', '0') == '1'
+
+
+def opt_offline():
+    return os.environ.get('UNIO_CLI_UPDATES_OFFLINE', '0') == '1'
+
+
+def state_dir(conf):
+    return Path(conf) / 'cli-updates'
+
+
+def cache_path(conf):
+    return state_dir(conf) / 'cache.json'
+
+
+def load_cache(conf):
+    """Strict-additive cache load. Corrupt/missing is Unknown; a symbol link
+    or nonregular cache is refused outright because it is never data we
+    execute — but writing through one would let hostile bytes swap paths."""
+    path = cache_path(conf)
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        text = path.read_text()
+        if len(text) > 262144:
+            return None
+        document = json.loads(text)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(document, dict) or document.get('schema_version') != SCHEMA_VERSION \
+            or document.get('kind') != 'unio-cli-updates' or not isinstance(document.get('routes'), dict):
+        return None
+    routes = {}
+    for name, entry in document['routes'].items():
+        if name in ROUTES and isinstance(entry, dict):
+            routes[name] = entry
+    return {'schema_version': SCHEMA_VERSION, 'kind': 'unio-cli-updates',
+            'startup_checked_at': document.get('startup_checked_at'),
+            'routes': routes}
+
+
+def save_cache(conf, cache):
+    """Atomic replace; a symlinked or unexpectedly shaped state directory is
+    refused, never followed (no hostile file swaps)."""
+    directory = state_dir(conf)
+    path = cache_path(conf)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        check = directory
+        if check.is_symlink():
+            return False, 'refused: state directory is a symlink'
+        tmp = directory / 'cache.json.tmp'
+        if tmp.exists() or tmp.is_symlink():
+            tmp.unlink()
+        tmp.write_text(json.dumps(cache, indent=2, sort_keys=True) + '\n')
+        if path.is_symlink():
+            tmp.unlink()
+            return False, 'refused: cache is a symlink'
+        os.replace(tmp, path)
+    except OSError as failure:
+        return False, 'cache write failed: %s' % failure
+    return True, ''
+
+
+def merge_route_entry(cache, name, entry):
+    routes = cache.setdefault('routes', {})
+    if not isinstance(routes.get(name), dict):
+        routes[name] = {}
+    routes[name].update({key: value for key, value in entry.items() if value is not None})
+
+
+def cached_latest(route, cache, max_age):
+    entry = (cache or {}).get('routes', {}).get(route['name'], {}) if cache else None
+    latest = entry.get('latest') if isinstance(entry, dict) else None
+    if not isinstance(latest, dict):
+        return None
+    if latest.get('version') or latest.get('status', '').startswith('unsupported'):
+        checked = age_seconds(latest.get('checked_at'))
+        if checked is not None and checked <= max_age:
+            return latest
+    return None
+
+
+def run_bounded(argv, timeout, cwd=None, env=None, limit=16384):
+    """Fixed argv array only; bounded time and captured-output size."""
+    try:
+        process = subprocess.run(argv, cwd=cwd, env=env, timeout=timeout,
+                                 stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        text = process.stdout[:limit].decode('utf-8', errors='replace')
+        return process.returncode, text
+    except subprocess.TimeoutExpired:
+        return None, ''
+    except OSError as failure:
+        return None, ''
+
+
+def resolve_binary(route):
+    path = shutil.which(route['binary'])
+    real = None
+    if path:
+        try:
+            real = os.path.realpath(path)
+        except OSError:
+            real = None
+    return path, real
+
+
+def detect_method(route, real, allow_exec):
+    """Honest install-method label; never a guess that enables an update.
+    Path markers are pure facts. The uv label is additionally verified by
+    `uv tool list` (read-only) in the explicit check/update paths."""
+    if real:
+        for marker, method in METHOD_MARKERS:
+            if marker in real:
+                return method
+    if allow_exec and route['name'] == 'vibe':
+        uv = shutil.which('uv')
+        if uv:
+            code, text = run_bounded([uv, 'tool', 'list'], 30)
+            if code == 0:
+                for line in text.splitlines():
+                    if line.strip().startswith(UV_TOOL_PACKAGE + ' v'):
+                        return 'uv-tool'
+    return 'unknown'
+
+
+def probe_version(route, path, cwd, timeout=20):
+    if not path:
+        return None, None
+    code, text = run_bounded([path, *route['version_argv']], timeout, cwd=cwd)
+    version = None
+    for line in text.splitlines():
+        match = VERSION_RE.search(line.strip())
+        if match:
+            version = match.group(1)
+            break
+    return version, code
+
+
+def fetch_json(url, timeout):
+    if opt_offline():
+        raise NetworkDisabled()
+    request = Request(url, headers={'User-Agent': UA, 'Accept': 'application/json'})
+    with urlopen(request, timeout=timeout) as response:
+        data = response.read(65536 + 1)
+    if len(data) > 65536:
+        raise ValueError('metadata response too large')
+    return json.loads(data.decode('utf-8'))
+
+
+def latest_for(route, method, path, conf, timeout, allow_tool_exec, cache, max_age):
+    """Latest-version facts. Fresh cache entries are reused (no network).
+    A strategy outside its supported install method stays Unknown."""
+    name = route['name']
+    fresh = cached_latest(route, cache, max_age)
+    if fresh is not None:
+        merged = dict(fresh)
+        merged['source'] = fresh.get('source') or route['latest'][0]
+        return merged, True
+    strategy, argument = route['latest']
+    allowed = route['latest_any_method'] or method in ('uv-tool', 'npm')
+    latest = {'version': None, 'status': 'unknown', 'source': None, 'checked_at': iso()}
+    if not allowed:
+        latest['status'] = 'unsupported-install-method'
+        latest['source'] = '%s:%s' % (strategy, argument) if strategy != 'grok-check' else 'grok-update-check'
+    elif strategy == 'github':
+        latest['source'] = 'github-release:%s' % argument
+        try:
+            document = fetch_json('https://api.github.com/repos/%s/releases/latest' % argument, timeout)
+            tag = str(document.get('tag_name') or '').strip()
+            match = VERSION_RE.search(tag.lstrip('vV'))
+            latest['version'] = match.group(1) if match else None
+            latest['status'] = 'ok' if latest['version'] else 'unparseable-metadata'
+        except (NetworkDisabled, URLError, OSError, ValueError) as failure:
+            latest['status'] = 'network-disabled' if isinstance(failure, NetworkDisabled) else 'unavailable'
+    elif strategy == 'pypi':
+        latest['source'] = 'pypi:%s' % argument
+        try:
+            document = fetch_json('https://pypi.org/pypi/%s/json' % argument, timeout)
+            version = str((document.get('info') or {}).get('version') or '').strip()
+            match = VERSION_RE.search(version)
+            latest['version'] = match.group(1) if match else None
+            latest['status'] = 'ok' if latest['version'] else 'unparseable-metadata'
+        except (NetworkDisabled, URLError, OSError, ValueError) as failure:
+            latest['status'] = 'network-disabled' if isinstance(failure, NetworkDisabled) else 'unavailable'
+    elif strategy == 'npm':
+        latest['source'] = 'npm:%s' % argument
+        try:
+            document = fetch_json('https://registry.npmjs.org/%s/latest' % argument, timeout)
+            match = VERSION_RE.search(str(document.get('version') or ''))
+            latest['version'] = match.group(1) if match else None
+            latest['status'] = 'ok' if latest['version'] else 'unparseable-metadata'
+        except (NetworkDisabled, URLError, OSError, ValueError) as failure:
+            latest['status'] = 'network-disabled' if isinstance(failure, NetworkDisabled) else 'unavailable'
+    elif strategy == 'grok-check':
+        latest['source'] = 'grok-update-check'
+        if not allow_tool_exec or not path:
+            latest['status'] = 'not-refreshed-here'  # the background refresh never executes CLIs
+        else:
+            code, text = run_bounded([path, *route['check_argv']], 40, cwd=conf)
+            try:
+                document = json.loads(text.strip().splitlines()[0]) if text.strip() else {}
+                match = VERSION_RE.search(str(document.get('latestVersion') or ''))
+                latest['version'] = match.group(1) if match else None
+                latest['status'] = 'ok' if latest['version'] else 'unparseable-metadata'
+            except (ValueError, IndexError):
+                latest['status'] = 'unavailable' if code == 0 else 'tool-error'
+    return latest, False
+
+
+def resolve_selection(names, default_installed=True):
+    selected = []
+    if not names:
+        for name in ROUTE_ORDER:
+            if shutil.which(ROUTES[name]['binary']):
+                selected.append(name)
+        return selected
+    for requested in names:
+        name = ALIAS_TO_ROUTE.get(requested)
+        if name is None:
+            raise UsageError("unknown agent '%s' — recognized: %s"
+                             % (requested, ', '.join(ROUTE_ORDER)))
+        if name not in selected:
+            selected.append(name)  # aliases deduplicate onto one route report
+    return selected
+
+
+def held_worker_locks(project):
+    """Project worker locks, probed exactly like the engine's lock_probe:
+    flock on the lock file itself; existence alone means nothing."""
+    if not project:
+        return []
+    locks = Path(project) / 'coord' / '.locks'
+    held = []
+    try:
+        names = sorted(locks.glob('*.lock'))
+    except OSError:
+        return []
+    for lock_file in names[:64]:
+        try:
+            handle = os.open(lock_file, os.O_RDONLY)
+        except OSError:
+            held.append(lock_file.name)  # unreadable lock: ambiguous -> busy
+            continue
+        try:
+            fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except OSError:
+            held.append(lock_file.name)
+        finally:
+            os.close(handle)
+    return held
+
+
+def native_identity(real, exclude_pids=()):
+    """Minimal-privilege /proc scan; exact executable identity only. /proc
+    <pid>/exe or an exact cmdline element must equal the resolved binary
+    path — never a process-name guess. Other users' processes are invisible
+    and reported as such; same-uid non-dumpable processes (system daemons)
+    cannot be identified either and are counted as an honestly stated
+    visibility limit: they are never silently treated as idle permission."""
+    active, obscured = [], 0
+    if not real or not os.path.isdir('/proc'):
+        return active, None  # no identity scan possible: busy state unknown
+    self_pid = os.getpid()
+    try:
+        entries = os.listdir('/proc')
+    except OSError:
+        return active, None
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        if pid in exclude_pids or pid == self_pid:
+            continue
+        base = '/proc/%d' % pid
+        try:
+            if os.stat(base).st_uid != os.getuid():
+                continue  # cross-user processes are invisible by design
+        except OSError:
+            continue
+        exe = None
+        try:
+            exe = os.readlink(base + '/exe')
+        except OSError as failure:
+            if failure.errno == errno.ENOENT:
+                continue  # zombie/kernel thread: no executable identity
+            obscured += 1
+            continue
+        if exe.endswith(DELETED_SUFFIX):
+            exe = exe[:-len(DELETED_SUFFIX)]
+        if exe == real:
+            active.append(pid)
+            continue
+        try:
+            text = open(base + '/cmdline', 'rb').read(4096)
+        except OSError:
+            continue
+        parts = [part for part in text.split(b'\0')[:6]]
+        if os.fsencode(real) in parts:
+            active.append(pid)
+    return active, obscured
+
+
+def stop_active(project):
+    if not project:
+        return False
+    stop = Path(project) / 'coord' / 'STOP'
+    try:
+        return stop.is_file()
+    except OSError:
+        return True  # unreadable coord ambiguity is treated as held
+
+
+def build_route(route, conf, project, max_age, timeout, cache, allow_tool_exec):
+    name = route['name']
+    path, real = resolve_binary(route)
+    method = detect_method(route, real, allow_tool_exec)
+    presence = {'name': name, 'present': bool(path), 'binary': route['binary'],
+                'binary_path': path, 'binary_realpath': real, 'install_method': method}
+    installed = {'name': name, 'version': None, 'exit': None, 'checked_at': None}
+    present_busy = []  # exact-identity findings only
+    obscured = 0
+    if path:
+        version, code = probe_version(route, path, str(conf))
+        installed = {'name': name, 'version': version, 'exit': code, 'checked_at': iso()}
+        active, hidden = native_identity(real)
+        if active:
+            present_busy.append('native-process-active')
+        if hidden is None:
+            present_busy.append('busy-identity-unknown')
+        else:
+            obscured = hidden
+    latest, from_cache = latest_for(route, method, path, conf, timeout,
+                                    allow_tool_exec, cache, max_age)
+    reasons = []
+    if stop_active(project):
+        reasons.append('stop-active')
+    if held_worker_locks(project):
+        reasons.append('worker-run-active')
+    reasons.extend(present_busy)
+    supported = route['update_support']
+    if not path:
+        state = 'absent'
+    elif supported == 'check-only':
+        state = 'check-only'
+    elif supported == 'uv-tool' and method != 'uv-tool':
+        state = 'manual'
+    elif reasons:
+        state = 'current-refused'
+    else:
+        state = 'supported'
+    return {
+        'name': name, 'group': route['group'], 'aliases': list(route['aliases']),
+        'binary': route['binary'], 'present': bool(path), 'binary_path': path,
+        'binary_realpath': real, 'install_method': method,
+        'installed_version': installed['version'], 'version_checked_at': installed['checked_at'],
+        'version_exit': installed['exit'],
+        'latest_version': latest['version'], 'latest_status': latest['status'],
+        'latest_source': latest.get('source'), 'latest_checked_at': latest.get('checked_at'),
+        'latest_from_cache': from_cache,
+        'update_support': supported, 'update_label': route['update_label'],
+        'update_state': state, 'update_blocked_reasons': reasons,
+        'obscured_processes': obscured, 'visibility_note': BUSY_NOTE,
+        'compatibility': 'unknown',
+    }
+
+
+def human_route(row):
+    installed = row['installed_version'] or 'Unknown'
+    if row['latest_version']:
+        latest = row['latest_version'] + ' (%s, %s)' % (row['latest_source'], row['latest_status'])
+        verdict = 'current' if row['latest_version'] == row['installed_version'] else 'NEWER AVAILABLE'
+    else:
+        latest = 'Unknown (%s)' % row['latest_status']
+        verdict = 'latest unknown'
+    lines = ['  %s: installed %s, latest %s — %s' % (row['name'], installed, latest, verdict)]
+    if not row['present']:
+        lines.append('    absent — nothing installed is risked (skipped everywhere)')
+        return '\n'.join(lines)
+    lines.append('    %s · method %s · update: %s · update state: %s'
+                 % (row['binary_path'], row['install_method'], row['update_label'], row['update_state']))
+    if row['update_blocked_reasons']:
+        lines.append('    update request refused by: %s' % ', '.join(row['update_blocked_reasons']))
+    if row.get('obscured_processes'):
+        lines.append('    visibility: %d same-uid process(es) unidentifiable (/proc); '
+                     'other users and other hosts are invisible' % row['obscured_processes'])
+    lines.append('    compatibility unknown — updating never proves route/adapter compatibility '
+                 '(guards and pins are not touched by unio)')
+    return '\n'.join(lines)
+
+
+def do_check(args):
+    timeout = args.timeout
+    names = resolve_selection(args.agents)
+    cache = load_cache(args.conf)
+    rows, cache = [], cache or {'schema_version': SCHEMA_VERSION, 'kind': 'unio-cli-updates',
+                                'startup_checked_at': None, 'routes': {}}
+    for name in names:
+        row = build_route(ROUTES[name], args.conf, args.project, args.max_age,
+                          timeout, cache, allow_tool_exec=True)
+        rows.append(row)
+        merge_route_entry(cache, name, {'presence': {
+            'present': row['present'], 'binary_path': row['binary_path'],
+            'binary_realpath': row['binary_realpath'], 'install_method': row['install_method']}})
+        merge_route_entry(cache, name, {'installed': {
+            'version': row['installed_version'], 'exit': row['version_exit'],
+            'checked_at': row['version_checked_at']}})
+        cached_latest = {
+            'version': row['latest_version'], 'status': row['latest_status'],
+            'source': row['latest_source'], 'checked_at': row['latest_checked_at']}
+        merge_route_entry(cache, name, {'latest': cached_latest})
+    cache['startup_checked_at'] = iso()
+    written, why = save_cache(args.conf, cache)
+    document = {
+        'schema_version': SCHEMA_VERSION, 'checked_at': iso(), 'source': SOURCE_LABEL,
+        'fresh_within_seconds': args.max_age,
+        'project': {'root': args.project, 'stop_active': stop_active(args.project)},
+        'routes': rows, 'cache_writable': written,
+    }
+    if not written:
+        document['cache_write_refused'] = why
+    report = json.dumps(document, indent=2, sort_keys=True) if args.json else \
+        'AI CLI update check — %s (facts only; no model, auth or billing calls)\n%s' \
+        % (iso(), '\n'.join(human_route(row) for row in rows) or '  no recognized CLI installed')
+    print(report)
+    failed = [row for row in rows if row['present'] and row['version_exit'] not in (0, None)]
+    return 1 if failed else 0
+
+
+def updater_argv(route, path):
+    if route['name'] == 'vibe':
+        uv = shutil.which('uv')
+        return [uv, 'tool', 'upgrade', UV_TOOL_PACKAGE] if uv else None
+    if route['update_argv'] is None:
+        return None
+    return [path, *route['update_argv']]
+
+
+def do_update(args):
+    names = resolve_selection(args.agents)
+    cache = load_cache(args.conf) or {'schema_version': SCHEMA_VERSION,
+                                      'kind': 'unio-cli-updates', 'startup_checked_at': None,
+                                      'routes': {}}
+    # Holds are frozen: no flag or environment variable bypasses them. The
+    # update refuses instead of waiting, because a launched worker would
+    # race the official updater mid-install (docs/CLI-UPDATES.md).
+    project = args.project
+    stop = stop_active(project)
+    locks = held_worker_locks(project)
+    directory = state_dir(args.conf)
+    results = []
+    lock_handle = None
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        lock_handle = os.open(directory / 'update.lock', os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            results_summary = {'schema_version': SCHEMA_VERSION, 'command': 'update',
+                               'finished_at': iso(),
+                               'routes': [], 'refused': 'another CLI update is already running'}
+            print(json.dumps(results_summary, indent=2, sort_keys=True) if args.json
+                  else 'AI CLI update — refused: another CLI update is already running.')
+            return 1
+    except OSError as failure:
+        print('AI CLI update — cache directory unusable: %s' % failure,
+              file=sys.stderr)
+        return 1
+    try:
+        for name in names:
+            route = ROUTES[name]
+            path, real = resolve_binary(route)
+            row = {'name': route['name'], 'action': 'skipped', 'reason': None,
+                   'updater_exit': None, 'version_before': None, 'version_after': None,
+                   'compatibility': 'unknown', 'manual': None}
+            if not path:
+                row['reason'] = 'absent on PATH'
+                results.append(row)
+                continue
+            method = detect_method(route, real, allow_exec=True)
+            support = route['update_support']
+            if support == 'check-only':
+                row.update(action='refused', reason='check-only route',
+                           manual='%s (manual) — run it yourself when the session is idle' % route['update_label'])
+                results.append(row)
+                continue
+            if support == 'uv-tool' and method != 'uv-tool':
+                row.update(action='refused', reason='vibe install not verified uv-managed (%s)' % method,
+                           manual='inspect the install, or run "uv tool upgrade mistral-vibe" yourself; unio never switches install methods')
+                results.append(row)
+                continue
+            if stop:
+                row.update(action='refused', reason='STOP owner hold active',
+                           manual='STOP gates this project (unio resume clears it) — update manually if the owner approves')
+                results.append(row)
+                continue
+            if locks:
+                row.update(action='refused',
+                           reason='active worker run (%s) — unio status clears or ends it' % ', '.join(locks[:4]),
+                           manual='wait for the run, then re-run unio update clis; update manually meanwhile')
+                results.append(row)
+                continue
+            active, hidden = native_identity(real)
+            if active:
+                row.update(action='refused',
+                           reason='native process using this exact executable (pid %s)' % ', '.join(map(str, active[:8])),
+                           manual='let the session finish (never signalled or restarted by unio), then re-run unio update clis')
+                results.append(row)
+                continue
+            if hidden is None:
+                row.update(action='refused', reason='process identity scan unavailable (/proc)',
+                           manual='verify idle with unio status / ps, then re-run unio update clis or update manually')
+                results.append(row)
+                continue
+            argv = updater_argv(route, path)
+            if not argv:
+                row.update(action='refused', reason='updater unresolved',
+                           manual=route['update_label'])
+                results.append(row)
+                continue
+            before, _ = probe_version(route, path, str(conf_dir_cwd(args.conf)))
+            row['version_before'] = before
+            code, text = run_bounded(argv, args.install_timeout, cwd=os.path.expanduser('~'),
+                                     limit=65536)
+            row['updater_exit'] = code
+            after, _ = probe_version(route, path, str(conf_dir_cwd(args.conf)))
+            row['version_after'] = after
+            if code == 0:
+                row['action'] = 'updated'
+            else:
+                row['action'] = 'failed'
+                row['reason'] = 'updater exit %s' % code
+            # The official updater may apply at next launch (copilot/standalone):
+            # the recorded value is the freshly probed truth, never a guess.
+            merge_route_entry(cache, name, {'presence': {
+                'present': True, 'binary_path': path, 'binary_realpath': real,
+                'install_method': method}})
+            merge_route_entry(cache, name, {'installed': {
+                'version': after, 'exit': None, 'checked_at': iso()}})
+            results.append(row)
+        written, why = save_cache(args.conf, cache)
+    finally:
+        os.close(lock_handle)
+    failed = [row for row in results if row['action'] in ('refused', 'failed')]
+    document = {'schema_version': SCHEMA_VERSION, 'command': 'update',
+                'finished_at': iso(),
+                'project': {'root': project, 'stop_active': stop,
+                            'busy_note': BUSY_NOTE},
+                'routes': results, 'compatibility': 'unknown',
+                'cache_writable': written}
+    if not written:
+        document['cache_write_refused'] = why
+    if args.json:
+        print(json.dumps(document, indent=2, sort_keys=True))
+    else:
+        lines = ['AI CLI update — %s (each CLI updated only through its official updater)' % iso()]
+        for row in results:
+            lines.append('  %s: %s%s' % (row['name'], row['action'],
+                                         ' — %s' % row['reason'] if row['reason'] else ''))
+            if row['action'] == 'updated':
+                lines.append('    %s -> %s (updater exit %s)' %
+                             (row['version_before'] or 'Unknown', row['version_after'] or 'Unknown', row['updater_exit']))
+                lines.append('    compatibility unknown: route version guards and adapter pins are untouched')
+            if row['manual']:
+                lines.append('    manual plan: %s' % row['manual'])
+        print('\n'.join(lines))
+    return 1 if failed else 0
+
+
+def conf_dir_cwd(conf):
+    try:
+        directory = state_dir(conf)
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+    except OSError:
+        return Path(conf) if os.path.isdir(conf) else Path.home()
+
+
+def spawn_refresh(conf):
+    try:
+        subprocess.Popen([sys.executable, '-I', '-S', '-B', os.path.abspath(__file__),
+                          '--conf', str(conf), 'startup-refresh'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         stdin=subprocess.DEVNULL, start_new_session=True)
+        return True
+    except OSError:
+        return False
+
+
+def do_startup(args):
+    if opt_off():
+        return 0
+    cache = load_cache(args.conf)
+    age = age_seconds((cache or {}).get('startup_checked_at'))
+    refresh_note = ''
+    if age is None:
+        head = 'cli-updates: AI CLI version facts never checked'
+        started = spawn_refresh(args.conf) if not args.no_refresh else False
+        refresh_note = ' — background refresh started' if started else ' (background refresh unavailable)'
+    elif age <= args.max_age:
+        head = 'cli-updates: AI CLI facts checked %.0f s ago (fresh)' % age
+    else:
+        head = 'cli-updates: AI CLI facts checked %.0f s ago (stale)' % age
+        started = spawn_refresh(args.conf) if not args.no_refresh else False
+        if started:
+            refresh_note = ' — background refresh started'
+    print(head + refresh_note + " — 'unio update clis --check' for the facts (docs/CLI-UPDATES.md)")
+    return 0
+
+
+class Deadline(Exception):
+    pass
+
+
+def _alarm(signum, frame):
+    raise Deadline('deadline exceeded')
+
+
+def do_startup_refresh(args):
+    """Bounded background refresh: no CLI execution, no updater, owned lock,
+    no stdout. Default deadline UNIO_CLI_UPDATES_DEADLINE (45 s)."""
+    deadline = env_int('UNIO_CLI_UPDATES_DEADLINE', 45, 5, 600)
+    signal.signal(signal.SIGALRM, _alarm)
+    signal.alarm(deadline)
+    directory = state_dir(args.conf)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        if directory.is_symlink():
+            return 0
+        handle = os.open(directory / 'refresh.lock', os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError:
+        return 0
+    try:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(handle)
+            return 0  # a bounded owned refresh is already running
+        os.truncate(handle, 0)
+        os.write(handle, ('pid %d started %s deadline %ds\n' % (os.getpid(), iso(), deadline)).encode())
+        cache = load_cache(args.conf) or {'schema_version': SCHEMA_VERSION,
+                                          'kind': 'unio-cli-updates', 'startup_checked_at': None,
+                                          'routes': {}}
+        timeout = env_int('UNIO_CLI_UPDATES_TIMEOUT', 10, 1, 60)
+        max_age = env_int('UNIO_CLI_UPDATES_MAX_AGE', 86400, 60, 864000)
+        for name in ROUTE_ORDER:
+            try:
+                route = ROUTES[name]
+                path, real = resolve_binary(route)
+                method = detect_method(route, real, allow_exec=False)
+                latest, from_cache = latest_for(route, method, path, args.conf, timeout,
+                                                allow_tool_exec=False, cache=cache, max_age=max_age)
+                merge_route_entry(cache, name, {'presence': {
+                    'present': bool(path), 'binary_path': path, 'binary_realpath': real,
+                    'install_method': method}})
+                if not from_cache:
+                    merge_route_entry(cache, name, {'latest': latest})
+            except Exception:  # one route never aborts the bounded refresh
+                continue
+        cache['startup_checked_at'] = iso()
+        try:
+            save_cache(args.conf, cache)
+        except Exception:
+            pass
+    except Deadline:
+        pass
+    finally:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+        finally:
+            os.close(handle)
+    return 0
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(prog='cli-updates', allow_abbrev=False,
+                                      description='Machine-level AI CLI version facts and explicit updates')
+    parser.add_argument('--conf', required=True, metavar='DIR', help='Unio config directory')
+    parser.add_argument('--project', metavar='PATH', help='project root when inside a Unio project')
+    commands = parser.add_subparsers(dest='mode', required=True)
+    check = commands.add_parser('check', allow_abbrev=False,
+                                description='facts only; never installs or calls an updater')
+    check.add_argument('--json', action='store_true', help='strict additive versioned JSON')
+    check.add_argument('--max-age-seconds', type=int, default=86400,
+                       help='cache freshness bound (bounded 60..864000; default 86400 = daily)')
+    check.add_argument('--timeout', type=int, default=10,
+                       help='metadata request bound in seconds')
+    check.add_argument('agents', nargs='*', metavar='AGENT', help='route or alias (default: installed routes)')
+    update = commands.add_parser('update', allow_abbrev=False,
+                                 description='explicit update via each CLI official updater, refusing busy/led routes first')
+    update.add_argument('--json', action='store_true', help='strict additive versioned JSON')
+    update.add_argument('--install-timeout', type=int, default=1800,
+                        help='updater bound per tool in seconds')
+    update.add_argument('agents', nargs='*', metavar='AGENT', help='route or alias (default: installed routes)')
+    startup = commands.add_parser('startup', allow_abbrev=False,
+                                  description='one read-only freshness line for human entry points')
+    startup.add_argument('--label', default=None, help=argparse.SUPPRESS)
+    startup.add_argument('--no-refresh', action='store_true', help='do not spawn the background refresh')
+    startup.add_argument('--max-age-seconds', type=int, default=86400,
+                         help='fresh/stale bound (default 86400 = daily)')
+    commands.add_parser('startup-refresh', allow_abbrev=False,
+                        help=argparse.SUPPRESS)  # internal bounded no-CLI refresh
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if getattr(args, 'max_age_seconds', None) is not None:
+        args.max_age = max(60, min(864000, args.max_age_seconds))
+    else:
+        args.max_age = env_int('UNIO_CLI_UPDATES_MAX_AGE', 86400, 60, 864000)
+    if args.mode == 'startup-refresh':
+        return do_startup_refresh(args)
+    if args.mode == 'startup':
+        return do_startup(args)
+    conf = Path(args.conf)
+    if not conf.is_dir():
+        print('cli-updates: config directory missing: %s' % conf, file=sys.stderr)
+        return 2
+    try:
+        if args.mode == 'check':
+            return do_check(args)
+        if args.mode == 'update':
+            return do_update(args)
+    except UsageError as failure:
+        print('cli-updates: %s' % failure, file=sys.stderr)
+        return 2
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+UNIO_CLI_UPDATES_PY
+# END EMBEDDED CLI UPDATES
 # ------------------------------------------------------------- agents.conf
 if [ -f "$CONF_DIR/agents.conf" ]; then
   echo "keeping existing $CONF_DIR/agents.conf"
@@ -40278,7 +41285,7 @@ cat > "$COMP_DIR/unio" <<'COMPLETION_EOF'
 _unio() {
   local cur cmd root d cmds
   cur="${COMP_WORDS[COMP_CWORD]}"
-  cmds="new init run verify result handoff save wip diff sync review reviews review-set race sabotage score doctor tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan experience dispatch schedule capacity readiness off on smoke selftest stop resume allow-retry version license help"
+  cmds="new init run verify result handoff save wip diff sync review reviews review-set race sabotage score doctor update clis tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan experience dispatch schedule capacity readiness off on smoke selftest stop resume allow-retry version license help"
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$cmds" -- "$cur") ); return
   fi
@@ -40298,6 +41305,7 @@ _unio() {
     watch) COMPREPLY=( $(compgen -W "--once --json --interval" -- "$cur") );;
     dashboard) COMPREPLY=( $(compgen -W "ensure status stop --project --open-browser --json --help" -- "$cur") );;
     readiness) COMPREPLY=( $(compgen -W "show refresh claude --agent --json --project" -- "$cur") );;
+    update) COMPREPLY=( $(compgen -W "clis --check --json antigravity vibe grok copilot opencode claude codex" -- "$cur") );;
     worker-effort) COMPREPLY=( $(compgen -W "$workers low medium high xhigh --json --help" -- "$cur") );;
     fleet) COMPREPLY=( $(compgen -W "--project --json --timeout --help" -- "$cur") );;
     plan) COMPREPLY=( $(compgen -W "--inventory --project --json --timeout --help" -- "$cur") );;

@@ -29,6 +29,7 @@ python3 -B tools/embed-dashboard.py --check
 python3 -B tools/embed-adapters.py --check
 python3 -B tools/embed-model-experience.py --check
 python3 -B tools/embed-codex-worker.py --check
+python3 -B tools/embed-cli-updates.py --check
 UNIO_BIN_DIR="$QUALITY_CHECK_DIR/bin" UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" \
   UNIO_COMPLETION_DIR="$QUALITY_CHECK_DIR/completion" bash unio-install.sh > "$QUALITY_CHECK_DIR/install.log"
 shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
@@ -50,6 +51,7 @@ python3 tests/unio-watch.py
 python3 tests/unio-opencode.py
 python3 -B tests/unio-prompt-transport.py
 python3 -B tests/unio-command-audit.py
+python3 -B tests/unio-cli-updates.py
 python3 -B tests/unio-perplexity.py
 python3 -B tests/unio-vibe.py
 python3 -B tests/unio-copilot.py
