@@ -8,6 +8,17 @@ throwaway caches. No real CLI installation, provider, account or unmanaged
 session is touched, executed or updated. PATH is restricted to the fixture
 bin plus /usr/bin:/bin, so a missing fake can never fall back to the real
 ~/.local/bin, ~/.opencode, ~/.grok or nvm CLIs.
+
+Every externally reviewed defect from 2026-11-10 has a deterministic
+base-negative/current-positive regression here: FIFO/nonregular cache and
+lock paths never block; a symlinked state directory is refused on read
+and write; wrong-typed cache fields are quiet Unknown; refresh.lock is
+never written through a symlink; the refresh deadline is hard against a
+hanging local proxy; noninteractive awareness causes no network and no
+detached writer while an interactive pty entry refreshes in the
+background; future-dated stamps are Unknown (WSL clock skew); env
+MAX_AGE/TIMEOUT really apply; uv tool list evidence never mislabels
+another vibe; and latest is never fetched for an absent binary.
 """
 import errno
 import importlib.util
@@ -16,6 +27,8 @@ import http.server
 import json
 import os
 from pathlib import Path
+import pty
+import select
 import shutil
 import subprocess
 import sys
@@ -124,6 +137,45 @@ class ProxyCanary:
         self.server.server_close()
 
 
+class HoldingCanary:
+    """Local-only proxy canary that ACCEPTS the connection and never
+    answers, so a metadata fetch hangs in the socket read — the fixture
+    for the hard refresh deadline and the per-request timeout bound."""
+
+    def __init__(self, hold=60):
+        self.attempts = 0
+        self.hold = hold
+        canary = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def _hold(self):
+                canary.attempts += 1
+                try:
+                    time.sleep(canary.hold)  # connect accepted, answer never comes
+                finally:
+                    try:
+                        self.close_connection = True
+                    except OSError:
+                        pass
+
+            do_CONNECT = do_GET = do_POST = _hold
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.port = self.server.server_port
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def url(self):
+        return 'http://127.0.0.1:%d' % self.port
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
 class CliUpdatesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -194,6 +246,44 @@ class CliUpdatesTests(unittest.TestCase):
     def module(self, *args, **kwargs):
         return self.helper(self.installed_helper, self.conf, *args, **kwargs)
 
+    def interactive_startup(self, conf=None, env=None, timeout=90):
+        """Run the helper's startup through a real pty (stdin AND stdout are
+        a TTY), so the genuinely-interactive background refresh path is
+        exercised deterministically; output is captured from the master."""
+        conf = Path(conf or self.conf)
+        master, slave = pty.openpty()
+        proc = subprocess.Popen(
+            [sys.executable, '-I', '-S', '-B', str(self.installed_helper),
+             '--conf', str(conf), 'startup'],
+            env=env or self.env, stdin=slave, stdout=slave, stderr=slave,
+            start_new_session=True)
+        os.close(slave)
+        chunks, deadline = [], time.monotonic() + timeout
+        try:
+            while time.monotonic() < deadline:
+                ready, _, _ = select.select([master], [], [], 1.0)
+                if ready:
+                    try:
+                        data = os.read(master, 65536)
+                    except OSError:
+                        break
+                    if not data:
+                        break
+                    chunks.append(data)
+                elif proc.poll() is not None:
+                    break
+        finally:
+            os.close(master)
+            if proc.poll() is None:
+                proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+        out = b''.join(chunks).decode('utf-8', errors='replace')
+        return proc.returncode, out
+
     def engine(self, *args, env=None, cwd=None, timeout=180):
         # Non-project engine calls run from /: the harness tree sits inside
         # the owner's real Unio project, whose holds must not gate fixture
@@ -252,6 +342,8 @@ class CliUpdatesTests(unittest.TestCase):
         self.assertEqual(rows['grok']['latest_source'], 'grok-update-check')
         self.assertFalse(rows['claude']['present'])
         self.assertEqual(rows['claude']['update_state'], 'absent')
+        self.assertEqual(rows['claude']['latest_status'], 'absent',
+                         'latest is never fetched for an absent binary')
         # Contact surface: version probes plus grok's read-only check only.
         self.assertEqual([row['args'] for row in self.calls(tag='called')],
                          [['update', '--check', '--json']],
@@ -259,6 +351,24 @@ class CliUpdatesTests(unittest.TestCase):
         self.assertEqual([row['args'] for row in self.calls(tag='version')
                          if row['name'] == 'claude'], [],
                          'absent tools are never probed')
+
+    def test_absent_routes_never_touch_network_for_latest(self):
+        # Direct regression for the awareness-noise finding: with every CLI
+        # removed, even an explicit check of an absent route stays offline.
+        self.fresh_fakes()
+        for name in ('agy', 'vibe', 'grok', 'copilot', 'opencode', 'claude', 'codex'):
+            (self.fakebin / name).unlink(missing_ok=True)
+        canary = ProxyCanary()
+        self.addCleanup(canary.stop)
+        env = dict(self.env, UNIO_CLI_UPDATES_OFFLINE='0',
+                  https_proxy=canary.url(), http_proxy=canary.url())
+        done = self.module('check', '--json', 'antigravity', 'vibe', env=env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        for row in json.loads(done.stdout)['routes']:
+            self.assertEqual(row['latest_status'], 'absent', row['name'])
+            self.assertIsNone(row['latest_version'])
+        self.assertEqual(canary.attempts, 0,
+                         'latest metadata must never be fetched for absent binaries')
 
     def test_fresh_cache_avoids_network_and_stale_asks_once(self):
         self.fresh_fakes()
@@ -417,12 +527,18 @@ class CliUpdatesTests(unittest.TestCase):
         done = self.module('update', '--json', 'copilot', 'grok', 'vibe')
         self.assertEqual(done.returncode, 1, done.stdout)
         document = json.loads(done.stdout)
-        self.assertEqual(document['install_policy'], document['install_policy'])
-        self.assertIn('maintenance_not_implemented', document['install_policy'])
+        self.assertTrue(document['install_policy'].startswith('no-bypass refusal'),
+                        document['install_policy'])
+        for reason in ('maintenance_not_implemented', 'check-only-route',
+                       'manual-unverified-install'):
+            self.assertIn(reason, document['install_policy'])
         rows = {row['name']: row for row in document['routes']}
-        for name in ('copilot', 'grok', 'vibe'):
+        expected_reasons = {'copilot': 'maintenance_not_implemented',
+                            'grok': 'maintenance_not_implemented',
+                            'vibe': 'manual-unverified-install'}
+        for name, reason in expected_reasons.items():
             self.assertEqual((rows[name]['action'], rows[name]['reason']),
-                             ('refused', 'maintenance_not_implemented'), name)
+                             ('refused', reason), name)
             self.assertIs(rows[name]['updater_executed'], False, name)
             self.assertIsNone(rows[name]['updater_exit'], name)
             self.assertEqual(rows[name]['compatibility'], 'unknown', name)
@@ -529,25 +645,40 @@ class CliUpdatesTests(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         rows = json.loads(done.stdout)['routes']
         self.assertEqual(rows[0]['update_state'], 'manual')
-        # The update request still refuses with an exact manual command.
+        # The update request still refuses with an exact manual command and
+        # the truthful reason for an unverified install layout.
+        done = self.module('update', '--json', 'vibe')
+        self.assertEqual(done.returncode, 1, done.stdout)
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertEqual((row['action'], row['reason'], row['updater_executed']),
+                         ('refused', 'manual-unverified-install', False))
         done = self.module('update', 'vibe')
         self.assertEqual(done.returncode, 1, done.stdout)
-        self.assertIn('refused — maintenance_not_implemented', done.stdout)
+        self.assertIn('refused — manual-unverified-install', done.stdout)
         self.assertIn('uv tool upgrade mistral-vibe', done.stdout,
                       'the refusal carries the exact frozen manual command')
         self.assertEqual(self.calls(name='vibe', tag='called'), [])
-        # claude/codex stay check-only; updates refuse them explicitly too.
+        # claude/codex stay check-only; the refusal reason states that
+        # policy honestly and never implies a lease would install them.
         done = self.module('check', '--json', 'claude', 'codex')
         self.assertEqual(done.returncode, 0, done.stderr)
         rows = {row['name']: row for row in json.loads(done.stdout)['routes']}
         self.assertEqual(rows['claude']['update_state'], 'check-only')
         self.assertEqual(rows['codex']['update_state'], 'check-only')
-        done = self.module('update', 'claude', 'codex')
+        done = self.module('update', '--json', 'claude', 'codex')
         self.assertEqual(done.returncode, 1, done.stdout)
-        self.assertIn('claude: refused — maintenance_not_implemented', done.stdout)
-        self.assertIn('codex: refused — maintenance_not_implemented', done.stdout)
+        rows = {row['name']: row for row in json.loads(done.stdout)['routes']}
+        for name in ('claude', 'codex'):
+            self.assertEqual((rows[name]['action'], rows[name]['reason']),
+                             ('refused', 'check-only-route'), name)
         self.assertEqual(self.calls(name='claude', tag='called'), [])
         self.assertEqual(self.calls(name='codex', tag='called'), [])
+        # Installable routes keep the honest maintenance-lease reason.
+        done = self.module('update', '--json', 'agy', 'copilot')
+        self.assertEqual(done.returncode, 1, done.stdout)
+        rows = {row['name']: row for row in json.loads(done.stdout)['routes']}
+        self.assertEqual(rows['antigravity']['reason'], 'maintenance_not_implemented')
+        self.assertEqual(rows['copilot']['reason'], 'maintenance_not_implemented')
 
     def test_missing_routes_are_skipped_absent(self):
         self.fresh_fakes()
@@ -706,8 +837,15 @@ class CliUpdatesTests(unittest.TestCase):
         # always set for its read-only probes.
         claude_env = helper.probe_environment(helper.ROUTES['claude'])
         self.assertEqual(claude_env['DISABLE_AUTOUPDATER'], '1')
+        # Vibe's flags are the exact documented pair the project's own worker
+        # sets (tools/vibe-worker.py):VIBE_ENABLE_UPDATE_CHECKS / AUTO_UPDATE.
+        vibe_env = helper.probe_environment(helper.ROUTES['vibe'])
+        self.assertEqual(vibe_env['VIBE_ENABLE_UPDATE_CHECKS'], 'false')
+        self.assertEqual(vibe_env['VIBE_ENABLE_AUTO_UPDATE'], 'false')
         # No flag is invented for routes without an official one.
         self.assertEqual(helper.probe_environment(helper.ROUTES['grok']),
+                         dict(os.environ))
+        self.assertEqual(helper.probe_environment(helper.ROUTES['opencode']),
                          dict(os.environ))
         # The probe still records claude facts end to end.
         done = self.module('check', '--json', 'claude')
@@ -726,18 +864,55 @@ class CliUpdatesTests(unittest.TestCase):
         done = self.module('check', 'agy')
         self.assertIn('installed Unknown', done.stdout)
 
+    def test_uv_list_evidence_never_mislabels_another_vibe(self):
+        # Regression: a `uv tool list` hit about some other install must
+        # never label the vibe binary actually on PATH as uv-tool, and no
+        # such probe may even run; the label is bound to the resolved real
+        # path inside the validated uv tools layout only.
+        helper = load_canonical_helper()
+        self.fresh_fakes()
+        uv = self.fakebin / 'uv'
+        uv.write_text('#!/usr/bin/env python3\n'
+                      'import sys\n'
+                      "if sys.argv[1:3] == ['tool', 'list']:\n"
+                      "    print('mistral-vibe v3.9.9')\n")
+        uv.chmod(0o755)
+        self.assertEqual(self.calls(), [], 'the module ran nothing yet')
+        done = self.module('check', '--json', 'vibe')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertNotEqual(row['install_method'], 'uv-tool',
+                            'list output about another install is never a label')
+        self.assertEqual(row['update_state'], 'manual')
+        self.assertEqual(self.calls(name='uv'), [],
+                         'uv tool list is never used for identification')
+        # The resolved-path marker alone is the binding fact.
+        self.assertEqual(
+            helper.detect_method(helper.ROUTES['vibe'],
+                                 '/fixture/uv/tools/mistral-vibe/bin/vibe', True),
+            'uv-tool')
+        self.assertEqual(helper.detect_method(helper.ROUTES['vibe'],
+                                              '/usr/bin/vibe', False), 'unknown')
+        uv.unlink()
+
     # ------------------------------------------------------------- startup
 
     def test_startup_line_isolated_and_bounded_refresh_needs_no_cli(self):
+        """Interactive (pty) startup: one line, then a bounded background
+        refresh that never executes a CLI; the second run is fresh."""
         self.fresh_fakes()
-        shutil.rmtree(Path(self.conf) / 'cli-updates', ignore_errors=True)
-        done = self.module('startup')
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(len(done.stdout.strip().splitlines()), 1, done.stdout)
-        self.assertTrue(done.stdout.startswith('cli-updates:'), done.stdout)
-        self.assertIn('unio update clis --check', done.stdout)
-        cache = Path(self.conf) / 'cli-updates' / 'cache.json'
-        deadline = time.monotonic() + 20
+        interact = self.root / 'interactive conf'
+        if interact.exists():
+            shutil.rmtree(interact)
+        interact.mkdir()
+        code, out = self.interactive_startup(conf=interact)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(out.strip().splitlines()), 1, out)
+        self.assertTrue(out.strip().startswith('cli-updates:'), out)
+        self.assertIn('background refresh started', out)
+        self.assertIn('unio update clis --check', out)
+        cache = interact / 'cli-updates' / 'cache.json'
+        deadline = time.monotonic() + 30
         while time.monotonic() < deadline and not cache.exists():
             time.sleep(0.1)
         self.assertTrue(cache.exists(), 'the bounded background refresh wrote the cache')
@@ -746,10 +921,77 @@ class CliUpdatesTests(unittest.TestCase):
         self.assertIn('antigravity', written['routes'], 'presence facts are recorded')
         self.assertEqual(self.calls(tag='called'), [],
                          'the background refresh never executes a CLI or updater')
-        done = self.module('startup')
+        refresh_lock = interact / 'cli-updates' / 'refresh.lock'
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and self.helper_alive(refresh_lock):
+            time.sleep(0.1)  # the bounded refresh releases and reaps itself
+        self.assertFalse(self.helper_alive(refresh_lock),
+                         'no refresh writer outlives its bound')
+        # The refreshed cache makes the next interactive run fresh.
+        code, out = self.interactive_startup(conf=interact)
+        self.assertEqual(code, 0, out)
+        self.assertIn('(fresh)', out)
+        self.assertEqual(len(out.strip().splitlines()), 1, out)
+
+    @staticmethod
+    def helper_alive(refresh_lock):
+        """The refresh holds refresh.lock (flock) while it runs; a stale
+        content-only file without a lock means the writer already left."""
+        if not refresh_lock.exists():
+            return False
+        try:
+            import fcntl
+            handle = os.open(refresh_lock, os.O_RDWR | os.O_NONBLOCK)
+        except OSError:
+            return False
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return False  # lock free: nothing is running
+        except OSError:
+            return True  # still genuinely held by a live writer
+        finally:
+            os.close(handle)
+
+    def test_noninteractive_startup_never_touches_network_or_spawns_writers(self):
+        # Regression for the awareness-noise finding: an ordinary NONinteractive
+        # invocation without any opt-out env stays fully offline by design —
+        # no network attempt, no detached writer, no state-directory writes.
+        self.fresh_fakes()
+        canary = ProxyCanary()
+        self.addCleanup(canary.stop)
+        plain = self.root / 'noninteractive conf'
+        if plain.exists():
+            shutil.rmtree(plain)
+        plain.mkdir()
+        shutil.rmtree(Path(self.conf) / 'cli-updates', ignore_errors=True)
+        env = {key: value for key, value in self.env.items()
+               if key not in ('UNIO_CLI_UPDATES_OFF', 'UNIO_CLI_UPDATES_OFFLINE')}
+        env.update(https_proxy=canary.url(), http_proxy=canary.url())
+        done = self.helper(self.installed_helper, plain, 'startup', env=env)
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertIn('(fresh)', done.stdout)
         self.assertEqual(len(done.stdout.strip().splitlines()), 1, done.stdout)
+        self.assertIn('never checked', done.stdout)
+        self.assertIn('runs only at interactive entry', done.stdout)
+        time.sleep(1.0)
+        self.assertFalse((plain / 'cli-updates').exists(),
+                         'a noninteractive entry spawns no writer and creates nothing')
+        self.assertEqual(canary.attempts, 0, 'no network metadata fetch at all')
+        # The engine wrappers (plain unio, doctor, resume) inherit the same
+        # noninteractive default: no network noise and no detached writer.
+        env2 = dict(env, UNIO_CONF_DIR=str(self.conf))
+        project = self.make_project('noninteractive host')
+        for args, cwd in (((), '/'), (('doctor',), str(project)),
+                          (('resume',), str(project))):
+            before = canary.attempts
+            done = subprocess.run([str(self.unio), *args], env=env2, cwd=cwd,
+                                  capture_output=True, text=True, timeout=180)
+            self.assertEqual(done.returncode, 0, (args, done.stdout, done.stderr))
+        time.sleep(1.0)
+        self.assertEqual(canary.attempts, 0,
+                         'engine help/doctor/resume never fetch metadata when noninteractive')
+        lock = Path(self.conf) / 'cli-updates' / 'refresh.lock'
+        self.assertFalse(self.helper_alive(lock),
+                         'no detached refresh writer keeps a lock after engine entry')
 
     def test_startup_env_opt_out_is_silent_and_spawns_nothing(self):
         self.fresh_fakes()
@@ -764,7 +1006,274 @@ class CliUpdatesTests(unittest.TestCase):
         self.assertEqual(done.stdout, '')
         time.sleep(1.0)
         self.assertFalse((other / 'cli-updates').exists(),
-                         'an opted-out startup spawns no refresh job')
+                          'an opted-out startup spawns no refresh job')
+
+    def test_fifo_and_nonregular_cache_and_lock_paths_never_block(self):
+        # Base negative from the review probe: a FIFO cache.json used to
+        # block open() forever; it must be a fast, quiet Unknown instead.
+        self.fresh_fakes()
+        directory = Path(self.conf) / 'cli-updates'
+        shutil.rmtree(directory, ignore_errors=True)
+        directory.mkdir(parents=True)
+        os.mkfifo(directory / 'cache.json')
+        started = time.monotonic()
+        done = self.module('startup', '--no-refresh')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertLess(time.monotonic() - started, 10.0, 'a FIFO cache never blocks')
+        self.assertIn('never checked', done.stdout)  # nonregular = Unknown
+        canary = ProxyCanary()
+        self.addCleanup(canary.stop)
+        env = dict(self.env, UNIO_CLI_UPDATES_OFFLINE='0',
+                  https_proxy=canary.url(), http_proxy=canary.url())
+        started = time.monotonic()
+        done = self.module('check', '--json', 'antigravity', env=env,
+                           timeout=30)
+        self.assertEqual(done.returncode, 0, (done.stdout, done.stderr))
+        self.assertLess(time.monotonic() - started, 25.0, 'a FIFO cache never blocks check')
+        self.assertNotIn('Traceback', done.stderr)
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertEqual(row['installed_version'], '1.5.4',
+                         'a nonregular cache never blocks the ordinary check')
+        self.assertFalse(row['latest_from_cache'], 'FIFO state is never trusted')
+        # Fresh fact content, then verified fresh (positive close): the
+        # replaced regular file works as usual.
+        seed_cache(self.conf, routes={'antigravity': {'latest': seeded_latest('1.5.4', 30)}})
+        done = self.module('check', '--json', 'antigravity')
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertEqual((row['latest_version'], row['latest_from_cache']), ('1.5.4', True))
+        # A FIFO worker lock is ambiguous (held), and never blocks either.
+        project = self.make_project('fifo lock project')
+        locks = project / 'coord' / '.locks'
+        locks.mkdir()
+        os.mkfifo(locks / 'mock.lock')
+        started = time.monotonic()
+        done = subprocess.run([sys.executable, '-I', '-S', '-B', str(self.installed_helper),
+                               '--conf', str(self.conf), '--project', str(project),
+                               'check', '--json', 'antigravity'],
+                              env=self.env, cwd=self.outside, capture_output=True,
+                              text=True, timeout=30)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertLess(time.monotonic() - started, 25.0, 'a FIFO lock never blocks')
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertIn('worker-run-active', row['update_blocked_reasons'],
+                      'an unusable lock file is honestly busy, never idle')
+
+    def test_wrong_typed_cache_fields_are_quiet_unknown(self):
+        # Base negatives from the review probe: latest.status=5 crashed with
+        # AttributeError and version=7 typed through to JSON/printing.
+        self.fresh_fakes()
+        poisoned = [
+            {'version': 7, 'status': 5, 'source': 'github-release:dunno', 'checked_at': now_iso()},
+            {'version': '9.9.9', 'status': 'ok', 'source': ['an evil list'],
+             'checked_at': now_iso()},
+            {'version': '9.9.9', 'status': 'ok', 'source': 'source',
+             'checked_at': '9999-01-01T00:00:00+00:00'},   # future = Unknown
+        ]
+        for latest in poisoned:
+            seed_cache(self.conf, routes={'antigravity': {'latest': latest}})
+            for human in (False, True):  # both report shapes must stay clean
+                args = ('check', 'antigravity') if human else ('check', '--json', 'antigravity')
+                done = self.module(*args, timeout=30)
+                self.assertEqual(done.returncode, 0, (done.stdout, done.stderr))
+                self.assertNotIn('Traceback', done.stderr,
+                                  'malformed cache fields never leak a traceback')
+            row = json.loads(self.module('check', '--json', 'antigravity'
+                                         ).stdout)['routes'][0]
+            self.assertNotEqual(row['latest_version'], 7, 'a wrong type is never a fact')
+            self.assertTrue(row['latest_version'] is None or
+                            isinstance(row['latest_version'], str),
+                            'latest_version is always a string or Unknown: %r'
+                            % (row['latest_version'],))
+            self.assertFalse(row['latest_from_cache'],
+                             'wrong-typed content is never reused as a cached fact')
+        # A safe ordinary cache is still reused verbatim (positive close).
+        seed_cache(self.conf, routes={'antigravity': {'latest': seeded_latest('1.5.4', 30)}})
+        row = json.loads(self.module('check', '--json', 'antigravity').stdout)['routes'][0]
+        self.assertEqual((row['latest_version'], row['latest_from_cache']), ('1.5.4', True))
+
+    def test_future_timestamps_are_unknown_not_fresh_ever(self):
+        # WSL clock-skew regression: a small negative skew is tolerated,
+        # a steaming-far-future stamp is Unknown — never fresh forever.
+        helper = load_canonical_helper()
+        self.assertIsNone(helper.age_seconds('9999-01-01T00:00:00+00:00'))
+        self.assertEqual(helper.age_seconds(
+            (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat()), 0.0)
+        skew = datetime.now(timezone.utc) + timedelta(seconds=120)  # WSL ahead
+        seed_cache(self.conf, startup_checked_at=skew.replace(microsecond=0).isoformat(),
+                   routes={'antigravity': {'latest': seeded_latest('1.5.4', 0)}})
+        done = self.module('startup', '--no-refresh')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn('(fresh)', done.stdout, 'a small clock skew is tolerated')
+        seed_cache(self.conf, startup_checked_at='9999-01-01T00:00:00+00:00',
+                   routes={'antigravity': {'latest': seeded_latest('1.5.4', 0)}})
+        done = self.module('startup', '--no-refresh')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn('(fresh)', done.stdout, 'a far-future stamp is never fresh')
+        # And a future-dated latest fact is not reused: check refetches once.
+        canary = ProxyCanary()
+        self.addCleanup(canary.stop)
+        env = dict(self.env, UNIO_CLI_UPDATES_OFFLINE='0',
+                   https_proxy=canary.url(), http_proxy=canary.url())
+        seed_cache(self.conf, routes={'antigravity': {
+            'latest': seeded_latest('9.9.9', -7200)}})  # checked_at in the future
+        done = self.module('check', '--json', 'antigravity', env=env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertFalse(row['latest_from_cache'], 'a future-dated fact is not trusted')
+        self.assertGreaterEqual(canary.attempts, 1)
+
+    def test_refresh_lock_symlink_is_never_written_through(self):
+        # Base negative from the review probe: the refresh used to truncate
+        # and write through a symlinked refresh.lock; now it is refused.
+        self.fresh_fakes()
+        hostile = self.root / 'hostile lock target'
+        if hostile.exists():
+            shutil.rmtree(hostile)
+        hostile.mkdir()
+        victim = hostile / 'victim.txt'
+        victim.write_text('victim content\n')
+        lock_project = self.root / 'lock symlink conf'
+        if lock_project.exists():
+            shutil.rmtree(lock_project)
+        state = lock_project / 'cli-updates'
+        state.mkdir(parents=True)
+        (state / 'refresh.lock').symlink_to(victim)
+        done = self.helper(self.installed_helper, lock_project, 'startup-refresh',
+                           timeout=120)
+        self.assertIn(done.returncode, (0, None))
+        self.assertEqual(victim.read_text(), 'victim content\n',
+                          'nothing may be written through a symlinked refresh.lock')
+        # A dangling symlink creates nothing outside the state directory.
+        (state / 'refresh.lock').unlink()
+        outside = lock_project / 'outside.lock'
+        (state / 'refresh.lock').symlink_to(outside)
+        done = self.helper(self.installed_helper, lock_project, 'startup-refresh',
+                           timeout=120)
+        self.assertIn(done.returncode, (0, None))
+        self.assertFalse(outside.exists(),
+                         'a dangling refresh.lock symlink must create no file through it')
+
+    def test_refresh_deadline_is_hard_against_a_hanging_proxy(self):
+        # Base negative from the review probe: with the deadline set to 5 s
+        # the refresh used to run for 16.5 s against a hanging proxy because
+        # the per-route except swallowed the alarm. Total wall is now hard.
+        self.fresh_fakes()
+        spinner = HoldingCanary(hold=60)
+        self.addCleanup(spinner.stop)
+        conf_here = self.root / 'deadline conf'
+        if conf_here.exists():
+            shutil.rmtree(conf_here)
+        conf_here.mkdir()
+        started = time.monotonic()
+        done = subprocess.run(
+            [sys.executable, '-I', '-S', '-B', str(self.installed_helper),
+             '--conf', str(conf_here), 'startup-refresh'],
+            env=dict(self.env, UNIO_CLI_UPDATES_OFFLINE='0',
+                     UNIO_CLI_UPDATES_DEADLINE='5', UNIO_CLI_UPDATES_TIMEOUT='60',
+                     https_proxy=spinner.url(), http_proxy=spinner.url()),
+            cwd=self.outside, capture_output=True, timeout=60)
+        duration = time.monotonic() - started
+        self.assertIn(done.returncode, (0, -9),
+                      'the refresh stops by SIGALRM or by the watchdog SIGKILL')
+        self.assertLess(duration, 20.0,
+                        'the deadline (5s) plus watchdog grace (15s) bound the 60s hang')
+        self.assertGreaterEqual(spinner.attempts, 1, 'the fetch was hung, not skipped')
+        self.assertEqual(done.stdout, b'', 'the refresh never writes to stdout')
+        cache = conf_here / 'cli-updates' / 'cache.json'
+        if cache.exists():
+            written = json.loads(cache.read_text())
+            self.assertIsNone(written.get('startup_checked_at') or written.get('startup_checked_at'),
+                              'an interrupted refresh must not claim a completed check')
+        # The watchdog child of a killed refresh does not linger either.
+        state = conf_here / 'cli-updates'
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and self.helper_alive(state / 'refresh.lock'):
+            time.sleep(0.1)
+        self.assertFalse(self.helper_alive(state / 'refresh.lock'),
+                         'no refresh writer keeps its lock past the deadline')
+
+    def test_symlinked_state_directory_is_never_trusted_on_read(self):
+        # Base negative from the review probe: O_NOFOLLOW only protected the
+        # final component, so a symlinked state dir served hostile facts.
+        self.fresh_fakes()
+        directory = Path(self.conf) / 'cli-updates'
+        shutil.rmtree(directory, ignore_errors=True)
+        target = self.root / 'hostile state source'
+        if target.exists():
+            shutil.rmtree(target)
+        target.mkdir()
+        (target / 'cache.json').write_text(json.dumps({
+            'schema_version': 1, 'kind': 'unio-cli-updates',
+            'startup_checked_at': now_iso(),
+            'routes': {'antigravity': {
+                'latest': seeded_latest('6.6.6', 0),
+                'presence': {'present': False}}}}) + '\n')
+        directory.symlink_to(target)
+        self.addCleanup(directory.unlink)
+        done = self.module('startup', '--no-refresh')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn('(fresh)', done.stdout,
+                         'facts served through a symlinked state dir are Unknown')
+        done = self.module('check', '--json', 'antigravity')
+        self.assertEqual(done.returncode, 0, (done.stdout, done.stderr))
+        document = json.loads(done.stdout)
+        row = document['routes'][0]
+        self.assertFalse(row['latest_from_cache'], 'hostile state is never trusted')
+        self.assertNotEqual(row['latest_version'], '6.6.6')
+        self.assertFalse(document['cache_writable'],
+                         'a symlinked state directory must never be written through')
+        self.assertEqual([entry for entry in os.listdir(target)], ['cache.json'],
+                         'nothing was written through the hostile symlink')
+
+    def test_env_max_age_and_timeout_really_apply_and_flags_override(self):
+        # Base negative from the review probe: UNIO_CLI_UPDATES_MAX_AGE was
+        # masked forever by the argparse default of 86400.
+        self.fresh_fakes()
+        canary = ProxyCanary()
+        self.addCleanup(canary.stop)
+        env = dict(self.env, UNIO_CLI_UPDATES_OFFLINE='0',
+                   UNIO_CLI_UPDATES_MAX_AGE='60',
+                   https_proxy=canary.url(), http_proxy=canary.url())
+        seed_cache(self.conf, routes={'antigravity': {'latest': seeded_latest('9.9.9', 3601)}})
+        done = self.module('check', '--json', 'antigravity', env=env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertFalse(row['latest_from_cache'],
+                         'MAX_AGE=60 must make a 3601 s-old fact stale')
+        self.assertEqual(canary.attempts, 1, 'the stale env-bounded fact refetches once')
+        # The explicit flag overrides the env: the same 3601 s-old cache is
+        # fresh again under --max-age-seconds 864000.
+        seed_cache(self.conf, routes={'antigravity': {'latest': seeded_latest('9.9.9', 3601)}})
+        canary.attempts = 0
+        done = self.module('check', '--json', 'antigravity', '--max-age-seconds', '864000',
+                           env=env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertEqual((row['latest_version'], row['latest_from_cache']),
+                         ('9.9.9', True), 'the explicit flag overrides MAX_AGE')
+        self.assertEqual(canary.attempts, 0)
+        # startup honors MAX_AGE too: a stale stamp prints stale, not fresh.
+        seed_cache(self.conf, startup_checked_at=(
+            datetime.now(timezone.utc) - timedelta(seconds=3601)
+        ).replace(microsecond=0).isoformat())
+        done = self.module('startup', '--no-refresh', env=env)
+        self.assertIn('(stale)', done.stdout, 'startup must honor MAX_AGE')
+        done = self.module('startup', '--no-refresh', '--max-age-seconds', '86400',
+                           env=env)
+        self.assertIn('(fresh)', done.stdout, 'startup flags override MAX_AGE')
+        # UNIO_CLI_UPDATES_TIMEOUT bounds a hung foreground check fetch.
+        spinner = HoldingCanary(hold=60)
+        self.addCleanup(spinner.stop)
+        seed_cache(self.conf, routes={'antigravity': {'latest': seeded_latest('9.9.9', 30 * 86400)}})
+        env_slow = dict(self.env, UNIO_CLI_UPDATES_OFFLINE='0', UNIO_CLI_UPDATES_TIMEOUT='1',
+                        https_proxy=spinner.url(), http_proxy=spinner.url())
+        started = time.monotonic()
+        done = self.module('check', '--json', 'antigravity', env=env_slow, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertLess(time.monotonic() - started, 15.0,
+                        'TIMEOUT=1 bounds a hanging metadata read')
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertEqual(row['latest_status'], 'unavailable')
 
     # ------------------------------------------------- engine and packaging
 
