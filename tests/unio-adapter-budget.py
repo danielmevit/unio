@@ -108,6 +108,28 @@ class Read(unittest.TestCase):
         self.assertIn('re-sends its whole context', budget.NOTE_RESENDS)
         self.assertIn('unknown, not zero', budget.NOTE_NO_EXPORT)
 
+    def test_omitted_native_cap_is_none_and_unpriced_note_is_fixed(self):
+        # A cap omitted on Vibe 3.1.1 is an unknown native default (None),
+        # never zero and never an unlimited claim.
+        value = budget.telemetry(
+            tokens=budget.meter(1569526, 16000000, 'reported'),
+            turns=budget.meter(2, None, 'estimated'),
+            usd=budget.meter(None, None, 'unknown'),
+            notes=[budget.NOTE_RESENDS, budget.NOTE_UNPRICED])
+        self.assertEqual(budget.validate(value), value)
+        self.assertEqual(budget.summary(value),
+                         'tokens 1569526/16000000 reported; turns 2/none estimated; '
+                         'usd unknown/none unknown')
+        self.assertIn('unknown, not zero', budget.NOTE_UNPRICED)
+        self.assertIn('not billing proof', budget.NOTE_UNPRICED)
+        self.assertLessEqual(len(budget.NOTE_UNPRICED), budget.MAX_NOTE_CHARS)
+        # A zero USD used value with unknown provenance is still a fabrication.
+        with self.assertRaises(ValueError):
+            budget.meter(0.0, None, 'unknown')
+        # Zero is a legitimate reported value only with a reported provenance.
+        self.assertEqual(budget.validate(budget.telemetry(usd=budget.meter(0.0, 10.0, 'reported'))),
+                         budget.telemetry(usd=budget.meter(0.0, 10.0, 'reported')))
+
 
 if __name__ == '__main__':
     unittest.main()

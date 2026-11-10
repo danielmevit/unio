@@ -133,6 +133,30 @@ class Contract(unittest.TestCase):
         self.assertEqual(self.observe(), 'unknown')
         self.assertEqual((self.dest / 'outcome.json').read_bytes(), self.good)
 
+    def test_vibe_311_receipt_fields_keep_binding_and_classification(self):
+        # 3.1.1 receipts carry additive selection/final-response/omitted-cap
+        # evidence; it must not disturb the bound outcome contract.
+        record = dict(self.record, cli_version='3.1.1', output_mode='json',
+                      session_selection={'state': 'verified', 'session_alias': 'mistral-large-4-0-3',
+                                         'session_wire': 'mistral-large-4-0', 'session_thinking': 'high'},
+                      final_response={'state': 'present', 'message_count': 3, 'assistant_messages': 2,
+                                      'final_index': 2},
+                      omitted_caps=['max_turns'],
+                      export={'outcome': 'turn_limit', 'limits': {'max_turns': None}})
+        os.environ[o.ENV] = str(self.dest)
+        (self.dest / 'outcome.json').unlink()  # setUp emitted one for token_limit
+        o.emit('vibe', record, self.task, 3, 3)
+        self.assertEqual(self.observe(), 'turn_cap')
+        observation = json.loads((self.dest / 'outcome.json').read_text())
+        self.assertEqual(observation['route'], 'vibe')
+        self.assertEqual(observation['label'], 'turn_cap')
+        self.assertNotIn('session_selection', observation)
+        self.assertNotIn('final_response', observation)
+        for outcome, label in [('finished', 'completed'), ('deadline', 'time_cap'),
+                               ('price_limit', 'price_cap'), ('token_limit', 'token_cap'),
+                               ('infrastructure_failure', 'infrastructure'), ('config_error', 'setup')]:
+            self.assertEqual(o.classify('vibe', dict(export_state='valid', export={'outcome': outcome})), label)
+
     def test_perplexity_bound_existing_protocol(self):
         spec = importlib.util.spec_from_file_location('pplx_fixture', ROOT/'tools/perplexity-worker.py')
         worker = importlib.util.module_from_spec(spec);spec.loader.exec_module(worker)

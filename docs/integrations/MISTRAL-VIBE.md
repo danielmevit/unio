@@ -1,9 +1,21 @@
 # Use Mistral Vibe as an optional Unio worker
 
-This optional adapter runs your installed Vibe 2.26.1 CLI. It supports
-GLM 5.3 (`zai-glm-5-3`, AI lab Z.ai) and Mistral Medium 3.5
-(`mistral-medium-3-5`, AI lab Mistral). Both use the Mistral transport and share
-one subscription budget.
+This optional adapter runs your installed Vibe CLI in one of exactly two
+explicitly validated versions: the pinned **2.26.1** and the validated
+**3.1.1**. Any other version refuses before any provider invocation
+(`unsupported_cli`), and a model alias that is not validated for the detected
+version refuses before launch as well.
+
+- On 2.26.1 the adapter supports GLM 5.3 (`zai-glm-5-3`, AI lab Z.ai) and
+  Mistral Medium 3.5 (`mistral-medium-3-5`, AI lab Mistral), selected through
+  the tested process-local `VIBE_*` model overlay, with `--output streaming`.
+- On 3.1.1 the adapter supports GLM 5.3 (`glm-5-3` → wire `zai-glm-5-3`) and
+  Mistral Large 4 (`mistral-large-4-0-3` → wire `mistral-large-4-0`, AI lab
+  Mistral), selected through the documented `--model ALIAS` flag, with
+  `--output json`. The `VIBE_*` model overlay is a 2.26.1-only mechanism and
+  is never assumed on 3.1.1.
+
+All models use the Mistral transport and share one subscription budget.
 
 ## Where the adapter lives
 
@@ -31,7 +43,18 @@ absolute paths. TASKFILE supplies the prompt without putting its contents in arg
 ```text
 vibeglm=python3 '/path/to/repo/tools/vibe-worker.py' --model glm-5-3 --receipt-dir '/path/to/private receipts'
 vibe35=python3 '/path/to/repo/tools/vibe-worker.py' --model mistral-medium-3-5 --receipt-dir '/path/to/private receipts'
+vibem4=python3 '/path/to/repo/tools/vibe-worker.py' --model mistral-large-4-0-3 --receipt-dir '/path/to/private receipts'
 ```
+
+Command shapes are identical across versions; the adapter detects
+`vibe --version` at launch and applies the matching, validated behavior. The
+`--model` choice is validated per version: `mistral-large-4-0-3` is refused on
+2.26.1 and `mistral-medium-3-5` is refused on 3.1.1, always before the provider
+is invoked. The offline route-contract preflight accepts the union of aliases,
+cap choices and thinking levels (it cannot know the CLI version); the adapter
+applies the version-specific rule before launch with the same shared parser
+and bounds — including the 3.1.1-only cap omission `none` and the 3.1.1 refusal
+of unsupported thinking levels — so dispatch and execution agree.
 
 With an installer that packages the adapter, point the same lines at the
 installed copy instead, for example
@@ -58,23 +81,73 @@ rules; an adapter's exit zero alone does not establish acceptable code.
 
 ## Model pins, effort and task bounds
 
-The exact wire model, full definition, positive prices, one-model wire-name
-allowlist, compaction model and utility selections are explicit. Title generation,
-experiments, updates, connectors, MCP and subagent calls are disabled. The built-in
-auto-approve agent receives only bash/read_file/write_file/edit/grep tools. Worktrees
-and these flags provide trusted-host execution, not an operating-system sandbox.
+On 2.26.1 the exact wire model, full definition, positive prices, one-model
+wire-name allowlist, compaction model and utility selections are explicit
+process-local overlays. Title generation, experiments, updates, connectors,
+MCP and subagent calls are disabled. On 3.1.1 no `VIBE_*` model overlay is
+used; the exact alias is passed as `--model` and the CLI resolves it against
+the owner's own catalog. The built-in auto-approve agent receives only
+bash/read_file/write_file/edit/grep tools on both versions. Worktrees and
+these flags provide trusted-host execution, not an operating-system sandbox.
 
-High is the default; optional `--thinking {low,medium,high}` selects the
-process-local model override. Effective wire effort remains Unknown.
-Do not promise xhigh or server-proven effective effort on this route. The standing
+The per-session selection is verified from what the owned invocation actually
+selected, read in priority order: the bounded `session/meta.json` the native
+3.1.1 CLI writes under the output directory (the session's actually selected
+client model), the export config's per-session section, and the export
+config's `active_model`. The config's `routed_model_config` /
+`routed_default_model` describe the account's DEFAULT route, not this
+session's selection: their identifiers are used only when the default
+declaration itself names the selected alias, and are otherwise recorded
+separately as `routed_default_*` fields, so a contradicting observation stays
+preserved instead of silently resolving. The receipt records
+`session_selection` as `verified` only when an actual selected alias AND wire
+name are present and match the request; partial, catalog-only or default-only
+identity metadata stays `unknown`, never `verified`. Effort has its own
+provenance: only a declaration attributable to the selected model is recorded
+as the session thinking; missing effort metadata stays `unknown` (never proof
+that the requested level took effect). Contradictory observations are an
+explicit `mismatch`, including conflicts between the session record and the
+export config, which are reported with both claims. Configuration/export
+metadata is not server identity evidence: effective model/effort and
+remaining subscription allowance remain Unknown on every version.
+
+High is the default. On 2.26.1 `--thinking {low,medium,high}` remains
+supported unchanged: the level travels through the tested process-local model
+override, which the installed CLI honors per run. On 3.1.1 there is no real
+per-run thinking control at all — the `VIBE_*` overlay mechanism is
+2.26.1-only and the 3.1.1 CLI documents no thinking flag — so a requested
+low/medium would silently execute the account's existing catalog level, and
+such a request is refused before any provider invocation with an actionable
+message instead of being silently accepted. Only `high` runs on 3.1.1, and
+only because it matches the catalog declaration observed for the validated
+aliases (2026-11-10 selection reference); the adapter claims no thinking
+control on 3.1.1 and records the configured and effective effort as Unknown
+there. A declaration that contradicts the requested level is an explicit
+`mismatch`; a declared or missing level is never evidence that the requested
+level took effect on the server. Do not promise xhigh or server-proven
+effective effort on this route. The standing
 [effort policy](../development/MODEL-EFFORT.md) permits at most supported xhigh on
-other routes. Configuration/export metadata is not server identity evidence.
+other routes.
 
 Ordinary implementation defaults are 2,000,000 cumulative tokens, $5 estimated
 price, 120 turns and 90 minutes. Substantial work can explicitly select up to 16,000,000 cumulative tokens,
-$10, up to 180 turns and 120 minutes. Values must be finite and positive within
-those supported bounds. The owner-selected task scope and funded subscription
-remain the spending authority; these defaults do not authorize additional charges.
+$10, up to 180 turns and 120 minutes. Values must be finite decimal numbers
+within those supported bounds (parsed as integers/floats only; nan/inf/hex or
+fractional integers are refused). These numeric ceilings are retained adapter
+policy, not provider limits: a provider may stop earlier for its own reasons,
+and a value within the bound is never evidence of actual provider capacity or
+remaining allowance. They are the adapter's documented supported range and are
+identical for the dispatch contract and the adapter, on both versions. There
+is no hidden universal turn policy: 120 is only the default and the owner
+picks a task-sized value.
+
+On 3.1.1 each cap additionally accepts the documented choice `none`, which
+omits the native flag so the CLI's own default applies; the observed native
+limits are then recorded from the export (`null` means omitted). Omission is
+not an unlimited-provider claim and never permits a paid fallback. On 2.26.1
+`none` is refused before launch. The adapter's owned-process supervisor bound
+(`--time-limit` value plus 20 seconds, or 7220 when omitted), the output
+bounds and the outer `UNIO_TIMEOUT` remain separate, recorded limits.
 
 Keep the native Unio deadline above the CLI allowance plus shutdown margin:
 5460 seconds for the default, or 7260 for a 7200-second CLI task. An earlier
@@ -96,22 +169,49 @@ journal. Those files can contain task text and session data: keep them private.
 The adapter stdout and `receipt.json` contain only allowlisted operational metadata,
 never the raw prompt, answer, config, exception or authentication material.
 
-The receipt reports requested/configured model and high effort, actual process
-exit, time, task hash and selected bounds. Effective model/effort and remaining
+The receipt reports the detected CLI version, requested/configured model and
+requested thinking, actual process exit, time, task hash, selected bounds,
+omitted caps, the supervisor bound, the export-observed native limits and the
+`session_selection` verdict. Effective model/effort and remaining
 subscription allowance remain Unknown. Native schema-1 usage uses input_tokens,
-output_tokens, cached_input_tokens and total_tokens; cost_usd is an estimate.
-Native missing usage/cost remain null. Additive budget telemetry prefers native
-usage, then partial cumulative owned-stream estimates; see
+output_tokens, cached_input_tokens and total_tokens; cached input is included
+in input_tokens and never double-counted in the total. cost_usd is the CLI's
+catalog-rate estimate, not an invoice, a guaranteed bill ceiling or proof of
+subscription spend; native missing usage/cost remain null. For the unpriced
+Mistral Large 4 alias, USD telemetry stays Unknown (never 0/free) even when
+the native export carries a cost figure derived from catalog rates. Additive
+budget telemetry prefers native usage, then partial cumulative owned-stream
+estimates (2.26.1) or the message-list assistant count (3.1.1); see
 [worker observations](../WORKER-OUTCOMES.md) for the estimation caveats. Malformed, duplicate or
 nonfinite export data cannot establish success. A nonzero native result is preserved;
-a missing/invalid export after exit zero makes the adapter fail with exit 2.
+a missing/invalid export after exit zero makes the adapter fail with exit 2,
+and exit 0 alone never establishes required-delivery completeness (the native
+required-artifact gates stay authoritative).
+
+On 3.1.1 the headless run uses `--output json`: stdout is one JSON message
+list. The actual final completed assistant reply is the LAST assistant entry
+of that list and can carry a verdict/summary absent from the saved export
+report; the adapter never selects an earlier acknowledgement. The validated
+assistant content forms are a plain string (the shape real 3.1.1 captures
+use) and a list of typed text blocks; both are counted. The receipt records
+only bounded provenance for it (list length, assistant count, final index,
+exact content-form-tagged SHA-256, byte sizes); the raw message list stays in
+the private `native-stdout.log`. `present` requires actual final text bytes:
+a history ending in a tool-call-only assistant entry or an empty final
+acknowledgment is recorded as `final_without_text`, and a malformed or
+non-list stdout as `invalid` — none of these states changes the exit
+semantics, and none is proof of a completed required delivery; the actual
+CLI exit, the export verdict, required artifacts and acceptance stay
+separate and authoritative.
 
 Vibe exits 0 when finished, 1 on usage/configuration errors, 2 for infrastructure
-failure, and 3 for limits/refusal. Its socket-only exit 4 is preserved if encountered,
-though this adapter does not select a socket. Adapter deadline exit is 124; graceful
-interruption is 130. The adapter starts one CLI invocation with no replay and sets
-Vibe's retry elapsed budget to zero; this does not prove every SDK internal retry
-is disabled. Owned process groups are cleaned up on deadline/output overflow.
+failure, and 3 for limits/refusal (including its own `--time-limit` deadline).
+Its socket-only exit 4 is preserved if encountered, though this adapter does
+not select a socket. Adapter deadline exit is 124; graceful interruption is
+130. The adapter starts one CLI invocation with no replay and sets Vibe's
+retry elapsed budget to zero on 2.26.1; this does not prove every SDK internal
+retry is disabled. Owned process groups are cleaned up on deadline/output
+overflow.
 
 The initial GLM trial stopped at a local 200k cumulative cap; Medium 3.5 stopped at
 600k after producing partial code. These are not subscription-limit observations or
@@ -121,13 +221,16 @@ for a newer Mistral model does not establish this account's access or its qualit
 
 ## Live progress during a run
 
-The provider invocation uses the installed CLI's documented `--output streaming`
-route: one newline-delimited JSON record per completed session history entry
-(installed 2.26.1 schema, camelCase fields; entries have `type` message, reasoning,
-effect, callback, checkpoint or notice, and effects carry `detail.kind` with a
-settled `state.status`). Every raw byte still lands in the bounded private
-native-stdout log. The adapter's own stdout prints only fixed allowlisted
-operational labels, flushed as each record is recognized:
+On 2.26.1 the provider invocation uses the installed CLI's documented
+`--output streaming` route: one newline-delimited JSON record per completed
+session history entry (installed 2.26.1 schema, camelCase fields; entries have
+`type` message, reasoning, effect, callback, checkpoint or notice, and effects
+carry `detail.kind` with a settled `state.status`). On 3.1.1 the headless run
+uses `--output json` (a single message list printed at the end), so no
+per-record events exist and the adapter prints only the liveness heartbeat
+during the run. Every raw byte still lands in the bounded private
+native-stdout log on both versions. The adapter's own stdout prints only fixed
+allowlisted operational labels (2.26.1), flushed as each record is recognized:
 
 ```text
 Vibe progress: assistant response observed
@@ -181,6 +284,32 @@ accepted only the later checked correction. Effective model, effort and
 remaining allowance stay Unknown. The earlier native exit 3 at the local
 4M cumulative cap remains preserved and does not show subscription allowance.
 
+## Test evidence and unresolved live behavior
+
+Offline evidence (no live provider call was made for this change): the 2.26.1
+fixture suite is unchanged and green (including low/medium overlay coverage),
+and the 3.1.1 fixture tests cover explicit `--model` selection, absence of
+`VIBE_*` overlays, `--output json` final-reply provenance including the real
+string content form and textless trailing entries, selection verified from
+actual session identity: the real captured GLM session shape where the
+session selected glm-5-3/zai-glm-5-3 while the export's routed default
+describes Mistral Large 4, partial/default-only or thinking-only metadata
+staying unknown, per-version cap omission with observed native limits,
+native limit/deadline exits and stop reasons, missing/malformed exports,
+unpriced USD staying Unknown, the 3.1.1 refusal of unsupported thinking
+levels before any provider call, version/model gating, and contract parity.
+The new selection, string-final-text and thinking-refusal regressions were
+verified to fail on the recovered base af2a2d0 before the fix. The
+route-contract, adapter-budget, adapter-outcome and adapter-install suites
+are green with the regenerated embedded payload.
+
+Unresolved live behavior: no live 3.1.1 provider trial was run from this task;
+the lead assigns one separately after review. The real 3.1.1 end-to-end
+selection (server-side effective model/effort, actual allowance, and the exact
+catalog resolution of each alias on a given account) therefore remains
+Unknown and is only verifiable by that assigned trial. The indicative $10
+price cap is not billing proof; subscription allowance is never measured.
+
 ## References
 
 Real corrected-wrapper trial, 2026-10-09: GLM 5.3 saved the first adapter-packaging
@@ -194,4 +323,4 @@ four native checks and personal lead review passed.
 - [Mistral subscription billing and usage](https://docs.mistral.ai/admin/billing-usage/subscriptions).
 - [Mistral model pricing](https://docs.mistral.ai/inference/pricing).
 - [Mistral reasoning controls](https://docs.mistral.ai/studio/conversations/reasoning).
-- [Official Vibe source](https://github.com/mistralai/mistral-vibe), matched to installed 2.26.1.
+- [Official Vibe source](https://github.com/mistralai/mistral-vibe), matched to installed 2.26.1 and 3.1.1.

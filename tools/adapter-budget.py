@@ -37,6 +37,8 @@ NOTE_NO_EXPORT = ("the native CLI exported no usage for this run; token and USD 
                   "usage are unknown, not zero")
 NOTE_TURNS_COUNTED = ("turns are the adapter's count of observed assistant responses; "
                       "the native CLI exports no turn count")
+NOTE_UNPRICED = ("model prices are unknown for this route/alias; USD usage is unknown, not zero; "
+                 "an indicative price cap is not billing proof or a guaranteed bill ceiling")
 
 
 def _number(value, integral=False):
