@@ -286,18 +286,30 @@ def _clean_cache_text(value, limit=256):
 
 def _clean_latest_entry(entry):
     """Validate a cached `latest` fact field by field. Returns a clean dict
-    or None (a malformed or wrong-typed entry is quiet Unknown)."""
+    or None (a malformed or wrong-typed entry is quiet Unknown). A field
+    that is present but not a bounded printable string poisons the whole
+    fact — a wrong type is never partially trusted; a version string that
+    is not a version poisons it too. Missing fields read as None."""
     if not isinstance(entry, dict):
         return None
-    version = _clean_cache_text(entry.get('version'))
-    if version is not None and not VERSION_RE.fullmatch(version):
-        version = None
-    status = _clean_cache_text(entry.get('status'))
-    if status is None:  # status drives reuse decisions; it must exist
+    fields = {}
+    for key in ('version', 'status', 'source', 'checked_at'):
+        if key not in entry:
+            fields[key] = None
+            continue
+        value = entry.get(key)
+        if value is None:
+            fields[key] = None
+            continue
+        value = _clean_cache_text(value)
+        if value is None:
+            return None  # present but wrong-typed/oversized/unprintable
+        if key == 'version' and not VERSION_RE.fullmatch(value):
+            return None  # a 'version' that is not a version poisons the fact
+        fields[key] = value
+    if fields['status'] is None:  # status drives reuse decisions
         return None
-    return {'version': version, 'status': status,
-            'source': _clean_cache_text(entry.get('source')),
-            'checked_at': _clean_cache_text(entry.get('checked_at'))}
+    return fields
 
 
 def _open_state_dir(conf):
