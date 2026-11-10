@@ -29090,6 +29090,120 @@ def require_lock(root, worker):
     return fd
 
 
+def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
+    """Refusal-only bounded capacity check before expensive capture.
+
+    Proves whether a save cannot be published under unchanged retention
+    rules. Reads strict metadata only (no body/bundle/context reads).
+    Falls through on ambiguity or if archival/unchanged periodic is possible.
+    """
+    if store is None:
+        return
+    if budget is not None:
+        budget.remaining()
+    active_names = [name for name in bounded_names(store)
+                    if name not in ('attempts', 'claims', 'archive') and not name.startswith('.staging-')]
+    if len(active_names) < CAP_WORKER and len(active_names) <= CAP_PROJECT:
+        return
+    claims, bad_claims = load_claims(store)
+    claim_pins = {claim['save_id'] for claim in claims}
+    valid_candidates = []
+    corrupt_entries = []
+    for name in active_names:
+        if budget is not None:
+            budget.remaining()
+        if not HEX32.fullmatch(name):
+            corrupt_entries.append((name, None))
+            continue
+        path = os.path.join(store, name)
+        try:
+            st = os.lstat(path)
+        except OSError:
+            corrupt_entries.append((name, None))
+            continue
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) != 0o700:
+            corrupt_entries.append((name, lenient_worker(path)))
+            continue
+        try:
+            dfd = open_dir(path)
+            try:
+                private_at(dfd, 'manifest.json', 'file')
+                raw = read_at(dfd, 'manifest.json', MAX_MANIFEST)[1]
+                doc, _ = manifest_doc(strict_json(raw, MAX_MANIFEST, 'manifest'), name)
+            finally:
+                os.close(dfd)
+            w = doc['worker']
+            pub = when(doc['published_at'])
+            if pub is None:
+                raise ValueError('invalid published timestamp')
+            valid_candidates.append(dict(id=name, worker=w, published=pub, run_id=doc.get('run_id')))
+        except (Refuse, OSError, ValueError, KeyError, TypeError):
+            corrupt_entries.append((name, lenient_worker(path)))
+
+    if reason == 'periodic':
+        if any(item['worker'] == worker and item.get('run_id') == run_id for item in valid_candidates):
+            return
+        try:
+            archive = archive_for_store(store)
+        except Exception:
+            archive = None
+            return
+        if archive:
+            try:
+                for name in bounded_names(archive):
+                    if HEX32.fullmatch(name):
+                        try:
+                            wrapper = under(archive, name)
+                            if private_dir(wrapper, False):
+                                s_path = under(wrapper, 'snapshot')
+                                if private_dir(s_path, False):
+                                    m_fd = open_dir(s_path)
+                                    try:
+                                        private_at(m_fd, 'manifest.json', 'file')
+                                        raw_m = read_at(m_fd, 'manifest.json', MAX_MANIFEST)[1]
+                                        doc_m = strict_json(raw_m, MAX_MANIFEST, 'manifest')
+                                        if (isinstance(doc_m, dict) and doc_m.get('worker') == worker
+                                                and doc_m.get('run_id') == run_id):
+                                            return
+                                    finally:
+                                        os.close(m_fd)
+                        except Exception:
+                            return
+            except Exception:
+                return
+
+    if len(active_names) > CAP_PROJECT:
+        raise Refuse('excessive', 'active store already exceeds the project cap; existing evidence was preserved')
+
+    if bad_claims:
+        if len(active_names) >= CAP_PROJECT:
+            raise Refuse('excessive', 'unreadable claims make save pins unknown; no history was archived')
+        mine_total = sum(1 for item in valid_candidates if item['worker'] == worker) + sum(1 for _, w in corrupt_entries if w == worker)
+        if mine_total >= CAP_WORKER:
+            raise Refuse('excessive', 'unreadable claims make save pins unknown; no history was archived')
+        return
+
+    valid_candidates.sort(key=lambda item: (item['published'], item['id']), reverse=True)
+    newest_workers = set()
+    newest_pins = set()
+    for item in valid_candidates:
+        if item['worker'] not in newest_workers:
+            newest_workers.add(item['worker'])
+            newest_pins.add(item['id'])
+    pins = claim_pins | newest_pins
+    eligible = [item for item in valid_candidates if item['id'] not in pins]
+
+    mine_valid = [item for item in valid_candidates if item['worker'] == worker]
+    mine_corrupt = sum(1 for _, w in corrupt_entries if w == worker)
+    mine_total = len(mine_valid) + mine_corrupt
+    mine_eligible = sum(1 for item in eligible if item['worker'] == worker)
+    if mine_total - mine_eligible + 1 > CAP_WORKER:
+        raise Refuse('excessive', 'active worker cap reached; pinned/corrupt evidence was preserved')
+
+    if len(active_names) - len(eligible) + 1 > CAP_PROJECT:
+        raise Refuse('excessive', 'active project cap reached; newest, pinned and corrupt evidence was preserved')
+
+
 def cmd_create(root, worker, task):
     seconds = capture_seconds()  # Refuse bad configuration before locks/store effects.
     with os.fdopen(require_lock(root, worker), 'rb'):
@@ -29102,6 +29216,7 @@ def create_locked(root, worker, task, reason='manual', run_id=None, provider_exi
     observed_at = stamp()
     try:
         budget = Budget(seconds)
+        capacity_preflight(store, worker, budget, reason=reason, run_id=run_id)
         first, task_bytes = capture(root, worker, task, budget)
         fault('between-passes')
         second, task_bytes2 = capture(root, worker, task, budget)

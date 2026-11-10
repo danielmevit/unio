@@ -111,6 +111,16 @@ archive is full or evidence is unsafe, the new save is refused without deleting
 history. There is no automatic archive purge. `unio save usage` reports active
 and archived counts, bounds and evidence.
 
+Before expensive worktree capture or full-store rereads, a bounded refusal-only
+capacity preflight checks strict metadata under unchanged protection rules. When
+every active save is protected (e.g. 32 distinct newest saves, unreadable claims
+or active caps with zero eligible older history), capture refuses immediately with
+exit 1 (`excessive`) without reading worktree files, running git capture or
+rereading stored file bodies. On ambiguity, eligible archival history or matching
+unchanged periodic runs, preflight falls through to the existing safe path and
+final retention validation under the publication lock. Early refusal alone does
+not unblock an already-full store; retention rules and caps remain unchanged.
+
 `inspect` validates every stored byte and reports the save, or a worker's
 last good save, latest attempt and live state. Live state is Unknown while
 the worker is busy, its native lock or coordination parents are unsafe, or it
@@ -244,6 +254,12 @@ bounded cancellation. It uses private installations and deliberate offline
 mocks; one case waits for the real sixty-second periodic interval and one
 checks the thirty-second final-cancellation ceiling. The quality gate includes
 this suite.
+
+`tests/unio-save-cap-preflight.py` verifies counter-based refusal-only capacity
+preflight behavior: full protected stores (32 distinct newest saves, claimed
+history, corrupt/symlink evidence) refuse with zero capture passes, zero body/bundle
+reads and zero deep loads; eligible history archives and publishes; unchanged periodic
+no-ops return 0; attempt documents record status `refused` and reason `excessive`.
 
 `tests/unio-work-saving-continue.py` drives real offline native runs: exact
 restored state and separately authorized task text, real exits, replay and
