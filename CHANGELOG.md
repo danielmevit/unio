@@ -4,6 +4,18 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.26 — host reliability, recovery and CLI awareness — 2026-11-10
+
+- Check the physical Windows volume backing WSL before admitting work; refuse known-critical space and preserve Unknown observations.
+- Reconcile current interrupted-run observations without inventing exits or rewriting original receipts.
+- Inventory inactive generated build caches as a read-only dry run, protecting tracked files and benchmark evidence.
+- Refuse a provably full protected checkpoint store before expensive capture work; keep metadata and capture allowances separate.
+- Add cached daily AI CLI version awareness and `unio update clis --check`. Applying updates remains manual until maintenance/admission coordination exists.
+- Support the tested Vibe 3.1.1 route alongside 2.26.1, explicit model selection, bounded response/usage parsing and optional native task caps. Keep model, requested effort, effective Unknowns and delivery separate.
+- Correct CLI-update completion and isolate its configuration-dependent regression test.
+
+See [scope and operating limits](docs/RELEASE-0.5.26.md). Original failed and interrupted runs remain preserved; a successful process is not accepted delivery.
+
 ## 0.5.25 — checkpoint lookup and worker-effort clarity — 2026-10-26
 
 Independent reviews, lead assessment and the one full combined quality gate
