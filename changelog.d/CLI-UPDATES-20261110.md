@@ -55,3 +55,11 @@ holds, and the deferred application path. Focused offline suite
 consistency behaviors with fake CLI executables, metadata and caches
 only — no real CLI, provider or network call, no real installation
 mutated.
+
+Supersession (same day, before release): the `update` section above is
+superseded by CLI-UPDATES-SAFETY-20261110.md — `unio update clis` refuses
+every present target with maintenance_not_implemented (no updater is ever
+executed by unio) until a shared maintenance lease exists; busy facts are
+observations that mean Unknown, never idle proof; cache reads/writes and
+probes gained the strict bounds described there; plain `unio` also prints
+the awareness line. --check and the daily awareness behave as described.

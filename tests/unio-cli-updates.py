@@ -792,6 +792,17 @@ class CliUpdatesTests(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         lines = [line for line in done.stdout.splitlines() if line.startswith('cli-updates:')]
         self.assertEqual(len(lines), 1, done.stdout)
+        # Plain `unio` (help entry) also prints exactly one awareness line.
+        done = self.engine(timeout=120)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn('docs/CLI-UPDATES.md', done.stdout)
+        lines = [line for line in done.stdout.splitlines() if line.startswith('cli-updates:')]
+        self.assertEqual(len(lines), 1, done.stdout)
+        # and it stays silent under the explicit opt-out.
+        done = self.engine(env=dict(self.env, UNIO_CLI_UPDATES_OFF='1'))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual([line for line in done.stdout.splitlines()
+                          if line.startswith('cli-updates:')], [], done.stdout)
         # resume clears STOP and shows the awareness line.
         (project / 'coord' / 'STOP').write_text('frozen\n')
         done = self.engine('resume', cwd=project)

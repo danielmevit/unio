@@ -36054,18 +36054,23 @@ setup / health
                                      report installed/latest/age/install method
                                      of the recognized AI CLIs, and their busy/
                                      lead-held, supported and Unknown facts;
-                                     --check and the doctor/resume awareness
-                                     line are read-only facts (cache <24 h old:
-                                     no network; never a model or auth call).
-                                     Without --check the request runs only each
-                                     CLI's official updater (agy update, uv tool
-                                     upgrade mistral-vibe when verified
-                                     uv-managed, grok update --stable, copilot
-                                     update stable, opencode upgrade without
-                                     --major); missing tools are skipped, busy/
-                                     lead-held or unverifiable installs refuse
-                                     with a manual plan; claude/codex stay
-                                     check-only. Compatibility stays Unknown:
+                                     --check and the awareness line (plain
+                                     unio, doctor, resume) are read-only facts
+                                     (cache <24 h old: no network; never a
+                                     model or auth call). Busy facts are
+                                     observations and mean Unknown, never
+                                     idle proof. Without --check the request
+                                     REFUSES to install for every present
+                                     target (maintenance_not_implemented: no
+                                     run/review maintenance lease exists yet)
+                                     and prints each CLI's frozen manual plan
+                                     (agy update; uv tool upgrade
+                                     mistral-vibe when verified uv-managed;
+                                     grok update --stable; copilot update
+                                     stable; opencode upgrade without
+                                     --major; claude/codex check-only). No
+                                     updater is ever constructed or executed
+                                     by unio. Compatibility stays Unknown:
                                      route version guards and adapter pins are
                                      never touched (docs/CLI-UPDATES.md)
 
@@ -36272,6 +36277,9 @@ Copyright (C) 2026 Daniel Mitev — Daniel Mevit (@danielmevit).
 License: AGPL-3.0-only; you may redistribute under its terms. No warranty.
 Run 'unio license' for the full license and original-project notice.
 HELP
+  # Plain `unio` (help) is also a human entry point: one read-only
+  # awareness line, never an install (UNIO_CLI_UPDATES_OFF=1 disables it).
+  cli_updates_awareness help || true
 }
 
 case "${1:-help}" in
