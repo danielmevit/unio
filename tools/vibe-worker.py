@@ -38,8 +38,12 @@ MODELS = {
     # so the price fields stay None and USD usage remains Unknown, never 0.
     "mistral-large-4-0-3": ("mistral-large-4-0", "Mistral", None, None, None),
 }
-# Adapter-level thinking selector; the installed 2.26.1 CLI has no --thinking
-# flag, so the level travels only through the process-local model override.
+# Adapter-level thinking selector. On the pinned 2.26.1 CLI the level travels
+# only through the process-local model override (all three levels, unchanged).
+# 3.1.1 has no per-run thinking control at all (no overlay mechanism, no native
+# thinking flag), so only the catalog level "high" observed for the validated
+# aliases may run there and a low/medium request refuses before the provider
+# (see check_bounds) instead of silently executing the account's existing level.
 THINKING_LEVELS = ("low", "medium", "high")
 # Supported numeric bounds; the route contract check validates against exactly
 # these, on every supported CLI version, so dispatch and execution agree.
@@ -368,7 +372,8 @@ def owned_call(argv, env, seconds, log=None, output_limit=OUTPUT_BYTES, progress
         child.wait(timeout=5)
 
 
-def export_summary(path, actual_exit, cli_version, requested=None, wire=None, thinking=None):
+def export_summary(path, actual_exit, cli_version, requested=None, wire=None, thinking=None,
+                   session_path=None):
     value = strict_json(read_regular(path, EXPORT_BYTES))
     if not isinstance(value, dict) or type(value.get("schema_version")) is not int or value["schema_version"] != 1:
         raise Refusal("invalid_export")
@@ -416,9 +421,11 @@ def export_summary(path, actual_exit, cli_version, requested=None, wire=None, th
     steps = value.get("steps")
     if steps is not None and (type(steps) is not int or not 0 <= steps <= 10**12):
         raise Refusal("invalid_export")
-    # The redacted config is only inspected for the session model selection;
-    # its raw content (or any secret-shaped value) never enters the receipt.
-    selection = session_selection({"config": value.get("config")}, requested, wire, thinking) \
+    # The redacted config, plus the owned invocation's bounded session/meta.json,
+    # is only inspected for the session model selection; its raw content (or
+    # any secret-shaped value) never enters the receipt.
+    selection = session_selection({"config": value.get("config")}, requested, wire, thinking,
+                                  session=read_session_meta(session_path) if session_path is not None else None) \
         if requested is not None else None
     result = dict(schema_version=1, outcome=value["outcome"], stop_reason=stop,
                   usage={k: usage[k] for k in fields} if usage is not None else None,
@@ -429,48 +436,170 @@ def export_summary(path, actual_exit, cli_version, requested=None, wire=None, th
     return result
 
 
-def _config_text(mapping, key):
+# Bounded read of the owned invocation's session metadata: the native 3.1.1 CLI
+# records the session's actually selected client model under the output
+# directory in session/meta.json.
+SESSION_META_BYTES = 262144
+
+
+def read_session_meta(path):
+    """Bounded, no-follow read of the owned session/meta.json, or None.
+
+    Missing, oversized, unsafe-shaped or malformed metadata is absent
+    evidence: it can never supply, default or invent identity. Only typed
+    identifiers are read by the caller; nothing from the file is copied
+    into the receipt.
+    """
+    try:
+        value = strict_json(read_regular(path, SESSION_META_BYTES))
+    except (OSError, ValueError, UnicodeError, Refusal, RecursionError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _text(mapping, key):
     value = mapping.get(key) if isinstance(mapping, dict) else None
-    return value if isinstance(value, str) else None
+    return value if isinstance(value, str) and value else None
 
 
-def session_selection(export, requested, wire, thinking):
-    """Verify the per-session model selection from returned export metadata.
+def _mapping(value):
+    return value if isinstance(value, dict) else {}
 
-    Only the redacted config's own model identifiers are read; nothing else
-    from the config is copied into the receipt. Missing metadata stays
-    Unknown and contradictory metadata is an explicit mismatch: neither can
-    be recorded as a verified selection. Server-side effective model/effort
-    remain Unknown regardless.
+
+def _selected_meta(session):
+    """Accept the observed session/meta.json shapes: identity keys at top
+    level or under a nested config mapping; a shape carrying none of them
+    reads None rather than being guessed from another key."""
+    for candidate in (session, _mapping(session).get("config")):
+        if any(_text(candidate, key) is not None
+               for key in ("active_model", "model_name", "thinking")):
+            return _mapping(candidate)
+    return None
+
+
+def session_selection(export, requested, wire, thinking, session=None):
+    """Verify the per-session model selection from actual selected identity.
+
+    Sources that record what THIS owned invocation actually selected are read
+    first, in priority order: the bounded session/meta.json written under the
+    output directory, the export config's per-session section, then the
+    export config's active_model. routed_model_config/routed_default_model
+    describe the account's DEFAULT route: their identifiers are used for the
+    selection only when the default declaration itself names the selected
+    alias, and are otherwise preserved as separate routed_default_* fields
+    (possibly contradicting observations), never as proof of a selection.
+
+    A verified state requires an actual selected alias AND wire name; partial
+    or default-only identity metadata stays unknown, never verified. Effort
+    has its own provenance: only a declaration attributable to the selected
+    model is recorded as session_thinking; missing effort metadata stays
+    unknown (None) and is never proof that the requested level took effect.
+    Contradictory observations are explicit mismatches. Nothing here is
+    server identity evidence: effective model/effort remain Unknown regardless.
     """
     result = dict(state="unknown", session_alias=None, session_wire=None,
-                  session_thinking=None, detail="export carried no usable model metadata")
-    config = export.get("config") if isinstance(export, dict) else None
-    if not isinstance(config, dict):
-        return result
-    routed = config.get("routed_model_config")
-    models = config.get("models")
-    entry = models.get(requested) if isinstance(models, dict) else None
-    session = config.get("session")
-    alias = _config_text(config, "active_model") or _config_text(routed, "alias") or _config_text(session, "active_model")
-    wire_seen = _config_text(routed, "name") or _config_text(entry, "name") or _config_text(session, "model_name")
-    think_seen = _config_text(routed, "thinking") or _config_text(entry, "thinking") or _config_text(session, "thinking")
-    if alias is None and wire_seen is None and think_seen is None:
-        return result
-    result.update(session_alias=alias, session_wire=wire_seen, session_thinking=think_seen)
+                  session_thinking=None, detail="no usable session selection metadata")
+    config = _mapping(_mapping(export).get("config"))
+    controls = ((_selected_meta(session), "session_meta"),
+                (_mapping(config.get("session")), "config_session"))
+    # Ordered selected-identity observations: (source, alias, wire).
+    selectors = []
+    for mapping, source in controls:
+        alias, wire_seen = _text(mapping, "active_model"), _text(mapping, "model_name")
+        if alias is not None or wire_seen is not None:
+            selectors.append((source, alias, wire_seen))
+    active = _text(config, "active_model")
+    if active is not None:
+        selectors.append(("config_active_model", active, None))
+    routed = _mapping(config.get("routed_model_config"))
+    default_alias = _text(routed, "alias") or _text(config, "routed_default_model")
+    default_wire = _text(routed, "name")
+    default_thinking = _text(routed, "thinking")
+    if default_alias is not None or default_wire is not None or default_thinking is not None:
+        result["routed_default_alias"] = default_alias
+        result["routed_default_wire"] = default_wire
+        result["routed_default_thinking"] = default_thinking
+    session_alias = None
+    session_wire = None
     mismatches = []
-    if alias is not None and alias != requested:
-        mismatches.append("alias " + alias + " != requested " + requested)
-    if wire_seen is not None and wire_seen != wire:
-        mismatches.append("wire " + wire_seen + " != expected " + wire)
-    if think_seen is not None and think_seen != thinking:
-        mismatches.append("thinking " + think_seen + " != requested " + thinking)
+    for source, alias, wire_seen in selectors:
+        if alias is not None and session_alias is None:
+            session_alias = alias
+        elif alias is not None and alias != session_alias:
+            mismatches.append("conflicting selected alias claims: " + session_alias
+                              + " and " + alias + " (" + source + ")")
+        # A wire that names a different model than the selected alias is not
+        # attributable to the selection and was flagged by the alias conflict.
+        if wire_seen is None or (alias is not None and alias != session_alias):
+            continue
+        if session_wire is None:
+            session_wire = wire_seen
+        elif wire_seen != session_wire:
+            mismatches.append("conflicting selected wire claims: " + session_wire
+                              + " and " + wire_seen + " (" + source + ")")
+    # The selected model's own catalog declaration corroborates the identity,
+    # and a default declaration may describe the selection only when it names
+    # the selected alias. Neither can prove that any selection happened.
+    entry = _mapping(_mapping(config.get("models")).get(session_alias)) \
+        if session_alias is not None else {}
+    for source, value in (("catalog_entry", _text(entry, "name")),
+                          ("routed_default_declaration", default_wire
+                           if default_alias is not None and default_alias == session_alias else None)):
+        if value is None:
+            continue
+        if session_wire is None:
+            session_wire = value
+        elif value != session_wire:
+            mismatches.append("conflicting selected wire claims: " + session_wire
+                              + " and " + value + " (" + source + ")")
+    # Effort provenance is separate from identity: an effort observation is
+    # attributable only when its own source names no other model, and a
+    # catalog/default declaration only when it names the selected alias.
+    session_thinking = None
+    think_claims = []
+    for mapping, source in controls:
+        value, alias = _text(mapping, "thinking"), _text(mapping, "active_model")
+        if value is not None and alias in (None, session_alias):
+            think_claims.append((source, value))
+    if session_alias is not None:
+        for source, value in (("catalog_entry", _text(entry, "thinking")),
+                              ("routed_default_declaration", default_thinking
+                               if default_alias is not None and default_alias == session_alias else None)):
+            if value is not None:
+                think_claims.append((source, value))
+    for source, value in think_claims:
+        if session_thinking is None:
+            session_thinking = value
+        elif value != session_thinking:
+            mismatches.append("conflicting thinking declarations: " + session_thinking
+                              + " and " + value + " (" + source + ")")
+    result.update(session_alias=session_alias, session_wire=session_wire,
+                  session_thinking=session_thinking)
+    if session_alias is not None and session_alias != requested:
+        mismatches.append("alias " + session_alias + " != requested " + requested)
+    if session_wire is not None and session_wire != wire:
+        mismatches.append("wire " + session_wire + " != expected " + wire)
+    if session_thinking is not None and session_thinking != thinking:
+        mismatches.append("thinking " + session_thinking + " != requested " + thinking)
     if mismatches:
         result["state"] = "mismatch"
         result["detail"] = "; ".join(mismatches)
+        return result
+    if session_alias is None or session_wire is None:
+        result["state"] = "unknown"
+        result["detail"] = ("insufficient actual selected identity: "
+                            + ("no selected alias" if session_alias is None else "no selected wire")
+                            + "; partial, default-only or catalog-only metadata cannot verify a selection")
+        return result
+    result["state"] = "verified"
+    notes = ["selected alias/wire verified from session metadata"]
+    if session_thinking is None:
+        notes.append("no session effort metadata; session effort unknown, never proof the requested level took effect")
     else:
-        result["state"] = "verified"
-        result["detail"] = "export metadata matches the requested alias/wire/thinking"
+        notes.append("declared thinking " + session_thinking + " matches the requested level")
+    if default_alias is not None and default_alias != session_alias:
+        notes.append("routed default " + default_alias + " differs; recorded as the account default, not this session's selection")
+    result["detail"] = "; ".join(notes)
     return result
 
 
@@ -482,9 +611,18 @@ def parse_output_messages(raw):
     summary absent from the saved export report. Only typed counters and
     hashes are returned: raw bytes stay in the private native stdout log and
     no message content ever enters the receipt or public stdout.
+
+    The validated assistant content forms are a plain string (the shape real
+    3.1.1 captures use) and a list of typed text blocks; both are counted.
+    "present" requires actual final text bytes: a trailing tool-call-only
+    entry, an empty final acknowledgment or an unvalidated content shape
+    yields "final_without_text" and is never proof of a completed delivery.
+    The state is kept separate from the CLI exit, the export verdict and any
+    required artifact; an earlier acknowledgment is never selected instead.
     """
     result = dict(state="invalid", message_count=0, assistant_messages=0,
-                  final_index=None, final_sha256=None, final_bytes=None, final_text_bytes=None)
+                  final_index=None, final_sha256=None, final_bytes=None,
+                  final_text_bytes=None, final_content_form=None)
     try:
         text = raw.decode("utf-8", errors="strict")
     except (UnicodeError, RecursionError):
@@ -515,14 +653,18 @@ def parse_output_messages(raw):
     if final is None:
         result["state"] = "no_final_assistant"
         return result
-    result["state"] = "present"
     payload = json.dumps(final, sort_keys=True, ensure_ascii=False).encode("utf-8")
     text_bytes = 0
     content = final.get("content")
-    if isinstance(content, list):
+    if isinstance(content, str):
+        result["final_content_form"] = "string"
+        text_bytes = len(content.encode("utf-8"))
+    elif isinstance(content, list):
+        result["final_content_form"] = "blocks"
         text_bytes = sum(len(block["text"].encode("utf-8")) for block in content
                          if isinstance(block, dict) and block.get("type") == "text"
                          and isinstance(block.get("text"), str))
+    result["state"] = "present" if text_bytes > 0 else "final_without_text"
     result.update(final_index=final_index,
                   final_sha256=hashlib.sha256(payload).hexdigest(),
                   final_bytes=len(payload), final_text_bytes=text_bytes)
@@ -566,6 +708,22 @@ def check_bounds(args, cli_version=None):
     """
     problems = []
     allow_none = cli_version in (None, "3.1.1")
+    # 3.1.1 has no adapter-supported per-run thinking control: the VIBE_* model
+    # overlay is a 2.26.1-only mechanism and the 3.1.1 CLI documents no thinking
+    # flag, so a requested low/medium would silently execute the account's
+    # existing catalog level. There is no honest subset to run, so such a
+    # request is refused before any provider invocation. "high" is accepted
+    # only because it matches the catalog declaration observed for the
+    # validated aliases (selection reference 2026-11-10); the adapter claims no
+    # control and records the effective effort as Unknown either way.
+    if cli_version == "3.1.1" and args.thinking != "high":
+        problems.append("--thinking " + args.thinking + " is not supported on Vibe 3.1.1: "
+                       "the CLI has no per-run thinking control (model overlays are a 2.26.1-only "
+                       "mechanism and no native thinking flag exists), so the request would "
+                       "silently execute the account's existing level; keep 3.1.1 runs at the "
+                       "observed catalog level high with the effective effort recorded as "
+                       "unknown, or use the pinned 2.26.1 route for low/medium control; "
+                       "edit the agents.conf route and retry")
     caps = (("--max-price", args.max_price, MAX_PRICE_USD, "float", "USD"),
             ("--max-tokens", args.max_tokens, MAX_TOKENS, "int", "tokens; edit the agents.conf route and retry"),
             ("--max-turns", args.max_turns, MAX_TURNS, "int", "turns"),
@@ -652,7 +810,10 @@ def run_telemetry(record, progress):
     if progress is not None and progress.responses:
         turns = module.meter(progress.responses, limits.get("max_turns"), "estimated")
         notes.append(module.NOTE_TURNS_COUNTED)
-    elif final is not None and final.get("state") == "present":
+    elif final is not None and final.get("state") in ("present", "final_without_text"):
+        # A valid message list counts assistant entries as a turn estimate even
+        # when its final entry carried no text; that never proves a completed
+        # delivery (final_response state is kept separate from this meter).
         turns = module.meter(final.get("assistant_messages"), limits.get("max_turns"), "estimated")
         notes.append("turns are the count of assistant entries in the 3.1.1 --output json message list; the native export's step count is model calls, not turns")
     else:
@@ -777,7 +938,8 @@ def main():
         exit_code = code if code in (0, 1, 2, 3, 4) else 2
         try:
             record["export"] = export_summary(export / "export.json", code, cli_version,
-                                              requested=args.model, wire=wire, thinking=args.thinking)
+                                              requested=args.model, wire=wire, thinking=args.thinking,
+                                              session_path=export / "session" / "meta.json")
             if code == 0 and record["export"]["outcome"] != "finished":
                 raise Refusal("inconsistent_export")
             record["export_state"] = "valid"

@@ -204,6 +204,13 @@ class VibeTests(unittest.TestCase):
                       EXPECT_TOKENS='12000000',EXPECT_THINKING='medium')
         self.assertEqual(p.returncode,0,p.stderr)
         self.assertEqual(self.receipt()['requested_thinking'],'medium')
+        # 2.26.1 behavior is preserved: every level travels through the
+        # tested process-local overlay mechanism.
+        p=self.invoke('--thinking','low',EXPECT_THINKING='low')
+        self.assertEqual(p.returncode,0,p.stderr)
+        latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
+        self.assertEqual(latest['requested_thinking'],'low')
+        self.assertEqual(latest['configured_wire_effort'],'low')
         env,_,_=worker.model_environment('glm-5-3',{'VIBE_HOME':'owned'})
         self.assertEqual(env['VIBE_HOME'],'owned')
 
@@ -457,6 +464,16 @@ msgs=[{'role':'user','content':[{'type':'text','text':'SECRET-PROMPT'}]},
       {'role':'assistant','content':[{'type':'text','text':'SECRET-VERDICT accepted'}]}]
 if mode=='nomessages':msgs=[{'role':'user','content':[{'type':'text','text':'x'}]}]
 if mode=='notlist':msgs={'messages':[]}
+# Real captured 3.1.1 shapes: assistant content as plain strings, and a
+# history ending in a tool-call-only assistant entry.
+if mode=='strings':
+ msgs=[{'role':'user','content':[{'type':'text','text':'SECRET-PROMPT'}]},
+       {'role':'assistant','content':'SECRET-ACK'},
+       {'role':'assistant','content':'SECRET-VERDICT accepted'}]
+if mode=='toolonly':
+ msgs=[{'role':'user','content':[{'type':'text','text':'SECRET-PROMPT'}]},
+       {'role':'assistant','content':[{'type':'text','text':'SECRET-ACK'}]},
+       {'role':'assistant','content':[],'tool_calls':[{'id':'t1','type':'function','function':{'name':'read_file','arguments':'{}'}}]}]
 sys.stdout.write(json.dumps(msgs))
 if mode=='garbage':sys.stdout.write(' this is not json')
 if mode=='trailing':sys.stdout.write('\nNEVER-IN-RECEIPT\n')
@@ -474,7 +491,13 @@ x={'schema_version':1,'vibe_version':'3.1.1','outcome':os.environ.get('FAKE_OUTC
              'time_limit_s':None if get('--time-limit') is None else float(get('--time-limit'))}}
 if mode=='badlimits':x['limits']={'max_turns':'many'}
 if mode=='badsteps':x['steps']=-1
-pathlib.Path(get('--output-dir'),'export.json').write_text(json.dumps(x))
+out=pathlib.Path(get('--output-dir'))
+(out/'export.json').write_text(json.dumps(x))
+# The native CLI records the session's actually selected client model under
+# the output directory; FAKE_SESSION_META='' omits it, a JSON string replaces it.
+if os.environ.get('FAKE_SESSION_META','default')!='':
+ pathlib.Path(out,'session').mkdir(exist_ok=True)
+ pathlib.Path(out,'session','meta.json').write_text(os.environ.get('FAKE_SESSION_META') or json.dumps({'active_model':alias,'model_name':wire}))
 print('NEVER-IN-RECEIPT',file=sys.stderr)
 raise SystemExit(code)
 '''
@@ -600,26 +623,134 @@ class Vibe31Tests(unittest.TestCase):
                 self.assertEqual(latest['export_state'],'invalid_or_missing')
 
     def test_311_selection_mismatch_and_missing_metadata_never_verified(self):
-        p=self.invoke(FAKE_CONFIG='{"active_model":"glm-5-3","routed_model_config":{"name":"zai-glm-5-3","alias":"glm-5-3","thinking":"low"}}')
+        p=self.invoke(FAKE_CONFIG='{"active_model":"glm-5-3","routed_model_config":{"name":"zai-glm-5-3","alias":"glm-5-3","thinking":"low"}}',
+                      FAKE_SESSION_META='')
         self.assertEqual(p.returncode,0,p.stderr)
         sel=self.receipt()['session_selection']
         self.assertEqual(sel['state'],'mismatch')
         self.assertEqual(sel['session_alias'],'glm-5-3')
         self.assertIn('!= requested',sel['detail'])
-        p=self.invoke(FAKE_CONFIG='{}')
+        p=self.invoke(FAKE_CONFIG='{}',FAKE_SESSION_META='')
         self.assertEqual(p.returncode,0,p.stderr)
         latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
         self.assertEqual(latest['session_selection']['state'],'unknown')
         self.assertNotIn('NEVER-IN-RECEIPT',json.dumps(latest))
 
-    def test_311_thinking_mismatch_is_explicit(self):
-        p=self.invoke('--thinking','low',EXPECT_THINKING='low',
-                      FAKE_CONFIG='{"active_model":"mistral-large-4-0-3","routed_model_config":{"name":"mistral-large-4-0","alias":"mistral-large-4-0-3","thinking":"high"}}')
+    def test_311_selected_identity_comes_from_session_meta_before_routed_default(self):
+        # Real captured 3.1.1 GLM session shape (sanitized to model IDs): the
+        # session selected glm-5-3 / wire zai-glm-5-3 while the export's
+        # routed_model_config describes the account's DEFAULT Mistral Large 4
+        # route. The default must never be read as this session's selection.
+        config=json.dumps({'active_model':'glm-5-3','routed_default_model':'mistral-large-4-0-3',
+                           'routed_model_config':{'name':'mistral-large-4-0','provider':'mistral',
+                                                  'alias':'mistral-large-4-0-3','thinking':'high'},
+                           'models':{'glm-5-3':{'name':'zai-glm-5-3','alias':'glm-5-3',
+                                               'provider':'mistral','thinking':'high'}}})
+        p=self.invoke('--model','glm-5-3',EXPECT_MODEL='glm-5-3',EXPECT_WIRE='zai-glm-5-3',
+                      FAKE_CONFIG=config,
+                      FAKE_SESSION_META='{"active_model":"glm-5-3","model_name":"zai-glm-5-3"}')
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt(); sel=r['session_selection']
+        self.assertEqual(sel['state'],'verified')
+        self.assertEqual(sel['session_alias'],'glm-5-3')
+        self.assertEqual(sel['session_wire'],'zai-glm-5-3')
+        # The contradicting default observation is preserved separately.
+        self.assertEqual(sel['routed_default_alias'],'mistral-large-4-0-3')
+        self.assertEqual(sel['routed_default_wire'],'mistral-large-4-0')
+        self.assertIn('not this session\'s selection',sel['detail'])
+        # Manifest identity stays client-side only.
+        self.assertEqual(r['effective_model'],'unknown')
+        self.assertEqual(r['effective_effort'],'unknown')
+        # Session metadata alone identifies the session even when the export
+        # config carries only a default thinking declaration; the default's
+        # effort is preserved separately and never proves the session level.
+        p=self.invoke(FAKE_CONFIG='{"routed_model_config":{"thinking":"high"}}',
+                      FAKE_SESSION_META='{"active_model":"mistral-large-4-0-3","model_name":"mistral-large-4-0"}')
+        self.assertEqual(p.returncode,0,p.stderr)
+        latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
+        sel=latest['session_selection']
+        self.assertEqual(sel['state'],'verified')
+        self.assertEqual(sel['session_alias'],'mistral-large-4-0-3')
+        self.assertEqual(sel['session_wire'],'mistral-large-4-0')
+        self.assertIsNone(sel['session_thinking'])
+        self.assertEqual(sel['routed_default_thinking'],'high')
+
+    def test_311_partial_or_default_only_metadata_never_verifies(self):
+        # A catalog/default thinking declaration with no actual selected
+        # alias/wire identity can never become a verified selection, and it
+        # is not proof that the requested level took effect.
+        for config in ('{"routed_model_config":{"thinking":"high"}}',
+                       '{"routed_model_config":{"name":"zai-glm-5-3","alias":"glm-5-3","thinking":"high"}}'):
+            with self.subTest(config=config):
+                p=self.invoke(FAKE_CONFIG=config,FAKE_SESSION_META='')
+                self.assertEqual(p.returncode,0,p.stderr)
+                latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
+                sel=latest['session_selection']
+                self.assertEqual(sel['state'],'unknown')
+                self.assertIsNone(sel['session_alias'])
+                self.assertIsNone(sel['session_wire'])
+                self.assertIsNone(sel['session_thinking'])
+
+    def test_311_string_final_text_and_textless_trailing_entry(self):
+        # The real 3.1.1 message list uses assistant.content strings; an
+        # earlier acknowledgment is never selected as the final delivery.
+        p=self.invoke(FAKE_MODE='strings')
+        self.assertEqual(p.returncode,0,p.stderr)
+        fr=self.receipt()['final_response']
+        self.assertEqual(fr['state'],'present')
+        self.assertEqual(fr['message_count'],3)
+        self.assertEqual(fr['final_index'],2)
+        self.assertEqual(fr['final_content_form'],'string')
+        self.assertGreater(fr['final_text_bytes'],0)
+        self.assertEqual(len(fr['final_sha256']),64)
+        raw=next(self.receipts.glob('vibe-run-*/native-stdout.log')).read_text()
+        self.assertIn('SECRET-VERDICT accepted',raw)
+        # History ending in a tool-call-only assistant entry: recorded with
+        # provenance, but never as a completed text delivery.
+        p=self.invoke(FAKE_MODE='toolonly')
+        self.assertEqual(p.returncode,0,p.stderr)
+        latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
+        fr=latest['final_response']
+        self.assertEqual(fr['state'],'final_without_text')
+        self.assertEqual(fr['final_index'],2)
+        self.assertEqual(fr['final_text_bytes'],0)
+        self.assertEqual(len(fr['final_sha256']),64)
+        final=json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual(final['final_response'],'final_without_text')
+
+    def test_311_unsupported_thinking_levels_refuse_before_provider(self):
+        # 3.1.1 has no real thinking control (no overlay mechanism, no native
+        # flag); a low/medium request would silently execute the account's
+        # existing level, so it is refused before the provider with
+        # actionable documentation, not silently accepted.
+        for level in ('low','medium'):
+            with self.subTest(level=level):
+                p=self.invoke('--thinking',level)
+                self.assertEqual(p.returncode,2,p.stderr)
+                self.assertIn('thinking control',p.stderr)
+                self.assertIn('2.26.1',p.stderr)
+                self.assertFalse(self.marker.exists())
+                self.assertFalse(list(self.receipts.iterdir()))
+        # 'high' (the observed catalog level of the validated aliases) still
+        # runs, recorded with the effective effort unknown, never as verified
+        # server-side control.
+        p=self.invoke('--thinking','high')
         self.assertEqual(p.returncode,0,p.stderr)
         r=self.receipt()
-        self.assertEqual(r['requested_thinking'],'low')
+        self.assertEqual(r['requested_thinking'],'high')
+        self.assertEqual(r['configured_wire_effort'],'unknown')
+        self.assertEqual(r['effective_effort'],'unknown')
+
+    def test_311_thinking_mismatch_is_explicit(self):
+        # A requested level that the selected model's own declaration
+        # contradicts is an explicit mismatch, never a silent substitution.
+        p=self.invoke(FAKE_CONFIG='{"active_model":"mistral-large-4-0-3","routed_model_config":{"name":"mistral-large-4-0","alias":"mistral-large-4-0-3","thinking":"low"}}',
+                      FAKE_SESSION_META='')
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['requested_thinking'],'high')
         self.assertEqual(r['session_selection']['state'],'mismatch')
-        self.assertIn('thinking high != requested low',r['session_selection']['detail'])
+        self.assertIn('thinking low != requested high',r['session_selection']['detail'])
 
     def test_311_garbage_or_assistantless_message_list_keeps_export_verdict(self):
         for mode,state in (('garbage','invalid'),('notlist','invalid'),('trailing','invalid'),
@@ -681,11 +812,18 @@ class Vibe31Tests(unittest.TestCase):
             return json.loads(cp.stdout)
         self.assertEqual(contract()['state'],'valid')
         self.assertEqual(contract('--max-turns','none','--max-price','none','--max-tokens','none','--time-limit','none')['state'],'valid')
+        # The offline preflight cannot know the CLI version, so it accepts the
+        # union of thinking choices exactly as it accepts the union of cap
+        # choices; the run narrows per detected version before the provider.
+        self.assertEqual(contract('--thinking','low')['state'],'valid')
+        self.assertEqual(contract('--thinking','medium')['state'],'valid')
+        self.assertEqual(contract('--turns','none')['state'],'invalid')
         self.assertEqual(contract('--max-turns','181')['state'],'invalid')
         self.assertEqual(contract('--max-tokens','0')['state'],'invalid')
         self.assertEqual(contract('--max-price','nan')['state'],'invalid')
         self.assertEqual(contract('--max-tokens','1.5')['state'],'invalid')
         self.assertEqual(contract('--max-turns','0x10')['state'],'invalid')
+        self.assertEqual(contract('--thinking','extrahigh')['state'],'invalid')
 
     def test_311_glm_alias_supported_with_wire_verification(self):
         p=self.invoke('--model','glm-5-3',EXPECT_MODEL='glm-5-3',EXPECT_WIRE='zai-glm-5-3')

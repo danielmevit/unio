@@ -50,9 +50,11 @@ Command shapes are identical across versions; the adapter detects
 `vibe --version` at launch and applies the matching, validated behavior. The
 `--model` choice is validated per version: `mistral-large-4-0-3` is refused on
 2.26.1 and `mistral-medium-3-5` is refused on 3.1.1, always before the provider
-is invoked. The offline route-contract preflight accepts the union of aliases
-and cap choices; the adapter applies the version-specific rule before launch
-with the same shared parser and bounds, so dispatch and execution agree.
+is invoked. The offline route-contract preflight accepts the union of aliases,
+cap choices and thinking levels (it cannot know the CLI version); the adapter
+applies the version-specific rule before launch with the same shared parser
+and bounds — including the 3.1.1-only cap omission `none` and the 3.1.1 refusal
+of unsupported thinking levels — so dispatch and execution agree.
 
 With an installer that packages the adapter, point the same lines at the
 installed copy instead, for example
@@ -88,21 +90,42 @@ the owner's own catalog. The built-in auto-approve agent receives only
 bash/read_file/write_file/edit/grep tools on both versions. Worktrees and
 these flags provide trusted-host execution, not an operating-system sandbox.
 
-The per-session selection is verified from the native export's returned
-metadata, not from the catalog default: the receipt records
-`session_selection` as `verified` only when the export's redacted config shows
-the requested alias, expected wire name and requested thinking; contradictory
-metadata is an explicit `mismatch` and missing metadata stays `unknown`.
-Neither can be recorded as a verified selection. Configuration/export metadata
-is not server identity evidence: effective model/effort and remaining
-subscription allowance remain Unknown on every version.
+The per-session selection is verified from what the owned invocation actually
+selected, read in priority order: the bounded `session/meta.json` the native
+3.1.1 CLI writes under the output directory (the session's actually selected
+client model), the export config's per-session section, and the export
+config's `active_model`. The config's `routed_model_config` /
+`routed_default_model` describe the account's DEFAULT route, not this
+session's selection: their identifiers are used only when the default
+declaration itself names the selected alias, and are otherwise recorded
+separately as `routed_default_*` fields, so a contradicting observation stays
+preserved instead of silently resolving. The receipt records
+`session_selection` as `verified` only when an actual selected alias AND wire
+name are present and match the request; partial, catalog-only or default-only
+identity metadata stays `unknown`, never `verified`. Effort has its own
+provenance: only a declaration attributable to the selected model is recorded
+as the session thinking; missing effort metadata stays `unknown` (never proof
+that the requested level took effect). Contradictory observations are an
+explicit `mismatch`, including conflicts between the session record and the
+export config, which are reported with both claims. Configuration/export
+metadata is not server identity evidence: effective model/effort and
+remaining subscription allowance remain Unknown on every version.
 
-High is the default; optional `--thinking {low,medium,high}` remains accepted
-on both versions. On 2.26.1 the level travels through the process-local model
-override; on 3.1.1 there is no per-run thinking flag, so the level comes from
-the alias's catalog entry and the adapter verifies it from session metadata,
-recording a mismatch explicitly instead of silently substituting. Do not
-promise xhigh or server-proven effective effort on this route. The standing
+High is the default. On 2.26.1 `--thinking {low,medium,high}` remains
+supported unchanged: the level travels through the tested process-local model
+override, which the installed CLI honors per run. On 3.1.1 there is no real
+per-run thinking control at all — the `VIBE_*` overlay mechanism is
+2.26.1-only and the 3.1.1 CLI documents no thinking flag — so a requested
+low/medium would silently execute the account's existing catalog level, and
+such a request is refused before any provider invocation with an actionable
+message instead of being silently accepted. Only `high` runs on 3.1.1, and
+only because it matches the catalog declaration observed for the validated
+aliases (2026-11-10 selection reference); the adapter claims no thinking
+control on 3.1.1 and records the configured and effective effort as Unknown
+there. A declaration that contradicts the requested level is an explicit
+`mismatch`; a declared or missing level is never evidence that the requested
+level took effect on the server. Do not promise xhigh or server-proven
+effective effort on this route. The standing
 [effort policy](../development/MODEL-EFFORT.md) permits at most supported xhigh on
 other routes.
 
@@ -110,10 +133,13 @@ Ordinary implementation defaults are 2,000,000 cumulative tokens, $5 estimated
 price, 120 turns and 90 minutes. Substantial work can explicitly select up to 16,000,000 cumulative tokens,
 $10, up to 180 turns and 120 minutes. Values must be finite decimal numbers
 within those supported bounds (parsed as integers/floats only; nan/inf/hex or
-fractional integers are refused). These bounds are the adapter's documented
-supported range and are identical for the dispatch contract and the adapter,
-on both versions. There is no hidden universal turn policy: 120 is only the
-default and the owner picks a task-sized value.
+fractional integers are refused). These numeric ceilings are retained adapter
+policy, not provider limits: a provider may stop earlier for its own reasons,
+and a value within the bound is never evidence of actual provider capacity or
+remaining allowance. They are the adapter's documented supported range and are
+identical for the dispatch contract and the adapter, on both versions. There
+is no hidden universal turn policy: 120 is only the default and the owner
+picks a task-sized value.
 
 On 3.1.1 each cap additionally accepts the documented choice `none`, which
 omits the native flag so the CLI's own default applies; the observed native
@@ -165,11 +191,18 @@ required-artifact gates stay authoritative).
 On 3.1.1 the headless run uses `--output json`: stdout is one JSON message
 list. The actual final completed assistant reply is the LAST assistant entry
 of that list and can carry a verdict/summary absent from the saved export
-report; the adapter never selects an earlier acknowledgement. The receipt
-records only bounded provenance for it (list length, assistant count, final
-index, SHA-256, byte sizes); the raw message list stays in the private
-`native-stdout.log`. A malformed or non-list stdout is recorded as `invalid`
-without changing the exit semantics.
+report; the adapter never selects an earlier acknowledgement. The validated
+assistant content forms are a plain string (the shape real 3.1.1 captures
+use) and a list of typed text blocks; both are counted. The receipt records
+only bounded provenance for it (list length, assistant count, final index,
+exact content-form-tagged SHA-256, byte sizes); the raw message list stays in
+the private `native-stdout.log`. `present` requires actual final text bytes:
+a history ending in a tool-call-only assistant entry or an empty final
+acknowledgment is recorded as `final_without_text`, and a malformed or
+non-list stdout as `invalid` — none of these states changes the exit
+semantics, and none is proof of a completed required delivery; the actual
+CLI exit, the export verdict, required artifacts and acceptance stay
+separate and authoritative.
 
 Vibe exits 0 when finished, 1 on usage/configuration errors, 2 for infrastructure
 failure, and 3 for limits/refusal (including its own `--time-limit` deadline).
@@ -254,14 +287,21 @@ remaining allowance stay Unknown. The earlier native exit 3 at the local
 ## Test evidence and unresolved live behavior
 
 Offline evidence (no live provider call was made for this change): the 2.26.1
-fixture suite (22 tests) is unchanged and green, and new 3.1.1 fixture tests
-(12 tests) cover explicit `--model` selection, absence of `VIBE_*` overlays,
-`--output json` final-reply provenance, verified/mismatch/unknown selection
-from export metadata, cap omission with observed native limits, native
-limit/deadline exits and stop reasons, missing/malformed exports, unpriced
-USD staying Unknown, version/model gating before any provider call, and
-contract parity. The route-contract, adapter-budget, adapter-outcome and
-adapter-install suites are green with the regenerated embedded payload.
+fixture suite is unchanged and green (including low/medium overlay coverage),
+and the 3.1.1 fixture tests cover explicit `--model` selection, absence of
+`VIBE_*` overlays, `--output json` final-reply provenance including the real
+string content form and textless trailing entries, selection verified from
+actual session identity: the real captured GLM session shape where the
+session selected glm-5-3/zai-glm-5-3 while the export's routed default
+describes Mistral Large 4, partial/default-only or thinking-only metadata
+staying unknown, per-version cap omission with observed native limits,
+native limit/deadline exits and stop reasons, missing/malformed exports,
+unpriced USD staying Unknown, the 3.1.1 refusal of unsupported thinking
+levels before any provider call, version/model gating, and contract parity.
+The new selection, string-final-text and thinking-refusal regressions were
+verified to fail on the recovered base af2a2d0 before the fix. The
+route-contract, adapter-budget, adapter-outcome and adapter-install suites
+are green with the regenerated embedded payload.
 
 Unresolved live behavior: no live 3.1.1 provider trial was run from this task;
 the lead assigns one separately after review. The real 3.1.1 end-to-end
