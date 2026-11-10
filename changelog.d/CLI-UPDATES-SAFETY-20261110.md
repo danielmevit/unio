@@ -1,4 +1,4 @@
-# CLI-UPDATES-SAFETY-20261110 — held-safe slice correction: installs refused, honest Unknown facts, bounded reads/probes
+# CLI-UPDATES-SAFETY-20261110 — slice corrections: installs refused, honest Unknown facts, bounded nonblocking reads/probes, interactive-only refresh
 
 Correction to CLI-UPDATES-20261110 (same day, same base 3e5d38c9) after
 live lead probes found real failures. ZERO real updates, providers,
@@ -58,3 +58,46 @@ flooded probe bounds with bystander sessions never signalled; obscured
 Unknown and the vibe launcher/native pair; engine help/awareness/
 payload-consistency checks. Compatibility stays Unknown; route guards and
 adapter pins untouched; no model, provider, auth or account calls.
+
+Same-day review correction (external REQUEST-CHANGES on the exact base,
+reproduced with fake fixtures and a local canary proxy only): cache and
+lock reads are now NONBLOCKING as well as no-follow — a FIFO or device
+cache.json or worker lock can never block startup, and the state
+directory is refused on read AND write through a pinned no-follow
+directory fd (a symlinked state dir's hostile facts are Unknown, a
+symlinked cache or refresh.lock is never written through; the refresh
+lock itself is opened O_NOFOLLOW|O_NONBLOCK with a regular-file check
+before any truncate). Cached route fields are validated field by field:
+wrong-typed or oversized strings (status 5, version 7, control
+characters) are quiet Unknown with no traceback, never reused or printed.
+A `checked_at` timestamp in the future beyond a 300 s clock-skew
+tolerance is Unknown — never fresh-forever (WSL clock skew). The refresh
+deadline is now hard twice: Deadline is a BaseException that no per-route
+`except Exception` can swallow, and an exactly-owned watchdog child
+(SIGKILL by exact pid plus boot start time, 15 s past the deadline)
+bounds the process through its actual lifetime — so DNS/slow-read hangs
+cannot outlive their bound; a post-kill wait TimeoutExpired is handled
+honestly (a D-state child may survive: exit stays None/Unknown, never a
+false killed claim). The automatic startup refresh now runs ONLY for
+genuine interactive owner invocations (stdin AND stdout are a TTY);
+noninteractive plain unio/help/resume/doctor invocations stay fully
+offline with no detached writers, latest is never fetched for an absent
+binary, quality-check.sh sets UNIO_CLI_UPDATES_OFFLINE=1 explicitly for
+the fixture gate, and explicit --check stays the bounded metadata opt-in.
+UNIO_CLI_UPDATES_MAX_AGE and _TIMEOUT now really apply to startup and
+check (explicit flags still override them; the argparse default no longer
+masks the env). Read-only probes set vibe's documented auto-update flags
+(VIBE_ENABLE_UPDATE_CHECKS/VIBE_ENABLE_AUTO_UPDATE=false — the worker's
+own pair); the uv-tool label is bound to the resolved binary's real path
+inside the validated uv tools layout only (uv tool list output carries no
+path, so it can never mislabel another install). Update refusals carry
+truthful per-route reasons — maintenance_not_implemented, check-only-route
+(claude/codex), manual-unverified-install (vibe outside the verified uv
+layout) — and docs/help/changelogs describe the actual manual-only policy,
+computed observations and known limits (node/python sessions started
+through PATH symlinks are a stated unmatched blind spot). New offline
+regressions cover every reproduced defect: FIFO cache, symlinked state
+dir on read, wrong-typed entries, refresh.lock symlink, hard deadline
+against a hanging local proxy, noninteractive no-refresh/network-noise,
+interactive pty refresh, future timestamps/WSL skew, env precedence and
+uv-tool binding.

@@ -12,6 +12,11 @@ QUALITY_CHECK_DIR=$(mktemp -d)
 trap 'rm -rf -- "$QUALITY_CHECK_DIR"' EXIT
 cd "$QUALITY_REPO"
 export UNIO_AUTO_VERIFY=0 UNIO_AUTO_OFF=0 UNIO_AUTO_SYNC=0
+# The whole quality gate is an offline fixture environment: no suite may
+# perform CLI-update metadata fetches, even though awareness lines are
+# cached-facts-only for noninteractive invocations by design. This is an
+# explicit env bound, never a claim that an isolated tmpfs blocks network.
+export UNIO_CLI_UPDATES_OFFLINE=1
 for dependency in python3 shellcheck node; do
   command -v "$dependency" >/dev/null || { echo "missing dependency: $dependency" >&2; exit 1; }
 done
