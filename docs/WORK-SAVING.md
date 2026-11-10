@@ -111,6 +111,24 @@ archive is full or evidence is unsafe, the new save is refused without deleting
 history. There is no automatic archive purge. `unio save usage` reports active
 and archived counts, bounds and evidence.
 
+Before expensive worktree capture or full-store rereads, a bounded refusal-only
+capacity preflight checks strict metadata under unchanged protection rules. When
+every active save is protected (e.g. 32 distinct newest saves, valid private 0600
+claim pins, unreadable claims or active caps with zero eligible older history), capture
+refuses immediately with exit 1 (`excessive`) without reading worktree files, running
+git capture or rereading stored file bodies. On ambiguity (such as concurrent
+archive/publish interleavings or listings modified during inspection), eligible archival
+history or matching same-run periodic saves, preflight falls through to the existing safe
+path. Preflight manifest reads are charged to a separate bounded metadata allowance
+(48 MiB, at most 256 archive entries), never to the 64 MiB capture read allowance;
+exhausting that allowance falls through. Only the capture deadline and lock/unknown
+outcomes propagate from per-entry inspection; unrelated unsafe or invalid archive
+entries are skipped as ambiguity; once capture proves a periodic save changed, a bounded post-capture capacity
+preflight check refuses early if the store remains full, preventing full-store deep body
+rereads, while final publication and retention validation always remains under the
+publication lock. Early refusal alone does not unblock an already-full store; retention
+rules and caps remain unchanged.
+
 `inspect` validates every stored byte and reports the save, or a worker's
 last good save, latest attempt and live state. Live state is Unknown while
 the worker is busy, its native lock or coordination parents are unsafe, or it
@@ -244,6 +262,21 @@ bounded cancellation. It uses private installations and deliberate offline
 mocks; one case waits for the real sixty-second periodic interval and one
 checks the thirty-second final-cancellation ceiling. The quality gate includes
 this suite.
+
+`tests/unio-save-cap-preflight.py` verifies counter-based refusal-only capacity
+preflight behavior: full protected stores (32 distinct newest saves, valid private 0600
+claim pins, unreadable claims, corrupt/symlink evidence) refuse with zero capture passes,
+zero body/bundle reads and zero deep loads; eligible history archives and publishes;
+unchanged periodic no-ops return 0; changed periodic saves avoid full-store deep rereads;
+concurrent archive/publish interleavings fall through on ambiguity without false refusal;
+a deadline that expires after archive enumeration has started (hooked on the archive
+listing) is refused by the per-entry archive deadline check with attempt status `refused`
+and reason `excessive`; unrelated unsafe (0755) or invalid (0644 manifest) archive entries
+do not block an archived same-run unchanged periodic no-op or replace the attempt outcome.
+Real-capture differentials on a store of 32 large (~0.84 MiB) manifests compare the
+preflight disabled (baseline) against current: a 20 MiB manual save and a 6 MiB changed
+periodic save both publish and archive one save, and preflight leaves the capture byte
+allowance unchanged on both periodic passes.
 
 `tests/unio-work-saving-continue.py` drives real offline native runs: exact
 restored state and separately authorized task text, real exits, replay and

@@ -30178,6 +30178,206 @@ def require_lock(root, worker):
     return fd
 
 
+PREFLIGHT_META_BYTES, PREFLIGHT_ARCHIVE_ENTRIES = 48 * MIB, 2 * ARCHIVE_CAP_SAVES
+
+
+class PreflightBound(Exception):
+    """Preflight-local metadata allowance exhausted: fall through, never refuse."""
+
+
+class PreflightBudget:
+    """Shares the capture deadline but never charges capture's byte allowance."""
+
+    def __init__(self, budget, reads=None):
+        self.budget = budget
+        self.left = PREFLIGHT_META_BYTES if reads is None else reads
+
+    def remaining(self):
+        return self.budget.remaining() if self.budget is not None else None
+
+    def charge(self, n):
+        self.left -= n
+        if self.left < 0:
+            raise PreflightBound()
+
+
+def preflight_must_raise(error):
+    # Deadline and lock/cancellation outcomes are real; other per-entry
+    # evidence errors are ambiguity and must fall through to the old path.
+    return (error.code in ('lock_busy', 'unknown')
+            or (error.code == 'excessive' and 'second bound' in error.message))
+
+
+def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
+    """Refusal-only bounded capacity check before expensive capture.
+
+    Proves whether a save cannot be published under unchanged retention
+    rules. Reads strict metadata only (no body/bundle/context reads), charged
+    to a separate preflight allowance; exhausting it falls through.
+    """
+    try:
+        return _capacity_preflight(store, worker, PreflightBudget(budget), reason, run_id)
+    except PreflightBound:
+        return
+
+
+def _capacity_preflight(store, worker, budget, reason, run_id):
+    if store is None:
+        return
+    budget.remaining()
+    active_names = [name for name in bounded_names(store)
+                    if name not in ('attempts', 'claims', 'archive') and not name.startswith('.staging-')]
+    if len(active_names) < CAP_WORKER and len(active_names) <= CAP_PROJECT:
+        return
+
+    if len(active_names) > CAP_PROJECT and reason != 'periodic':
+        post_names = [name for name in bounded_names(store)
+                      if name not in ('attempts', 'claims', 'archive') and not name.startswith('.staging-')]
+        if set(post_names) == set(active_names):
+            raise Refuse('excessive', 'active store already exceeds the project cap; existing evidence was preserved')
+        if len(post_names) > CAP_PROJECT:
+            active_names = post_names
+        else:
+            return
+
+    claims, bad_claims = load_claims(store)
+    claim_pins = {claim['save_id'] for claim in claims}
+    valid_candidates = []
+    corrupt_entries = []
+    for name in active_names:
+        budget.remaining()
+        if not HEX32.fullmatch(name):
+            corrupt_entries.append((name, None))
+            continue
+        path = os.path.join(store, name)
+        try:
+            st = os.lstat(path)
+        except (FileNotFoundError, OSError) as error:
+            if isinstance(error, FileNotFoundError) or getattr(error, 'errno', None) == errno.ENOENT:
+                return
+            corrupt_entries.append((name, None))
+            continue
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) != 0o700:
+            corrupt_entries.append((name, lenient_worker(path)))
+            continue
+        try:
+            try:
+                dfd = open_dir(path)
+            except (FileNotFoundError, OSError) as error:
+                if isinstance(error, FileNotFoundError) or getattr(error, 'errno', None) == errno.ENOENT:
+                    return
+                corrupt_entries.append((name, lenient_worker(path)))
+                continue
+            try:
+                private_at(dfd, 'manifest.json', 'file')
+                raw = read_at(dfd, 'manifest.json', MAX_MANIFEST, budget=budget, what='manifest')[1]
+                doc, _ = manifest_doc(strict_json(raw, MAX_MANIFEST, 'manifest'), name)
+            finally:
+                os.close(dfd)
+            w = doc['worker']
+            pub = when(doc['published_at'])
+            if pub is None:
+                raise ValueError('invalid published timestamp')
+            valid_candidates.append(dict(id=name, worker=w, published=pub, run_id=doc.get('run_id')))
+        except Refuse as error:
+            if preflight_must_raise(error):
+                raise
+            if not os.path.exists(path):
+                return
+            corrupt_entries.append((name, lenient_worker(path)))
+        except (OSError, ValueError, KeyError, TypeError):
+            if not os.path.exists(path):
+                return
+            corrupt_entries.append((name, lenient_worker(path)))
+
+    if reason == 'periodic':
+        if any(item['worker'] == worker and item.get('run_id') == run_id for item in valid_candidates):
+            return
+        try:
+            archive = archive_for_store(store)
+        except Exception:
+            archive = None
+            return
+        if archive:
+            try:
+                for index, name in enumerate(bounded_names(archive)):
+                    budget.remaining()
+                    if index >= PREFLIGHT_ARCHIVE_ENTRIES:
+                        return
+                    if HEX32.fullmatch(name):
+                        try:
+                            wrapper = under(archive, name)
+                            if private_dir(wrapper, False):
+                                s_path = under(wrapper, 'snapshot')
+                                if private_dir(s_path, False):
+                                    m_fd = open_dir(s_path)
+                                    try:
+                                        private_at(m_fd, 'manifest.json', 'file')
+                                        raw_m = read_at(m_fd, 'manifest.json', MAX_MANIFEST, budget=budget, what='manifest')[1]
+                                        doc_m = strict_json(raw_m, MAX_MANIFEST, 'manifest')
+                                        if (isinstance(doc_m, dict) and doc_m.get('worker') == worker
+                                                and doc_m.get('run_id') == run_id):
+                                            return
+                                    finally:
+                                        os.close(m_fd)
+                        except PreflightBound:
+                            raise
+                        except Refuse as error:
+                            if preflight_must_raise(error):
+                                raise
+                            continue
+                        except Exception:
+                            continue
+            except PreflightBound:
+                raise
+            except Refuse as error:
+                if preflight_must_raise(error):
+                    raise
+                return
+            except Exception:
+                return
+
+    post_names = [name for name in bounded_names(store)
+                  if name not in ('attempts', 'claims', 'archive') and not name.startswith('.staging-')]
+    if set(post_names) != set(active_names):
+        return
+
+    post_claims, post_bad = load_claims(store)
+    if post_claims != claims or post_bad != bad_claims:
+        return
+
+    if len(active_names) > CAP_PROJECT:
+        raise Refuse('excessive', 'active store already exceeds the project cap; existing evidence was preserved')
+
+    if bad_claims:
+        if len(active_names) >= CAP_PROJECT:
+            raise Refuse('excessive', 'unreadable claims make save pins unknown; no history was archived')
+        mine_total = sum(1 for item in valid_candidates if item['worker'] == worker) + sum(1 for _, w in corrupt_entries if w == worker)
+        if mine_total >= CAP_WORKER:
+            raise Refuse('excessive', 'unreadable claims make save pins unknown; no history was archived')
+        return
+
+    valid_candidates.sort(key=lambda item: (item['published'], item['id']), reverse=True)
+    newest_workers = set()
+    newest_pins = set()
+    for item in valid_candidates:
+        if item['worker'] not in newest_workers:
+            newest_workers.add(item['worker'])
+            newest_pins.add(item['id'])
+    pins = claim_pins | newest_pins
+    eligible = [item for item in valid_candidates if item['id'] not in pins]
+
+    mine_valid = [item for item in valid_candidates if item['worker'] == worker]
+    mine_corrupt = sum(1 for _, w in corrupt_entries if w == worker)
+    mine_total = len(mine_valid) + mine_corrupt
+    mine_eligible = sum(1 for item in eligible if item['worker'] == worker)
+    if mine_total - mine_eligible + 1 > CAP_WORKER:
+        raise Refuse('excessive', 'active worker cap reached; pinned/corrupt evidence was preserved')
+
+    if len(active_names) - len(eligible) + 1 > CAP_PROJECT:
+        raise Refuse('excessive', 'active project cap reached; newest, pinned and corrupt evidence was preserved')
+
+
 def cmd_create(root, worker, task):
     seconds = capture_seconds()  # Refuse bad configuration before locks/store effects.
     with os.fdopen(require_lock(root, worker), 'rb'):
@@ -30190,6 +30390,7 @@ def create_locked(root, worker, task, reason='manual', run_id=None, provider_exi
     observed_at = stamp()
     try:
         budget = Budget(seconds)
+        capacity_preflight(store, worker, budget, reason=reason, run_id=run_id)
         first, task_bytes = capture(root, worker, task, budget)
         fault('between-passes')
         second, task_bytes2 = capture(root, worker, task, budget)
@@ -30201,6 +30402,7 @@ def create_locked(root, worker, task, reason='manual', run_id=None, provider_exi
                     and previous['manifest']['fingerprint'] == second['fingerprint']):
                 print('unio: periodic state unchanged; keeping save ' + previous['id'])
                 return 0  # No new bytes: retain the existing good checkpoint.
+            capacity_preflight(store, worker, budget, reason='manual')
         scan_history(second['repo']['wt'], budget, second['git']['commit_ids'])
         save_id, evicted = publish(root, store, worker, task, second, task_bytes, observed_at, budget,
                                   reason, run_id, provider_exit)
