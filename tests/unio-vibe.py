@@ -424,5 +424,277 @@ class VibeTests(unittest.TestCase):
             worker.owned_call([sys.executable,'-c',cmd],dict(os.environ),.2)
 
 
+FAKE31 = r'''
+import json,os,pathlib,sys,time
+if sys.argv[1:]==['--version']:
+ print('vibe '+os.environ.get('FAKE_VERSION','3.1.1'));raise SystemExit()
+a=sys.argv[1:]
+pathlib.Path(os.environ['MARKER']).open('a').write('call\n')
+get=lambda k:a[a.index(k)+1] if k in a else None
+# 3.1.1 selection is the documented explicit --model ALIAS; no VIBE_* overlay.
+assert get('--model')==os.environ['EXPECT_MODEL']
+assert 'VIBE_ACTIVE_MODEL' not in os.environ and 'VIBE_MODELS' not in os.environ
+assert 'VIBE_ALLOWED_MODELS' not in os.environ and 'VIBE_COMPACTION_MODEL' not in os.environ
+assert os.environ['VIBE_ENABLE_UPDATE_CHECKS']=='false' and os.environ['VIBE_ENABLE_AUTO_UPDATE']=='false'
+assert 'VIBE_INVENTED_OVERRIDE' not in os.environ
+assert get('--output')=='json' and get('--agent')=='auto-approve' and '--trust' in a
+assert '-p' not in a and '--auto-approve' not in a
+for flag,key,conv in [('--max-price','EXPECT_PRICE',float),('--max-tokens','EXPECT_TOKENS',int),
+                      ('--time-limit','EXPECT_TIME',float),('--max-turns','EXPECT_TURNS',int)]:
+ if os.environ.get(key,'')=='':
+  assert get(flag) is None,(flag,'must be omitted')
+ else:
+  assert conv(get(flag))==conv(os.environ[key]),(flag,get(flag))
+assert [a[i+1] for i,v in enumerate(a) if v=='--enabled-tools']==['bash','read_file','write_file','edit','grep']
+content=pathlib.Path(get('--prompt-file')).read_text()
+assert len(content)==int(os.environ['EXPECT_PROMPT_LENGTH'])
+assert content not in ' '.join(a)
+mode=os.environ.get('FAKE_MODE','ok');code=int(os.environ.get('FAKE_EXIT','0'))
+if mode=='missing':raise SystemExit(code)
+if mode=='sleep':time.sleep(float(os.environ.get('FAKE_SLEEP','5')));raise SystemExit(code)
+msgs=[{'role':'user','content':[{'type':'text','text':'SECRET-PROMPT'}]},
+      {'role':'assistant','content':[{'type':'text','text':'SECRET-ACK'}]},
+      {'role':'assistant','content':[{'type':'text','text':'SECRET-VERDICT accepted'}]}]
+if mode=='nomessages':msgs=[{'role':'user','content':[{'type':'text','text':'x'}]}]
+if mode=='notlist':msgs={'messages':[]}
+sys.stdout.write(json.dumps(msgs))
+if mode=='garbage':sys.stdout.write(' this is not json')
+if mode=='trailing':sys.stdout.write('\nNEVER-IN-RECEIPT\n')
+alias=os.environ['EXPECT_MODEL'];wire=os.environ['EXPECT_WIRE']
+config=json.loads(os.environ.get('FAKE_CONFIG',
+    '{"active_model":"%s","routed_model_config":{"name":"%s","provider":"mistral","alias":"%s","thinking":"%s"}}'
+    %(alias,wire,alias,os.environ.get('EXPECT_THINKING','high'))))
+x={'schema_version':1,'vibe_version':'3.1.1','outcome':os.environ.get('FAKE_OUTCOME','finished' if code==0 else 'turn_limit'),
+   'stop_reason':None if code==0 else 'limit','exit_code':code,'session_id':'sess',
+   'usage':{'input_tokens':1543219,'output_tokens':26307,'cached_input_tokens':1273088,'total_tokens':1569526},
+   'cost_usd':0.0,'steps':33,'config':config,'error':{'message':'NEVER-IN-RECEIPT'},
+   'limits':{'max_turns':None if get('--max-turns') is None else int(get('--max-turns')),
+             'max_price':None if get('--max-price') is None else float(get('--max-price')),
+             'max_tokens':None if get('--max-tokens') is None else int(get('--max-tokens')),
+             'time_limit_s':None if get('--time-limit') is None else float(get('--time-limit'))}}
+if mode=='badlimits':x['limits']={'max_turns':'many'}
+if mode=='badsteps':x['steps']=-1
+pathlib.Path(get('--output-dir'),'export.json').write_text(json.dumps(x))
+print('NEVER-IN-RECEIPT',file=sys.stderr)
+raise SystemExit(code)
+'''
+
+
+class Vibe31Tests(unittest.TestCase):
+    """Vibe 3.1.1: explicit --model alias, --output json message list, omittable caps."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="vibe31-offline-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.prompt = self.root / "task.md"
+        self.prompt.write_text("b" * 4096)
+        self.receipts = self.root / "receipts"
+        self.receipts.mkdir(mode=0o700)
+        cli = self.root / "vibe"
+        cli.write_text("#!" + sys.executable + "\n" + FAKE31)
+        cli.chmod(0o700)
+        self.marker = self.root / "calls"
+        self.env = dict(os.environ, PATH=str(self.root)+os.pathsep+os.environ['PATH'],
+                        MARKER=str(self.marker), EXPECT_PROMPT_LENGTH="4096",
+                        EXPECT_MODEL="mistral-large-4-0-3", EXPECT_WIRE="mistral-large-4-0",
+                        EXPECT_PRICE="5.0", EXPECT_TOKENS="2000000", EXPECT_TIME="5400", EXPECT_TURNS="120",
+                        VIBE_ACTIVE_MODEL="wrong", VIBE_INVENTED_OVERRIDE="wrong")
+
+    def invoke(self, *args, **env):
+        return subprocess.run([sys.executable,"-B",str(SCRIPT),"--model","mistral-large-4-0-3",
+                               "--prompt-file",str(self.prompt),"--receipt-dir",str(self.receipts),*args],
+                              env=dict(self.env,**env),capture_output=True,text=True,timeout=30)
+
+    def receipt(self):
+        paths=list(self.receipts.glob('vibe-run-*/receipt.json'))
+        self.assertEqual(len(paths),1)
+        return json.loads(paths[0].read_text())
+
+    def test_311_explicit_model_json_verified_selection_final_response_and_unpriced_usd(self):
+        p=self.invoke()
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['cli_version'],'3.1.1')
+        self.assertEqual(r['output_mode'],'json')
+        self.assertEqual(r['requested_model'],'mistral-large-4-0-3')
+        self.assertEqual(r['configured_wire_model'],'mistral-large-4-0')
+        self.assertEqual(r['configured_wire_effort'],'unknown')
+        self.assertEqual(r['effective_model'],'unknown')
+        self.assertEqual(r['remaining_allowance'],'unknown')
+        sel=r['session_selection']
+        self.assertEqual(sel['state'],'verified')
+        self.assertEqual(sel['session_alias'],'mistral-large-4-0-3')
+        self.assertEqual(sel['session_wire'],'mistral-large-4-0')
+        self.assertEqual(sel['session_thinking'],'high')
+        fr=r['final_response']
+        self.assertEqual(fr['state'],'present')
+        self.assertEqual(fr['message_count'],3)
+        self.assertEqual(fr['assistant_messages'],2)
+        self.assertEqual(fr['final_index'],2)  # the LAST assistant reply, not an earlier ack
+        self.assertEqual(len(fr['final_sha256']),64)
+        self.assertGreater(fr['final_text_bytes'],0)
+        self.assertEqual(r['export']['usage']['total_tokens'],1569526)
+        self.assertEqual(r['export']['usage']['cached_input_tokens'],1273088)
+        self.assertEqual(r['export']['limits']['max_turns'],120)
+        self.assertEqual(r['omitted_caps'],[])
+        b=r['budget_telemetry']
+        self.assertEqual(b['tokens'],{'used':1569526,'cap':2000000,'provenance':'reported'})
+        self.assertEqual(b['turns'],{'used':2,'cap':120,'provenance':'estimated'})
+        # Unpriced Mistral4: USD stays unknown, never 0/free, even with a native cost field.
+        self.assertEqual(b['usd']['used'],None)
+        self.assertEqual(b['usd']['provenance'],'unknown')
+        self.assertTrue(any('unknown, not zero' in n for n in b['notes']))
+        self.assertEqual(self.marker.read_text(),'call\n')
+        self.assertNotIn('NEVER-IN-RECEIPT',json.dumps(r)+p.stdout+p.stderr)
+        self.assertNotIn('SECRET',json.dumps(r)+p.stdout+p.stderr)
+        raw=next(self.receipts.glob('vibe-run-*/native-stdout.log')).read_text()
+        self.assertIn('SECRET-VERDICT accepted',raw)  # raw/private evidence preserved
+        final=json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual(final['cli_version'],'3.1.1')
+        self.assertEqual(final['selection'],'verified')
+        self.assertEqual(final['final_response'],'present')
+        self.assertEqual(final['adapter_exit'],0)
+
+    def test_311_owner_can_omit_caps_and_native_defaults_are_recorded(self):
+        p=self.invoke('--max-turns','none','--time-limit','none',
+                      EXPECT_TURNS='',EXPECT_TIME='')
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        self.assertEqual(sorted(r['omitted_caps']),['max_turns','time_limit'])
+        self.assertIsNone(r['native_limits']['max_turns'])
+        self.assertIsNone(r['native_limits']['time_limit'])
+        self.assertEqual(r['export']['limits']['max_turns'],None)
+        self.assertIsNone(r['export']['limits']['time_limit_s'])
+        # Omission is not an unlimited claim: supervisor bound remains, recorded separately.
+        self.assertEqual(r['supervisor_seconds'],7220)
+        b=r['budget_telemetry']
+        self.assertIsNone(b['turns']['cap'])
+        self.assertEqual(b['tokens']['cap'],2000000)
+
+    def test_311_native_limit_exit_three_and_stop_reason(self):
+        p=self.invoke(FAKE_EXIT='3')
+        self.assertEqual(p.returncode,3,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['process_exit'],3)
+        self.assertEqual(r['adapter_exit'],3)
+        self.assertEqual(r['export']['outcome'],'turn_limit')
+        self.assertEqual(r['stop_reason'],'turn_cap')
+        self.assertEqual(r['session_selection']['state'],'verified')
+
+    def test_311_exit_zero_without_export_is_incomplete(self):
+        p=self.invoke(FAKE_MODE='missing',FAKE_EXIT='0')
+        self.assertEqual(p.returncode,2,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['export_state'],'invalid_or_missing')
+        self.assertEqual(r['session_selection']['state'],'unknown')
+        final=json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual(final['adapter_exit'],2)
+        self.assertEqual(final['export_state'],'invalid_or_missing')
+
+    def test_311_malformed_export_limits_or_steps_refused(self):
+        for mode in ('badlimits','badsteps'):
+            with self.subTest(mode=mode):
+                p=self.invoke(FAKE_MODE=mode)
+                self.assertEqual(p.returncode,2,p.stderr)
+                latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
+                self.assertEqual(latest['export_state'],'invalid_or_missing')
+
+    def test_311_selection_mismatch_and_missing_metadata_never_verified(self):
+        p=self.invoke(FAKE_CONFIG='{"active_model":"glm-5-3","routed_model_config":{"name":"zai-glm-5-3","alias":"glm-5-3","thinking":"low"}}')
+        self.assertEqual(p.returncode,0,p.stderr)
+        sel=self.receipt()['session_selection']
+        self.assertEqual(sel['state'],'mismatch')
+        self.assertEqual(sel['session_alias'],'glm-5-3')
+        self.assertIn('!= requested',sel['detail'])
+        p=self.invoke(FAKE_CONFIG='{}')
+        self.assertEqual(p.returncode,0,p.stderr)
+        latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
+        self.assertEqual(latest['session_selection']['state'],'unknown')
+        self.assertNotIn('NEVER-IN-RECEIPT',json.dumps(latest))
+
+    def test_311_thinking_mismatch_is_explicit(self):
+        p=self.invoke('--thinking','low',EXPECT_THINKING='low',
+                      FAKE_CONFIG='{"active_model":"mistral-large-4-0-3","routed_model_config":{"name":"mistral-large-4-0","alias":"mistral-large-4-0-3","thinking":"high"}}')
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['requested_thinking'],'low')
+        self.assertEqual(r['session_selection']['state'],'mismatch')
+        self.assertIn('thinking high != requested low',r['session_selection']['detail'])
+
+    def test_311_garbage_or_assistantless_message_list_keeps_export_verdict(self):
+        for mode,state in (('garbage','invalid'),('notlist','invalid'),('trailing','invalid'),
+                           ('nomessages','no_final_assistant')):
+            with self.subTest(mode=mode):
+                p=self.invoke(FAKE_MODE=mode)
+                self.assertEqual(p.returncode,0,p.stderr)
+                latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
+                self.assertEqual(latest['export_state'],'valid')
+                self.assertEqual(latest['final_response']['state'],state)
+                self.assertEqual(latest['session_selection']['state'],'verified')
+                self.assertNotIn('SECRET',json.dumps(latest)+p.stdout)
+
+    def test_311_native_deadline_and_limit_stops_are_preserved(self):
+        p=self.invoke(FAKE_EXIT='3',FAKE_OUTCOME='deadline')
+        self.assertEqual(p.returncode,3,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['process_exit'],3)
+        self.assertEqual(r['export']['outcome'],'deadline')
+        self.assertEqual(r['stop_reason'],'time_cap')
+        self.assertEqual(r['remaining_allowance'],'unknown')
+        p=self.invoke(FAKE_EXIT='3',FAKE_OUTCOME='price_limit')
+        self.assertEqual(p.returncode,3,p.stderr)
+        latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
+        self.assertEqual(latest['stop_reason'],'price_cap')
+        # The adapter's own supervisor deadline stays separate (owned group kill):
+        with self.assertRaises(worker.Refusal):
+            worker.owned_call([sys.executable,'-c','import time;time.sleep(5)'],dict(os.environ),.2)
+
+    def test_model_and_none_caps_are_version_gated_before_provider(self):
+        # mistral-medium-3-5 is not a validated 3.1.1 alias: refuse, no call, no receipt.
+        p=self.invoke('--model','mistral-medium-3-5')
+        self.assertEqual(p.returncode,2,p.stderr)
+        self.assertIn('unsupported_model_for_cli_version',p.stderr)
+        self.assertFalse(self.marker.exists())
+        self.assertFalse(list(self.receipts.iterdir()))
+        # ...and the Mistral4 alias is not a validated 2.26.1 pin.
+        p=self.invoke('--model','mistral-large-4-0-3',FAKE_VERSION='2.26.1')
+        self.assertEqual(p.returncode,2,p.stderr)
+        self.assertIn('unsupported_model_for_cli_version',p.stderr)
+        self.assertFalse(self.marker.exists())
+        # 'none' caps are unsupported on 2.26.1: refused before provider.
+        p=self.invoke('--max-turns','none',FAKE_VERSION='2.26.1',EXPECT_TURNS='')
+        self.assertEqual(p.returncode,2,p.stderr)
+        self.assertIn('none',p.stderr)
+        self.assertFalse(self.marker.exists())
+        self.assertFalse(list(self.receipts.iterdir()))
+        # Unknown versions still refuse before provider.
+        p=self.invoke(FAKE_VERSION='3.2.0')
+        self.assertEqual(p.returncode,2,p.stderr)
+        self.assertIn('unsupported_cli',p.stderr)
+        self.assertFalse(self.marker.exists())
+
+    def test_311_contract_parity_for_new_alias_and_none(self):
+        def contract(*args):
+            cp=subprocess.run([sys.executable,"-B",str(SCRIPT),"--contract-validate",
+                               "--model","mistral-large-4-0-3","--receipt-dir","/private",*args],
+                              capture_output=True,text=True,timeout=10)
+            return json.loads(cp.stdout)
+        self.assertEqual(contract()['state'],'valid')
+        self.assertEqual(contract('--max-turns','none','--max-price','none','--max-tokens','none','--time-limit','none')['state'],'valid')
+        self.assertEqual(contract('--max-turns','181')['state'],'invalid')
+        self.assertEqual(contract('--max-tokens','0')['state'],'invalid')
+        self.assertEqual(contract('--max-price','nan')['state'],'invalid')
+        self.assertEqual(contract('--max-tokens','1.5')['state'],'invalid')
+        self.assertEqual(contract('--max-turns','0x10')['state'],'invalid')
+
+    def test_311_glm_alias_supported_with_wire_verification(self):
+        p=self.invoke('--model','glm-5-3',EXPECT_MODEL='glm-5-3',EXPECT_WIRE='zai-glm-5-3')
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['configured_wire_model'],'zai-glm-5-3')
+        self.assertEqual(r['session_selection']['state'],'verified')
+        self.assertEqual(r['session_selection']['session_wire'],'zai-glm-5-3')
+
+
 if __name__=='__main__':
     unittest.main()
