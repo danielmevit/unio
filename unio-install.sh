@@ -38273,12 +38273,14 @@ import fcntl
 import json
 import os
 import re
+import select
 import shutil
 import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import URLError
@@ -38571,18 +38573,95 @@ def cached_latest(route, cache, max_age):
     return None
 
 
-def run_bounded(argv, timeout, cwd=None, env=None, limit=16384):
-    """Fixed argv array only; bounded time and captured-output size."""
+# Read-only probes never install: where a CLI documents an official
+# environment flag that suppresses its native auto-updater, the probe
+# sets it. No other flags are invented, and no probe ever runs an updater.
+PROBE_ENV_FLAGS = {'claude': {'DISABLE_AUTOUPDATER': '1'}}
+PROBE_TIME_BOUND = 20  # seconds: version/metadata probe wall bound
+
+
+def probe_environment(route=None):
+    environment = dict(os.environ)
+    environment.update(PROBE_ENV_FLAGS.get((route or {}).get('name'), {}))
+    return environment
+
+
+def _terminate_owned_session(process):
+    """Clean only the exactly owned child: start_new_session made it a
+    session/group leader with its own pgid, so killpg reaches only that
+    group and its children — never any other session."""
     try:
-        process = subprocess.run(argv, cwd=cwd, env=env, timeout=timeout,
-                                 stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        text = process.stdout[:limit].decode('utf-8', errors='replace')
-        return process.returncode, text
+        group = os.getpgid(process.pid)
+    except OSError:
+        group = None
+    if group is not None and group != os.getpgid(0):
+        try:
+            os.killpg(group, signal.SIGKILL)
+        except OSError:
+            pass
+    try:
+        process.kill()
+    except OSError:
+        pass
+    try:
+        process.wait(timeout=5)
+    except OSError:
+        pass
+
+
+def run_bounded(argv, timeout, cwd=None, env=None, limit=16384):
+    """Fixed argv array only. Output size and wall time are bounded DURING
+    capture — never capture-everything-then-slice, and no owned child can
+    outlive its bound: past the byte limit or the deadline the child session
+    is killed (only its own group). A version probe can never mutate an
+    install."""
+    try:
+        process = subprocess.Popen(argv, cwd=cwd, env=env,
+                                   stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                   start_new_session=True)
+    except OSError:
+        return None, ''
+    fd = process.stdout.fileno()
+    deadline = time.monotonic() + timeout
+    chunks, total, timed_out = [], 0, False
+    try:
+        while total <= limit:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            ready, _, _ = select.select([fd], [], [], min(remaining, 1.0))
+            if not ready:
+                continue
+            block = os.read(fd, min(65536, limit + 1 - total))
+            if not block:
+                break  # EOF
+            chunks.append(block)
+            total += len(block)
+    except OSError:
+        timed_out = True
+    finally:
+        try:
+            process.stdout.close()
+        except OSError:
+            pass
+    truncated = total > limit
+    if truncated or timed_out:
+        _terminate_owned_session(process)
+        return None, b''.join(chunks)[:limit].decode('utf-8', errors='replace')
+    try:
+        remaining = max(0.0, deadline - time.monotonic())
+        # EOF may precede exit; a still-live child gets the rest of its bound
+        process.wait(timeout=remaining if remaining > 0 else 0.1)
     except subprocess.TimeoutExpired:
+        _terminate_owned_session(process)
+        return None, ''.join(
+            chunk.decode('utf-8', errors='replace') for chunk in chunks)
+    except OSError:
         return None, ''
-    except OSError as failure:
-        return None, ''
+    text = b''.join(chunks)[:limit].decode('utf-8', errors='replace')
+    return process.returncode, text
 
 
 def resolve_binary(route):
@@ -38607,7 +38686,7 @@ def detect_method(route, real, allow_exec):
     if allow_exec and route['name'] == 'vibe':
         uv = shutil.which('uv')
         if uv:
-            code, text = run_bounded([uv, 'tool', 'list'], 30)
+            code, text = run_bounded([uv, 'tool', 'list'], 30, env=probe_environment(route))
             if code == 0:
                 for line in text.splitlines():
                     if line.strip().startswith(UV_TOOL_PACKAGE + ' v'):
@@ -38615,10 +38694,11 @@ def detect_method(route, real, allow_exec):
     return 'unknown'
 
 
-def probe_version(route, path, cwd, timeout=20):
+def probe_version(route, path, cwd, timeout=PROBE_TIME_BOUND):
     if not path:
         return None, None
-    code, text = run_bounded([path, *route['version_argv']], timeout, cwd=cwd)
+    code, text = run_bounded([path, *route['version_argv']], timeout, cwd=cwd,
+                             env=probe_environment(route))
     version = None
     for line in text.splitlines():
         match = VERSION_RE.search(line.strip())
@@ -38688,7 +38768,8 @@ def latest_for(route, method, path, conf, timeout, allow_tool_exec, cache, max_a
         if not allow_tool_exec or not path:
             latest['status'] = 'not-refreshed-here'  # the background refresh never executes CLIs
         else:
-            code, text = run_bounded([path, *route['check_argv']], 40, cwd=conf)
+            code, text = run_bounded([path, *route['check_argv']], 40, cwd=conf,
+                                     env=probe_environment(route))
             try:
                 document = json.loads(text.strip().splitlines()[0]) if text.strip() else {}
                 match = VERSION_RE.search(str(document.get('latestVersion') or ''))

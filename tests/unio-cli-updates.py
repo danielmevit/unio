@@ -650,6 +650,71 @@ class CliUpdatesTests(unittest.TestCase):
         other.write_text('#!/bin/sh\nexec true\n')
         self.assertEqual(helper.native_identity_candidates(str(other)), [str(other)])
 
+    def test_run_bounded_limits_time_output_and_never_signals_other_sessions(self):
+        helper = load_canonical_helper()
+        self.fresh_fakes()
+        # Hanging probe: the time bound is enforced during capture, and the
+        # owned child session is cleaned; a bystander process outside that
+        # session is never signalled.
+        bystander = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+        self.addCleanup(self.stop_proc, bystander)
+        hang = self.fakebin / 'agy'
+        hang.write_text('#!/bin/sh\nsleep 300\n')
+        hang.chmod(0o755)
+        started = time.monotonic()
+        code, text = helper.run_bounded([str(hang), '--version'], 1)
+        duration = time.monotonic() - started
+        self.assertIsNone(code, 'a timed-out probe returns no exit code')
+        self.assertEqual(text, '')
+        self.assertLess(duration, 10.0, 'a hanging probe never hangs the check')
+        self.assertIsNone(bystander.poll(),
+                          'a timeout kill never reaches outside the owned session')
+        # Flooded probe: the output bound is enforced DURING capture.
+        flood = self.fakebin / 'agy'
+        flood.write_text('#!/bin/sh\nyes A | head -c 4194304\n')
+        flood.chmod(0o755)
+        started = time.monotonic()
+        code, text = helper.run_bounded([str(flood), '--version'], 5, limit=16384)
+        self.assertLess(time.monotonic() - started, 5.0,
+                        'an overflowing probe is cut off, not captured whole')
+        self.assertEqual(len(text), 16384, 'capture never exceeds the bound')
+        self.assertIsNone(code, 'the overflowing child session is disposed of')
+
+    def test_bystander_sessions_are_never_signalled(self):
+        helper = load_canonical_helper()
+        self.fresh_fakes()
+        # A process in another session with the same executable stays alive
+        # while a bounded probe of that same executable times out.
+        victim = self.fakebin / 'agy'
+        victim.write_text('#!/bin/sh\nsleep 300\n')
+        victim.chmod(0o755)
+        other = subprocess.Popen([str(victim), '--version'],
+                                 env={k: v for k, v in self.env.items()
+                                      if k != 'FAKE_RECORD'},
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(self.stop_proc, other)
+        code, text = helper.run_bounded([str(victim), '--version'], 1)
+        self.assertIsNone(code)
+        self.assertIsNone(other.poll(),
+                           'a probe cleans only its own child session')
+        self.stop_proc(other)
+
+    def test_read_only_probes_disable_documented_auto_update_flags(self):
+        helper = load_canonical_helper()
+        self.fresh_fakes()  # a previous test removed some fake CLIs
+        # Only documented flags exist; claude's known auto-updater switch is
+        # always set for its read-only probes.
+        claude_env = helper.probe_environment(helper.ROUTES['claude'])
+        self.assertEqual(claude_env['DISABLE_AUTOUPDATER'], '1')
+        # No flag is invented for routes without an official one.
+        self.assertEqual(helper.probe_environment(helper.ROUTES['grok']),
+                         dict(os.environ))
+        # The probe still records claude facts end to end.
+        done = self.module('check', '--json', 'claude')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertEqual(row['installed_version'], '2.1.322')
+
     def test_unverifiable_version_probe_is_unknown_and_nonzero(self):
         self.fresh_fakes()
         self.fake('agy', version='broken output', vexit=3)
