@@ -29105,6 +29105,17 @@ def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
                     if name not in ('attempts', 'claims', 'archive') and not name.startswith('.staging-')]
     if len(active_names) < CAP_WORKER and len(active_names) <= CAP_PROJECT:
         return
+
+    if len(active_names) > CAP_PROJECT and reason != 'periodic':
+        post_names = [name for name in bounded_names(store)
+                      if name not in ('attempts', 'claims', 'archive') and not name.startswith('.staging-')]
+        if set(post_names) == set(active_names):
+            raise Refuse('excessive', 'active store already exceeds the project cap; existing evidence was preserved')
+        if len(post_names) > CAP_PROJECT:
+            active_names = post_names
+        else:
+            return
+
     claims, bad_claims = load_claims(store)
     claim_pins = {claim['save_id'] for claim in claims}
     valid_candidates = []
@@ -29118,17 +29129,25 @@ def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
         path = os.path.join(store, name)
         try:
             st = os.lstat(path)
-        except OSError:
+        except (FileNotFoundError, OSError) as error:
+            if isinstance(error, FileNotFoundError) or getattr(error, 'errno', None) == errno.ENOENT:
+                return
             corrupt_entries.append((name, None))
             continue
         if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) != 0o700:
             corrupt_entries.append((name, lenient_worker(path)))
             continue
         try:
-            dfd = open_dir(path)
+            try:
+                dfd = open_dir(path)
+            except (FileNotFoundError, OSError) as error:
+                if isinstance(error, FileNotFoundError) or getattr(error, 'errno', None) == errno.ENOENT:
+                    return
+                corrupt_entries.append((name, lenient_worker(path)))
+                continue
             try:
                 private_at(dfd, 'manifest.json', 'file')
-                raw = read_at(dfd, 'manifest.json', MAX_MANIFEST)[1]
+                raw = read_at(dfd, 'manifest.json', MAX_MANIFEST, budget=budget, what='manifest')[1]
                 doc, _ = manifest_doc(strict_json(raw, MAX_MANIFEST, 'manifest'), name)
             finally:
                 os.close(dfd)
@@ -29137,7 +29156,17 @@ def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
             if pub is None:
                 raise ValueError('invalid published timestamp')
             valid_candidates.append(dict(id=name, worker=w, published=pub, run_id=doc.get('run_id')))
-        except (Refuse, OSError, ValueError, KeyError, TypeError):
+        except Refuse as error:
+            if error.code == 'excessive' and ('second bound' in error.message or '64 MiB' in error.message):
+                raise
+            if error.code in ('lock_busy', 'unknown'):
+                raise
+            if not os.path.exists(path):
+                return
+            corrupt_entries.append((name, lenient_worker(path)))
+        except (OSError, ValueError, KeyError, TypeError):
+            if not os.path.exists(path):
+                return
             corrupt_entries.append((name, lenient_worker(path)))
 
     if reason == 'periodic':
@@ -29151,6 +29180,8 @@ def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
         if archive:
             try:
                 for name in bounded_names(archive):
+                    if budget is not None:
+                        budget.remaining()
                     if HEX32.fullmatch(name):
                         try:
                             wrapper = under(archive, name)
@@ -29160,17 +29191,30 @@ def capacity_preflight(store, worker, budget, reason='manual', run_id=None):
                                     m_fd = open_dir(s_path)
                                     try:
                                         private_at(m_fd, 'manifest.json', 'file')
-                                        raw_m = read_at(m_fd, 'manifest.json', MAX_MANIFEST)[1]
+                                        raw_m = read_at(m_fd, 'manifest.json', MAX_MANIFEST, budget=budget, what='manifest')[1]
                                         doc_m = strict_json(raw_m, MAX_MANIFEST, 'manifest')
                                         if (isinstance(doc_m, dict) and doc_m.get('worker') == worker
                                                 and doc_m.get('run_id') == run_id):
                                             return
                                     finally:
                                         os.close(m_fd)
+                        except Refuse:
+                            raise
                         except Exception:
-                            return
+                            continue
+            except Refuse:
+                raise
             except Exception:
                 return
+
+    post_names = [name for name in bounded_names(store)
+                  if name not in ('attempts', 'claims', 'archive') and not name.startswith('.staging-')]
+    if set(post_names) != set(active_names):
+        return
+
+    post_claims, post_bad = load_claims(store)
+    if post_claims != claims or post_bad != bad_claims:
+        return
 
     if len(active_names) > CAP_PROJECT:
         raise Refuse('excessive', 'active store already exceeds the project cap; existing evidence was preserved')
@@ -29228,6 +29272,7 @@ def create_locked(root, worker, task, reason='manual', run_id=None, provider_exi
                     and previous['manifest']['fingerprint'] == second['fingerprint']):
                 print('unio: periodic state unchanged; keeping save ' + previous['id'])
                 return 0  # No new bytes: retain the existing good checkpoint.
+            capacity_preflight(store, worker, budget, reason='manual')
         scan_history(second['repo']['wt'], budget, second['git']['commit_ids'])
         save_id, evicted = publish(root, store, worker, task, second, task_bytes, observed_at, budget,
                                   reason, run_id, provider_exit)

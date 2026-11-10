@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import types
 from unittest.mock import patch
 
@@ -200,7 +201,7 @@ with tempfile.TemporaryDirectory(prefix='save-cap-preflight-') as directory:
     # 4. Claimed Metadata: pinned saves block archival and refuse early.
     # -------------------------------------------------------------------------
     initial = seed_32_grouped()
-    # Pin all older saves with valid claims (older saves are indices != 3 mod 4)
+    # Pin all older saves with valid 0600 claims (older saves are indices != 3 mod 4)
     claims_dir = store/'claims'; claims_dir.mkdir(exist_ok=True)
     claim_count = 0
     for idx, sid in enumerate(initial):
@@ -212,17 +213,38 @@ with tempfile.TemporaryDirectory(prefix='save-cap-preflight-') as directory:
                              created_at='2026-10-10T10:00:00+00:00',
                              updated_at='2026-10-10T10:00:00+00:00',
                              state='reserved', outcome=None)
-            (claims_dir/(cid + '.json')).write_text(json.dumps(claim_doc) + '\n')
+            p = claims_dir/(cid + '.json')
+            p.write_bytes(json.dumps(claim_doc).encode() + b'\n')
+            p.chmod(0o600)
             claim_count += 1
+
+    valid_claims, bad_claims = module.load_claims(str(store))
+    check('claims loaded as valid and readable (0 unreadable)', len(valid_claims) == claim_count and bad_claims == 0)
+    check('claims pinned expected save IDs', {c['save_id'] for c in valid_claims} == {sid for idx, sid in enumerate(initial) if idx % 4 != 3})
 
     counts.clear()
     with os.fdopen(module.require_lock(str(root), workers[32]), 'rb'):
         rc = module.create_locked(str(root), workers[32], 'T1', reason='manual')
 
+    attempt_file = store/'attempts'/(workers[32] + '.json')
+    attempt_doc = json.loads(attempt_file.read_text()) if attempt_file.exists() else {}
+
     check('store with all older saves claimed refuses with exit 1', rc == 1)
     check('claimed store refusal performs zero capture passes', counts['capture'] == 0)
     check('claimed store refusal performs zero body reads', counts['body_reads'] == 0)
     check('all claimed saves remain active in store', ids(store) == set(initial))
+    check('attempt record preserves status refused and reason excessive',
+          attempt_doc.get('status') == 'refused' and attempt_doc.get('reason') == 'excessive')
+
+    # Verify directly that preflight refusal is due to active project cap, NOT bad_claims
+    pre_err = None
+    with os.fdopen(module.require_lock(str(root), workers[32]), 'rb'):
+        try:
+            module.capacity_preflight(str(store), workers[32], module.Budget(60.0), reason='manual')
+        except module.Refuse as e:
+            pre_err = e
+    check('claimed store preflight refusal message is active project cap reached',
+          pre_err is not None and pre_err.code == 'excessive' and 'active project cap reached' in pre_err.message)
 
     # -------------------------------------------------------------------------
     # 5. Symlink Metadata: symlinks are never followed and refuse early.
@@ -318,7 +340,7 @@ with tempfile.TemporaryDirectory(prefix='save-cap-preflight-') as directory:
     # -------------------------------------------------------------------------
     clear_store()
     w_saves = [clone(store, i + 1, workers[0], i) for i in range(8)]
-    # Pin all 8 saves
+    # Pin all 8 saves with valid 0600 claims
     for idx, sid in enumerate(w_saves):
         cid = '%032x' % (idx + 200)
         claim_doc = dict(schema_version=1, claim_id=cid, save_id=sid,
@@ -327,7 +349,13 @@ with tempfile.TemporaryDirectory(prefix='save-cap-preflight-') as directory:
                          created_at='2026-10-10T10:00:00+00:00',
                          updated_at='2026-10-10T10:00:00+00:00',
                          state='reserved', outcome=None)
-        (claims_dir/(cid + '.json')).write_text(json.dumps(claim_doc) + '\n')
+        p = claims_dir/(cid + '.json')
+        p.write_bytes(json.dumps(claim_doc).encode() + b'\n')
+        p.chmod(0o600)
+
+    w_claims, w_bad = module.load_claims(str(store))
+    check('worker cap claims loaded as valid (0 unreadable)', len(w_claims) == 8 and w_bad == 0)
+    check('worker cap pins cover all 8 saves', {c['save_id'] for c in w_claims} == set(w_saves))
 
     counts.clear()
     with os.fdopen(module.require_lock(str(root), workers[0]), 'rb'):
@@ -336,6 +364,15 @@ with tempfile.TemporaryDirectory(prefix='save-cap-preflight-') as directory:
     check('worker cap reached refuses with exit 1', rc == 1)
     check('worker cap refusal performs zero capture passes', counts['capture'] == 0)
     check('worker cap refusal performs zero body reads', counts['body_reads'] == 0)
+
+    w_err = None
+    with os.fdopen(module.require_lock(str(root), workers[0]), 'rb'):
+        try:
+            module.capacity_preflight(str(store), workers[0], module.Budget(60.0), reason='manual')
+        except module.Refuse as e:
+            w_err = e
+    check('worker cap preflight refusal message is active worker cap reached',
+          w_err is not None and w_err.code == 'excessive' and 'active worker cap reached' in w_err.message)
 
     # -------------------------------------------------------------------------
     # 10. Already Overfull Store (>32 active entries) refuses with zero capture.
@@ -350,5 +387,139 @@ with tempfile.TemporaryDirectory(prefix='save-cap-preflight-') as directory:
     check('overfull store refusal performs zero capture passes', counts['capture'] == 0)
     check('overfull store refusal performs zero body reads', counts['body_reads'] == 0)
     overcap.rmdir()
+
+    # -------------------------------------------------------------------------
+    # 11. Concurrent Interleaving Race: preflight falls through on ambiguity
+    #     without false refusal; quiescent store refuses (current-positive).
+    # -------------------------------------------------------------------------
+    clear_store()
+    # 30 distinct workers' newest saves + worker 2 with older X and newer Z
+    for i in range(30):
+        clone(store, i + 1, workers[i], i)
+    X = clone(store, 0xa1, workers[2], 50)
+    Z = clone(store, 0xa2, workers[2], 55)
+    Y = '%032x' % 0xa3
+    race_staging = base/'race_staging'; race_staging.mkdir(mode=0o700, exist_ok=True)
+    clone(race_staging, 0xa3, workers[2], 70)
+
+    real_bounded = module.bounded_names
+    interleaved_state = {'done': False}
+    def interleaved_bounded(path, limit=4096):
+        names = real_bounded(path, limit)
+        if str(path) == str(store) and not interleaved_state['done']:
+            interleaved_state['done'] = True
+            arch = module.archive_for_store(str(store), True)
+            module.archive_save(str(store), X, arch)
+            os.rename(str(race_staging/Y), str(store/Y))
+        return names
+
+    module.bounded_names = interleaved_bounded
+    race_res = None
+    try:
+        try:
+            module.capacity_preflight(str(store), workers[1], module.Budget(60.0))
+        except Exception as e:
+            race_res = (type(e).__name__, getattr(e, 'code', None), getattr(e, 'message', str(e)))
+    finally:
+        module.bounded_names = real_bounded
+
+    post_plan = None
+    try:
+        module.retention_plan(str(store), workers[1], module.Budget(60.0))
+    except Exception as e:
+        post_plan = (type(e).__name__, getattr(e, 'code', None), getattr(e, 'message', str(e)))
+
+    check('interleaved preflight does NOT falsely refuse (falls through on ambiguity)', race_res is None)
+    check('post-state retention plan confirms publication would succeed', post_plan is None)
+
+    # Current-positive: without interleaving, quiescent store with 32 protected saves refuses
+    clear_store()
+    seed_32_distinct()
+    quiescent_res = None
+    try:
+        module.capacity_preflight(str(store), workers[32], module.Budget(60.0))
+    except Exception as e:
+        quiescent_res = (type(e).__name__, getattr(e, 'code', None))
+    check('quiescent full store without interleaving refuses excessive', quiescent_res == ('Refuse', 'excessive'))
+
+    # -------------------------------------------------------------------------
+    # 12. Changed Periodic Save into Full Store: avoids deep full-store rereads.
+    # -------------------------------------------------------------------------
+    initial = seed_32_distinct()
+    p_run = '0123456789abcdef0123456789abcdef'
+    doc0 = json.loads((store/initial[0]/'manifest.json').read_text())
+    doc0['run_id'] = p_run
+    doc0['fingerprint'] = module.fingerprint(doc0['git'], doc0['entries'], doc0['context'])
+    (store/initial[0]/'manifest.json').write_text(json.dumps(doc0) + '\n')
+
+    # Modify worker 0's worktree so it has genuine uncommitted changes (proves changed)
+    (root/'wt'/workers[0]/'file.txt').write_bytes(b'changed-periodic-content\n')
+
+    counts.clear()
+    with os.fdopen(module.require_lock(str(root), workers[0]), 'rb'):
+        rc = module.create_locked(str(root), workers[0], 'T1', reason='periodic', run_id=p_run)
+
+    attempt_file = store/'attempts'/(workers[0] + '.json')
+    attempt_doc = json.loads(attempt_file.read_text()) if attempt_file.exists() else {}
+
+    check('changed periodic save into full store refuses with exit 1', rc == 1)
+    check('changed periodic executed exactly 2 capture passes to prove changes', counts['capture'] == 2)
+    check('changed periodic avoids full-store body rereads (< 32 saves read)', counts['body_reads'] < 32)
+    check('changed periodic does NOT deep-load all 32 saves (only selected save checked)', counts['load_save'] <= 3)
+    check('changed periodic attempt status is refused and reason is excessive',
+          attempt_doc.get('status') == 'refused' and attempt_doc.get('reason') == 'excessive'
+          and attempt_doc.get('save_id') is None)
+
+    # -------------------------------------------------------------------------
+    # 13. Budget Deadline Exhaustion during Periodic Archive Enumeration.
+    # -------------------------------------------------------------------------
+    clear_store()
+    seed_32_distinct()
+    arch = store/'archive'
+    arch.mkdir(mode=0o700, exist_ok=True)
+    clone(arch, 999, workers[0], 0, run_id='run-arch')
+    expired_budget = module.Budget(0.001)
+    expired_budget.deadline = time.monotonic() - 1.0  # Already expired
+    deadline_refused = False
+    try:
+        module.capacity_preflight(str(store), workers[32], expired_budget, reason='periodic', run_id='unmatched')
+    except module.Refuse as r:
+        if r.code == 'excessive' and 'second bound' in r.message:
+            deadline_refused = True
+    check('expired budget during periodic archive scan raises excessive refusal', deadline_refused)
+
+    with patch.object(module, 'Budget', lambda sec: expired_budget):
+        with os.fdopen(module.require_lock(str(root), workers[32]), 'rb'):
+            rc = module.create_locked(str(root), workers[32], 'T1', reason='periodic', run_id='unmatched')
+
+    attempt_file = store/'attempts'/(workers[32] + '.json')
+    attempt_doc = json.loads(attempt_file.read_text()) if attempt_file.exists() else {}
+
+    check('deadline exhaustion in create_locked returns exit 1', rc == 1)
+    check('deadline exhaustion attempt doc records status refused and reason excessive',
+          attempt_doc.get('status') == 'refused' and attempt_doc.get('reason') == 'excessive')
+
+    # -------------------------------------------------------------------------
+    # 14. Archived Same-Run Periodic Exemption:
+    #     Worker matching save only in archive falls through and returns 0 when unchanged.
+    # -------------------------------------------------------------------------
+    clear_store()
+    for i in range(32):
+        clone(store, i + 1, workers[i + 1], i)
+    arch.mkdir(mode=0o700, exist_ok=True)
+    arch_sid = clone(arch, 888, workers[0], 0, run_id='run-arch-match')
+
+    # Restore worker 0 worktree to match template
+    git(wt0, 'reset', '-q', '--hard', 'HEAD')
+    (wt0/'file.txt').write_bytes(b'staged\0bytes\n'); git(wt0, 'add', 'file.txt')
+    (wt0/'file.txt').write_bytes(b'working\0bytes\n')
+    (wt0/'new.bin').write_bytes(bytes(range(256)))
+
+    counts.clear()
+    with os.fdopen(module.require_lock(str(root), workers[0]), 'rb'):
+        rc = module.create_locked(str(root), workers[0], 'T1', reason='periodic', run_id='run-arch-match')
+
+    check('archived same-run periodic unchanged returns exit 0', rc == 0)
+    check('archived same-run unchanged did not increase active store count', len(ids(store)) == 32)
 
     print('Save capacity preflight: %d checks passed' % passed)
