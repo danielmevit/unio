@@ -1479,7 +1479,7 @@ COMP_WORDS=(unio update clis antigrav) COMP_CWORD=3
 _unio
 echo "UPDATE_AGENT: ${{COMPREPLY[*]}}"
 '''
-        ], capture_output=True, text=True, check=True)
+        ], cwd=self.outside, env=self.env, capture_output=True, text=True, check=True)
         top_cmds = comp_res.stdout.splitlines()[0].split()[1:]
         self.assertIn('update', top_cmds)
         self.assertNotIn('clis', top_cmds)
