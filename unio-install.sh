@@ -38308,13 +38308,13 @@ import fcntl
 import json
 import os
 import re
+import secrets
 import select
 import shutil
 import signal
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38634,12 +38634,12 @@ def save_cache(conf, cache):
     overwrite unrelated files. All path-borne operations are confined to
     the state directory through the same O_NOFOLLOW|O_DIRECTORY fd that
     load_cache uses, so a symlinked state directory is refused (never
-    followed on write), the final replace happens against that pinned
-    directory even under a concurrent directory swap, and a symlinked
+    followed on write), the temporary file is created, written, replaced
+    and cleaned up relative to that SAME pinned fd (never reopening the
+    pathname or following a swapped directory), and a symlinked
     cache.json is refused honestly — nothing is ever written through a
     symlink."""
     directory = state_dir(conf)
-    tmp_name = None
     payload = json.dumps(cache, indent=2, sort_keys=True) + '\n'
     try:
         directory.mkdir(parents=True, exist_ok=True)
@@ -38649,6 +38649,7 @@ def save_cache(conf, cache):
         directory_fd = _open_state_dir(conf)
     except OSError:
         return False, 'refused: state directory is a symlink or unusable'
+    tmp_name = None
     try:
         try:
             meta = os.stat('cache.json', dir_fd=directory_fd, follow_symlinks=False)
@@ -38658,17 +38659,38 @@ def save_cache(conf, cache):
             pass
         except OSError:
             return False, 'cache write refused: final path unusable'
-        tmp_handle, tmp_name = tempfile.mkstemp(dir=str(directory),
-                                                prefix='.cache-', suffix='.tmp')
+        tmp_handle = None
+        for _ in range(128):
+            candidate = '.cache-%s.tmp' % secrets.token_hex(8)
+            try:
+                tmp_handle = os.open(candidate,
+                                     os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
+                                     0o600,
+                                     dir_fd=directory_fd)
+                tmp_name = candidate
+                break
+            except FileExistsError:
+                continue
+            except OSError:
+                break
+        if tmp_handle is None:
+            return False, 'cache write failed'
         try:
-            with os.fdopen(tmp_handle, 'w', encoding='utf-8') as handle:
-                handle.write(payload)
-                handle.flush()
-                os.fsync(handle.fileno())
+            try:
+                with os.fdopen(tmp_handle, 'w', encoding='utf-8') as handle:
+                    handle.write(payload)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except Exception:
+                try:
+                    os.close(tmp_handle)
+                except OSError:
+                    pass
+                raise
         except OSError:
             return False, 'cache write failed'  # tmp cleaned in finally
         try:
-            os.replace(os.path.basename(tmp_name), 'cache.json',
+            os.replace(tmp_name, 'cache.json',
                        src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
         except OSError:
             return False, 'cache write failed'
@@ -38677,12 +38699,12 @@ def save_cache(conf, cache):
     except OSError as failure:
         return False, 'cache write failed: %s' % failure
     finally:
-        os.close(directory_fd)
         if tmp_name is not None:
             try:
-                os.unlink(tmp_name)
+                os.unlink(tmp_name, dir_fd=directory_fd)
             except OSError:
                 pass
+        os.close(directory_fd)
 
 
 def merge_route_entry(cache, name, entry):

@@ -12,7 +12,8 @@ bin plus /usr/bin:/bin, so a missing fake can never fall back to the real
 Every externally reviewed defect from 2026-11-10 has a deterministic
 base-negative/current-positive regression here: FIFO/nonregular cache and
 lock paths never block; a symlinked state directory is refused on read
-and write; wrong-typed cache fields are quiet Unknown; refresh.lock is
+and write; a state directory swapped after fd pin never writes or unlinks
+temp files outside the pinned state; wrong-typed cache fields are quiet Unknown; refresh.lock is
 never written through a symlink; the refresh deadline is hard against a
 hanging local proxy; noninteractive awareness causes no network and no
 detached writer while an interactive pty entry refreshes in the
@@ -499,6 +500,125 @@ class CliUpdatesTests(unittest.TestCase):
         self.assertIn('symlink', document['cache_write_refused'])
         self.assertEqual(os.listdir(target), [],
                          'nothing may be written through the hostile symlink')
+
+    def test_state_dir_swap_after_pin_never_touches_outside_on_write_or_cleanup(self):
+        # Base negative: save_cache opened/pinned the state directory fd but
+        # created temp files via tempfile.mkstemp(dir=str(directory)) by pathname
+        # and unlinked by pathname on cleanup. If the state directory was
+        # swapped for a symlink after pinning, it wrote temporary files into
+        # the outside directory, and unlinked outside on cleanup.
+        # Current positive: pinned-fd lifecycle creates with os.open(dir_fd=fd),
+        # replaces via src/dst_dir_fd, and unlinks via dir_fd; outside directory
+        # and its sentinel remain completely untouched on write and cleanup.
+        helper = load_canonical_helper()
+        self.fresh_fakes()
+
+        cache = {'schema_version': 1, 'kind': 'unio-cli-updates',
+                 'startup_checked_at': None, 'routes': {}}
+
+        # Phase 1: Swap after fd pin, before temp creation (write path)
+        directory = helper.state_dir(self.conf)
+        shutil.rmtree(directory, ignore_errors=True)
+        directory.mkdir(parents=True, exist_ok=True)
+        pinned_target = self.root / 'pinned-dir-success'
+        outside = self.root / 'outside-success'
+        outside.mkdir(parents=True, exist_ok=True)
+        sentinel = outside / 'sentinel'
+        sentinel.write_text('sentinel-untouched\n')
+
+        orig_open_state_dir = helper._open_state_dir
+
+        def swap_after_pin_success(conf):
+            fd = orig_open_state_dir(conf)
+            directory.rename(pinned_target)
+            directory.symlink_to(outside)
+            return fd
+
+        helper._open_state_dir = swap_after_pin_success
+        try:
+            ok, msg = helper.save_cache(self.conf, cache)
+            self.assertTrue(ok, msg)
+            self.assertEqual(os.listdir(outside), ['sentinel'],
+                             'outside directory must remain untouched on temp creation')
+            self.assertEqual(sentinel.read_text(), 'sentinel-untouched\n',
+                             'sentinel must remain untouched')
+            saved = json.loads((pinned_target / 'cache.json').read_text())
+            self.assertEqual(saved['schema_version'], 1,
+                             'cache must be written to pinned directory')
+            self.assertEqual(list(pinned_target.glob('.cache-*.tmp')), [],
+                             'no temp files lingering in pinned directory')
+        finally:
+            helper._open_state_dir = orig_open_state_dir
+            if directory.is_symlink():
+                directory.unlink()
+
+        # Phase 2: Swap after fd pin, before temp creation and before cleanup (failure cleanup)
+        shutil.rmtree(directory, ignore_errors=True)
+        directory.mkdir(parents=True, exist_ok=True)
+        pinned_target_fail = self.root / 'pinned-dir-fail'
+        outside_fail = self.root / 'outside-fail'
+        outside_fail.mkdir(parents=True, exist_ok=True)
+        sentinel_fail = outside_fail / 'sentinel'
+        sentinel_fail.write_text('sentinel-untouched\n')
+
+        def swap_after_pin_fail(conf):
+            fd = orig_open_state_dir(conf)
+            directory.rename(pinned_target_fail)
+            directory.symlink_to(outside_fail)
+            return fd
+
+        helper._open_state_dir = swap_after_pin_fail
+        orig_fsync = os.fsync
+
+        def failing_fsync(fd):
+            raise OSError('simulated disk failure')
+
+        os.fsync = failing_fsync
+        try:
+            ok, msg = helper.save_cache(self.conf, cache)
+            self.assertFalse(ok, 'failing write must report failure')
+            self.assertIn('failed', msg)
+            self.assertEqual(os.listdir(outside_fail), ['sentinel'],
+                             'outside directory must remain untouched on failure cleanup')
+            self.assertEqual(sentinel_fail.read_text(), 'sentinel-untouched\n',
+                             'sentinel must remain untouched on failure cleanup')
+            self.assertEqual(list(pinned_target_fail.glob('.cache-*.tmp')), [],
+                             'temp file must be cleaned from pinned directory via dir_fd')
+        finally:
+            os.fsync = orig_fsync
+            helper._open_state_dir = orig_open_state_dir
+            if directory.is_symlink():
+                directory.unlink()
+
+        # Phase 3: Swap after temp creation, before cleanup
+        shutil.rmtree(directory, ignore_errors=True)
+        directory.mkdir(parents=True, exist_ok=True)
+        pinned_target_clean = self.root / 'pinned-dir-clean'
+        outside_clean = self.root / 'outside-clean'
+        outside_clean.mkdir(parents=True, exist_ok=True)
+        sentinel_clean = outside_clean / 'sentinel'
+        sentinel_clean.write_text('sentinel-untouched\n')
+
+        def swap_before_cleanup_fsync(fd):
+            directory.rename(pinned_target_clean)
+            directory.symlink_to(outside_clean)
+            raise OSError('simulated disk failure before replace')
+
+        os.fsync = swap_before_cleanup_fsync
+        try:
+            ok, msg = helper.save_cache(self.conf, cache)
+            self.assertFalse(ok, 'failing write must report failure')
+            self.assertIn('failed', msg)
+            self.assertEqual(os.listdir(outside_clean), ['sentinel'],
+                             'outside directory must remain untouched on swap before cleanup')
+            self.assertEqual(sentinel_clean.read_text(), 'sentinel-untouched\n',
+                             'sentinel must remain untouched')
+            self.assertEqual(list(pinned_target_clean.glob('.cache-*.tmp')), [],
+                             'temp file must be cleaned from pinned directory via dir_fd')
+        finally:
+            os.fsync = orig_fsync
+            if directory.is_symlink():
+                directory.unlink()
 
     def test_aliases_dedupe_onto_one_route_report(self):
         self.fresh_fakes()

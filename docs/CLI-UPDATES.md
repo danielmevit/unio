@@ -68,9 +68,11 @@ honestly.
   traceback, never trusted, never authorization to run anything. A
   `checked_at` timestamp in the future beyond a 300 s clock-skew
   tolerance is Unknown, never fresh-forever (WSL clock skew is real).
-  Writes go through a fresh private temp file confined to that pinned
-  directory, so independent concurrent checks cannot collide on or
-  overwrite unrelated files; writing through a symlink (state
+  Writes go through a fresh private temp file created, written, replaced
+  and cleaned up relative to that pinned directory fd (never reopening
+  the pathname or following a swapped directory), so independent
+  concurrent checks cannot collide on or overwrite unrelated files;
+  writing through a symlink (state
   dir, cache or `refresh.lock`) is refused. Facts older than the
   freshness bound (default 24 h) are refetched.
 - Exit: 0 for facts, 1 if any present tool's version probe failed, 2 for
