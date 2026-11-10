@@ -235,7 +235,7 @@ class CliUpdatesTests(unittest.TestCase):
         rows = {row['name']: row for row in document['routes']}
         self.assertEqual(set(rows), {'antigravity', 'grok', 'claude'})
         self.assertEqual(rows['antigravity']['installed_version'], '1.5.4')
-        self.assertEqual(rows['antigravity']['update_state'], 'supported')
+        self.assertEqual(rows['antigravity']['update_state'], 'maintenance_not_implemented')
         self.assertEqual(rows['antigravity']['compatibility'], 'unknown')
         self.assertEqual(rows['grok']['latest_version'], '1.0.77')
         self.assertEqual(rows['grok']['latest_source'], 'grok-update-check')
@@ -317,42 +317,40 @@ class CliUpdatesTests(unittest.TestCase):
 
     # --------------------------------------------------------------- update
 
-    def test_update_runs_only_official_updaters_and_records_truth(self):
+    def test_update_refuses_ordinary_and_failure_routes_with_zero_updater_calls(self):
         self.fresh_fakes()
+        # Ordinary case: every present target is refused, nothing is executed.
         done = self.module('update', '--json', 'copilot', 'grok', 'vibe')
-        self.assertEqual(done.returncode, 1, done.stdout)  # vibe refused, not uv-managed
-        rows = {row['name']: row for row in json.loads(done.stdout)['routes']}
-        self.assertEqual((rows['copilot']['action'], rows['copilot']['updater_exit']), ('updated', 0))
-        self.assertEqual((rows['grok']['action'], rows['grok']['updater_exit']), ('updated', 0))
-        self.assertEqual(rows['vibe']['action'], 'refused')
-        for name in ('copilot', 'grok'):
-            self.assertEqual(rows[name]['version_before'], rows[name]['version_after'],
-                             'the recorded version pair is the probed truth')
-            self.assertEqual(rows[name]['compatibility'], 'unknown')
-        self.assertEqual([row['args'] for row in self.calls(name='copilot', tag='called')],
-                         [['update', 'stable']], 'only the official copilot updater argv')
-        self.assertEqual([row['args'] for row in self.calls(name='grok', tag='called')],
-                         [['update', '--stable']], 'only the official grok updater argv')
-        self.assertEqual([row['args'] for row in self.calls(name='vibe', tag='called')],
-                         [], 'a refused route never reaches an updater')
-
-    def test_update_partial_failure_reports_every_route(self):
+        self.assertEqual(done.returncode, 1, done.stdout)
+        document = json.loads(done.stdout)
+        self.assertEqual(document['install_policy'], document['install_policy'])
+        self.assertIn('maintenance_not_implemented', document['install_policy'])
+        rows = {row['name']: row for row in document['routes']}
+        for name in ('copilot', 'grok', 'vibe'):
+            self.assertEqual((rows[name]['action'], rows[name]['reason']),
+                             ('refused', 'maintenance_not_implemented'), name)
+            self.assertIs(rows[name]['updater_executed'], False, name)
+            self.assertIsNone(rows[name]['updater_exit'], name)
+            self.assertEqual(rows[name]['compatibility'], 'unknown', name)
+        self.assertIn('copilot update stable', rows['copilot']['manual'])
+        self.assertIn('grok update --stable', rows['grok']['manual'])
+        self.assertIn('uv tool upgrade mistral-vibe', rows['vibe']['manual'],
+                      'a refused route keeps its frozen manual plan')
+        self.assertEqual(self.calls(), [], 'no updater and no probe may run at all')
+        # Failure case: a CLI whose updater would exit nonzero is never invoked.
         self.fresh_fakes()
         self.fake('opencode', version='1.19.5', update_args=['upgrade'], update_exit=7)
-        done = self.module('update', 'copilot', 'opencode')
-        self.assertEqual(done.returncode, 1, done.stdout)
-        self.assertIn('copilot: updated', done.stdout)
-        self.assertIn('opencode: failed — updater exit 7', done.stdout,
-                      'one failed tool must not hide the other result')
-        self.assertEqual(len(self.calls(name='opencode', tag='called')), 1,
-                        'the failed tool was attempted exactly once')
         done = self.module('update', '--json', 'opencode')
-        rows = json.loads(done.stdout)['routes']
-        self.assertEqual((rows[0]['action'], rows[0]['updater_exit']), ('failed', 7))
+        self.assertEqual(done.returncode, 1, done.stdout)
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertEqual((row['action'], row['reason'], row['updater_executed']),
+                         ('refused', 'maintenance_not_implemented', False))
+        self.assertEqual([entry['args'] for entry in self.calls(name='opencode')],
+                         [], 'a would-fail updater must never be invoked')
 
-    def test_update_refuses_holds_before_any_updater(self):
-        self.fresh_fakes()
+    def test_update_refuses_every_route_under_all_busy_states_with_zero_calls(self):
         # STOP owner hold.
+        self.fresh_fakes()
         stop_project = self.make_project('frozen by owner')
         (stop_project / 'coord' / 'STOP').write_text('frozen\n')
         done = subprocess.run([sys.executable, '-I', '-S', '-B', str(self.installed_helper),
@@ -361,9 +359,10 @@ class CliUpdatesTests(unittest.TestCase):
                              env=self.env, cwd=self.outside, capture_output=True,
                              text=True, timeout=120)
         self.assertEqual(done.returncode, 1, done.stdout)
-        self.assertIn('refused — STOP owner hold active', done.stdout)
+        self.assertIn('copilot: refused — maintenance_not_implemented', done.stdout)
+        self.assertIn('grok: refused — maintenance_not_implemented', done.stdout)
         self.assertIn('manual plan', done.stdout)
-        self.assertEqual(self.calls(tag='called'), [], 'no updater ran during a STOP hold')
+        self.assertEqual(self.calls(), [], 'no updater and no probe ran during a STOP hold')
         # Held project worker lock.
         lock_project = self.make_project('busy worker')
         locks = lock_project / 'coord' / '.locks'
@@ -391,9 +390,10 @@ class CliUpdatesTests(unittest.TestCase):
                               env=self.env, cwd=self.outside, capture_output=True,
                               text=True, timeout=120)
         self.assertEqual(done.returncode, 1, done.stdout)
-        self.assertIn('refused — active worker run (mock.lock)', done.stdout)
-        self.assertEqual(self.calls(tag='called'), [], 'no updater ran during a worker run')
-        # Native process with the exact executable identity: refuse, never act.
+        self.assertIn('maintenance_not_implemented', done.stdout)
+        self.assertEqual(self.calls(), [], 'no updater and no probe ran during a worker run')
+        # Native process with the exact executable identity: still refused,
+        # never signalled, and never used as permission or idle proof.
         if self.record.exists():
             self.record.unlink()
         native = self.fakebin / 'copilot'
@@ -405,24 +405,53 @@ class CliUpdatesTests(unittest.TestCase):
         time.sleep(0.4)
         done = self.module('update', 'copilot')
         self.assertEqual(done.returncode, 1, done.stdout)
-        self.assertIn('refused — native process using this exact executable', done.stdout)
-        self.assertEqual(self.calls(tag='called'), [], 'no updater ran during a native session')
+        self.assertIn('copilot: refused — maintenance_not_implemented', done.stdout)
+        self.assertEqual(self.calls(), [], 'no updater and no probe ran during a native session')
         self.assertIsNone(session.poll(), 'the busy session is never signalled or restarted')
+
+    def test_update_with_hostile_cache_still_refuses_without_reading_or_executing(self):
+        self.fresh_fakes()
+        seed_cache(self.conf)
+        directory = Path(self.conf) / 'cli-updates'
+        (directory / 'cache.json').write_text(json.dumps({
+            'schema_version': 1, 'kind': 'unio-cli-updates',
+            'startup_checked_at': now_iso(),
+            'routes': {'antigravity': {'latest': {'version': '9.9.9', 'status': 'ok',
+                                                   'source': 'evil', 'checked_at': now_iso()},
+                                        'command': ['rm', 'a-hostile-cached-command']}}}) + '\n')
+        done = self.module('update', '--json', 'antigravity')
+        self.assertEqual(done.returncode, 1, done.stdout)
+        row = json.loads(done.stdout)['routes'][0]
+        self.assertEqual((row['action'], row['reason'], row['updater_executed']),
+                         ('refused', 'maintenance_not_implemented', False))
+        self.assertEqual(self.calls(), [], 'a hostile cache never leads to an execution')
+        self.assertIn('a-hostile-cached-command', (directory / 'cache.json').read_text(),
+                      'no cached command text was executed or removed')
 
     def test_update_check_only_and_manual_methods_are_reported(self):
         self.fresh_fakes()
-        # vibe without a verified uv-managed install is manual, never guessed.
+        # vibe without a verified uv-managed install stays manual in the check.
+        done = self.module('check', '--json', 'vibe')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        rows = json.loads(done.stdout)['routes']
+        self.assertEqual(rows[0]['update_state'], 'manual')
+        # The update request still refuses with an exact manual command.
         done = self.module('update', 'vibe')
         self.assertEqual(done.returncode, 1, done.stdout)
-        self.assertIn('not verified uv-managed', done.stdout)
+        self.assertIn('refused — maintenance_not_implemented', done.stdout)
         self.assertIn('uv tool upgrade mistral-vibe', done.stdout,
-                      'the refusal carries the exact manual command')
+                      'the refusal carries the exact frozen manual command')
         self.assertEqual(self.calls(name='vibe', tag='called'), [])
-        # claude/codex stay check-only with an actionable manual plan.
+        # claude/codex stay check-only; updates refuse them explicitly too.
+        done = self.module('check', '--json', 'claude', 'codex')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        rows = {row['name']: row for row in json.loads(done.stdout)['routes']}
+        self.assertEqual(rows['claude']['update_state'], 'check-only')
+        self.assertEqual(rows['codex']['update_state'], 'check-only')
         done = self.module('update', 'claude', 'codex')
         self.assertEqual(done.returncode, 1, done.stdout)
-        self.assertIn('claude: refused — check-only route', done.stdout)
-        self.assertIn('codex: refused — check-only route', done.stdout)
+        self.assertIn('claude: refused — maintenance_not_implemented', done.stdout)
+        self.assertIn('codex: refused — maintenance_not_implemented', done.stdout)
         self.assertEqual(self.calls(name='claude', tag='called'), [])
         self.assertEqual(self.calls(name='codex', tag='called'), [])
 
@@ -430,10 +459,15 @@ class CliUpdatesTests(unittest.TestCase):
         self.fresh_fakes()
         for name in ('opencode', 'claude', 'codex'):
             (self.fakebin / name).unlink(missing_ok=True)
+        done = self.module('update', 'claude', 'codex')
+        self.assertEqual(done.returncode, 0, 'absent routes are skipped: %s' % done.stdout)
+        self.assertIn('claude: skipped', done.stdout)
+        self.assertIn('codex: skipped', done.stdout)
         done = self.module('update', 'claude', 'agy')
-        self.assertEqual(done.returncode, 0, done.stdout)
+        self.assertEqual(done.returncode, 1,
+                         'one present target still refuses: %s' % done.stdout)
         self.assertIn('claude: skipped — absent on PATH', done.stdout)
-        self.assertIn('antigravity: updated', done.stdout,
+        self.assertIn('antigravity: refused — maintenance_not_implemented', done.stdout,
                       'the human report uses route names, not aliases')
 
     def test_unverifiable_version_probe_is_unknown_and_nonzero(self):
@@ -497,8 +531,11 @@ class CliUpdatesTests(unittest.TestCase):
         self.assertIn('AI CLI update check', done.stdout)
         self.assertIn('antigravity: installed 1.5.4', done.stdout)
         done = self.engine('update', 'clis', 'agy')
-        self.assertEqual(done.returncode, 0, (done.stdout, done.stderr))
-        self.assertIn('antigravity: updated', done.stdout)
+        self.assertEqual(done.returncode, 1, (done.stdout, done.stderr))
+        self.assertIn('antigravity: refused — maintenance_not_implemented', done.stdout)
+        self.assertIn('manual plan', done.stdout)
+        self.assertEqual(self.calls(name='agy', tag='called'), [],
+                         'the engine update surface never reaches an updater')
         done = self.engine('update')
         self.assertEqual(done.returncode, 2, done.stdout)
         done = self.engine('update', 'something else')

@@ -14,15 +14,17 @@ Safety contract (frozen 2026-11-10):
   documented read-only `update --check --json`. Nothing from agents.conf,
   task files, reports, cache text or downloaded URLs is ever executed or
   evaluated; every subprocess is a fixed argv array from the table below.
-- `update` is the explicit request to run a CLI's official updater, and
-  only through that updater's own command (or, for uv-managed Vibe, the
-  verified `uv tool upgrade mistral-vibe`). Never a major-version switch,
-  never an installation-method switch, never a guessed method: unsupported
-  or unverifiable installs are refused with a manual plan. Updating is
-  refused while a route is busy (active worker run, STOP owner hold, a
-  native process with the exact executable identity, or an unavailable
-  /proc identity scan) BEFORE any updater call. One failed tool never
-  hides other results.
+- `update` is the explicit update request, but until a shared native
+  maintenance/admission lease (unio run/review <-> updater) is implemented,
+  it REFUSES to install for EVERY present target with the explicit reason
+  `maintenance_not_implemented` plus that CLI's frozen manual plan. No
+  updater or installing probe is ever constructed or executed by this
+  module — regardless of STOP, process state, cache content, flags or
+  environment (there is deliberately no bypass). The frozen updater
+  commands in the table below are safe manual plans only, never argv this
+  code runs. Busy/lead facts reported by `check` stay honest observations,
+  never permission and never idle confirmation. Updating is not claimed
+  complete: automatic installation is deferred (docs/CLI-UPDATES.md).
   Updates runDangerously never touch route/adapter version guards or pins:
   compatibility stays Unknown until proven by real use.
 - `startup` prints one read-only freshness line for human entry points
@@ -42,7 +44,6 @@ Env: UNIO_CONF_DIR-dir default is UNIO_CONF_DIR then ~/.config/unio;
 UNIO_CLI_UPDATES_MAX_AGE (seconds, default 86400);
 UNIO_CLI_UPDATES_TIMEOUT (metadata seconds per request, default 10);
 UNIO_CLI_UPDATES_DEADLINE (startup refresh total seconds, default 45);
-UNIO_CLI_UPDATES_INSTALL_TIMEOUT (updater seconds, default 1800);
 UNIO_CLI_UPDATES_OFF=1 disables startup awareness entirely (offline/tests);
 UNIO_CLI_UPDATES_OFFLINE=1 forbids all network metadata fetches honestly.
 """
@@ -67,9 +68,11 @@ UA = 'unio-cli-updates/1 (+https://github.com/danielmevit/unio)'
 VERSION_RE = re.compile(r'(\d+\.\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.]+)?)')
 DELETED_SUFFIX = ' (deleted)'
 
-# One entry per recognized route. update_argv is executed only by the
-# explicit update path behind the busy gate; version_argv and the grok
-# check argv are read-only. latest is the official metadata strategy:
+# One entry per recognized route. update_argv exists only to build the
+# frozen MANUAL plan a refusal prints; no code path executes it (installs
+# are refused with maintenance_not_implemented until a shared native
+# maintenance lease exists). version_argv and the grok check argv are
+# read-only. latest is the official metadata strategy:
 # (kind, repo/package) resolved only when the detected install method
 # makes that source authoritative, otherwise latest stays Unknown.
 ROUTES = {
@@ -544,10 +547,10 @@ def build_route(route, conf, project, max_age, timeout, cache, allow_tool_exec):
         state = 'check-only'
     elif supported == 'uv-tool' and method != 'uv-tool':
         state = 'manual'
-    elif reasons:
-        state = 'current-refused'
     else:
-        state = 'supported'
+        # Installs are deferred until a shared maintenance lease exists;
+        # 'supported' would overclaim, and busy observations never permit.
+        state = 'maintenance_not_implemented'
     return {
         'name': name, 'group': route['group'], 'aliases': list(route['aliases']),
         'binary': route['binary'], 'present': bool(path), 'binary_path': path,
@@ -578,6 +581,9 @@ def human_route(row):
         return '\n'.join(lines)
     lines.append('    %s · method %s · update: %s · update state: %s'
                  % (row['binary_path'], row['install_method'], row['update_label'], row['update_state']))
+    if row['update_state'] == MAINTENANCE_REASON:
+        lines.append('    install deferred: unio never runs any updater until a shared '
+                     'maintenance lease exists — use the manual plan above when idle')
     if row['update_blocked_reasons']:
         lines.append('    update request refused by: %s' % ', '.join(row['update_blocked_reasons']))
     if row.get('obscured_processes'):
@@ -626,153 +632,55 @@ def do_check(args):
     return 1 if failed else 0
 
 
-def updater_argv(route, path):
-    if route['name'] == 'vibe':
-        uv = shutil.which('uv')
-        return [uv, 'tool', 'upgrade', UV_TOOL_PACKAGE] if uv else None
-    if route['update_argv'] is None:
-        return None
-    return [path, *route['update_argv']]
+MAINTENANCE_REASON = 'maintenance_not_implemented'
+MANUAL_UPDATE_NOTE = ('until a shared run/review maintenance lease exists, unio never '
+                      'installs: run the official updater yourself when the route is '
+                      'idle, then unio update clis --check (docs/CLI-UPDATES.md)')
 
 
 def do_update(args):
+    """Explicit update request under the frozen install refusal. Every
+    PRESENT target is refused with `maintenance_not_implemented` and its
+    frozen manual plan; absent targets are skipped truthfully. Nothing is
+    executed: no updater, no installing probe, no version probe, no
+    process scan, no cache write — regardless of STOP, locks, process
+    state, cache content, flags or environment. Busy facts are reported
+    as observations by `--check`; they never become permission here."""
     names = resolve_selection(args.agents)
-    cache = load_cache(args.conf) or {'schema_version': SCHEMA_VERSION,
-                                      'kind': 'unio-cli-updates', 'startup_checked_at': None,
-                                      'routes': {}}
-    # Holds are frozen: no flag or environment variable bypasses them. The
-    # update refuses instead of waiting, because a launched worker would
-    # race the official updater mid-install (docs/CLI-UPDATES.md).
-    project = args.project
-    stop = stop_active(project)
-    locks = held_worker_locks(project)
-    directory = state_dir(args.conf)
     results = []
-    lock_handle = None
-    try:
-        directory.mkdir(parents=True, exist_ok=True)
-        lock_handle = os.open(directory / 'update.lock', os.O_RDWR | os.O_CREAT, 0o600)
-        try:
-            fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            results_summary = {'schema_version': SCHEMA_VERSION, 'command': 'update',
-                               'finished_at': iso(),
-                               'routes': [], 'refused': 'another CLI update is already running'}
-            print(json.dumps(results_summary, indent=2, sort_keys=True) if args.json
-                  else 'AI CLI update — refused: another CLI update is already running.')
-            return 1
-    except OSError as failure:
-        print('AI CLI update — cache directory unusable: %s' % failure,
-              file=sys.stderr)
-        return 1
-    try:
-        for name in names:
-            route = ROUTES[name]
-            path, real = resolve_binary(route)
-            row = {'name': route['name'], 'action': 'skipped', 'reason': None,
-                   'updater_exit': None, 'version_before': None, 'version_after': None,
-                   'compatibility': 'unknown', 'manual': None}
-            if not path:
-                row['reason'] = 'absent on PATH'
-                results.append(row)
-                continue
-            method = detect_method(route, real, allow_exec=True)
-            support = route['update_support']
-            if support == 'check-only':
-                row.update(action='refused', reason='check-only route',
-                           manual='%s (manual) — run it yourself when the session is idle' % route['update_label'])
-                results.append(row)
-                continue
-            if support == 'uv-tool' and method != 'uv-tool':
-                row.update(action='refused', reason='vibe install not verified uv-managed (%s)' % method,
-                           manual='inspect the install, or run "uv tool upgrade mistral-vibe" yourself; unio never switches install methods')
-                results.append(row)
-                continue
-            if stop:
-                row.update(action='refused', reason='STOP owner hold active',
-                           manual='STOP gates this project (unio resume clears it) — update manually if the owner approves')
-                results.append(row)
-                continue
-            if locks:
-                row.update(action='refused',
-                           reason='active worker run (%s) — unio status clears or ends it' % ', '.join(locks[:4]),
-                           manual='wait for the run, then re-run unio update clis; update manually meanwhile')
-                results.append(row)
-                continue
-            active, hidden = native_identity(real)
-            if active:
-                row.update(action='refused',
-                           reason='native process using this exact executable (pid %s)' % ', '.join(map(str, active[:8])),
-                           manual='let the session finish (never signalled or restarted by unio), then re-run unio update clis')
-                results.append(row)
-                continue
-            if hidden is None:
-                row.update(action='refused', reason='process identity scan unavailable (/proc)',
-                           manual='verify idle with unio status / ps, then re-run unio update clis or update manually')
-                results.append(row)
-                continue
-            argv = updater_argv(route, path)
-            if not argv:
-                row.update(action='refused', reason='updater unresolved',
-                           manual=route['update_label'])
-                results.append(row)
-                continue
-            before, _ = probe_version(route, path, str(conf_dir_cwd(args.conf)))
-            row['version_before'] = before
-            code, text = run_bounded(argv, args.install_timeout, cwd=os.path.expanduser('~'),
-                                     limit=65536)
-            row['updater_exit'] = code
-            after, _ = probe_version(route, path, str(conf_dir_cwd(args.conf)))
-            row['version_after'] = after
-            if code == 0:
-                row['action'] = 'updated'
-            else:
-                row['action'] = 'failed'
-                row['reason'] = 'updater exit %s' % code
-            # The official updater may apply at next launch (copilot/standalone):
-            # the recorded value is the freshly probed truth, never a guess.
-            merge_route_entry(cache, name, {'presence': {
-                'present': True, 'binary_path': path, 'binary_realpath': real,
-                'install_method': method}})
-            merge_route_entry(cache, name, {'installed': {
-                'version': after, 'exit': None, 'checked_at': iso()}})
+    for name in names:
+        route = ROUTES[name]
+        path, _real = resolve_binary(route)
+        row = {'name': route['name'], 'action': 'skipped', 'reason': None,
+               'updater_executed': False, 'updater_exit': None,
+               'updater_command': None, 'manual': None, 'compatibility': 'unknown'}
+        if not path:
+            row['reason'] = 'absent on PATH'
             results.append(row)
-        written, why = save_cache(args.conf, cache)
-    finally:
-        os.close(lock_handle)
-    failed = [row for row in results if row['action'] in ('refused', 'failed')]
+            continue
+        row.update(action='refused', reason=MAINTENANCE_REASON,
+                   updater_command=route['update_label'],
+                   manual='%s — %s' % (route['update_label'], MANUAL_UPDATE_NOTE))
+        results.append(row)
+    refused = [row for row in results if row['action'] == 'refused']
     document = {'schema_version': SCHEMA_VERSION, 'command': 'update',
                 'finished_at': iso(),
-                'project': {'root': project, 'stop_active': stop,
-                            'busy_note': BUSY_NOTE},
-                'routes': results, 'compatibility': 'unknown',
-                'cache_writable': written}
-    if not written:
-        document['cache_write_refused'] = why
+                'install_policy': ('maintenance_not_implemented: unio never installs; '
+                                   'no updater is constructed or executed by unio'),
+                'project': {'root': args.project},
+                'routes': results, 'compatibility': 'unknown'}
     if args.json:
         print(json.dumps(document, indent=2, sort_keys=True))
     else:
-        lines = ['AI CLI update — %s (each CLI updated only through its official updater)' % iso()]
+        lines = ['AI CLI update — %s (installs refused: maintenance coordination '
+                 'is not implemented; manual plans below)' % iso()]
         for row in results:
             lines.append('  %s: %s%s' % (row['name'], row['action'],
                                          ' — %s' % row['reason'] if row['reason'] else ''))
-            if row['action'] == 'updated':
-                lines.append('    %s -> %s (updater exit %s)' %
-                             (row['version_before'] or 'Unknown', row['version_after'] or 'Unknown', row['updater_exit']))
-                lines.append('    compatibility unknown: route version guards and adapter pins are untouched')
             if row['manual']:
                 lines.append('    manual plan: %s' % row['manual'])
         print('\n'.join(lines))
-    return 1 if failed else 0
-
-
-def conf_dir_cwd(conf):
-    try:
-        directory = state_dir(conf)
-        directory.mkdir(parents=True, exist_ok=True)
-        return directory
-    except OSError:
-        return Path(conf) if os.path.isdir(conf) else Path.home()
+    return 1 if refused else 0
 
 
 def spawn_refresh(conf):
@@ -886,10 +794,9 @@ def build_parser():
                        help='metadata request bound in seconds')
     check.add_argument('agents', nargs='*', metavar='AGENT', help='route or alias (default: installed routes)')
     update = commands.add_parser('update', allow_abbrev=False,
-                                 description='explicit update via each CLI official updater, refusing busy/led routes first')
+                                 description='explicit update request; installs are refused '
+                                 '(maintenance_not_implemented) with manual plans only')
     update.add_argument('--json', action='store_true', help='strict additive versioned JSON')
-    update.add_argument('--install-timeout', type=int, default=1800,
-                        help='updater bound per tool in seconds')
     update.add_argument('agents', nargs='*', metavar='AGENT', help='route or alias (default: installed routes)')
     startup = commands.add_parser('startup', allow_abbrev=False,
                                   description='one read-only freshness line for human entry points')
