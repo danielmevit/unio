@@ -1460,6 +1460,33 @@ class CliUpdatesTests(unittest.TestCase):
         completion = (self.root / 'completion' / 'unio').read_text()
         self.assertIn('update', completion)
         self.assertIn('clis', completion)
+        comp_res = subprocess.run([
+            'bash', '-euo', 'pipefail', '-c', f'''
+source "{self.root / 'completion' / 'unio'}"
+COMP_WORDS=(unio "") COMP_CWORD=1
+_unio
+echo "TOP: ${{COMPREPLY[*]}}"
+COMP_WORDS=(unio update "") COMP_CWORD=2
+_unio
+echo "UPDATE2: ${{COMPREPLY[*]}}"
+COMP_WORDS=(unio update clis "") COMP_CWORD=3
+_unio
+echo "UPDATE3: ${{COMPREPLY[*]}}"
+COMP_WORDS=(unio update clis --ch) COMP_CWORD=3
+_unio
+echo "UPDATE_FLAG: ${{COMPREPLY[*]}}"
+COMP_WORDS=(unio update clis antigrav) COMP_CWORD=3
+_unio
+echo "UPDATE_AGENT: ${{COMPREPLY[*]}}"
+'''
+        ], capture_output=True, text=True, check=True)
+        top_cmds = comp_res.stdout.splitlines()[0].split()[1:]
+        self.assertIn('update', top_cmds)
+        self.assertNotIn('clis', top_cmds)
+        self.assertEqual(comp_res.stdout.splitlines()[1], 'UPDATE2: clis')
+        self.assertEqual(comp_res.stdout.splitlines()[2], 'UPDATE3: --check --json antigravity vibe grok copilot opencode claude codex')
+        self.assertEqual(comp_res.stdout.splitlines()[3], 'UPDATE_FLAG: --check')
+        self.assertEqual(comp_res.stdout.splitlines()[4], 'UPDATE_AGENT: antigravity')
         self.assertEqual((self.conf / 'lib' / 'cli-updates.py').read_bytes(),
                          (SOURCE / 'tools' / 'cli-updates.py').read_bytes(),
                          'the installed payload must be the exact reviewed bytes')

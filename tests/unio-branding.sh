@@ -242,6 +242,18 @@ COMP_WORDS=("$entry" hand) COMP_CWORD=1
 COMP_WORDS=("$entry" agents '') COMP_CWORD=2
 "$function_name"
 [ "${COMPREPLY[*]}" = '--json' ]
+COMPREPLY=(); COMP_WORDS=("$entry" update '') COMP_CWORD=2
+"$function_name"
+[ "${COMPREPLY[*]}" = 'clis' ]
+COMPREPLY=(); COMP_WORDS=("$entry" update clis '') COMP_CWORD=3
+"$function_name"
+[ "${COMPREPLY[*]}" = '--check --json antigravity vibe grok copilot opencode claude codex' ]
+COMPREPLY=(); COMP_WORDS=("$entry" update clis --ch) COMP_CWORD=3
+"$function_name"
+[ "${COMPREPLY[*]}" = '--check' ]
+COMPREPLY=(); COMP_WORDS=("$entry" update clis antigrav) COMP_CWORD=3
+"$function_name"
+[ "${COMPREPLY[*]}" = 'antigravity' ]
 cd "$2"
 for command in verify result handoff review; do
   COMPREPLY=(); COMP_WORDS=("$entry" "$command" '') COMP_CWORD=2

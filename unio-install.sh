@@ -43026,7 +43026,7 @@ cat > "$COMP_DIR/unio" <<'COMPLETION_EOF'
 _unio() {
   local cur cmd root d cmds
   cur="${COMP_WORDS[COMP_CWORD]}"
-  cmds="new init run verify result handoff save wip diff sync review reviews review-set race sabotage score doctor update clis tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan cache experience dispatch schedule capacity readiness off on smoke selftest stop resume allow-retry version license help"
+  cmds="new init run verify result handoff save wip diff sync review reviews review-set race sabotage score doctor update tail kill report status mode tier lead account policy agents integrations watch browser dashboard fleet plan cache experience dispatch schedule capacity readiness off on smoke selftest stop resume allow-retry version license help"
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$cmds" -- "$cur") ); return
   fi
@@ -43046,7 +43046,9 @@ _unio() {
     watch) COMPREPLY=( $(compgen -W "--once --json --interval" -- "$cur") );;
     dashboard) COMPREPLY=( $(compgen -W "ensure status stop --project --open-browser --json --help" -- "$cur") );;
     readiness) COMPREPLY=( $(compgen -W "show refresh claude --agent --json --project" -- "$cur") );;
-    update) COMPREPLY=( $(compgen -W "clis --check --json antigravity vibe grok copilot opencode claude codex" -- "$cur") );;
+    update)
+      if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "clis" -- "$cur") )
+      elif [ "${COMP_WORDS[2]}" = clis ]; then COMPREPLY=( $(compgen -W "--check --json antigravity vibe grok copilot opencode claude codex" -- "$cur") ); fi;;
     worker-effort) COMPREPLY=( $(compgen -W "$workers low medium high xhigh --json --help" -- "$cur") );;
     fleet) COMPREPLY=( $(compgen -W "--project --json --timeout --help" -- "$cur") );;
     plan) COMPREPLY=( $(compgen -W "--inventory --project --json --timeout --help" -- "$cur") );;
