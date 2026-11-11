@@ -53,6 +53,15 @@ later corrections to prematurely recorded assessments need separate truthful
 coordination notes; this update does not introduce an assessment-amendment API
 or accept historical evidence as a fresh approval.
 
+## Preparing correction tasks
+
+Verification scopes the complete worker branch against the project base, not
+only the commits made during the latest assignment. When a correction inherits
+an earlier feature, its task must account for those inherited paths as well.
+Use a separate frozen-start comparison when the worker may edit only a narrower
+set of files. Keep an incorrectly scoped task's failure and establish a fresh,
+explicit verification contract; do not silently rewrite its task or receipt.
+
 ## Validation and review
 
 Component checks and an independent current-code Mistral 4 review plus the

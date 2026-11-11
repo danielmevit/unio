@@ -1,5 +1,20 @@
 # Unio Improvement Backlog
 
+## Follow-ups observed during the 0.5.27 batch
+
+These are later improvements, not additions to the current release scope:
+
+- Preview task scope before a provider call. Show inherited branch paths that
+  the declared scope would reject, and distinguish the project base from the
+  frozen assignment starting commit. Preserve strict verification and require
+  explicit scope authority; a preview must not silently expand allowed edits.
+- Design an append-only correction history for final experience assessments.
+  Preserve the original record, reason and evidence; keep current revision
+  readiness separate from a historical assessment. The existing immutable
+  store correctly refuses conflicting entries, so pending progress belongs in
+  coordination notes until this separate design exists.
+
+
 ## Current delivery and next app batch — 2026-11-11T12:14:19+01:00
 
 [Unio 0.5.26](../RELEASE-0.5.26.md) is published and installed. Host-aware WSL
