@@ -53,9 +53,11 @@ and is not stale:
   differs while `candidate_commit`, `task_sha256`, and `worktree_sha256` match),
   the native result becomes stale for the new base. `record` refuses with an
   actionable diagnostic:
-  `base advanced since task execution; record experience before integration; old evidence remains historical for the prior base`.
-  Old evidence remains historical because it was verified against the earlier
-  base commit, not the newly integrated base. Stale code is never accepted as
+  `base changed since task execution; record experience before integration; old evidence remains historical for the prior base`.
+  The wording is generic because `record` can only observe that `base_commit`
+  differs; whether the base advanced, was rewound, or was switched is not
+  inferred. Old evidence remains historical because it was verified against the
+  earlier base commit, not the current one. Stale code is never accepted as
   current evidence.
 - **Drift Diagnostics**: If worker code, task definitions, or working files change
   after execution, `record` refuses with specific drift diagnostics:

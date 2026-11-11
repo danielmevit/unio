@@ -831,7 +831,7 @@ class ExperienceSuite(unittest.TestCase):
         r = self.run_cli('record', 'codex', 'TASK-BASEADV', '--model', 'gpt-4o', '--route', 'codex',
                          '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
         self.assertEqual(r.returncode, 2)
-        self.assertIn('base advanced since task execution; record experience before integration; old evidence remains historical for the prior base', r.stderr)
+        self.assertIn('base changed since task execution; record experience before integration; old evidence remains historical for the prior base', r.stderr)
 
         # 8. Both candidate and base differ: worker drift takes priority
         curr_both = dict(base_rev, candidate_commit=curr_worker_drift['candidate_commit'], base_commit=curr_base_adv['base_commit'])
@@ -940,7 +940,7 @@ class ExperienceSuite(unittest.TestCase):
                 '--project', str(proj_root)
             ], cwd=repo, env=fixture_env, capture_output=True, text=True)
             self.assertEqual(r_rec_after.returncode, 2)
-            self.assertIn('base advanced since task execution; record experience before integration; old evidence remains historical for the prior base', r_rec_after.stderr)
+            self.assertIn('base changed since task execution; record experience before integration; old evidence remains historical for the prior base', r_rec_after.stderr)
 
             # Old record remains historical and untouched
             rec_files_after = list((proj_root / 'coord/experience/records').glob('*.json'))

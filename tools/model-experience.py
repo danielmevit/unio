@@ -557,7 +557,7 @@ def valid_result(obj, worker, task):
         if revision['worktree_sha256'] != current['worktree_sha256']:
             fail('material drift: worktree changed since execution')
         if revision['base_commit'] != current['base_commit']:
-            fail('base advanced since task execution; record experience before integration; old evidence remains historical for the prior base')
+            fail('base changed since task execution; record experience before integration; old evidence remains historical for the prior base')
         fail('native result revision drift')
     stale = obj.get('stale')
     if type(stale) is not bool or stale is not False:
