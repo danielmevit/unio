@@ -1,5 +1,48 @@
 # Unio version plan
 
+## Current delivery and next app batch — 2026-11-11T12:14:19+01:00
+
+[Unio 0.5.26](RELEASE-0.5.26.md) is published and installed. Host-aware WSL
+storage checks, truthful interrupted-run observations, read-only build-cache
+inventory, protected-full-store preflight, CLI version awareness and tested
+Vibe compatibility are shipped. The full required gate passed; independent
+code review, lead assessment, installation and official asset checks completed.
+Older dated version allocations below are history and do not describe the
+current release.
+
+The owner has authorized a coherent recovery and efficiency batch for 0.5.27:
+
+1. Useful context packets from failed report-only runs, preserving original
+   failures and incomplete delivery without weakening acceptance gates.
+2. A dry-run-first, explicit operator action for protected saves belonging to
+   an inactive worker. Existing automatic archival remains; no deletion or
+   automatic eviction of latest, pinned, corrupt or benchmark evidence.
+3. Compact role-specific startup context and bounded relevant review material,
+   preserving all operative policy and exact material identities.
+4. Actionable experience-record freshness diagnostics and real native workflow
+   coverage. Current stale evidence stays stale; historical performance is
+   not a fresh approval.
+
+This is in progress, not a shipping claim. Use focused component checks and
+independent current-code review plus the existing lead assessment, then one
+required combined gate on the final frozen composition. Approximate batch
+range: 1–2 working days, revised from actual scope and available routes.
+Bundle coherent completed changes instead of publishing every small patch.
+
+The Fable whole-product audit is postponed and does not block app work. Its
+preserved partial inventory is not a completed audit. Later findings can adjust
+the development plan.
+
+After the operational batch: managed lead lifecycle and control in the existing
+dashboard, session-scoped phone pairing, native Windows, then macOS. Preserve
+existing core/RPC work and assess it before a new assignment. Platform and
+session estimates remain provisional. No replacement dashboard is planned.
+
+The older private/cloud branches labelled 0.5.26 contain separate unshipped
+JSON-depth and review-context work. Their version labels are not evidence of
+inclusion in the official release. Revalidate their actual code and outstanding
+approvals before integration; do not merge them by name.
+
 Owner direction, 2026-10-05: close the rename at 0.5.0, then keep the next
 changes in separate versions with their implementation and changelog entries.
 
@@ -38,7 +81,8 @@ See [the operational priorities](development/IMPROVEMENT-BACKLOG.md) and
 | 0.5.23 | Vecto field reliability: bounded admission diagnostics, consistent review observation and explicit required delivery; preserve the reviewed managed-session CLI slice | [Released and installed2026-10-23](https://github.com/danielmevit/unio/releases/tag/v0.5.23), sourcecd0b3a2; full gate, independent Opus review plus lead assessment, upgrade/rollback and six official download hashes passed. See [release scope and limits](RELEASE-0.5.23.md). Full multi-turn lead continuity remains later. |
 | 0.5.24 | Operational reliability and quality of life | [Released and installed 2026-10-25](https://github.com/danielmevit/unio/releases/tag/v0.5.24): review-dispatch truth, checkpoint metadata reuse, explicit assessment timeout and foreground run phases. Complete gate, independent reviews, official download verification and installed smoke checks passed. See [scope and evidence](RELEASE-0.5.24.md). Managed lead ownership remains deferred. |
 | 0.5.25 | Checkpoint latest-lookup and worker-effort configuration clarity | Published and installed 2026-10-26; six official asset downloads and GitHub digests verified. Exact runtime components `095b0d6` and `d73a5b6`, independent Opus 5.5 XHIGH reviews plus lead assessment, one full quality gate exit 0 and installed smoke checks passed. Configuration and 15 customized templates preserved. See [scope and evidence](RELEASE-0.5.25.md). |
-| 0.5.26 | Malformed-save refusal and richer review context | Planned: gracefully refuse deeply nested save JSON, then provide bounded enclosing code context with exact material hashes and legacy compatibility. Use an [additional blind GPT-6 Astra XHIGH opinion](ai/REVIEW-ROTATION.md) for this release, preserving cross-lab review and real shared-budget limits. No implementation or publication is claimed yet. |
+| 0.5.26 | Host reliability, interrupted-run observations, cache inventory, checkpoint preflight, CLI awareness and Vibe compatibility | Published and installed 2026-11-11, source `ebff98e`; full gate, independent review and lead assessment, installed checks and six official asset hashes verified. See [release evidence](RELEASE-0.5.26.md). Older similarly numbered private candidates remain separate. |
+| 0.5.27 | Recovery and efficiency batch | In progress: failed-run context, operator-directed protected-save archival, lean role context and experience diagnostics. No finished implementation or release is claimed yet. |
 | Later; number unassigned | Managed lead ownership, lifecycle and existing dashboard integration | Deferred until the operational batch is accepted. Preserve the internal core/RPC foundations and ended worker evidence. Earlier 2–4 working-day estimate needs reassessment when resumed. |
 | Later; number unassigned | Session-scoped phone access | After a usable managed lead route; earlier 2–4 working-day estimate remains provisional. |
 | Later; number unassigned | Native Windows | After operational foundations; Windows precedes macOS. Earlier 1–3 working-week estimate requires feasibility assessment. Include [app-managed trial expiry](development/WINDOWS-TRIALS.md), localization and planned Store/winget distribution (`damt.Unio`, after an installer exists). |

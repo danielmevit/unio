@@ -1,5 +1,48 @@
 # Unio roadmap and development priorities
 
+## Current delivery and next app batch — 2026-11-11T12:14:19+01:00
+
+[Unio 0.5.26](../RELEASE-0.5.26.md) is published and installed. Host-aware WSL
+storage checks, truthful interrupted-run observations, read-only build-cache
+inventory, protected-full-store preflight, CLI version awareness and tested
+Vibe compatibility are shipped. The full required gate passed; independent
+code review, lead assessment, installation and official asset checks completed.
+Older dated version allocations below are history and do not describe the
+current release.
+
+The owner has authorized a coherent recovery and efficiency batch for 0.5.27:
+
+1. Useful context packets from failed report-only runs, preserving original
+   failures and incomplete delivery without weakening acceptance gates.
+2. A dry-run-first, explicit operator action for protected saves belonging to
+   an inactive worker. Existing automatic archival remains; no deletion or
+   automatic eviction of latest, pinned, corrupt or benchmark evidence.
+3. Compact role-specific startup context and bounded relevant review material,
+   preserving all operative policy and exact material identities.
+4. Actionable experience-record freshness diagnostics and real native workflow
+   coverage. Current stale evidence stays stale; historical performance is
+   not a fresh approval.
+
+This is in progress, not a shipping claim. Use focused component checks and
+independent current-code review plus the existing lead assessment, then one
+required combined gate on the final frozen composition. Approximate batch
+range: 1–2 working days, revised from actual scope and available routes.
+Bundle coherent completed changes instead of publishing every small patch.
+
+The Fable whole-product audit is postponed and does not block app work. Its
+preserved partial inventory is not a completed audit. Later findings can adjust
+the development plan.
+
+After the operational batch: managed lead lifecycle and control in the existing
+dashboard, session-scoped phone pairing, native Windows, then macOS. Preserve
+existing core/RPC work and assess it before a new assignment. Platform and
+session estimates remain provisional. No replacement dashboard is planned.
+
+The older private/cloud branches labelled 0.5.26 contain separate unshipped
+JSON-depth and review-context work. Their version labels are not evidence of
+inclusion in the official release. Revalidate their actual code and outstanding
+approvals before integration; do not merge them by name.
+
 ## Current delivery and owner direction — 2026-10-26T08:34:39+01:00
 
 The [0.5.25 operational batch](../RELEASE-0.5.25.md) is published and installed;
