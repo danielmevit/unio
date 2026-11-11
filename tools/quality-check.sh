@@ -109,6 +109,7 @@ python3 -B tests/unio-save-attempt-reuse.py
 python3 -B tests/unio-save-latest-lookup.py
 python3 -B tests/unio-work-saving.py
 python3 -B tests/unio-save-retention.py
+python3 -B tests/unio-save-archive-worker.py
 python3 -B tests/unio-save-cap-preflight.py
 python3 -B tests/unio-save-benchmark.py
 python3 -B tests/unio-work-saving-auto.py

@@ -33,13 +33,15 @@ unio save inspect --worker WORKER [--json]
 unio save restore SAVE_ID DESTINATION
 unio save continue SAVE_ID DESTINATION NEW_TASK
 unio save usage [--json]
+unio save archive-worker WORKER [--plan] [--json]
+unio save archive-worker WORKER --apply PLAN_HASH --confirm-inactive [--json]
 ```
 
-`create`, `inspect`, `restore` and `usage` make no provider call and work while
-STOP is set. `continue` starts one separately authorized worker run and respects
-STOP and account limits. Exit 0 means success, 1 a known refusal or failure,
-and 2 bad arguments, unavailable observations or an Unknown restore outcome;
-`continue` preserves the worker run's exit code.
+`create`, `inspect`, `restore`, `usage` and `archive-worker` make no provider
+call and work while STOP is set. `continue` starts one separately authorized
+worker run and respects STOP and account limits. Exit 0 means success, 1 a
+known refusal or failure, and 2 bad arguments, unavailable observations or an
+Unknown restore outcome; `continue` preserves the worker run's exit code.
 
 `create` acquires the source worker's native lock exactly once (a validated, regular, owned file in a safe parent directory, without following symlinks or blocking) and observes the worktree twice. It saves only when both observations match: committed history after the base (as a verified Git bundle carrying HEAD over the base), the full index and the working files, each with its own bytes and modes. Staged, unstaged, untracked, deleted, binary, empty, executable and retained deleted-from-index content is kept exactly. Ignored caches and the native ignored role cards are omitted before any of their bytes are read; however, required paths like HEAD-tracked files inside ignored directories are still saved. The base is the frozen task base that `unio run` recorded, otherwise the commit named by `coord/base`.
 
@@ -144,6 +146,56 @@ calls, creates no missing store or lock and changes no existing files. Busy or
 unsafe storage, unreadable claims and corrupt or ambiguous entries report
 Unknown with exit 2. Counts do not establish content integrity; `inspect`
 validates content hashes. The JSON output labels this `metadata_only`.
+
+### Explicit worker archival
+
+When the active store is filled by the newest save of many old workers,
+ordinary retention correctly refuses to move any of them. `unio save archive-worker`
+is a separate, explicit operator action that archives the unclaimed active
+history of one chosen worker, including that worker's newest save:
+
+```text
+unio save archive-worker WORKER [--plan] [--json]   # read-only preview
+unio save archive-worker WORKER --apply PLAN_HASH --confirm-inactive [--json]
+```
+
+The plan explains the selected saves, the worker's blocked (claim-pinned or
+corrupt) saves, every other worker's protected newest saves, native activity,
+active/archive counts and byte bounds, the freed active slots and a
+deterministic plan hash. It is a point-in-time view: the native lock probe can
+prove a worker busy or idle, but unmanaged activity stays Unknown and the
+`--confirm-inactive` flag is CLI-caller authority, never proof of human
+identity or of an absence of other processes. The hash binds the selected
+worker's attempt facts, every save ID and manifest identity, the complete
+active/archive inventory, all claims and the measured archive capacity; it
+excludes observation clocks and other workers' periodically changing
+refused-attempt metadata, so an unchanged exact state stays applicable. Read-only
+planning creates no store, lock, receipt or plan file.
+
+`--apply` requires the exact current hash plus `--confirm-inactive`; there is
+no force form and no automatic application. Under the same locks and in the
+same order as native saving (worker lock, then the store publication lock),
+it rechecks activity, claims, inventory and the exact plan hash, deeply
+validates exactly the selected bodies and bundle with bounded reads, and
+reuses the existing per-ID atomic archive move. A locked or running native
+worker refuses; claim-pinned, corrupt, unsafe or unknown-bound material is
+never moved; unknown archive capacity or exceeded archive caps refuse before
+any effect; a stale plan or a race refuses without moving a save. Every moved
+ID, byte, old attempt and claim stays intact: archived saves remain
+inspectable and restorable at `coord/saves/archive/SAVE_ID/snapshot/`,
+last-good resolution is rechecked after the latest save moves, and a future
+run can create a new active save under the unchanged admission rules — no
+persistent worker ban or run/retry grant exists.
+
+A partial interruption is reported truthfully (nonzero/Unknown with the
+observed moved and remaining IDs, never relabeled or retried automatically),
+and each application records a bounded version-1 maintenance receipt outside
+the strict immutable-save layout under `coord/reports/.checkpoint-archive/`;
+run attempts and the native receipt/result/usage/report schemas are never
+rewritten, and receipts are never deleted automatically. Like `inspect` and
+`restore`, this is owner-authorized local maintenance: planning and explicit
+archival work while STOP is set, without resuming anything or calling a
+provider. The output uses its own bounded versioned schema.
 
 `restore` writes into a different worker that is idle, clean and at the
 saved base in the same repository. Everything is validated first: manifest,
@@ -289,6 +341,16 @@ These focused checks make no AI request; the full gate runs before release.
 restore and authorized continuation, byte preservation, protected claims and
 newest saves, archive count/byte bounds, collisions, read-only usage and an
 interrupted archive move using isolated native workflows.
+
+`tests/unio-save-archive-worker.py` exercises the explicit `unio save
+archive-worker` flow in isolated offline fixtures: the 32-protected-latest cap
+reproduced, zero-write read-only planning, deterministic plan hashes that
+ignore unrelated refused-attempt metadata, stale-plan and locked-worker
+refusals, deep body validation, pinned and corrupt evidence protection,
+unknown archive capacity and duplicate/cap refusals, freeing active slots
+without deleting bytes, archived inspect/restore/last-good resolution, STOP and
+zero provider calls, an injected interruption after one atomic move with
+truthful partial/Unknown state, and persisted maintenance receipts.
 
 Failed-run commits are separately opt-in with `unio wip on|off|status` (default
 off). See [WIP preservation](WORK-WIP.md) for text-only scope, safety refusals,
