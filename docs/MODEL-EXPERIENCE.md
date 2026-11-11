@@ -150,4 +150,3 @@ Keep the requested model and effort separate from effective settings, and
 record a demonstrated quality issue separately from a quota, transport or
 setup failure. A successful Source exit and passing checks do not establish
 lead acceptance.
-
