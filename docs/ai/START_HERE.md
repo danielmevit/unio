@@ -201,6 +201,12 @@ Do not merge, publish, change billing, retry a frozen task or create other
 AI calls unless the task and owner explicitly authorize it. A source commit
 alone does not establish verification, review, acceptance or public delivery.
 
+Compact role startup cards under [WORKER-STARTUP-CARD.md](WORKER-STARTUP-CARD.md)
+and [REVIEWER-STARTUP-CARD.md](REVIEWER-STARTUP-CARD.md) (copied to
+`coord/docs/` on `unio init`) provide short canonical entry points without
+compulsory reading of full lead guides. The frozen task and current owner
+instructions prevail.
+
 Before delegating, read the [agent fleet guide](../development/AGENT-FLEET.md)
 for approved account routes, useful assignments and current exclusions. Local
 models are excluded under the current owner rule; Copilot Free uses its GitHub
