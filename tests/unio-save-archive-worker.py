@@ -324,4 +324,168 @@ with tempfile.TemporaryDirectory(prefix='save-archive-worker-') as directory:
           and len(list(receipts.iterdir())) >= 4)
     check('no provider call was made and usage reflects the archived worker', not calls.exists()
           and json.loads(unio('save', 'usage', '--json').stdout)['archived_saves'] == 4)
+
+    # ---------------------------------------------------------------
+    # Controlled fault injections for truthful archive outcomes
+    # ---------------------------------------------------------------
+
+    # 1. Pre-effect timeout: refuses before effects with zero writes
+    p_c = json.loads(plan('mock-c').stdout)
+    c_ids_before = {item['save_id'] for item in p_c['selected']}
+    real_budget_cls = core['Budget']
+    class TimeoutBudget:
+        def __init__(self, *a, **k): pass
+        def remaining(self): raise core['Refuse']('excessive', 'operation exceeded its 60 second bound')
+        def charge(self, n): pass
+    core['Budget'] = TimeoutBudget
+    try:
+        core['apply_archive_worker'](str(project), 'mock-c', p_c['plan_hash'], True)
+        timeout_raised = False
+    except core['Refuse'] as e:
+        timeout_raised = (e.code == 'excessive')
+        timeout_moved = getattr(e, 'moved', None)
+        timeout_remaining = getattr(e, 'remaining', None)
+    finally:
+        core['Budget'] = real_budget_cls
+    stem_c = 'mock-c-' + p_c['plan_hash'][:16]
+    check('pre-effect timeout refuses before any effect with zero writes',
+          timeout_raised and timeout_moved is None and timeout_remaining is None
+          and c_ids_before <= ids(store) and not any(p.name.startswith(stem_c) for p in receipts.iterdir()))
+
+    # 2. Partial first move failure: first ID fails before rename
+    p_b = json.loads(plan('mock-b').stdout)
+    ordered_b = [item['save_id'] for item in sorted(p_b['selected'], key=lambda x: (x['published_at'], x['save_id']))]
+    orig_archive_save = core['archive_save']
+    def fail_first_move(s_path, sid, a_path):
+        raise OSError('injected reservation mkdir failure before rename')
+    core['archive_save'] = fail_first_move
+    try:
+        core['apply_archive_worker'](str(project), 'mock-b', p_b['plan_hash'], True)
+        partial_first_raised = False
+    except core['Refuse'] as e:
+        partial_first_raised = (e.code == 'unknown')
+        pf_moved, pf_remaining = getattr(e, 'moved', None), getattr(e, 'remaining', None)
+    finally:
+        core['archive_save'] = orig_archive_save
+    stem_b = 'mock-b-' + p_b['plan_hash'][:16]
+    partial_b_receipt = receipts / (stem_b + '.partial.json')
+    check('partial first move failure reports nonzero Unknown with 0 moved and all remaining',
+          partial_first_raised and pf_moved == [] and pf_remaining == ordered_b
+          and set(ordered_b) <= ids(store) and partial_b_receipt.exists()
+          and json.loads(partial_b_receipt.read_text())['status'] == 'partial'
+          and json.loads(partial_b_receipt.read_text())['moved'] == []
+          and json.loads(partial_b_receipt.read_text())['remaining'] == ordered_b)
+
+    # 3. Helper raises after rename/fsync with actual move location
+    p_e = json.loads(plan('mock-e').stdout)
+    ordered_e = [item['save_id'] for item in sorted(p_e['selected'], key=lambda x: (x['published_at'], x['save_id']))]
+    first_e = ordered_e[0]
+    def fail_after_first_rename(s_path, sid, a_path):
+        orig_archive_save(s_path, sid, a_path)
+        if sid == first_e:
+            raise OSError('injected fsync failure after rename')
+    core['archive_save'] = fail_after_first_rename
+    try:
+        core['apply_archive_worker'](str(project), 'mock-e', p_e['plan_hash'], True)
+        helper_fsync_raised = False
+    except core['Refuse'] as e:
+        helper_fsync_raised = (e.code == 'unknown')
+        hf_moved, hf_remaining = getattr(e, 'moved', None), getattr(e, 'remaining', None)
+    finally:
+        core['archive_save'] = orig_archive_save
+    stem_e = 'mock-e-' + p_e['plan_hash'][:16]
+    partial_e_receipt = receipts / (stem_e + '.partial.json')
+    check('helper raises after rename/fsync truthfully classifies actual move location as moved',
+          helper_fsync_raised and hf_moved == [first_e] and hf_remaining == ordered_e[1:]
+          and first_e in ids(archive) and first_e not in ids(store)
+          and set(ordered_e[1:]) <= ids(store) and partial_e_receipt.exists()
+          and json.loads(partial_e_receipt.read_text())['moved'] == [first_e]
+          and json.loads(partial_e_receipt.read_text())['remaining'] == ordered_e[1:])
+
+    # 4. Final inventory Refuse and OSError after move
+    p_f = json.loads(plan('mock-f').stdout)
+    ordered_f = [item['save_id'] for item in sorted(p_f['selected'], key=lambda x: (x['published_at'], x['save_id']))]
+    orig_scan = core['scan_store']
+    def fail_scan_refuse(target_store, *args, **kwargs):
+        if (archive / ordered_f[0] / 'snapshot').exists():
+            raise core['Refuse']('excessive', 'injected post-move inventory budget failure')
+        return orig_scan(target_store, *args, **kwargs)
+    core['scan_store'] = fail_scan_refuse
+    try:
+        core['apply_archive_worker'](str(project), 'mock-f', p_f['plan_hash'], True)
+        scan_refuse_raised = False
+    except core['Refuse'] as e:
+        scan_refuse_raised = (e.code == 'unknown')
+        sr_moved, sr_remaining = getattr(e, 'moved', None), getattr(e, 'remaining', None)
+    finally:
+        core['scan_store'] = orig_scan
+    stem_f = 'mock-f-' + p_f['plan_hash'][:16]
+    partial_f_receipt = receipts / (stem_f + '.partial.json')
+    check('final inventory Refuse after move reports nonzero Unknown with actual moved IDs and partial receipt',
+          scan_refuse_raised and sr_moved == ordered_f and sr_remaining == []
+          and set(ordered_f) <= ids(archive) and partial_f_receipt.exists()
+          and json.loads(partial_f_receipt.read_text())['status'] == 'partial'
+          and json.loads(partial_f_receipt.read_text())['moved'] == ordered_f
+          and json.loads(partial_f_receipt.read_text())['remaining'] == [])
+
+    p_g = json.loads(plan('mock-g').stdout)
+    ordered_g = [item['save_id'] for item in sorted(p_g['selected'], key=lambda x: (x['published_at'], x['save_id']))]
+    def fail_scan_oserror(target_store, *args, **kwargs):
+        if (archive / ordered_g[0] / 'snapshot').exists():
+            raise OSError('injected post-move inventory read failure')
+        return orig_scan(target_store, *args, **kwargs)
+    core['scan_store'] = fail_scan_oserror
+    try:
+        core['apply_archive_worker'](str(project), 'mock-g', p_g['plan_hash'], True)
+        scan_os_raised = False
+    except core['Refuse'] as e:
+        scan_os_raised = (e.code == 'unknown')
+        so_moved, so_remaining = getattr(e, 'moved', None), getattr(e, 'remaining', None)
+    finally:
+        core['scan_store'] = orig_scan
+    stem_g = 'mock-g-' + p_g['plan_hash'][:16]
+    partial_g_receipt = receipts / (stem_g + '.partial.json')
+    check('final inventory OSError after move reports nonzero Unknown with actual moved IDs and partial receipt',
+          scan_os_raised and so_moved == ordered_g and so_remaining == []
+          and set(ordered_g) <= ids(archive) and partial_g_receipt.exists()
+          and json.loads(partial_g_receipt.read_text())['status'] == 'partial'
+          and json.loads(partial_g_receipt.read_text())['moved'] == ordered_g)
+
+    # 5. Post-effect receipt failure retains actual IDs without fabricating durable receipt
+    p_h = json.loads(plan('mock-h').stdout)
+    h_ids = {item['save_id'] for item in p_h['selected']}
+    orig_write_receipt = core['write_maintenance_receipt']
+    def fail_outcome_receipt(r_dir, name, doc):
+        if name.endswith('.outcome.json'):
+            raise OSError('injected outcome receipt disk failure')
+        orig_write_receipt(r_dir, name, doc)
+    core['write_maintenance_receipt'] = fail_outcome_receipt
+    try:
+        rc_h = core['cmd_archive_worker'](str(project), 'mock-h', p_h['plan_hash'], True)
+    finally:
+        core['write_maintenance_receipt'] = orig_write_receipt
+    stem_h = 'mock-h-' + p_h['plan_hash'][:16]
+    check('post-effect receipt failure retains actual IDs without fabricating durable receipt',
+          rc_h == 2 and h_ids <= ids(archive) and not (receipts / (stem_h + '.outcome.json')).exists()
+          and (receipts / (stem_h + '.intent.json')).exists())
+
+    # 6. Complete honest 0: happy path application to completion
+    p_a = json.loads(plan('mock-a').stdout)
+    ordered_a = [item['save_id'] for item in sorted(p_a['selected'], key=lambda x: (x['published_at'], x['save_id']))]
+    rc_a = unio('save', 'archive-worker', 'mock-a', '--apply', p_a['plan_hash'], '--confirm-inactive', '--json')
+    a_out = json.loads(rc_a.stdout)
+    stem_a = 'mock-a-' + p_a['plan_hash'][:16]
+    check('complete honest 0 reports archived status with exact moved IDs and receipts',
+          rc_a.returncode == 0 and a_out['status'] == 'archived' and a_out['moved'] == ordered_a
+          and a_out['remaining'] == [] and set(ordered_a) <= ids(archive) and not (set(ordered_a) & ids(store))
+          and (receipts / (stem_a + '.intent.json')).exists()
+          and (receipts / (stem_a + '.outcome.json')).exists()
+          and a_out['receipt'] == '/'.join(core['MAINTENANCE_RECEIPT_REL']) + '/' + stem_a + '.outcome.json')
+
+    # 7. Exact restoration unchanged: archived save restores exact bytes
+    target_worker = workers[10]
+    restored_a = unio('save', 'restore', ordered_a[0], target_worker)
+    check('exact restoration of honestly archived save works unchanged',
+          restored_a.returncode == 0 and ordered_a[0] in ids(archive)
+          and (project/'wt'/target_worker/'README.md').read_text() == 'native saved bytes\n')
     print('Save archive-worker: %d checks passed' % passed)

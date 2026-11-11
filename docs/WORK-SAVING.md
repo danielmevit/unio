@@ -192,10 +192,16 @@ observed moved and remaining IDs, never relabeled or retried automatically),
 and each application records a bounded version-1 maintenance receipt outside
 the strict immutable-save layout under `coord/reports/.checkpoint-archive/`;
 run attempts and the native receipt/result/usage/report schemas are never
-rewritten, and receipts are never deleted automatically. Like `inspect` and
-`restore`, this is owner-authorized local maintenance: planning and explicit
-archival work while STOP is set, without resuming anything or calling a
-provider. The output uses its own bounded versioned schema.
+rewritten, and receipts are never deleted automatically. If post-move
+bookkeeping, inventory scans, budget limits or durability steps fail, actual
+active and archive identities are observed under held locks to classify proven
+moved, remaining, and Unknown IDs without declaring an ID remaining merely
+because a helper raised after rename/fsync. If a post-effect maintenance
+receipt cannot be recorded, honest Unknown status and actual IDs are retained
+in stdout/stderr/JSON without fabricating durable proof of missing receipts.
+Like `inspect` and `restore`, this is owner-authorized local maintenance:
+planning and explicit archival work while STOP is set, without resuming
+anything or calling a provider. The output uses its own bounded versioned schema.
 
 `restore` writes into a different worker that is idle, clean and at the
 saved base in the same repository. Everything is validated first: manifest,
@@ -350,7 +356,10 @@ refusals, deep body validation, pinned and corrupt evidence protection,
 unknown archive capacity and duplicate/cap refusals, freeing active slots
 without deleting bytes, archived inspect/restore/last-good resolution, STOP and
 zero provider calls, an injected interruption after one atomic move with
-truthful partial/Unknown state, and persisted maintenance receipts.
+truthful partial/Unknown state, persisted maintenance receipts, and controlled
+fault injections for pre-effect timeouts, partial first moves, helper
+post-rename fsync failures, post-move inventory Refuse and OSError reporting,
+post-effect receipt failure, complete honest 0 archival and exact restoration.
 
 Failed-run commits are separately opt-in with `unio wip on|off|status` (default
 off). See [WIP preservation](WORK-WIP.md) for text-only scope, safety refusals,
