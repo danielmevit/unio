@@ -42,6 +42,36 @@ mismatched, or unsupported evidence is refused without recording.
   `opencode-go`, `opencode-zen-free`, `perplexity-web`, `copilot-auto`, or `unknown`.
 - **Effort**: One of `unknown`, `none`, `low`, `medium`, `high`, `xhigh`, `thinking`.
 
+#### Revision Binding & Integration Freshness
+
+`record` validates that the native result matches the current workspace revision
+and is not stale:
+- **Record Before Integration**: Operators must record experience assessments
+  *before* integrating candidate work (i.e., before merging or advancing `main`).
+- **Base Advancement**: If `main` advances after task completion without changes
+  to worker candidate bytes or the task specification (`revision.base_commit`
+  differs while `candidate_commit`, `task_sha256`, and `worktree_sha256` match),
+  the native result becomes stale for the new base. `record` refuses with an
+  actionable diagnostic:
+  `base changed since task execution; record experience before integration; old evidence remains historical for the prior base`.
+  The wording is generic because `record` can only observe that `base_commit`
+  differs; whether the base advanced, was rewound, or was switched is not
+  inferred. Old evidence remains historical because it was verified against the
+  earlier base commit, not the current one. Stale code is never accepted as
+  current evidence.
+- **Drift Diagnostics**: If worker code, task definitions, or working files change
+  after execution, `record` refuses with specific drift diagnostics:
+  - Worker drift: `worker drift: candidate commit changed since execution`
+  - Task drift: `task drift: task definition changed since execution`
+  - Material drift: `material drift: worktree changed since execution`
+- **Missing or Malformed Bindings**: Missing revision dictionaries fail with
+  `native result has no current revision binding`, and malformed bindings fail
+  with `malformed native revision binding`.
+- **Historical Evidence Contract**: Schema-1 strictly requires current-freshness.
+  A separate explicit historical-evidence acceptance mode requires a distinct
+  frozen contract and schema rather than weakening stale checks or synthesizing
+  freshness.
+
 ### `show`
 
 Displays stored experience evidence grouped by profile (account alias, requested

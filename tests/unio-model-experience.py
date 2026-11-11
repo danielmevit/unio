@@ -754,6 +754,199 @@ class ExperienceSuite(unittest.TestCase):
         self.assertEqual(r_tamper.returncode, 2)
         self.assertIn('experience record identity mismatch', r_tamper.stderr)
 
+    def test_14_revision_drift_and_diagnostics(self):
+        """Journey 14: Actionable diagnostics distinguishing base advancement, drift, and malformed bindings."""
+        base_rev = make_revision('14')
+        up_time = (NOW - datetime.timedelta(days=1)).isoformat()
+
+        # 1. Missing revision binding
+        res_no_rev = make_result(worker='codex', task='TASK-NOREV', rev=base_rev, exit_code=0, val_state='passed', updated_at=up_time)
+        del res_no_rev['revision']
+        self.results['codex/TASK-NOREV'] = res_no_rev
+        self.save_results()
+        r = self.run_cli('record', 'codex', 'TASK-NOREV', '--model', 'gpt-4o', '--route', 'codex',
+                         '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('native result has no current revision binding', r.stderr)
+
+        # 2. Missing current_revision
+        res_no_curr = make_result(worker='codex', task='TASK-NOCURR', rev=base_rev, exit_code=0, val_state='passed', updated_at=up_time)
+        del res_no_curr['current_revision']
+        self.results['codex/TASK-NOCURR'] = res_no_curr
+        self.save_results()
+        r = self.run_cli('record', 'codex', 'TASK-NOCURR', '--model', 'gpt-4o', '--route', 'codex',
+                         '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('native result has no current revision binding', r.stderr)
+
+        # 3. Malformed revision binding (invalid structure/hashes)
+        res_bad_rev = make_result(worker='codex', task='TASK-BADREV', rev=base_rev, exit_code=0, val_state='passed', updated_at=up_time)
+        res_bad_rev['revision'] = {'candidate_commit': 'short', 'base_commit': 'invalid', 'task_sha256': '123', 'worktree_sha256': '456'}
+        self.results['codex/TASK-BADREV'] = res_bad_rev
+        self.save_results()
+        r = self.run_cli('record', 'codex', 'TASK-BADREV', '--model', 'gpt-4o', '--route', 'codex',
+                         '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('malformed native revision binding', r.stderr)
+
+        # 4. Worker drift: candidate_commit changed
+        curr_worker_drift = dict(base_rev, candidate_commit=make_revision('diff_candidate')['candidate_commit'])
+        res_w_drift = make_result(worker='codex', task='TASK-WDRIFT', rev=base_rev, exit_code=0, val_state='passed', updated_at=up_time)
+        res_w_drift['current_revision'] = curr_worker_drift
+        self.results['codex/TASK-WDRIFT'] = res_w_drift
+        self.save_results()
+        r = self.run_cli('record', 'codex', 'TASK-WDRIFT', '--model', 'gpt-4o', '--route', 'codex',
+                         '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('worker drift: candidate commit changed since execution', r.stderr)
+
+        # 5. Task drift: task_sha256 changed
+        curr_task_drift = dict(base_rev, task_sha256=make_revision('diff_task')['task_sha256'])
+        res_t_drift = make_result(worker='codex', task='TASK-TDRIFT', rev=base_rev, exit_code=0, val_state='passed', updated_at=up_time)
+        res_t_drift['current_revision'] = curr_task_drift
+        self.results['codex/TASK-TDRIFT'] = res_t_drift
+        self.save_results()
+        r = self.run_cli('record', 'codex', 'TASK-TDRIFT', '--model', 'gpt-4o', '--route', 'codex',
+                         '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('task drift: task definition changed since execution', r.stderr)
+
+        # 6. Material drift: worktree_sha256 changed
+        curr_mat_drift = dict(base_rev, worktree_sha256=make_revision('diff_mat')['worktree_sha256'])
+        res_m_drift = make_result(worker='codex', task='TASK-MDRIFT', rev=base_rev, exit_code=0, val_state='passed', updated_at=up_time)
+        res_m_drift['current_revision'] = curr_mat_drift
+        self.results['codex/TASK-MDRIFT'] = res_m_drift
+        self.save_results()
+        r = self.run_cli('record', 'codex', 'TASK-MDRIFT', '--model', 'gpt-4o', '--route', 'codex',
+                         '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('material drift: worktree changed since execution', r.stderr)
+
+        # 7. Base advanced: only base_commit changed, candidate/task/worktree match
+        curr_base_adv = dict(base_rev, base_commit=make_revision('diff_base')['base_commit'])
+        res_base_adv = make_result(worker='codex', task='TASK-BASEADV', rev=base_rev, exit_code=0, val_state='passed', updated_at=up_time, stale=True)
+        res_base_adv['current_revision'] = curr_base_adv
+        self.results['codex/TASK-BASEADV'] = res_base_adv
+        self.save_results()
+        r = self.run_cli('record', 'codex', 'TASK-BASEADV', '--model', 'gpt-4o', '--route', 'codex',
+                         '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('base changed since task execution; record experience before integration; old evidence remains historical for the prior base', r.stderr)
+
+        # 8. Both candidate and base differ: worker drift takes priority
+        curr_both = dict(base_rev, candidate_commit=curr_worker_drift['candidate_commit'], base_commit=curr_base_adv['base_commit'])
+        res_both = make_result(worker='codex', task='TASK-BOTH', rev=base_rev, exit_code=0, val_state='passed', updated_at=up_time)
+        res_both['current_revision'] = curr_both
+        self.results['codex/TASK-BOTH'] = res_both
+        self.save_results()
+        r = self.run_cli('record', 'codex', 'TASK-BOTH', '--model', 'gpt-4o', '--route', 'codex',
+                         '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('worker drift: candidate commit changed since execution', r.stderr)
+
+        # 9. Fresh successful native result recorded cleanly
+        self.results['codex/TASK-FRESH'] = make_result(worker='codex', task='TASK-FRESH', rev=base_rev, exit_code=0, val_state='passed', updated_at=up_time)
+        self.save_results()
+        r_ok = self.run_cli('record', 'codex', 'TASK-FRESH', '--model', 'gpt-4o', '--route', 'codex',
+                            '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
+        self.assertEqual(r_ok.returncode, 0)
+
+        # 10. Fresh failed native result: accepted refused, operational_failure accepted
+        fail_rev = make_revision('14_fail')
+        self.results['codex/TASK-FAIL-OP'] = make_result(worker='codex', task='TASK-FAIL-OP', rev=fail_rev, exit_code=1, val_state='failed', updated_at=up_time)
+        self.save_results()
+        r_fail_acc = self.run_cli('record', 'codex', 'TASK-FAIL-OP', '--model', 'gpt-4o', '--route', 'codex',
+                                  '--effort', 'high', '--task-type', 'feature', '--outcome', 'accepted', project=self.project)
+        self.assertEqual(r_fail_acc.returncode, 2)
+        self.assertIn('accepted requires Source exit zero and current native validation PASS', r_fail_acc.stderr)
+
+        r_fail_op = self.run_cli('record', 'codex', 'TASK-FAIL-OP', '--model', 'gpt-4o', '--route', 'codex',
+                                 '--effort', 'high', '--task-type', 'feature', '--outcome', 'operational_failure', project=self.project)
+        self.assertEqual(r_fail_op.returncode, 0)
+
+    def test_15_real_installed_integration_sequence(self):
+        """Journey 15: Real installed native fixture integration sequence and base advancement."""
+        with tempfile.TemporaryDirectory(prefix='unio-real-fixture-') as fixture_tmp:
+            fixture_dir = Path(fixture_tmp)
+            fixture_env = {k: v for k, v in os.environ.items() if not k.startswith(('UNIO_', 'GIT_', 'PYTHON')) and k != 'BASH_ENV'}
+            fixture_env.update(
+                HOME=str(fixture_dir),
+                UNIO_BIN_DIR=str(fixture_dir / 'bin'),
+                UNIO_CONF_DIR=str(fixture_dir / 'conf'),
+                UNIO_COMPLETION_DIR=str(fixture_dir / 'completion'),
+                UNIO_AUTO_VERIFY='0',
+                UNIO_AUTO_SYNC='0',
+                UNIO_AUTO_OFF='0',
+                UNIO_TIMEOUT='30',
+                GIT_CONFIG_GLOBAL='/dev/null',
+                GIT_CONFIG_NOSYSTEM='1',
+                GIT_AUTHOR_NAME='fixture',
+                GIT_COMMITTER_NAME='fixture',
+                GIT_AUTHOR_EMAIL='fixture@example.invalid',
+                GIT_COMMITTER_EMAIL='fixture@example.invalid',
+                PYTHONDONTWRITEBYTECODE='1',
+            )
+
+            installer = SOURCE / 'unio-install.sh'
+            subprocess.run(['bash', str(installer)], env=fixture_env, check=True, capture_output=True)
+
+            unio_bin = fixture_dir / 'bin/unio'
+            proj_root = fixture_dir / 'project'
+            repo = proj_root / 'repo'
+            repo.mkdir(parents=True)
+
+            def git_cmd(*args):
+                cp = subprocess.run(['git', *args], cwd=repo, env=fixture_env, check=True, capture_output=True, text=True)
+                return cp.stdout.strip()
+
+            git_cmd('init', '-q', '-b', 'main')
+            git_cmd('commit', '--allow-empty', '-qm', 'initial base')
+
+            subprocess.run([str(unio_bin), 'init', 'mock'], cwd=repo, env=fixture_env, check=True, capture_output=True)
+
+            conf_path = fixture_dir / 'conf/agents.conf'
+            conf_path.write_text('mock=echo "native mock code" > out.txt\n')
+
+            task_path = proj_root / 'coord/tasks/TASK-INTEG.md'
+            task_path.write_text('# Task Integ\n## Outcome\nimplementation\n## Allowed scope\n- out.txt\n## Validate\n$ test -f out.txt\n')
+
+            # Run and verify
+            subprocess.run([str(unio_bin), 'run', 'mock', 'TASK-INTEG'], cwd=repo, env=fixture_env, check=True, capture_output=True, text=True)
+            subprocess.run([str(unio_bin), 'verify', 'mock', 'TASK-INTEG'], cwd=repo, env=fixture_env, check=True, capture_output=True, text=True)
+
+            # Record BEFORE base advance
+            r_rec_before = subprocess.run([
+                str(unio_bin), 'experience', 'record', 'mock', 'TASK-INTEG',
+                '--model', 'mock-model', '--route', 'codex', '--effort', 'high',
+                '--task-type', 'feature', '--outcome', 'accepted',
+                '--project', str(proj_root)
+            ], cwd=repo, env=fixture_env, capture_output=True, text=True)
+            self.assertEqual(r_rec_before.returncode, 0, r_rec_before.stderr)
+            self.assertIn('Experience record', r_rec_before.stdout)
+
+            # Records store has exactly 1 record
+            rec_files = list((proj_root / 'coord/experience/records').glob('*.json'))
+            self.assertEqual(len(rec_files), 1)
+            original_record_bytes = rec_files[0].read_bytes()
+
+            # Advance base on main without changing worker or task bytes
+            git_cmd('commit', '--allow-empty', '-qm', 'advance base')
+
+            # Re-running record AFTER base move must refuse with actionable diagnostic
+            r_rec_after = subprocess.run([
+                str(unio_bin), 'experience', 'record', 'mock', 'TASK-INTEG',
+                '--model', 'mock-model', '--route', 'codex', '--effort', 'high',
+                '--task-type', 'feature', '--outcome', 'accepted',
+                '--project', str(proj_root)
+            ], cwd=repo, env=fixture_env, capture_output=True, text=True)
+            self.assertEqual(r_rec_after.returncode, 2)
+            self.assertIn('base changed since task execution; record experience before integration; old evidence remains historical for the prior base', r_rec_after.stderr)
+
+            # Old record remains historical and untouched
+            rec_files_after = list((proj_root / 'coord/experience/records').glob('*.json'))
+            self.assertEqual(len(rec_files_after), 1)
+            self.assertEqual(rec_files_after[0].read_bytes(), original_record_bytes)
+
 
 if __name__ == '__main__':
     unittest.main()
