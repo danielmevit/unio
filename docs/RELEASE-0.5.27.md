@@ -1,0 +1,67 @@
+# Unio 0.5.27 — recovery and checkpoint maintenance
+
+Draft release scope; publication and final combined validation are pending.
+
+This update helps an operator recover useful context from a failed task and
+manage protected checkpoint history without confusing preserved work with
+accepted work.
+
+## Changes
+
+- Failed report-only runs can produce an explicitly incomplete handoff when
+  the available report and declared artifacts still match their recorded
+  binding. Original failures and missing delivery remain visible. Verification,
+  review and readiness retain their success requirements.
+- `unio save archive-worker WORKER --plan` previews an explicit archive action
+  for one selected worker. Applying the current plan requires its hash and
+  `--confirm-inactive`. Valid unclaimed saves, including that worker's latest,
+  move to the archive with their IDs and contents preserved. Inspection and
+  restoration continue to work. Other workers' protected history, pins,
+  corrupt evidence and the ordinary automatic retention policy stay protected.
+- Archive failures after a rename or during final bookkeeping report the
+  observed moved, remaining or Unknown state. A missing outcome receipt is
+  not described as a durable success. No automatic rollback or retry occurs.
+- Compact worker and reviewer startup cards are packaged with the installer
+  and copied by initialization when absent. Native prompts add a short role
+  pointer while preserving the original task bytes. Existing custom project
+  cards remain; the cards guide agents rather than sandbox their file access.
+- Experience recording explains revision-binding changes more precisely,
+  including a changed base. Real installed-workflow tests cover recording
+  before and after integration. Use the original run configuration and record
+  only a final assessment after review; conflicting assessments remain refused.
+
+## Important limits
+
+Archival frees active checkpoint slots, **not physical disk space**. Active and
+archive bounds remain unchanged. The inactive confirmation is the caller's
+assertion; an idle native lock cannot prove that no unmanaged process exists.
+The command makes no provider call and is available while STOP closes new runs.
+No benchmark evidence or owner checkpoint is automatically deleted.
+
+A recovery handoff is context, not a backup or acceptance. A running or
+interrupted task without a trustworthy terminal result remains Unknown and
+may still refuse handoff. Unwritten work cannot be recovered by this feature;
+arbitrary logs and ignored files are not scraped.
+
+Customized startup guides are preserved during upgrades. A guide that predates
+the cards can point explicitly to `WORKER-STARTUP-CARD.md` or
+`REVIEWER-STARTUP-CARD.md` in project coordination docs or installed templates.
+No measured token-saving claim is made.
+
+The immutable experience store is for final assessments. Pending progress and
+later corrections to prematurely recorded assessments need separate truthful
+coordination notes; this update does not introduce an assessment-amendment API
+or accept historical evidence as a fresh approval.
+
+## Validation and review
+
+Component checks and an independent current-code Mistral 4 review plus the
+lead assessment cover recovery, experience and role-card changes. The archive
+correction and its independent review are pending final acceptance. The final
+combined gate, candidate installation and official release-asset verification
+must complete before this document can describe a delivered release.
+
+The broader Fable product audit is separately blocked by account capacity and
+is not a completed audit or approval for this release. Desktop, phone, managed
+lead ownership, old private review-context proposals and JSON-depth work are
+outside this release.

@@ -17,8 +17,9 @@ The owner has authorized a coherent recovery and efficiency batch for 0.5.27:
 2. A dry-run-first, explicit operator action for protected saves belonging to
    an inactive worker. Existing automatic archival remains; no deletion or
    automatic eviction of latest, pinned, corrupt or benchmark evidence.
-3. Compact role-specific startup context and bounded relevant review material,
-   preserving all operative policy and exact material identities.
+3. Compact role-specific startup cards, preserving operative policy and exact
+   task bytes. Dedicated review-context runtime changes remain separately
+   deferred; bounded packets used during development are not a new CLI feature.
 4. Actionable experience-record freshness diagnostics and real native workflow
    coverage. Current stale evidence stays stale; historical performance is
    not a fresh approval.
