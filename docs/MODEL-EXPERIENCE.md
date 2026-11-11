@@ -175,7 +175,13 @@ are unchanged. A record made through the global configuration can therefore
 be refused as stale. Preserve that refusal and use the original configuration;
 do not weaken freshness checks or relabel the run as accepted.
 
-Record the assessment before advancing the project's base during integration.
+Record only the final assessment, after review and lead assessment and before
+advancing the project's base during integration. Records for a task revision
+are immutable: an early `unaccepted` record cannot later be replaced with
+`accepted`; a conflicting assessment is refused and preserves the first record.
+Keep pending progress in coordination notes instead. If an assessment was
+recorded prematurely, preserve it and document the later outcome separately;
+do not manufacture a new revision or weaken the guard.
 Keep the requested model and effort separate from effective settings, and
 record a demonstrated quality issue separately from a quota, transport or
 setup failure. A successful Source exit and passing checks do not establish
