@@ -4,7 +4,7 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.26 — host reliability, recovery and CLI awareness — 2026-11-10
+## 0.5.26 — host reliability, recovery and CLI awareness — 2026-11-11
 
 - Check the physical Windows volume backing WSL before admitting work; refuse known-critical space and preserve Unknown observations.
 - Reconcile current interrupted-run observations without inventing exits or rewriting original receipts.
