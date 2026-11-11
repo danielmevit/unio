@@ -71,6 +71,10 @@ n = len(list(receipts.iterdir()))
     original_len=len(original), original_sha=hashlib.sha256(original).hexdigest(),
     has_authority=b'UNIO_ORIGINAL_TASKFILE' in payload,
     has_header_prefix=payload.startswith(b'# Unio work-policy header (effective prompt; the original task is unchanged)\n'),
+    has_role_card_pointer=(
+        b'Role card: use the matching role from the frozen task, with project coord/docs and installed templates fallback; task and current owner instructions prevail.\n' in payload
+        and payload.count(b'Role card: use the matching role from the frozen task, with project coord/docs and installed templates fallback; task and current owner instructions prevail.\n') == 1
+    ),
     has_delimiter=delimiter in payload,
     exact_match=(payload == payload[:payload.index(delimiter) + len(delimiter)] + original) if delimiter in payload else False,
     max_arg=max(len(a.encode()) for a in sys.argv), argv_bytes=sum(len(a.encode()) + 1 for a in sys.argv),
@@ -161,7 +165,7 @@ with tempfile.TemporaryDirectory(prefix='prompt-transport-') as directory:
               len(data) > 180000 and r['original_len'] == len(data)
               and r['original_sha'] == hashlib.sha256(data).hexdigest()
               and r['payload_sha'] == r['taskfile_sha']
-              and r['has_authority'] and r['has_header_prefix'] and r['has_delimiter'] and r['exact_match'])
+              and r['has_authority'] and r['has_header_prefix'] and r['has_role_card_pointer'] and r['has_delimiter'] and r['exact_match'])
         check(f'{agent}: run argv and environment stay bounded and prompt-free',
               r['max_arg'] < 1024 and r['argv_bytes'] < 4096 and r['max_env'] < ARG_MAX_ONE
               and not r['sentinel_in_argv'] and not r['sentinel_in_env'])
@@ -186,7 +190,7 @@ with tempfile.TemporaryDirectory(prefix='prompt-transport-') as directory:
         task_bytes = (root / 'coord/tasks' / f'big-{agent}.md').read_bytes()
         check(f'{reviewer}: complete material file delivered byte/hash identical ({r["payload_len"]} bytes)',
               r['payload_len'] > ARG_MAX_ONE and r['payload_sha'] == r['taskfile_sha']
-              and r['has_authority'] and r['has_header_prefix'] and r['has_delimiter'] and r['exact_match']
+              and r['has_authority'] and r['has_header_prefix'] and r['has_role_card_pointer'] and r['has_delimiter'] and r['exact_match']
               and r['ends'].endswith('VERDICT: APPROVE or VERDICT: REQUEST-CHANGES\n'))
         check(f'{reviewer}: material holds the whole task, never clipped', r['original_len'] > len(task_bytes))
         check(f'{reviewer}: review argv and environment stay bounded and prompt-free',

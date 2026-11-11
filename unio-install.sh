@@ -28789,6 +28789,7 @@ def main(argv):
             'workflow_enforcement: native_workflows\n'
             'Mid-run setting changes affect future admissions only. Frozen Validate commands still apply; no mode waives them.\n'
             'Wrappers needing original task authority use UNIO_ORIGINAL_TASKFILE. The original file below is unchanged.\n'
+            'Role card: use the matching role from the frozen task, with project coord/docs and installed templates fallback; task and current owner instructions prevail.\n'
             '--- original %(kind)s material follows ---\n'
         ) % {'mode': PUBLIC_MODES[doc['mode']], 'mode_blurb': MODE_BLURB[doc['mode']],
              'tier': doc['tier'], 'tier_blurb': TIER_BLURB[doc['tier']],
@@ -28902,6 +28903,7 @@ def main(argv):
                     'workflow_enforcement: native_workflows\n'
                     'Mid-run setting changes affect future admissions only. Frozen Validate commands still apply; no mode waives them.\n'
                     'Wrappers needing original task authority use UNIO_ORIGINAL_TASKFILE. The original file below is unchanged.\n'
+                    'Role card: use the matching role from the frozen task, with project coord/docs and installed templates fallback; task and current owner instructions prevail.\n'
                     '--- original %(kind)s material follows ---\n'
                 ) % {'mode': PUBLIC_MODES[doc['mode']], 'mode_blurb': MODE_BLURB[doc['mode']],
                      'tier': doc['tier'], 'tier_blurb': TIER_BLURB[doc['tier']],
@@ -33817,7 +33819,7 @@ POLICY_MD_EOF
   fi
 
   local guide
-  for guide in LEAD-ESCALATION.md MODEL-SCOREBOARD.md AGENT-FLEET.md; do
+  for guide in LEAD-ESCALATION.md MODEL-SCOREBOARD.md AGENT-FLEET.md WORKER-STARTUP-CARD.md REVIEWER-STARTUP-CARD.md; do
     [ -f "$root/coord/docs/$guide" ] || cp "$TPL_DIR/$guide" "$root/coord/docs/$guide"
   done
   if ! grep -q 'UNIO-LEAD-ESCALATION' "$main_dir/MASTER.md" 2>/dev/null; then
@@ -41478,6 +41480,132 @@ AGENTS_CONF_EOF
 fi
 
 # ---------------------------------------------------------------- templates
+# BEGIN EMBEDDED ROLE CARDS
+# Check every generated destination before replacing any role card template.
+for role_cards_dir in "$TPL_DIR"; do
+  if [ -L "$role_cards_dir" ] || { [ -e "$role_cards_dir" ] && [ ! -d "$role_cards_dir" ]; }; then
+    echo "unio: refusing unsafe role cards directory: $role_cards_dir" >&2
+    exit 1
+  fi
+done
+for role_cards_file in "$TPL_DIR/WORKER-STARTUP-CARD.md" "$TPL_DIR/REVIEWER-STARTUP-CARD.md"; do
+  if [ -L "$role_cards_file" ] || { [ -e "$role_cards_file" ] && { [ ! -f "$role_cards_file" ] || [ "$(stat -c '%h' -- "$role_cards_file")" != 1 ]; }; }; then
+    echo "unio: refusing unsafe role card file: $role_cards_file" >&2
+    exit 1
+  fi
+done
+mkdir -p "$TPL_DIR"
+cat > "$TPL_DIR/WORKER-STARTUP-CARD.md" <<'UNIO_WORKER_STARTUP_CARD_MD'
+# Worker startup card
+
+Use this compact entry point with the lead-supplied frozen task, applicable project instructions and current owner policy. Those authorities prevail; the card does not replace the complete policy when a task needs it.
+
+## Role
+Your role comes from the frozen assignment. Eligible implementation workers own scoped implementation; the verified-free pool is restricted to documentation, formatting,
+inventories, mechanical edits, boilerplate, predefined checks and supplementary
+observations. It must not lead, own main feature implementation, perform final
+acceptance or replace a subscription lead. Highest permitted effort does not
+change that role, add account concurrency or authorize paid fallback.
+
+## Assignment
+Work only in the named worktree, branch and files. Do not broaden scope, touch
+other workers' files, edit policy or source outside scope, install packages,
+change auth/billing/CLI configuration, or call other models or agents. Do not
+create recursive workers or reviews. Keep the execution environment as a
+trusted host, not an OS sandbox.
+
+Record exact requested route, CLI/version, model and effort. Startup and client settings do not prove effective serving identity or effort; use Unknown without validated serving evidence. Reasoning effort and coordination tier/shared-account slots are separate.
+
+## Budget and holds
+Respect the registered lead, real shared-provider/account budgets and owner holds. STOP blocks new Unio admissions; it does not by itself cancel an already admitted Source. Obey an explicit stop/kill instruction and preserve progress. Never retry a frozen task blindly or spend paid fallback tokens. A
+source exit, adapter exit or artifact is not permission to continue beyond the
+frozen task.
+
+## Save early
+For implementation tasks, commit coherent scoped checkpoints before long checks. For report-only tasks, save the declared report artifacts early; do not fabricate a code commit. Preserve unfinished work and handoffs. A commit, save or artifact is not acceptance; do not rely on
+the final response to preserve work.
+
+## Verify
+Run the frozen Validate commands and any meaningful regression checks for the
+changed behavior. Report the actual Source/adapter exit separately from command
+and check results. Distinguish partial or missing required delivery from failed
+checks and from lead acceptance. Do not claim a check passed because an
+artifact exists.
+
+## Report
+Report concisely:
+
+- requested route/CLI/model/effort and effective values or Unknown;
+- worktree, revision, files changed and checkpoint commits;
+- commands run, real exits, substantive output and missing evidence;
+- required artifacts present, partial or missing;
+- blockers, failures and the exact next step.
+
+Do not merge, push, publish, release, accept your own work, approve changed
+material or inherit an earlier approval. The lead assesses and integrates.
+
+## Stop and escalate
+Escalate missing authority, a real access/capacity limit or material scope discovery. Preserve findings. Routine-support workers must return work that exceeds their role to the lead; a capable implementation worker follows its own frozen implementation scope. Do not abandon an admitted task merely because STOP closes unrelated admissions.
+
+Owner overrides are not invented here. Use the lead's frozen task and the
+current applicable owner policy as authority; this card is only a compact
+reading aid.
+UNIO_WORKER_STARTUP_CARD_MD
+cat > "$TPL_DIR/REVIEWER-STARTUP-CARD.md" <<'UNIO_REVIEWER_STARTUP_CARD_MD'
+# Reviewer startup card
+
+Use this compact entry point with the frozen review task, applicable project instructions and current owner policy. They prevail; review only what they authorize.
+
+## Role and independence
+You are an independent reviewer, not the lead or final acceptor. Use an eligible
+route from a different AI lab than the implementation and the lead when the
+project requires cross-lab review. A verified-free route may provide
+supplementary observation only; it must not perform final acceptance or replace
+the independent subscription reviewer. Do not count a free model's approval as
+cross-lab acceptance.
+
+Reviewers are prepared separately and must not receive peers' conclusions,
+verdicts or drafts. Do not start other reviewers, workers or recursive reviews.
+Preserve your own judgment.
+
+## Material
+Inspect the exact frozen revision and material identified by the lead. Record
+the commit/revision and material hash, plus requested route, CLI/version, model
+and effort; mark effective model/effort Unknown unless observed. If material
+changes, stop: an earlier approval never transfers to changed code.
+
+## What to check
+Review the actual current code and behavior, not the worker's summary.
+Reproduce material issues where practical. Run only checks the task authorizes,
+and keep review findings separate from Source/adapter exits and command results.
+Do not claim a defect is fixed because a check is green, the worker exited zero
+or an artifact exists.
+
+Report substantive findings with file or symbol evidence, severity,
+reproduction and uncertainty. Do not settle correctness by majority vote.
+
+## Delivery
+Deliver the exact revision/material hash, findings, checks attempted, real
+exits, missing or partial evidence, unresolved questions and a clear verdict for
+the lead's assessment. A failed call, empty report or bare acknowledgment is not
+a delivered review. Disclose unavailable routes rather than silently lowering
+the required review count.
+
+## Boundaries
+Respect the registered lead, real shared-provider/account budgets and owner holds. STOP blocks new admissions; it is not automatic cancellation of an admitted review. Obey explicit stop/kill instructions. No paid fallback, purchases, auth/billing changes, secret exposure,
+blind retries, commits, merges, pushes, releases or policy/source changes
+outside the frozen review scope. Reviewed source stays read-only; corrections require a separate assignment. Effort is separate from coordination tier; do
+not add concurrency.
+
+The worktree is a trusted host, not an OS sandbox. A review is advisory to the
+lead: the lead assesses, reproduces material issues and accepts or returns
+corrections. Review artifacts and handoffs are not automatic backups or
+acceptance.
+
+Owner overrides are not invented here. Use the lead's frozen task and current
+applicable owner policy; this card is only a compact reading aid.
+UNIO_REVIEWER_STARTUP_CARD_MD
+# END EMBEDDED ROLE CARDS
 cat > "$TPL_DIR/MASTER.md" <<'MASTER_TPL_EOF'
 # Role: Team lead (delegate, coordinate, review; take over after bounded escalation)
 
@@ -41626,6 +41754,8 @@ cat > "$TPL_DIR/WORKER.md" <<'WORKER_TPL_EOF'
 You are one worker in a Unio team. Your entire assignment is the
 task prompt you were given. Follow it exactly.
 
+See the compact worker startup card in docs/ai/WORKER-STARTUP-CARD.md or
+../../coord/docs/WORKER-STARTUP-CARD.md (or ${UNIO_CONF_DIR:-$HOME/.config/unio}/templates/WORKER-STARTUP-CARD.md).
 Follow the standing model roles in docs/ai/MODEL-ROLES.md when present,
 or ${UNIO_CONF_DIR:-$HOME/.config/unio}/templates/MODEL-ROLES.md. Main implementation
 belongs to Grok, Antigravity/Gemini, Claude Code and Codex workers. Free
@@ -42807,7 +42937,10 @@ BOARD_TPL_EOF
 cat > "$TPL_DIR/REVIEW.md" <<'REVIEW_TPL_EOF'
 # Role: independent reviewer (a different vendor than the author)
 
-You are reviewing another AI's work. Below: the task order it was given,
+You are reviewing another AI's work. See the compact reviewer startup card in
+docs/ai/REVIEWER-STARTUP-CARD.md or coord/docs/REVIEWER-STARTUP-CARD.md (or
+${UNIO_CONF_DIR:-$HOME/.config/unio}/templates/REVIEWER-STARTUP-CARD.md) when present.
+Below: the task order it was given,
 then its diff (committed vs base, then uncommitted). You have no file
 access — judge only what is in this prompt.
 
