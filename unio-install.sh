@@ -32171,6 +32171,59 @@ def plan_archive_worker(root, worker, as_json):
     return 0
 
 
+def archive_worker_save_state(store, archive, save_id):
+    active_path = os.path.join(store, save_id)
+    archive_wrapper = os.path.join(archive, save_id) if archive else None
+    archive_snapshot = os.path.join(archive_wrapper, 'snapshot') if archive_wrapper else None
+    try:
+        active_exists = os.path.lexists(active_path)
+    except OSError:
+        return 'unknown'
+    try:
+        snapshot_exists = os.path.lexists(archive_snapshot) if archive_snapshot else False
+    except OSError:
+        return 'unknown'
+
+    if active_exists and not snapshot_exists:
+        try:
+            load_save(active_path, save_id, False)
+            return 'remaining'
+        except Exception:
+            return 'unknown'
+    elif not active_exists and snapshot_exists:
+        try:
+            load_save(archive_snapshot, save_id, False)
+            return 'moved'
+        except Exception:
+            return 'unknown'
+    return 'unknown'
+
+
+def archive_worker_failure_outcome(receipts, stem, worker, plan_hash, moved, remaining, unknown_ids, error):
+    doc = dict(schema_version=1, kind=MAINTENANCE_RECEIPT_KIND,
+               status='partial', worker=worker, plan_hash=plan_hash,
+               confirm_inactive=True, moved=list(moved),
+               remaining=list(remaining),
+               message=getattr(error, 'message', str(error)),
+               finished_at=stamp())
+    if unknown_ids:
+        doc['unknown'] = list(unknown_ids)
+    try:
+        write_maintenance_receipt(receipts, stem + '.partial.json', doc)
+    except OSError:
+        pass  # Receipt failure after effects: the outcome stays Unknown.
+    msg = 'explicit archival stopped after %d move(s); moved: %s; remaining: %s' % (
+        len(moved), ', '.join(moved) or 'none', ', '.join(remaining) or 'none')
+    if unknown_ids:
+        msg += '; unknown: %s' % (', '.join(unknown_ids))
+    msg += ' (%s)' % getattr(error, 'message', str(error))
+    refusal = Refuse('unknown', msg)
+    refusal.moved, refusal.remaining = list(moved), list(remaining)
+    if unknown_ids:
+        refusal.unknown = list(unknown_ids)
+    raise refusal
+
+
 def apply_archive_worker(root, worker, plan_hash, as_json):
     # A free native lock never proves inactivity; --confirm-inactive is caller
     # authority, never proof of human identity or of no unmanaged process.
@@ -32187,6 +32240,7 @@ def apply_archive_worker(root, worker, plan_hash, as_json):
         slock = saves_lock(root)
         try:
             budget = Budget(ARCHIVE_WORKER_APPLY_SECONDS)
+            budget.remaining()
             view = archive_worker_material(store, worker, budget)
             if view['plan_hash'] != plan_hash:
                 raise Refuse('unstable', 'the plan is stale: bound inventory, claims or worker activity changed; no history was moved')
@@ -32196,12 +32250,14 @@ def apply_archive_worker(root, worker, plan_hash, as_json):
             ordered = sorted(view['selected'], key=lambda item: (item['published'], item['id']))  # oldest first
             remaining = [item['id'] for item in ordered]
             bound = {b['id']: b for b in view['bound']['selected']}
+            budget.remaining()
             for item in ordered:  # Deep validation of exactly the selected
                 budget.remaining()          # bodies; no unrelated save is read.
                 loaded = load_save(os.path.join(store, item['id']), item['id'], True)
                 if (sha(canon(loaded['manifest'])) != bound[item['id']]['manifest_sha256']
                         or loaded['stored_bytes'] != bound[item['id']]['stored_bytes']):
                     raise Refuse('unstable', 'selected save %s changed during validation; no history was moved' % item['id'])
+            budget.remaining()
             receipts = archive_receipt_dir(root)
             stem = worker + '-' + plan_hash[:16]
             try:
@@ -32213,37 +32269,38 @@ def apply_archive_worker(root, worker, plan_hash, as_json):
                 raise Refuse('unknown', 'maintenance evidence for this exact plan already exists; inspect coord/reports/.checkpoint-archive and plan again')
             except OSError as error:
                 raise Refuse('io_error', 'the maintenance receipt could not be recorded (%s); no history was moved' % error)
-            moved = []
-            archive = archive_for_store(store, True)
+
+            moved, unknown_ids = [], []
+            archive = None
             try:
-                for item in ordered:  # existing atomic per-ID move helper
-                    archive_save(store, item['id'], archive)
-                    moved.append(item['id'])
-                    remaining.remove(item['id'])
+                archive = archive_for_store(store, True)
+                for item in ordered:
+                    budget.remaining()
+                    try:
+                        archive_save(store, item['id'], archive)
+                        moved.append(item['id'])
+                        remaining.remove(item['id'])
+                    except (Refuse, OSError) as error:
+                        # Helper may raise AFTER rename (e.g. during fsync); observe actual filesystem identity.
+                        st = archive_worker_save_state(store, archive, item['id'])
+                        if st == 'moved':
+                            moved.append(item['id'])
+                            remaining.remove(item['id'])
+                        elif st == 'unknown':
+                            remaining.remove(item['id'])
+                            unknown_ids.append(item['id'])
+                        raise
                     fault('archive-after-move')
-            except (Refuse, OSError) as error:
+                last_good_id, last_good_check = None, 'resolved'
                 try:
-                    write_maintenance_receipt(receipts, stem + '.partial.json',
-                                              dict(schema_version=1, kind=MAINTENANCE_RECEIPT_KIND,
-                                                   status='partial', worker=worker, plan_hash=plan_hash,
-                                                   confirm_inactive=True, moved=list(moved),
-                                                   remaining=list(remaining),
-                                                   message=getattr(error, 'message', str(error)),
-                                                   finished_at=stamp()))
-                except OSError:
-                    pass  # Receipt failure after effects: the outcome stays Unknown.
-                refusal = Refuse('unknown', 'explicit archival stopped after %d move(s); moved: %s; remaining: %s (%s)'
-                                 % (len(moved), ', '.join(moved) or 'none', ', '.join(remaining) or 'none',
-                                    getattr(error, 'message', str(error))))
-                refusal.moved, refusal.remaining = list(moved), list(remaining)
-                raise refusal
-            last_good_id, last_good_check = None, 'resolved'
-            try:
-                good = last_good(store, worker, False)  # recheck after moving the latest save
-                last_good_id = good['id'] if good else None
-            except (Refuse, OSError):
-                last_good_check = 'unknown'
-            active_after, corrupt_after = scan_store(store, budget=budget)
+                    good = last_good(store, worker, False)  # recheck after moving the latest save
+                    last_good_id = good['id'] if good else None
+                except (Refuse, OSError):
+                    last_good_check = 'unknown'
+                active_after, corrupt_after = scan_store(store, budget=budget)
+            except (Refuse, OSError) as error:
+                archive_worker_failure_outcome(receipts, stem, worker, plan_hash, moved, remaining, unknown_ids, error)
+
             receipt_failed = None
             try:
                 write_maintenance_receipt(receipts, stem + '.outcome.json',
@@ -32254,15 +32311,15 @@ def apply_archive_worker(root, worker, plan_hash, as_json):
                                                active_saves_after=len(active_after) + len(corrupt_after),
                                                archived_saves_after=len(view['historical']) + len(moved),
                                                finished_at=stamp()))
-            except OSError as error:
-                receipt_failed = str(error)  # Effects happened; never roll bytes back.
+            except (Refuse, OSError) as error:
+                receipt_failed = getattr(error, 'message', str(error))  # Effects happened; never roll bytes back.
             out = dict(schema_version=1, command='save archive-worker', worker=worker, mode='apply',
                        confirm_inactive=True, plan_hash=plan_hash, moved=moved, remaining=[],
                        freed_active_slots=len(moved),
                        active_saves=len(active_after) + len(corrupt_after),
                        archived_saves=len(view['historical']) + len(moved),
                        last_good_id=last_good_id, last_good_check=last_good_check,
-                       receipt='/'.join(MAINTENANCE_RECEIPT_REL) + '/' + stem + '.outcome.json',
+                       receipt='/'.join(MAINTENANCE_RECEIPT_REL) + '/' + stem + '.outcome.json' if not receipt_failed else None,
                        native_lock='held during apply', unmanaged_activity='unknown',
                        selected_content_validation='deep')
             if receipt_failed:
@@ -32283,7 +32340,10 @@ def apply_archive_worker(root, worker, plan_hash, as_json):
         if 'receipt_error' in out:
             print('  Warning: %s' % out['receipt_error'])
         print('  every moved ID and byte is preserved; inspect works at the archive path')
-        print('  maintenance receipt: %s' % out['receipt'])
+        if out.get('receipt'):
+            print('  maintenance receipt: %s' % out['receipt'])
+        else:
+            print('  maintenance receipt: unrecorded (%s)' % out.get('receipt_error', 'write failed'))
         print('  unmanaged activity was never proved absent; automatic retention is unchanged')
     return 0 if out['status'] == 'archived' else 2
 
@@ -32299,12 +32359,20 @@ def cmd_archive_worker(root, worker, plan_hash, as_json):
             doc = dict(schema_version=1, command='save archive-worker', worker=worker, mode=mode,
                        status='unknown' if r.code in ('lock_busy', 'unknown') else 'refused',
                        code=r.code, message=r.message)
-            for extra in ('moved', 'remaining'):
+            for extra in ('moved', 'remaining', 'unknown'):
                 if getattr(r, extra, None) is not None:
                     doc[extra] = getattr(r, extra)
             emit(doc)
         print('unio: save %s: %s' % (r.code, r.message), file=sys.stderr)
         return r.exit_code
+    except OSError as err:
+        msg = str(err)
+        if as_json:
+            emit(dict(schema_version=1, command='save archive-worker', worker=worker, mode=mode,
+                      status='unknown' if plan_hash else 'refused',
+                      code='io_error', message=msg))
+        print('unio: save io_error: %s' % msg, file=sys.stderr)
+        return 2 if plan_hash else 1
 
 
 # --------------------------------------------------------------- restore
