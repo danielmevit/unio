@@ -97,6 +97,29 @@ turn the main interface into a wall of terminals or quota charts.
 - Preserve the existing CLI behavior and coordination schemas. The rename
   contract deliberately removes old command aliases and migrates config once.
 
+## Handoff context packets
+
+`unio handoff WORKER TASK` publishes a local context packet for the same
+checkout: context and evidence, never a backup, automatic acceptance, or a
+provider migration.
+
+- The packet is context only. It never sets the recorded result, never makes
+  a failed or missing delivery ready for human review, and the owner alone
+  decides acceptance and integration.
+- Successful runs keep the strict complete packet: result, revision, changed
+  paths, task text, and for report-only work the complete Source report with
+  provenance and bound delivery artifacts.
+- Verify, review and readiness keep refusing a failed, missing or
+  incomplete delivery. A terminal Source failure with a current unchanged
+  snapshot still produces an explicitly incomplete recovery packet:
+  the recorded failure, genuinely bound partial report and declared partial
+  artifacts are included and labeled (missing artifacts as `MISSING`), and a
+  missing report is labeled missing, never fabricated or replaced by raw
+  logs. Tampered, unbound, unsafe or changed evidence, and running or locked
+  workers, still refuse without publishing anything.
+- Read `HANDOFF.md` and `report.md` inside a packet before sharing it, and
+  review `task.md` for sensitive information.
+
 ## Copy-paste prompt
 
 Use [continue-with-ai-prompt.md](development/continue-with-ai-prompt.md). Keeping the
