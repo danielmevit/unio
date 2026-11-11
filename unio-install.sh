@@ -24124,8 +24124,20 @@ def valid_result(obj, worker, task):
         fail('implausibly future native observation timestamp')
     revision = obj.get('revision')
     current = obj.get('current_revision')
-    if not valid_revision(revision) or current is None or current != revision:
+    if revision is None or current is None:
         fail('native result has no current revision binding')
+    if not valid_revision(revision) or not valid_revision(current):
+        fail('malformed native revision binding')
+    if revision != current:
+        if revision['candidate_commit'] != current['candidate_commit']:
+            fail('worker drift: candidate commit changed since execution')
+        if revision['task_sha256'] != current['task_sha256']:
+            fail('task drift: task definition changed since execution')
+        if revision['worktree_sha256'] != current['worktree_sha256']:
+            fail('material drift: worktree changed since execution')
+        if revision['base_commit'] != current['base_commit']:
+            fail('base advanced since task execution; record experience before integration; old evidence remains historical for the prior base')
+        fail('native result revision drift')
     stale = obj.get('stale')
     if type(stale) is not bool or stale is not False:
         fail('native result is stale for the current revision')
