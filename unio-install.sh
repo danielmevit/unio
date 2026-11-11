@@ -25851,15 +25851,41 @@ def outcome_finish(root,worker,task,d):
     except (OSError,ValueError,UnicodeError) as e:
         o['error']='report_artifact_unavailable: '+str(e)[:300]
 
-def report_evidence(root,worker,task,d,rev):
+def recovery_source_success(d,rev):
+    # The strict successful-Source claim shared by verify/review/readiness.
+    # Handoff-only recovery may fall back to truthful failure facts below,
+    # but packed material itself still claims nothing beyond this helper.
+    p=d['process']
+    return p['state']=='succeeded' and p['exit_code']==0 and p['revision']==rev and not p.get('post_run_snapshot')
+
+def recovery_source_failure(d,rev):
+    # Handoff-only basis for an incomplete packet: a terminal Source whose
+    # real exit failed, at an unchanged snapshot. Nothing is upgraded or
+    # invented: running/unknown or changed-snapshot runs are refused.
+    p=d['process']
+    if p['revision']!=rev or p.get('post_run_snapshot'):
+        fail('report-only recovery: repository or task changed since dispatch')
+    if p['state']=='running':
+        fail('report-only recovery: recorded Source still running')
+    if p['state']!='failed':
+        fail('report-only recovery: missing terminal Source failure')
+    if p.get('exit_code')==0:
+        fail('report-only recovery: inconsistent recorded Source exit')
+    return dict(state=p['state'],exit_code=p['exit_code'])
+
+def report_evidence(root,worker,task,d,rev,recovery=False):
     o=d.get('outcome')
     if not isinstance(o,dict) or o.get('mode')!='report-only': fail('missing report-only dispatch evidence')
     if o.get('worker')!=worker or o.get('task')!=task or o.get('schema_version')!=1:
         fail('report-only identity mismatch')
     if o.get('dispatch_revision')!=d.get('dispatch_revision') or o['dispatch_revision']!=rev:
         fail('report-only repository or task changed since dispatch')
-    if d['process']['state']!='succeeded' or d['process']['exit_code']!=0 or d['process']['revision']!=rev or d['process'].get('post_run_snapshot'):
-        fail('report-only requires a current successful Source')
+    complete=recovery_source_success(d,rev)
+    if not complete:
+        # recovery is a handoff-only internal opt-in; every other caller keeps
+        # the strict current-success requirement.
+        if not recovery: fail('report-only requires a current successful Source')
+        recovery_source_failure(d,rev)
     directory=outcome_directory(root,worker,task,o.get('run_id'))
     binding=outcome_read(os.path.join(directory,'binding.json'))
     if hashlib.sha256(binding).hexdigest()!=o.get('binding_sha256'):
@@ -25871,10 +25897,25 @@ def report_evidence(root,worker,task,d,rev):
     prompt=delivery_ns['read_artifact'](os.path.join(directory,'prompt.md'),1048576)
     if hashlib.sha256(prompt).hexdigest()!=o.get('prompt_sha256'):
         fail('report-only prompt binding mismatch')
-    if o.get('error'): fail(o['error'])
-    data=outcome_read(os.path.join(directory,'report.txt'))
-    if hashlib.sha256(data).hexdigest()!=o.get('report_sha256') or len(data)!=o.get('report_bytes'):
-        fail('report-only artifact altered')
+    if complete:
+        if o.get('error'): fail(o['error'])
+        data=outcome_read(os.path.join(directory,'report.txt'))
+        if hashlib.sha256(data).hexdigest()!=o.get('report_sha256') or len(data)!=o.get('report_bytes'):
+            fail('report-only artifact altered')
+    else:
+        # Incomplete recovery reads only genuinely bound material. A missing
+        # report is labeled, never fabricated: raw logs stay unread.
+        if o.get('error') and o.get('report_sha256'):
+            fail('report-only recovery: contradictory outcome evidence')
+        if o.get('report_sha256'):
+            data=outcome_read(os.path.join(directory,'report.txt'))
+            if hashlib.sha256(data).hexdigest()!=o['report_sha256'] or len(data)!=o['report_bytes']:
+                fail('report-only artifact altered')
+        else:
+            if not o.get('error'): fail('report-only recovery: missing report provenance')
+            if os.path.lexists(os.path.join(directory,'report.txt')):
+                fail('report-only recovery: unbound report content present')
+            data=b''
     if task_mode(root,worker,task)!='report-only': fail('report-only mode mismatch')
     return o,data
 
@@ -26071,9 +26112,50 @@ def delivery_material(root, worker, task, d):
     return res+b'END REQUIRED DELIVERY ARTIFACTS\n'
 
 
-def report_material(root,worker,task,d,rev):
-    o,data=report_evidence(root,worker,task,d,rev)
-    return b'\nREPORT-ONLY PROVENANCE\n'+json.dumps(o,sort_keys=True,ensure_ascii=True).encode()+b'\nCOMPLETE SOURCE REPORT\n'+data+b'\nEND SOURCE REPORT\n' + delivery_material(root, worker, task, d)
+def recovery_report_section(o,data):
+    label=b'INCOMPLETE SOURCE REPORT (no successful Source; context only, not acceptance)\n'
+    if data:
+        # A genuinely bound partial report: recorded as written, never as success.
+        return label+data+b'\nEND SOURCE REPORT\n'
+    # A failed/unavailable report artifact is labeled, not replaced by raw logs.
+    return (label+b'MISSING SOURCE REPORT: '+(o.get('error') or 'unavailable report artifact').encode()
+            +b'\nNo report text is fabricated and raw logs are not scraped.\n')
+
+def recovery_delivery_material(root,worker,task,d):
+    # Incomplete-context mirror of delivery_material: strict binding rechecks
+    # via delivery_check (partial=True) still apply; only the missing-artifact
+    # completion requirement is waived for this explicitly incomplete packet.
+    if not d.get('delivery'):
+        delivery_check(root,worker,task,d)
+        return b''
+    if delivery_check(root,worker,task,d,partial=True)!='incomplete':
+        fail('report-only recovery: delivery is not bound incomplete evidence')
+    v=d['delivery']; directory=delivery_directory(root,worker,task,v['run_id'])
+    res=b'\nREQUIRED DELIVERY PROVENANCE\n'+json.dumps(v,sort_keys=True).encode()+b'\n'
+    for meta in ('binding.json','prompt.md'):
+        raw=delivery_ns['read_artifact'](os.path.join(directory,meta),1048576)
+        res+=b'DISPATCH '+meta.encode()+b'\n'+raw+b'\nEND DISPATCH\n'
+    for name in v['artifacts']:
+        if name in v['missing_artifacts']:
+            res+=b'MISSING ARTIFACT '+name.encode()+b'\n'
+            continue
+        data,identity=delivery_ns['read_evidence'](os.path.join(directory,name))
+        if identity!=v['artifact_identities'][name] or hashlib.sha256(data).hexdigest()!=v['artifact_hashes'][name]:
+            fail('delivery changed during material')
+        res+=b'ARTIFACT '+name.encode()+b'\n'+data+b'\nEND ARTIFACT\n'
+    if delivery_check(root,worker,task,d,partial=True)!='incomplete':
+        fail('report-only recovery: delivery changed during material')
+    return res+b'END REQUIRED DELIVERY ARTIFACTS\n'
+
+def report_material(root,worker,task,d,rev,recovery=False):
+    o,data=report_evidence(root,worker,task,d,rev,recovery=recovery)
+    header=b'\nREPORT-ONLY PROVENANCE\n'+json.dumps(o,sort_keys=True,ensure_ascii=True).encode()+b'\n'
+    if recovery and not recovery_source_success(d,rev):
+        failure=json.dumps(recovery_source_failure(d,rev),sort_keys=True,ensure_ascii=True).encode()
+        return (header+b'INCOMPLETE RECOVERY SOURCE (recorded failure preserved): '
+                +failure+b'\n'+recovery_report_section(o,data)
+                +recovery_delivery_material(root,worker,task,d))
+    return header+b'COMPLETE SOURCE REPORT\n'+data+b'\nEND SOURCE REPORT\n' + delivery_material(root, worker, task, d)
 
 def snapshot(root, worker, task):
     wt, tf, _ = locations(root, worker, task)
@@ -27768,7 +27850,10 @@ def handoff(root,worker,task):
         with open(os.path.join(tmp,'task.md'),'xb') as f: f.write(regular(tf))
         report=None
         if task_mode(root,worker,task)=='report-only':
-            report=report_material(root,worker,task,d,before)
+            # Handoff is context, never acceptance: an explicitly incomplete
+            # recovery packet may be published from a failed Source using only
+            # genuinely bound material. Successful sources keep exact bytes.
+            report=report_material(root,worker,task,d,before,recovery=True)
             if len(report)>300000: fail('incomplete handoff report: exceeds 300000 bytes')
             with open(os.path.join(tmp,'report.md'),'xb') as f: f.write(report)
         deliv = d.get('delivery')
@@ -27788,6 +27873,7 @@ def handoff(root,worker,task):
                     delivery_ns['write_metadata'](destination, os.path.basename(art_dst), art_data)
         v=d['validation']; r=d['review']; p=d['process']
         summary=json.dumps(ch,ensure_ascii=True,indent=2)
+        incomplete_report = report is not None and not recovery_source_success(d,before)
         text=f'''# Same-checkout AI handoff: {worker} / {task}
 
 This local packet is context and evidence, NOT a backup, automatic restore,
@@ -27803,6 +27889,7 @@ Process (recorded): {p['state']} (exit {p['exit_code']}).
 Current observation: {d['runtime_observation']['state']}; Source exit: {observation_ns['source_exit_text'](d['runtime_observation'])}.
 {'No completion is recorded: this packet describes work and is not a successful delivery or acceptance.' if d['runtime_observation']['blocks_readiness'] else 'Recorded terminal process state.'}
 Validation: {v['state']}, scope {v['scope']}, {v['checks_run']} run / {v['checks_failed']} failed.
+{'report.md is an incomplete recovery packet: it preserves the failed Source and genuinely bound partial material only. It is not a complete report, verification, readiness or acceptance.' if incomplete_report else ''}
 Delivery: {deliv['state'] if deliv else 'Unknown'} ({deliv.get('artifact_count', 0) if deliv else 0} artifacts).
 Current recorded review: {d['review_current']['verdict_decision']}; findings extraction complete: {d['review_current']['extraction_complete']}.
 Current receipt counts (including stale history): {d['review_current']['counts']}.
@@ -27832,7 +27919,7 @@ machine: run verify, then review once validation passes. Commit remaining
 work before review. Only the owner decides acceptance and integration.
 '''
         with open(os.path.join(tmp,'HANDOFF.md'),'x') as f: f.write(text)
-        if report is not None and report_material(root,worker,task,d,before)!=report: fail('report changed during handoff')
+        if report is not None and report_material(root,worker,task,d,before,recovery=True)!=report: fail('report changed during handoff')
         if deliv and deliv.get('artifacts'): delivery_check(root, worker, task, d, partial=True)
         if snapshot(root,worker,task)!=before: fail('candidate changed during handoff; packet not published')
         if os.path.lexists(final): fail('handoff name collision')
