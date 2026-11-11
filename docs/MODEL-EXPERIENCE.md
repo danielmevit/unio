@@ -134,3 +134,20 @@ Combines stored evidence with a bounded fleet observation (1..60s deadline, defa
   }
 }
 ```
+
+
+## Record under the original run configuration
+
+When a task used a per-run configuration directory, use that same
+`UNIO_CONF_DIR` when recording its experience. The global route may have a
+different command or configuration even when the worker checkout and task
+are unchanged. A record made through the global configuration can therefore
+be refused as stale. Preserve that refusal and use the original configuration;
+do not weaken freshness checks or relabel the run as accepted.
+
+Record the assessment before advancing the project's base during integration.
+Keep the requested model and effort separate from effective settings, and
+record a demonstrated quality issue separately from a quota, transport or
+setup failure. A successful Source exit and passing checks do not establish
+lead acceptance.
+
