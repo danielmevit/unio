@@ -43,10 +43,11 @@ explicit 1s and 5s bounds with injected delays to verify timeout arithmetic and
 honest `phase=deadline` reporting both before data transmission and after
 partial complete or unterminated output. Diagnostic content tests (EOF, partial
 lines, refusal, exit, storage error) exercise stream termination upon holder
-exit rather than timeouts; they run under a justified 10-second test bound to
-prevent false-positive deadline timeouts caused by shell sourcing and Python
-startup scheduling jitter under heavy gate load or slow storage fixtures, while
-remaining well below the 30-second production default. Native CLI STOP and the
+exit rather than timeouts; they run under a bounded 10-second test window to
+allow more startup and scheduling margin than the old three-second fixture
+bound, while remaining below the 30-second production default. The historical
+failure was not instrumented to establish its cause; no specific storage or
+host-load explanation is proven. Native CLI STOP and the
 existing lead-budget regression additionally exercise public entry points and
 single-use concurrency. The historical `budget-refused` receipt heading remains
 compatible; the phase/reason determines whether a failure actually concerns
