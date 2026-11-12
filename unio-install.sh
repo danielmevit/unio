@@ -32083,6 +32083,399 @@ def cmd_usage(root, as_json):
         return 2
 
 
+# ---------------------------------------------- explicit worker archival
+# Operator-selected archival of one confirmed-inactive worker's unclaimed
+# active history, including its newest save. A native lock may only prove a
+# worker busy or idle; it never proves the absence of unmanaged processes.
+# The explicit flag is caller authority, and automatic retention with each
+# worker's newest protection stays unchanged for every ordinary save.
+ARCHIVE_WORKER_PLAN_SECONDS, ARCHIVE_WORKER_APPLY_SECONDS = 30.0, 60.0
+MAINTENANCE_RECEIPT_KIND = 'save-archive-worker'
+MAINTENANCE_RECEIPT_REL = ('coord', 'reports', '.checkpoint-archive')
+
+
+def observe_shared_lock(root):
+    """Usage-style read-only observation lock; never creates or blocks."""
+    try:
+        fd = os.open(under(root, 'coord', '.locks', 'saves.lock'),
+                     os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except FileNotFoundError:
+        raise Refuse('unknown', 'the saves lock is missing; save evidence is Unknown')
+    except OSError:
+        raise Refuse('io_error', 'unsafe or unreadable saves lock')
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_nlink != 1 or st.st_mode & 0o077:
+            raise Refuse('io_error', 'unsafe saves lock')
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Refuse('lock_busy', 'save evidence is Unknown while a writer owns the store')
+        held, fd = fd, None
+        return held
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def worker_activity(store, worker):
+    """Selected-worker attempt facts; other workers' attempts are never read,
+    so their periodically changing refusal metadata cannot stale a plan."""
+    path = os.path.join(store, 'attempts', worker + '.json')
+    try:
+        data = read_path(path, 65536)[1]
+    except FileNotFoundError:
+        return None
+    except OSError:
+        raise Refuse('unknown', 'attempt evidence for ' + worker + ' is unreadable')
+    try:
+        return attempt_doc(strict_json(data, 65536, 'attempt'), worker)
+    except Refuse:
+        raise Refuse('unknown', 'attempt evidence for ' + worker + ' is invalid')
+
+
+def archive_worker_material(store, worker, budget):
+    """Deterministic selected-worker plan bound to content facts only.
+
+    Observation clocks and unrelated workers' attempt metadata are excluded,
+    so an unchanged exact state keeps its hash; inventory manifests, IDs,
+    selected identity, claims, selected-worker activity and measured bytes
+    are all bound. Refuses when pins, archive capacity or duplicate IDs make
+    the relevant facts Unknown or ambiguous.
+    """
+    active, corrupt = scan_store(store, budget=budget)
+    archive = archive_for_store(store)
+    historical, archive_corrupt = scan_archive(archive)
+    claims, bad_claims = load_claims(store)
+    if bad_claims:
+        raise Refuse('excessive', 'unreadable claims make save pins unknown; no history was archived')
+    if archive_corrupt:
+        raise Refuse('excessive', 'archive contains corrupt or unsupported evidence; its available space is Unknown')
+    if {item['id'] for item in active + corrupt} & {item['id'] for item in historical + archive_corrupt}:
+        raise Refuse('invalid_save', 'duplicate active/archive save ID')
+    attempt = worker_activity(store, worker)
+    pins = {claim['save_id'] for claim in claims}
+    selected, blocked = [], []
+    for item in active:  # newest first; this worker's newest is eligible only
+        if item['worker'] != worker:  # through this explicit selected-worker form.
+            continue
+        if item['id'] in pins:
+            blocked.append(dict(save_id=item['id'], reason='claim_pinned'))
+        else:
+            selected.append(item)
+    for item in corrupt:
+        if item['worker'] == worker:
+            blocked.append(dict(save_id=item['id'], reason='corrupt_evidence'))
+    newest_active = {}
+    for item in active:
+        newest_active.setdefault(item['worker'], item['id'])
+    bound = dict(
+        v=1, worker=worker,
+        selected=[dict(id=i['id'], manifest_sha256=sha(canon(i['manifest'])),
+                       stored_bytes=i['stored_bytes']) for i in selected],
+        active=[dict(id=i['id'], worker=i['worker'], manifest_sha256=sha(canon(i['manifest'])),
+                     stored_bytes=i['stored_bytes']) for i in active],
+        active_corrupt=[dict(id=c['id'], worker=c['worker']) for c in corrupt],
+        archived=[dict(id=i['id'], worker=i['worker'], stored_bytes=i['stored_bytes']) for i in historical],
+        claims=sorted(sha(canon(claim)) for claim in claims),
+        attempt=sha(canon(attempt)) if attempt is not None else None)
+    return dict(plan_hash=sha(canon(bound)), bound=bound, active=active, corrupt=corrupt,
+                historical=historical, claims=claims, selected=selected,
+                blocked=blocked, newest_active=newest_active)
+
+
+def archive_capacity_refusal(historical, selected):
+    """Both archive caps are checked from measured metadata before any effect."""
+    if len(historical) + len(selected) > ARCHIVE_CAP_SAVES:
+        raise Refuse('excessive', 'archive count cap reached; no history was moved')
+    if sum(item['stored_bytes'] for item in historical + selected) > ARCHIVE_CAP_BYTES:
+        raise Refuse('excessive', 'archive byte cap reached; no history was moved')
+
+
+def archive_receipt_dir(root):
+    # A bounded maintenance record outside the strict immutable-save layout:
+    # never inside attempts/, never rewriting a run attempt, never deleted.
+    path = under(root, *MAINTENANCE_RECEIPT_REL)
+    private_dir(path, True)
+    return path
+
+
+def write_maintenance_receipt(receipts, name, doc):
+    write_private(os.path.join(receipts, name),
+                  json.dumps(doc, indent=1, sort_keys=True).encode('utf-8') + b'\n')
+
+
+def plan_archive_worker(root, worker, as_json):
+    store = open_store(root, False)
+    if store is None:
+        raise Refuse('invalid_save', 'no saves in this project')
+    lock = observe_shared_lock(root)
+    try:
+        busy = worker_busy(root, worker)
+        view = archive_worker_material(store, worker, Budget(ARCHIVE_WORKER_PLAN_SECONDS))
+        after_saves = len(view['historical']) + len(view['selected'])
+        after_bytes = sum(item['stored_bytes'] for item in view['historical'] + view['selected'])
+        try:
+            archive_capacity_refusal(view['historical'], view['selected'])
+            capacity = 'known'
+        except Refuse as reason:
+            capacity = 'refused: ' + reason.message
+        out = dict(schema_version=1, command='save archive-worker', worker=worker, mode='plan',
+                   status='planned', plan_hash=view['plan_hash'],
+                   newest_active_save=view['newest_active'].get(worker),
+                   selected=[dict(save_id=i['id'], task=i['task'], published_at=i['manifest']['published_at'],
+                                  stored_bytes=i['stored_bytes']) for i in view['selected']],
+                   blocked=view['blocked'],
+                   protected_newest_other_workers=sorted(item for owner, item in view['newest_active'].items()
+                                                         if owner != worker),
+                   unattributed_corrupt_active=sum(1 for c in view['corrupt'] if c['worker'] is None),
+                   active_saves=len(view['active']) + len(view['corrupt']),
+                   active_bytes=None if view['corrupt'] else sum(i['stored_bytes'] for i in view['active']),
+                   archived_saves=len(view['historical']),
+                   archived_bytes=sum(i['stored_bytes'] for i in view['historical']),
+                   active_cap=CAP_PROJECT, archive_cap_saves=ARCHIVE_CAP_SAVES,
+                   archive_cap_bytes=ARCHIVE_CAP_BYTES,
+                   archive_after_saves=after_saves, archive_after_bytes=after_bytes,
+                   archive_capacity=capacity, freed_slots=len(view['selected']),
+                   native_activity={True: 'busy', False: 'idle', 'unknown': 'unknown'}[busy],
+                   unmanaged_activity='unknown', content_validation='metadata_only',
+                   apply_usage='unio save archive-worker %s --apply %s --confirm-inactive'
+                               % (worker, view['plan_hash']))
+    finally:
+        os.close(lock)
+    if as_json:
+        emit(out)
+        return 0
+    print('save archive-worker plan for %s (read-only; no file was created or changed)' % worker)
+    print('  native activity: %s (native lock probe); unmanaged activity: Unknown' % out['native_activity'])
+    if out['selected']:
+        print('  selected for explicit archival: %d unclaimed valid active save(s), %d stored byte(s)'
+              % (len(out['selected']), sum(i['stored_bytes'] for i in view['selected'])))
+        for i in out['selected']:
+            print('    %s published %s, %d bytes, task %s' % (i['save_id'], i['published_at'], i['stored_bytes'], i['task']))
+    else:
+        print('  selected for explicit archival: none (pinned, corrupt or no valid unclaimed saves)')
+    if out['newest_active_save']:
+        print('  newest active save %s is normally protected by automatic retention; only this explicit form archives it'
+              % out['newest_active_save'])
+    for b in out['blocked']:
+        print('  blocked save %s: %s' % (b['save_id'], b['reason']))
+    if out['unattributed_corrupt_active']:
+        print('  unattributed corrupt evidence kept in the active store: %d' % out['unattributed_corrupt_active'])
+    print('  active saves: %s / %s; archived: %s / %s, %s bytes' % (out['active_saves'], CAP_PROJECT,
+          out['archived_saves'], ARCHIVE_CAP_SAVES, out['archived_bytes']))
+    print('  after apply: %s archived save(s), %s bytes; freed active slots: %s' % (out['archive_after_saves'],
+          out['archive_after_bytes'], out['freed_slots']))
+    print('  archive capacity: %s' % out['archive_capacity'])
+    print('  plan hash: %s' % out['plan_hash'])
+    print(out['apply_usage'])
+    return 0
+
+
+def archive_worker_save_state(store, archive, save_id):
+    active_path = os.path.join(store, save_id)
+    archive_wrapper = os.path.join(archive, save_id) if archive else None
+    archive_snapshot = os.path.join(archive_wrapper, 'snapshot') if archive_wrapper else None
+    try:
+        active_exists = os.path.lexists(active_path)
+    except OSError:
+        return 'unknown'
+    try:
+        snapshot_exists = os.path.lexists(archive_snapshot) if archive_snapshot else False
+    except OSError:
+        return 'unknown'
+
+    if active_exists and not snapshot_exists:
+        try:
+            load_save(active_path, save_id, False)
+            return 'remaining'
+        except Exception:
+            return 'unknown'
+    elif not active_exists and snapshot_exists:
+        try:
+            load_save(archive_snapshot, save_id, False)
+            return 'moved'
+        except Exception:
+            return 'unknown'
+    return 'unknown'
+
+
+def archive_worker_failure_outcome(receipts, stem, worker, plan_hash, moved, remaining, unknown_ids, error):
+    doc = dict(schema_version=1, kind=MAINTENANCE_RECEIPT_KIND,
+               status='partial', worker=worker, plan_hash=plan_hash,
+               confirm_inactive=True, moved=list(moved),
+               remaining=list(remaining),
+               message=getattr(error, 'message', str(error)),
+               finished_at=stamp())
+    if unknown_ids:
+        doc['unknown'] = list(unknown_ids)
+    try:
+        write_maintenance_receipt(receipts, stem + '.partial.json', doc)
+    except OSError:
+        pass  # Receipt failure after effects: the outcome stays Unknown.
+    msg = 'explicit archival stopped after %d move(s); moved: %s; remaining: %s' % (
+        len(moved), ', '.join(moved) or 'none', ', '.join(remaining) or 'none')
+    if unknown_ids:
+        msg += '; unknown: %s' % (', '.join(unknown_ids))
+    msg += ' (%s)' % getattr(error, 'message', str(error))
+    refusal = Refuse('unknown', msg)
+    refusal.moved, refusal.remaining = list(moved), list(remaining)
+    if unknown_ids:
+        refusal.unknown = list(unknown_ids)
+    raise refusal
+
+
+def apply_archive_worker(root, worker, plan_hash, as_json):
+    # A free native lock never proves inactivity; --confirm-inactive is caller
+    # authority, never proof of human identity or of no unmanaged process.
+    busy = worker_busy(root, worker)
+    if busy is True:
+        raise Refuse('lock_busy', 'the native worker %s is busy or locked; explicit archival refused' % worker)
+    if busy == 'unknown':
+        raise Refuse('unknown', 'the native worker lock for %s is unsafe or unobservable; explicit archival refused' % worker)
+    wlock = require_lock(root, worker)  # same lock order as native saving
+    try:
+        store = open_store(root, False)
+        if store is None:
+            raise Refuse('invalid_save', 'no saves in this project')
+        slock = saves_lock(root)
+        try:
+            budget = Budget(ARCHIVE_WORKER_APPLY_SECONDS)
+            budget.remaining()
+            view = archive_worker_material(store, worker, budget)
+            if view['plan_hash'] != plan_hash:
+                raise Refuse('unstable', 'the plan is stale: bound inventory, claims or worker activity changed; no history was moved')
+            if not view['selected']:
+                raise Refuse('invalid_save', 'worker %s has no unclaimed valid active save to archive' % worker)
+            archive_capacity_refusal(view['historical'], view['selected'])
+            ordered = sorted(view['selected'], key=lambda item: (item['published'], item['id']))  # oldest first
+            remaining = [item['id'] for item in ordered]
+            bound = {b['id']: b for b in view['bound']['selected']}
+            budget.remaining()
+            for item in ordered:  # Deep validation of exactly the selected
+                budget.remaining()          # bodies; no unrelated save is read.
+                loaded = load_save(os.path.join(store, item['id']), item['id'], True)
+                if (sha(canon(loaded['manifest'])) != bound[item['id']]['manifest_sha256']
+                        or loaded['stored_bytes'] != bound[item['id']]['stored_bytes']):
+                    raise Refuse('unstable', 'selected save %s changed during validation; no history was moved' % item['id'])
+            budget.remaining()
+            receipts = archive_receipt_dir(root)
+            stem = worker + '-' + plan_hash[:16]
+            try:
+                write_maintenance_receipt(receipts, stem + '.intent.json',
+                                          dict(schema_version=1, kind=MAINTENANCE_RECEIPT_KIND,
+                                               status='applying', worker=worker, plan_hash=plan_hash,
+                                               confirm_inactive=True, selected=remaining, started_at=stamp()))
+            except FileExistsError:
+                raise Refuse('unknown', 'maintenance evidence for this exact plan already exists; inspect coord/reports/.checkpoint-archive and plan again')
+            except OSError as error:
+                raise Refuse('io_error', 'the maintenance receipt could not be recorded (%s); no history was moved' % error)
+
+            moved, unknown_ids = [], []
+            archive = None
+            try:
+                archive = archive_for_store(store, True)
+                for item in ordered:
+                    budget.remaining()
+                    try:
+                        archive_save(store, item['id'], archive)
+                        moved.append(item['id'])
+                        remaining.remove(item['id'])
+                    except (Refuse, OSError) as error:
+                        # Helper may raise AFTER rename (e.g. during fsync); observe actual filesystem identity.
+                        st = archive_worker_save_state(store, archive, item['id'])
+                        if st == 'moved':
+                            moved.append(item['id'])
+                            remaining.remove(item['id'])
+                        elif st == 'unknown':
+                            remaining.remove(item['id'])
+                            unknown_ids.append(item['id'])
+                        raise
+                    fault('archive-after-move')
+                last_good_id, last_good_check = None, 'resolved'
+                try:
+                    good = last_good(store, worker, False)  # recheck after moving the latest save
+                    last_good_id = good['id'] if good else None
+                except (Refuse, OSError):
+                    last_good_check = 'unknown'
+                active_after, corrupt_after = scan_store(store, budget=budget)
+            except (Refuse, OSError) as error:
+                archive_worker_failure_outcome(receipts, stem, worker, plan_hash, moved, remaining, unknown_ids, error)
+
+            receipt_failed = None
+            try:
+                write_maintenance_receipt(receipts, stem + '.outcome.json',
+                                          dict(schema_version=1, kind=MAINTENANCE_RECEIPT_KIND,
+                                               status='archived', worker=worker, plan_hash=plan_hash,
+                                               confirm_inactive=True, moved=moved, remaining=[],
+                                               last_good_id=last_good_id, last_good_check=last_good_check,
+                                               active_saves_after=len(active_after) + len(corrupt_after),
+                                               archived_saves_after=len(view['historical']) + len(moved),
+                                               finished_at=stamp()))
+            except (Refuse, OSError) as error:
+                receipt_failed = getattr(error, 'message', str(error))  # Effects happened; never roll bytes back.
+            out = dict(schema_version=1, command='save archive-worker', worker=worker, mode='apply',
+                       confirm_inactive=True, plan_hash=plan_hash, moved=moved, remaining=[],
+                       freed_active_slots=len(moved),
+                       active_saves=len(active_after) + len(corrupt_after),
+                       archived_saves=len(view['historical']) + len(moved),
+                       last_good_id=last_good_id, last_good_check=last_good_check,
+                       receipt='/'.join(MAINTENANCE_RECEIPT_REL) + '/' + stem + '.outcome.json' if not receipt_failed else None,
+                       native_lock='held during apply', unmanaged_activity='unknown',
+                       selected_content_validation='deep')
+            if receipt_failed:
+                out.update(status='unknown', receipt_error=receipt_failed)
+            elif last_good_check != 'resolved':
+                out.update(status='unknown', receipt_error='last-good resolution could not be rechecked')
+            else:
+                out['status'] = 'archived'
+        finally:
+            os.close(slock)
+    finally:
+        os.close(wlock)
+    if as_json:
+        emit(out)
+    else:
+        print('explicit archive of worker %s: %s' % (worker, out['status']))
+        print('  moved save(s): %s' % (', '.join(out['moved']) or 'none'))
+        if 'receipt_error' in out:
+            print('  Warning: %s' % out['receipt_error'])
+        print('  every moved ID and byte is preserved; inspect works at the archive path')
+        if out.get('receipt'):
+            print('  maintenance receipt: %s' % out['receipt'])
+        else:
+            print('  maintenance receipt: unrecorded (%s)' % out.get('receipt_error', 'write failed'))
+        print('  unmanaged activity was never proved absent; automatic retention is unchanged')
+    return 0 if out['status'] == 'archived' else 2
+
+
+def cmd_archive_worker(root, worker, plan_hash, as_json):
+    mode = 'apply' if plan_hash else 'plan'
+    try:
+        if plan_hash:
+            return apply_archive_worker(root, worker, plan_hash, as_json)
+        return plan_archive_worker(root, worker, as_json)
+    except Refuse as r:
+        if as_json:
+            doc = dict(schema_version=1, command='save archive-worker', worker=worker, mode=mode,
+                       status='unknown' if r.code in ('lock_busy', 'unknown') else 'refused',
+                       code=r.code, message=r.message)
+            for extra in ('moved', 'remaining', 'unknown'):
+                if getattr(r, extra, None) is not None:
+                    doc[extra] = getattr(r, extra)
+            emit(doc)
+        print('unio: save %s: %s' % (r.code, r.message), file=sys.stderr)
+        return r.exit_code
+    except OSError as err:
+        msg = str(err)
+        if as_json:
+            emit(dict(schema_version=1, command='save archive-worker', worker=worker, mode=mode,
+                      status='unknown' if plan_hash else 'refused',
+                      code='io_error', message=msg))
+        print('unio: save io_error: %s' % msg, file=sys.stderr)
+        return 2 if plan_hash else 1
+
+
 # --------------------------------------------------------------- restore
 def lstat_at(base_fd, rel):
     parts = rel.split('/')
@@ -32838,7 +33231,9 @@ USAGE = ('usage: unio save create <worker> <task>\n'
          '       unio save inspect --worker <worker> [--json]\n'
          '       unio save restore <save-id> <destination>\n'
          '       unio save continue <save-id> <destination> <new-task>\n'
-         '       unio save usage [--json]')
+         '       unio save usage [--json]\n'
+         '       unio save archive-worker <worker> [--plan] [--json]\n'
+         '       unio save archive-worker <worker> --apply PLAN_HASH --confirm-inactive [--json]')
 
 
 def main(argv):
@@ -32923,6 +33318,15 @@ def main(argv):
             return cmd_restore(root, args[0], args[1])
         if command == 'usage' and args in ([], ['--json']):
             return cmd_usage(root, as_json)
+        if command == 'archive-worker':
+            chosen = [a for a in args if a != '--json']
+            if chosen and ident(chosen[0]):
+                chosen_mode = chosen[1:]
+                if chosen_mode in ([], ['--plan']):
+                    return cmd_archive_worker(root, chosen[0], None, as_json)
+                if (len(chosen_mode) == 3 and chosen_mode[0] == '--apply'
+                        and HEX64.fullmatch(chosen_mode[1]) and chosen_mode[2] == '--confirm-inactive'):
+                    return cmd_archive_worker(root, chosen[0], chosen_mode[1], as_json)
     except Refuse as r:
         print('unio: save %s: %s' % (r.code, r.message), file=sys.stderr)
         return r.exit_code
@@ -35790,7 +36194,9 @@ save_usage() {
        unio save inspect --worker <worker> [--json]
        unio save restore <save-id> <destination>
        unio save continue <save-id> <destination> <new-task>
-       unio save usage [--json]" >&2
+       unio save usage [--json]
+       unio save archive-worker <worker> [--plan] [--json]
+       unio save archive-worker <worker> --apply PLAN_HASH --confirm-inactive [--json]" >&2
   return 2
 }
 
@@ -35857,6 +36263,11 @@ cmd_save() { # Inspection/restore call no provider; continue authorizes one run.
       fi
       [ -d "$root/wt/$worker" ] || { echo "unio: no worktree for '$worker'" >&2; return 1; }
       saves "$root" "$sub" "$@" || rc=$?
+      return "$rc";;
+    archive-worker)
+      [ $# -ge 1 ] || { save_usage; return 2; }
+      save_name_ok "$1" || { save_usage; return 2; }
+      saves "$root" archive-worker "$@" || rc=$?
       return "$rc";;
     usage|inspect)
       saves "$root" "$sub" "$@" || rc=$?
@@ -38116,6 +38527,16 @@ work saving (private local snapshots under coord/saves, unverified)
                                      account limits, refuses claim replay
   unio save usage [--json]     read-only active/archive counts, bytes, pins
                                      and bounds; uncertain evidence stays Unknown
+  unio save archive-worker <w> [--plan] [--json]
+                                     read-only explicit archive plan for one
+                                     worker: selected/blocked saves, activity,
+                                     counts, bounds, freed slots, plan hash
+  unio save archive-worker <w> --apply PLAN_HASH --confirm-inactive [--json]
+                                     archive that worker's unclaimed active
+                                     saves (IDs/bytes kept, inspect/restore at
+                                     the archive path) after the caller's
+                                     explicit inactive confirmation; optional
+                                     local maintenance, no provider call
       Create/inspect/restore/usage make no provider call and work while STOP is set.
       Runs save baseline, changed periodic and final state automatically. A save is
       not a commit, acceptance or retry; it is not an off-device backup.
@@ -43910,8 +44331,10 @@ _unio() {
       local saves=""
       [ -n "$root" ] && saves=$(ls "$root/coord/saves" 2>/dev/null | grep -E '^[0-9a-f]{32}$')
       case "$COMP_CWORD:${COMP_WORDS[2]}" in
-        2:*) COMPREPLY=( $(compgen -W "create inspect restore continue usage" -- "$cur") );;
+        2:*) COMPREPLY=( $(compgen -W "create inspect restore continue usage archive-worker" -- "$cur") );;
         3:usage) COMPREPLY=( $(compgen -W "--json" -- "$cur") );;
+        3:archive-worker) COMPREPLY=( $(compgen -W "--plan --json $workers" -- "$cur") );;
+        4:archive-worker) COMPREPLY=( $(compgen -W "--plan --apply --confirm-inactive --json" -- "$cur") );;
         3:create) COMPREPLY=( $(compgen -W "$workers" -- "$cur") );;
         3:inspect) COMPREPLY=( $(compgen -W "--worker $saves" -- "$cur") );;
         3:restore|3:continue) COMPREPLY=( $(compgen -W "$saves" -- "$cur") );;
