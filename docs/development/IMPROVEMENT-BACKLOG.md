@@ -1,5 +1,15 @@
 # Unio Improvement Backlog
 
+## 0.5.27 checkpoint
+
+The recovery/efficiency implementation, independent scoped reviews and lead
+assessment are complete; the combined quality gate passed. See
+[release scope](../RELEASE-0.5.27.md) and the official tag for actual delivery status.
+The older planning sections below retain their dated context. Incremental
+Fable research continues separately when account access permits; incomplete
+coverage is not a full audit verdict.
+
+
 ## Follow-ups observed during the 0.5.27 batch
 
 These are later improvements, not additions to the current release scope:
@@ -209,3 +219,13 @@ Checkpoint, 2026-10-10: v0.5.8 is published and installed, and its managed read-
 - **Grok**: Capacity Source ended 402 without edits on 2026-10-09; no active Grok run is claimed.
 - **Gemini**: Completed the bounded help-only readiness inventory; lead editorial correction tightened three evidence claims. No credentials or model probes were run by the inventory.
 - **Verified-free LongCat**: Ran the predefined local link audit: 405 targets checked, 125 skipped, 0 missing. The lead corrected document classification wording. This was routine support, not implementation or security acceptance.
+
+## Follow-up: installer accident containment
+
+Investigate a source-versus-execute guard for the installer and explicit private
+installation destinations in worker/reviewer launch environments. A development
+worker sourced the installer while measuring startup, overwriting the running
+global command before an exact rollback. Preserve intended explicit installs,
+existing runner evidence and configuration. This is a separately scoped future
+reliability task; environment defaults are accident containment, not a sandbox.
+No new runtime safeguard is claimed in 0.5.27.

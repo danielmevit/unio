@@ -1,7 +1,7 @@
 # Continue Unio development
 
-The 0.5.27 recovery/efficiency candidate is prepared; publication is pending.
-Check actual state before treating this document as a shipping claim.
+This guide covers the reviewed and gated 0.5.27 recovery release. Check the
+official tag and installed version for actual publication and delivery status.
 
 Read AGENTS.md, current local OWNER-WORKFLOW.md when available, newest workspace
 coordination log and the actual installed version. Check Git, official latest
@@ -20,8 +20,9 @@ components. The archive correction's original inherited-scope failure remains
 recorded; its 3 validation commands passed, and separate deterministic whole-
 candidate scope verification passed without an AI call. Do not rewrite that
 failure or confuse a report-only verification with an implementation contribution.
-The final combined gate, tested installation and official asset verification
-still need their actual receipts before publication.
+The full combined gate passed with exit 0. The isolated installation and real
+failed-source handoff smoke passed. The package provenance and official release
+checksums identify final delivery; do not invent publication from a local version.
 
 Record final experience only after review and before base integration, under
 the original run configuration. Pending notes belong outside its immutable

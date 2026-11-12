@@ -1,6 +1,6 @@
 # Unio 0.5.27 — recovery and checkpoint maintenance
 
-Draft release scope; publication and final combined validation are pending.
+Recovery and checkpoint-maintenance release scope; check the official tag for publication status.
 
 This update helps an operator recover useful context from a failed task and
 manage protected checkpoint history without confusing preserved work with
@@ -64,16 +64,30 @@ explicit verification contract; do not silently rewrite its task or receipt.
 
 ## Validation and review
 
-Component checks and an independent current-code Mistral 4 review plus the
-lead assessment cover recovery, experience and role-card changes. The corrected archive code also passed an independent current-code Mistral 4
-review and the lead assessment. The original correction scope failure is
-preserved: its three validation commands passed, and a separate local whole-
-candidate verification confirmed the unchanged inherited paths and the exact
-correction delta. That verification passed without an AI call. The final
-combined gate, candidate installation and official release-asset verification
-remain pending.
+The complete `bash tools/quality-check.sh` gate passed with exit 0 on the frozen
+combined candidate. Scoped independent current-code Mistral 4 reviews and the
+lead assessment cover all included runtime changes. The corrected archive
+suite passed 43 checks, legacy retention 29 checks and work-saving 186 checks in the
+independent review, including a real same-worker save/restore smoke.
 
-The broader Fable product audit is separately blocked by account capacity and
-is not a completed audit or approval for this release. Desktop, phone, managed
-lead ownership, old private review-context proposals and JSON-depth work are
-outside this release.
+The original correction scope failure is preserved: its three validation
+commands passed, but its task omitted two unchanged inherited paths. A
+separate local whole-candidate verification proved the exact correction delta
+and complete authorized scope, then passed its native gate without an AI call.
+
+An isolated 0.5.27 installation passed version/help/license/policy checks and
+created an incomplete recovery packet from an actual failed Fable audit.
+The packet preserved Source exit 1, the missing-report label and false readiness;
+original receipts stayed unchanged. The release package's provenance and
+checksums identify the exact source and checks. Final delivery is recorded on
+the official release page.
+
+The first combined gate stopped on a three-second admission diagnostic fixture.
+A focused test-bound correction preserved production behavior and strict
+deadline/EOF distinctions; the historical delay cause remains unproven. The
+original failed gate and worker operational failure are preserved separately.
+
+The broader Fable product audit is separate and incomplete; its preliminary
+static observations are not a whole-app approval or a demonstrated release
+blocker. Desktop, phone, managed lead ownership, old private review-context
+proposals and JSON-depth work are outside this release.

@@ -4,7 +4,9 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.27 (unreleased) — recovery and checkpoint maintenance
+## 0.5.27 — recovery and checkpoint maintenance — 2026-11-12
+
+Admission diagnostic tests now use a bounded content-test window while retaining explicit deadline checks. Production admission behavior is unchanged; the historical timeout cause remains unproven.
 
 - Produce explicitly incomplete context handoffs from bound failed report-only runs, preserving failures and strict acceptance gates.
 - Preview and explicitly confirm archival for an inactive worker's unclaimed checkpoints, including its latest, without deletion or changes to ordinary retention.
@@ -12,7 +14,7 @@ version is released.
 - Package compact worker/reviewer startup cards and add short native prompt pointers while retaining original task bytes and custom project guides.
 - Diagnose experience-binding drift precisely and document original-profile, final-assessment and inherited-scope workflow requirements.
 
-See [scope and limits](docs/RELEASE-0.5.27.md). Combined validation and publication are pending; no measured token-saving or bug-free claim is made.
+See [scope and limits](docs/RELEASE-0.5.27.md). The required combined gate passed, scoped independent reviews and the lead assessment completed, and the private installation recovered context from a real failed Fable task. No measured token-saving or bug-free claim is made.
 
 ## 0.5.26 — host reliability, recovery and CLI awareness — 2026-11-11
 

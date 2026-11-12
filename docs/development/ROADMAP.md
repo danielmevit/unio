@@ -1,5 +1,15 @@
 # Unio roadmap and development priorities
 
+## 0.5.27 checkpoint
+
+The recovery/efficiency implementation, independent scoped reviews and lead
+assessment are complete; the combined quality gate passed. See
+[release scope](../RELEASE-0.5.27.md) and the official tag for actual delivery status.
+The older planning sections below retain their dated context. Incremental
+Fable research continues separately when account access permits; incomplete
+coverage is not a full audit verdict.
+
+
 ## Current delivery and next app batch — 2026-11-11T12:14:19+01:00
 
 [Unio 0.5.26](../RELEASE-0.5.26.md) is published and installed. Host-aware WSL
