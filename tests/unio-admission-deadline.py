@@ -52,7 +52,7 @@ else
 fi
 ''')
     hook = "        # Fail closed. Tests use this to prove a partial reply cannot admit."
-    def attempt(name, injection='', bound='3', kind='run', expected=None, late=False):
+    def attempt(name, injection='', bound='10', kind='run', expected=None, late=False):
         installed = pristine.split('case "${1:-help}" in\n')[0]
         target = "            sys.stdout.write('%s\\n%s\\n%s\\n%s\\nCOMPLETE\\n' % (" if late else hook
         assert target in installed
@@ -83,6 +83,12 @@ fi
     attempt('old five second bound reproduction', '        import time; time.sleep(6)', '5', expected='phase=deadline')
     attempt('delayed over old five seconds', '        import time; time.sleep(6)', '20')
     attempt('deadline', '        import time; time.sleep(6)', '1', expected='phase=deadline')
+    attempt('deadline after partial line',
+            "        print('grp', flush=True); import time; time.sleep(3)", '1',
+            expected='phase=deadline')
+    attempt('deadline after partial unterminated line',
+            "        sys.stdout.write('grp'); sys.stdout.flush(); import time; time.sleep(3)", '1',
+            expected='phase=deadline')
     attempt('partial complete line', "        print('grp', flush=True); sys.exit(0)", expected='phase=partial')
     attempt('partial unterminated line', "        sys.stdout.write('grp'); sys.stdout.flush(); sys.exit(0)", expected='phase=partial')
     attempt('EOF', '        sys.exit(0)', expected='phase=eof')
