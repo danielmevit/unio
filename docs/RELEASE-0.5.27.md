@@ -65,10 +65,13 @@ explicit verification contract; do not silently rewrite its task or receipt.
 ## Validation and review
 
 Component checks and an independent current-code Mistral 4 review plus the
-lead assessment cover recovery, experience and role-card changes. The archive
-correction and its independent review are pending final acceptance. The final
+lead assessment cover recovery, experience and role-card changes. The corrected archive code also passed an independent current-code Mistral 4
+review and the lead assessment. The original correction scope failure is
+preserved: its three validation commands passed, and a separate local whole-
+candidate verification confirmed the unchanged inherited paths and the exact
+correction delta. That verification passed without an AI call. The final
 combined gate, candidate installation and official release-asset verification
-must complete before this document can describe a delivered release.
+remain pending.
 
 The broader Fable product audit is separately blocked by account capacity and
 is not a completed audit or approval for this release. Desktop, phone, managed

@@ -1,90 +1,42 @@
 # Continue Unio development
 
-This is the concise continuation guide for the 0.5.26 reliability release.
-The former detailed guide remains in Git history. Read this current guide
-before loading older reports; historical status and capacity readings expire.
+The0.5.27 recovery/efficiency candidate is prepared; publication is pending.
+Check actual state before treating this document as a shipping claim.
 
-## Establish the actual state
+Read AGENTS.md, current local OWNER-WORKFLOW.md when available, newest workspace
+coordination log and the actual installed version. Check Git, official latest
+release and native workflows. Preserve active jobs, failures and dirty work;
+use CodeGraph only if the repository is already indexed. Keep private receipts,
+authentication stores and research outside public Git.
 
-1. Read the repository's `AGENTS.md`, the current local
-   `~/.config/unio/OWNER-WORKFLOW.md` when present, and the newest entries in
-   `../coord/AGENT-LOG.md` when continuing the owner's existing workspace.
-2. Check Git status, current branch/revision, installed `unio version`,
-   official latest release and actual native workflows. Preserve dirty or
-   active work. A local version string is not proof of official publication.
-3. Use CodeGraph only when `.codegraph/` exists. Otherwise use ordinary
-   repository search. Keep project scratch and receipts inside the enclosing
-   workspace; never copy authentication stores into Git.
-4. Refresh route availability and supported CLI/model controls before new
-   assignments. Keep exact subscription route, CLI/version, requested model
-   and reasoning effort distinct from verified client selection and effective
-   Unknowns. Preserve real shared-account mappings, lead reservation and holds.
+The candidate combines incomplete failed-run context handoffs, explicit worker
+checkpoint archival with truthful partial outcomes, compact role startup cards
+and precise experience freshness diagnostics. See
+[release scope](../RELEASE-0.5.27.md), [work saving](../WORK-SAVING.md),
+[handoffs](../AI-HANDOFF.md) and [experience](../MODEL-EXPERIENCE.md).
 
-## What 0.5.26 contains
+Independent current-code Mistral4 reviews and lead assessments cover the scoped
+components. The archive correction's original inherited-scope failure remains
+recorded; its3validation commands passed, and separate deterministic whole-
+candidate scope verification passed without an AI call. Do not rewrite that
+failure or confuse a report-only verification with an implementation contribution.
+The final combined gate, tested installation and official asset verification
+still need their actual receipts before publication.
 
-- Host-aware Windows/WSL disk preflight before admission; unverifiable mappings
-  remain Unknown rather than inventing safe capacity.
-- Consistent read-only observations of orphaned/interrupted runs. Original
-  receipts and known failures stay intact; missing exits remain Unknown.
-- A dry-run inventory of inactive generated build caches. It deletes nothing
-  and does not automatically prune benchmark evidence.
-- A conservative early refusal when protected checkpoints already fill the
-  store, with separate metadata and capture bounds. This does not free space:
-  the owner's protected latest saves still need deliberate retention decisions.
-- Cached AI CLI version checks and `unio update clis --check`. Applying updates
-  remains manual/refused until maintenance can exclude active admissions.
-- Exact tested Vibe 2.26.1 and 3.1.1 compatibility, explicit model selection,
-  honest selected-session/default-model metadata, final-text provenance and
-  optional native caps. Omission does not establish unlimited allowance.
-- Completion and fixture-environment corrections supporting those changes.
+Record final experience only after review and before base integration, under
+the original run configuration. Pending notes belong outside its immutable
+assessment store. Requested model/effort, client selection, effective Unknowns,
+actual exits, delivery, checks and acceptance remain separate.
 
-See [release scope and limits](../RELEASE-0.5.26.md), [host space](../HOST-SPACE.md),
-[interrupted runs](../INTERRUPTED-RUNS.md), [cache inventory](../BUILD-CACHE-HYGIENE.md),
-[CLI updates](../CLI-UPDATES.md) and [Vibe integration](../integrations/MISTRAL-VIBE.md).
+Use current owner workflow and eligible non-held routes. Personal review policy
+is one independent external reviewer plus the existing lead unless stricter
+project requirements apply. Current owner Codex lead-only and Fable-only Claude
+holds are local instructions; refresh them from the owner's current workflow.
+No blind retries, fake account groups or paid API fallback.
 
-## Evidence and remaining audit
-
-The full required quality gate passed on code revision `ad5d5ad` with actual
-exit 0 on 2026-11-10. Later release-preparation changes are documentation only;
-runtime, installer and tests must remain byte-identical to that gated revision.
-The package's `PROVENANCE.json` identifies exact source, gate, reviews and smoke
-checks. Do not erase earlier interrupted checks or failed worker exits merely
-because recovered code was subsequently accepted.
-
-Mistral 4 and GLM 5.3 implementation attempts reached local task caps and left
-recoverable commits. Their Source failures remain failures. The final real
-canonical Vibe/GLM smoke delivered a substantive report and passed native checks.
-Code acceptance, process completion, artifact delivery and owner acceptance are
-separate facts. Use the exact final review receipts and lead assessment, rather
-than transferring an approval from another revision.
-
-A requested Fable 5.2 / xhigh whole-code/product audit remains incomplete. The
-account-limited attempt saved only an initial inventory and incomplete skeleton
-files. In the owner's existing workspace, read
-`coord/reports/FABLE52-AUDIT-RESUME-2026-11-11.md` before continuing it. A future
-capacity-authorized attempt must retain native session history/private streaming
-logs and write substantive findings after each module. Keeping a chat or PC
-open cannot recover unsaved model work. Do not claim a finished Fable audit.
-
-## How to continue
-
-Finish any still-pending authorized release delivery before adding features:
-independent current-code review plus lead assessment, required checks, safe local
-installation, official delivery and downloaded-asset verification. Check actual
-publication state rather than treating this guide as a release receipt. Keep
-owner configuration and customized templates intact. Do not merge older branches
-merely because they also use the 0.5.26 version label.
-
-After delivery, prioritize remaining operational work before more desktop,
-phone or dashboard features: deliberate protected-save retention, leaner role
-instructions, useful failed-run handoffs/session persistence, and evidence-based
-triage of separately preserved development branches. Reproduce each actual issue
-before assigning a bounded fix; do not launch a speculative rewrite.
-
-Use the current owner's routing policy, review protocol and authority. Delegate
-implementation to eligible workers through Unio, with one focused task and
-worktree per change; the lead scopes, reviews and integrates. Do not silently
-substitute models, invent account capacity, retry blindly or enable paid fallback.
-Give estimates and meaningful updates; answer status questions and continue
-already-authorized work. Stop only for an explicit pause or a real block, after
-preserving actual work, receipts and the exact next step.
+The Fable whole-app audit is separate and incomplete. Continue it in bounded
+[module-sized passes](INCREMENTAL-AUDITS.md), preserving actual findings and
+coverage; do not convert preliminary hypotheses into confirmed defects. After
+this operational release, triage remaining field evidence before managed lead,
+phone and Windows/macOS work. Do not pull unrelated old private candidates into
+a release merely because their version labels match.

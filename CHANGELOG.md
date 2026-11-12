@@ -4,6 +4,16 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.27 (unreleased) — recovery and checkpoint maintenance
+
+- Produce explicitly incomplete context handoffs from bound failed report-only runs, preserving failures and strict acceptance gates.
+- Preview and explicitly confirm archival for an inactive worker's unclaimed checkpoints, including its latest, without deletion or changes to ordinary retention.
+- Report actual moved/remaining/Unknown state after archive helper, bookkeeping or receipt failures; preserve exact IDs and restore access.
+- Package compact worker/reviewer startup cards and add short native prompt pointers while retaining original task bytes and custom project guides.
+- Diagnose experience-binding drift precisely and document original-profile, final-assessment and inherited-scope workflow requirements.
+
+See [scope and limits](docs/RELEASE-0.5.27.md). Combined validation and publication are pending; no measured token-saving or bug-free claim is made.
+
 ## 0.5.26 — host reliability, recovery and CLI awareness — 2026-11-11
 
 - Check the physical Windows volume backing WSL before admitting work; refuse known-critical space and preserve Unknown observations.
