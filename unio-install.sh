@@ -21987,10 +21987,20 @@ status operation was added to the admission handshake.
 Regression coverage installs into project-local scratch, exercises the installed
 Bash and embedded Python functions before CLI dispatch, and uses a marker at the
 provider boundary. Fault injection is confined to that installed test copy; no
-new production bypass or delay switch is added. Native CLI STOP and the existing
-lead-budget regression additionally exercise public entry points and single-use
-concurrency. The historical `budget-refused` receipt heading remains compatible;
-the phase/reason determines whether a failure actually concerns capacity.
+new production bypass or delay switch is added. Dedicated deadline tests use
+explicit 1s and 5s bounds with injected delays to verify timeout arithmetic and
+honest `phase=deadline` reporting both before data transmission and after
+partial complete or unterminated output. Diagnostic content tests (EOF, partial
+lines, refusal, exit, storage error) exercise stream termination upon holder
+exit rather than timeouts; they run under a bounded 10-second test window to
+allow more startup and scheduling margin than the old three-second fixture
+bound, while remaining below the 30-second production default. The historical
+failure was not instrumented to establish its cause; no specific storage or
+host-load explanation is proven. Native CLI STOP and the
+existing lead-budget regression additionally exercise public entry points and
+single-use concurrency. The historical `budget-refused` receipt heading remains
+compatible; the phase/reason determines whether a failure actually concerns
+capacity.
 UNIO_ADMISSION_DEADLINES_MD
 fi
 if [ ! -e "$TPL_DIR/REVIEW-STATUS.md" ] && [ ! -L "$TPL_DIR/REVIEW-STATUS.md" ]; then
