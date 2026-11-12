@@ -1,7 +1,7 @@
 # Incremental application audits
 
 Audit one concrete flow per assignment, with a pinned revision and explicit
-coverage. A useful default for a frontier-model research pass is20–30minutes;
+coverage. A useful default for a frontier-model research pass is 20–30 minutes;
 use longer bounds when the dependencies justify them. Keep reasoning effort
 separate from the pass duration and subscription coordination tier.
 

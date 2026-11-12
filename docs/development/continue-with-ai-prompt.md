@@ -1,6 +1,6 @@
 # Continue Unio development
 
-The0.5.27 recovery/efficiency candidate is prepared; publication is pending.
+The 0.5.27 recovery/efficiency candidate is prepared; publication is pending.
 Check actual state before treating this document as a shipping claim.
 
 Read AGENTS.md, current local OWNER-WORKFLOW.md when available, newest workspace
@@ -15,9 +15,9 @@ and precise experience freshness diagnostics. See
 [release scope](../RELEASE-0.5.27.md), [work saving](../WORK-SAVING.md),
 [handoffs](../AI-HANDOFF.md) and [experience](../MODEL-EXPERIENCE.md).
 
-Independent current-code Mistral4 reviews and lead assessments cover the scoped
+Independent current-code Mistral 4 reviews and lead assessments cover the scoped
 components. The archive correction's original inherited-scope failure remains
-recorded; its3validation commands passed, and separate deterministic whole-
+recorded; its 3 validation commands passed, and separate deterministic whole-
 candidate scope verification passed without an AI call. Do not rewrite that
 failure or confuse a report-only verification with an implementation contribution.
 The final combined gate, tested installation and official asset verification
