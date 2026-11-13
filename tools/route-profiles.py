@@ -41,7 +41,10 @@ SECRET_LIKE = re.compile(r'(?i)(?:sk-|gh[pousr]_|github_pat_|AKIA)[A-Za-z0-9_-]{
 # before any adapter is loaded.
 SUPPORTED_ADAPTERS = ('vibe',)
 SUPPORTED_CLI_VERSIONS = ('3.1.1',)
-SUPPORTED_MODELS = ('glm-5-3', 'mistral-large-4-0-3')
+# Frozen V1 contract: the tested GLM 5.3 path only. The canonical adapter
+# keeps its own original pins and legacy model routes unchanged and stays
+# the final authority at compile time.
+SUPPORTED_MODELS = ('glm-5-3',)
 SUPPORTED_THINKING = ('high',)
 REQUIRED_FIELDS = ('adapter', 'requested_cli_version', 'model', 'thinking', 'receipt_dir')
 CAP_FIELDS = ('max_price', 'max_tokens', 'time_limit', 'max_turns')
@@ -102,7 +105,14 @@ def check_cap(field, value):
         return None
     if type(value) is bool or not isinstance(value, (int, float)):
         raise Invalid('cap ' + field + ' must be a finite number or null')
-    if not math.isfinite(value):
+    try:
+        finite = math.isfinite(value)
+    except OverflowError:
+        # Pathological magnitudes (for example 10**400) are not float-
+        # representable; refuse them with the same bounded diagnostic
+        # instead of crashing, and without duplicating any cap maximum.
+        finite = False
+    if not finite:
         raise Invalid('cap ' + field + ' must be a finite number or null')
     return value
 
@@ -151,6 +161,21 @@ def check_route(name, route):
         if field in route:
             check_cap(field, route[field])
     return route
+
+
+def check_requested_name(name):
+    """Validate a requested show/compile name; refusals never echo it.
+
+    A requested name is untrusted free-form input, so no error branch may
+    echo it: the plain grammar accepts credential-shaped lowercase values,
+    and no secret-prefix list is exhaustive enough to safely quote them.
+    """
+    if not ROUTE_NAME.match(name):
+        raise Invalid('route name does not match the agent identifier grammar '
+                     '(a lowercase letter, then letters/digits/-/_, at most 64 characters)')
+    if SECRET_LIKE.search(name):
+        raise Invalid('route name contains a secret-like value (not shown); '
+                     'use a plain agent-style identifier')
 
 
 def load_registry(conf_dir):
@@ -310,7 +335,8 @@ def format_cap(value):
 def compile_route(conf_dir, name):
     routes, _path, _present = load_registry(conf_dir)
     if name not in routes:
-        raise Invalid("unknown route '" + name + "'; use 'unio routes' to list declared profiles")
+        raise Invalid("unknown route (requested name not echoed); use 'unio routes' "
+                     "to list declared profiles")
     route = routes[name]
     check_receipt_parent(route['receipt_dir'])
     adapter, adapter_path = load_adapter(conf_dir)
@@ -357,21 +383,19 @@ def main(argv):
         if action == 'show':
             if len(rest) not in (1, 2) or not rest[0] or (len(rest) == 2 and rest[1] != '--json'):
                 raise Invalid(USAGE)
+            check_requested_name(rest[0])
             name = rest[0]
-            if not ROUTE_NAME.match(name):
-                raise Invalid('route name does not match the agent identifier grammar')
             routes, _path, _present = load_registry(conf_dir)
             if name not in routes:
-                raise Invalid("unknown route '" + name + "'; use 'unio routes' to list declared profiles")
+                raise Invalid("unknown route (requested name not echoed); use 'unio routes' "
+                             "to list declared profiles")
             print_show(name, routes[name], len(rest) == 2)
             return 0
         if action == 'compile':
             if len(rest) != 1 or not rest[0]:
                 raise Invalid(USAGE)
-            name = rest[0]
-            if not ROUTE_NAME.match(name):
-                raise Invalid('route name does not match the agent identifier grammar')
-            return compile_route(conf_dir, name)
+            check_requested_name(rest[0])
+            return compile_route(conf_dir, rest[0])
         raise Invalid(USAGE)
     except Invalid as error:
         print('unio routes: ' + str(error), file=sys.stderr)

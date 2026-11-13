@@ -28,7 +28,10 @@ Optional file: `$UNIO_CONF_DIR/route-profiles.json`
 empty inventory. There is **no project override** in V1. The schema is
 closed: unknown fields, duplicate keys, nonfinite numbers, NUL/control
 characters, oversized or non-regular files are refused with bounded
-diagnostics that never echo rejected secret-like values.
+diagnostics that never echo rejected secret-like values. A refused
+`show`/`compile` name is never echoed either: the requested value is
+untrusted free-form input, so every name refusal is a fixed actionable
+error.
 
 ```json
 {
@@ -54,8 +57,10 @@ Field rules (closed schema, `schema_version` must be the integer 1):
 - Route names use the existing agent identifier grammar: a lowercase
   letter, then letters/digits/`-`/`_`, at most 64 characters.
 - `adapter` must be `vibe`; `requested_cli_version` must be `3.1.1`;
-  `model` must be a documented 3.1.1 choice (`glm-5-3` or
-  `mistral-large-4-0-3`); `thinking` must be `high` (Vibe 3.1.1 has no
+  `model` must be `glm-5-3` — the frozen V1 contract covers the tested
+  GLM 5.3 path only. Other adapter-pinned models (such as
+  `mistral-large-4-0-3`) stay legacy `agents.conf` routes, not V1 profile
+  targets; `thinking` must be `high` (Vibe 3.1.1 has no
   per-run thinking control, so only the observed catalog level may be
   declared and the effective effort stays Unknown). Other providers,
   versions and wrapped commands remain legacy `agents.conf` routes, not
@@ -66,7 +71,10 @@ Field rules (closed schema, `schema_version` must be the integer 1):
   `compile` checks it read-only and never creates it, never writes into
   it and never claims startup success.
 - Caps (`max_tokens`, `max_price`, `time_limit`, `max_turns`) are optional
-  and may be a finite number or `null`. On 3.1.1, an omitted or `null` cap
+  and may be a finite number or `null`. Nonfinite and non-representable
+  magnitudes (for example `1e400` or a `10**400` integer) are refused with
+  a bounded diagnostic before any adapter is loaded. On 3.1.1, an omitted
+  or `null` cap
   compiles to the adapter's explicit `none` choice (the native flag is
   omitted; the CLI default then applies and stays Unknown). Numeric caps
   are validated against the **installed trusted adapter's** current

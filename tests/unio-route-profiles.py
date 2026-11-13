@@ -138,10 +138,10 @@ class RouteProfileTests(unittest.TestCase):
         self.assertEqual(document['routes'], [])
         self.assertFalse(document['registry_present'])
         self.registry({'vibeglm': self.route(max_tokens=2000000, max_price=None),
-                      'second': self.route(model='mistral-large-4-0-3')})
+                      'second': self.route(time_limit=5400.0)})
         listed = self.routes()
         self.assertEqual(listed.returncode, 0)
-        for fragment in ('vibeglm', 'second', 'glm-5-3', 'mistral-large-4-0-3',
+        for fragment in ('vibeglm', 'second', 'glm-5-3',
                          'thinking=high', 'effective model/effort and remaining allowance: Unknown'):
             self.assertIn(fragment, listed.stdout)
         document = json.loads(self.routes('--json').stdout)
@@ -226,6 +226,7 @@ class RouteProfileTests(unittest.TestCase):
             ('other adapter', self.route(adapter='codex')),
             ('other version', self.route(requested_cli_version='2.26.1')),
             ('other model', self.route(model='mistral-medium-3-5')),
+            ('mistral-large alias', self.route(model='mistral-large-4-0-3')),
             ('unsupported thinking', self.route(thinking='low')),
             ('relative receipt', self.route(receipt_dir='relative/path')),
         )
@@ -248,6 +249,8 @@ class RouteProfileTests(unittest.TestCase):
                                   .replace(b'"a"', json.dumps('vibeglm').encode())),
             ('float overflow', json.dumps({'schema_version': 1, 'routes':
                                           {'vibeglm': self.route(max_tokens=1e400)}}).encode()),
+            ('integer overflow', json.dumps({'schema_version': 1, 'routes':
+                                             {'vibeglm': self.route(max_tokens=10 ** 400)}}).encode()),
             ('nul byte', good.encode() + b'\0'),
             ('control character', json.dumps({'schema_version': 1, 'routes': {'vibeglm': self.route()}}).replace(
                 '"glm-5-3"', '"glm-5-3\\u0007"').encode()),
@@ -276,6 +279,59 @@ class RouteProfileTests(unittest.TestCase):
                     self.assertIn('unio routes:', result.stderr)
                     # A refusal never echoes the rejected secret-like value.
                     self.assertNotIn(SECRET, result.stdout + result.stderr)
+        self.assert_no_sentinel()
+
+    def test_requested_secret_shaped_names_refuse_without_echo(self):
+        self.install()
+        # Lowercase credential-shaped dummy (no real credentials): it passes
+        # the plain identifier grammar, so the refusal must come from the
+        # secret-shape guard and must never echo the rejected value.
+        dummy = 'sk-dummy-review-only-000000000000'
+        for args in (('show', dummy), ('compile', dummy)):
+            with self.subTest(args=args):
+                result = self.routes(*args)
+                self.assertEqual(result.returncode, 2, result.stdout)
+                self.assertIn('unio routes:', result.stderr)
+                self.assertIn('secret-like', result.stderr)
+                self.assertNotIn(dummy, result.stdout + result.stderr)
+        # Same refusals with a registry present, plus the grammar-invalid
+        # uppercase shape: fixed errors, never the rejected value.
+        self.registry({'vibeglm': self.route()})
+        upper = 'SK-DUMMY-REVIEW-ONLY-000000000000'
+        for args in (('show', dummy), ('compile', dummy),
+                     ('show', upper), ('compile', upper)):
+            with self.subTest(args=args):
+                result = self.routes(*args)
+                self.assertEqual(result.returncode, 2, result.stdout)
+                self.assertIn('unio routes:', result.stderr)
+                self.assertNotIn(dummy, result.stdout + result.stderr)
+                self.assertNotIn(upper, result.stdout + result.stderr)
+        # A plain unknown name is refused with a fixed message that never
+        # quotes the requested value either.
+        unknown = self.routes('show', 'nosuch')
+        self.assertEqual(unknown.returncode, 2)
+        self.assertIn('unknown route', unknown.stderr)
+        self.assertIn("use 'unio routes' to list declared profiles", unknown.stderr)
+        self.assertNotIn('nosuch', unknown.stderr)
+        self.assert_no_sentinel()
+
+    def test_pathological_numeric_caps_refuse_bounded_without_traceback(self):
+        self.install()
+        huge = 10 ** 400
+        for field in ('max_tokens', 'max_price', 'time_limit', 'max_turns'):
+            with self.subTest(field=field):
+                self.registry({'vibeglm': self.route(**{field: huge})})
+                for args in ((), ('--json',), ('show', 'vibeglm'), ('compile', 'vibeglm')):
+                    result = self.routes(*args)
+                    self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                    self.assertIn('must be a finite number or null', result.stderr)
+                    self.assertNotIn('Traceback', result.stderr)
+                    self.assertNotIn(str(huge), result.stdout + result.stderr)
+        # Legitimate finite caps, null and omissions keep working unchanged.
+        self.registry({'vibeglm': self.route(max_tokens=2000000, max_price=None)})
+        self.assertEqual(self.routes().returncode, 0)
+        self.assertEqual(self.routes('show', 'vibeglm').returncode, 0)
+        self.assertEqual(self.routes('compile', 'vibeglm').returncode, 0)
         self.assert_no_sentinel()
 
     def test_nonregular_and_oversized_registry_refuse(self):
@@ -371,7 +427,8 @@ class RouteProfileTests(unittest.TestCase):
                 self.assertIn('unio routes:', result.stderr)
         unknown = self.routes('show', 'nosuch')
         self.assertEqual(unknown.returncode, 2)
-        self.assertIn("unknown route 'nosuch'", unknown.stderr)
+        self.assertIn('unknown route', unknown.stderr)
+        self.assertNotIn('nosuch', unknown.stderr)
         self.assert_no_sentinel()
 
     def test_legacy_routes_and_runtime_meaning_unchanged(self):
