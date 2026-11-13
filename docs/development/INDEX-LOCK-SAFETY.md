@@ -41,3 +41,47 @@ To ensure data integrity and prevent race conditions with external Git tooling, 
 
 5. **Manual Remediation Guidance**:
    Documentation in `docs/PROTOCOL.md`, `docs/HANDBOOK.md`, and project templates advises operators to inspect active system processes before manually removing an abandoned lock file.
+
+## 3. Visible Startup-Refusal Diagnostics (0.5.28)
+
+A refusal that only a detached child sees is invisible: with `unio run -b`, the
+parent prints its launch acknowledgement (`started in background …`) and exits
+0 — that acknowledgement is **not** a Source success — while the detached child
+detects the Gitdir/index.lock condition, refuses, and dies with its stderr
+discarded (`nohup … >/dev/null 2>&1`). Three distinct facts must never be
+conflated:
+
+1. **Parent acknowledgement** — exit 0 and the `started in background` line
+   only mean the run was launched; they say nothing about provider startup.
+2. **Child refusal** — the child still fails closed exactly as in the
+   foreground: nonzero exit, the original diagnostic on stderr, the existing
+   lock untouched, no admission, no slot, no owner grant, no retry.
+3. **Provider not started** — no provider command ran, so there is no Source,
+   adapter or provider exit to report; the refusal must never be mislabeled as
+   a budget, quota or code-quality failure.
+
+To close that visibility gap, `cmd_run` records the refusal through
+`startup_refuse_report` before its (unchanged) `die` for both pre-provider
+startup failures: `phase=gitdir-resolution` (Git directory cannot be
+determined) and `phase=git-index-lock` (an entry named `index.lock` already
+exists). The helper appends a dated, distinct fragment to the task's existing
+report and log:
+
+```
+## startup-refused 2026-11-13T… — phase=git-index-lock worker=<worker> agent=<agent> task=<task>
+  <original actionable reason>
+  gitdir: <worktree gitdir>
+  No provider was started: no admission, no slot, no owner grant, no retry.
+  This is a Git startup refusal, not a budget, quota or code-quality failure.
+  Actionable: inspect the worktree lock (or gitdir) manually, confirm no Git writer is active, then run again.
+```
+
+The fragment is therefore visible through `unio report <task>` (report file)
+and `unio tail <task>` (log file). Appends are strictly append-only: existing
+reports and logs — including a previous sentinel or a later normal run's
+content — are never rewritten or replaced, and the helper refuses to write
+through a symlinked or non-regular report/log entry. The child's exact refusal
+(exit 1, original stderr diagnostic) and the parent's acknowledgement
+semantics are unchanged. Successful foreground and background runs record
+their normal `## run …` fragments and remain appendable after a refusal
+fragment.

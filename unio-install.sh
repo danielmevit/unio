@@ -33436,6 +33436,42 @@ policy_refuse_report() { # $1=root $2=worker $3=task $4=kind $5=agent $6=reason
   } >> "$report" || true
 }
 
+startup_refuse_report() { # $1=root $2=worker $3=task $4=agent $5=phase [$6=reason] [$7=gitdir]
+  # A pre-provider Gitdir-resolution/index.lock refusal can happen inside the
+  # detached background child, whose stderr nohup discards by design; the
+  # parent's "started in background" line is only a launch acknowledgement.
+  # This appends a dated, distinct fragment to the task report and log so
+  # 'unio report' / 'unio tail' explain the refusal. It never fabricates a
+  # provider exit and never fails the run: the caller's die stays authoritative.
+  local root="$1" worker="$2" task="$3" agent="$4" phase="$5" reason="${6:-}" gd="${7:-}"
+  [ -n "$root" ] && [ -n "$worker" ] && [ -n "$task" ] || return 0
+  local dir="$root/coord/reports" when
+  mkdir -p "$dir" 2>/dev/null || return 0
+  when=$(date -Is)
+  local f
+  for f in "$dir/$task.md" "$dir/$task.log"; do
+    # append-only diagnostics: never write through a symlink, FIFO or other
+    # non-regular entry standing in for a task report or log
+    [ -L "$f" ] && return 0
+    [ -e "$f" ] && [ ! -f "$f" ] && return 0
+  done
+  {
+    echo
+    echo "## startup-refused $when — phase=$phase worker=$worker agent=$agent task=$task"
+    [ -n "$reason" ] && printf '  %s\n' "$reason"
+    [ -n "$gd" ] && printf '  gitdir: %s\n' "$gd"
+    echo '  No provider was started: no admission, no slot, no owner grant, no retry.'
+    echo '  This is a Git startup refusal, not a budget, quota or code-quality failure.'
+    echo '  Actionable: inspect the worktree lock (or gitdir) manually, confirm no Git writer is active, then run again.'
+  } >> "$dir/$task.md" 2>/dev/null || true
+  {
+    echo
+    echo "## startup-refused $when — phase=$phase worker=$worker agent=$agent task=$task"
+    printf 'Provider not started: refused at pre-provider Git startup (phase=%s); no admission, slot, owner grant or retry was consumed; not a budget/quota failure.\n' "$phase"
+    [ -n "$reason" ] && printf '%s\n' "$reason"
+  } >> "$dir/$task.log" 2>/dev/null || true
+}
+
 policy_text_label() { # $1=label; same rejection rules as the policy checker
   local v="$1"
   [ -n "$v" ] || return 1
@@ -35134,9 +35170,13 @@ cmd_run() {
   # a run killed mid-commit can leave git's index.lock behind — preserve existing locks
   local gd
   if ! gd=$(git -C "$wt" rev-parse --path-format=absolute --git-dir 2>/dev/null) || [ -z "$gd" ]; then
+    startup_refuse_report "$root" "$worker" "$task" "$agent" gitdir-resolution \
+      "cannot determine git directory for worktree '$wt'"
     die "cannot determine git directory for worktree '$wt'"
   fi
   if [ -e "$gd/index.lock" ] || [ -L "$gd/index.lock" ]; then
+    startup_refuse_report "$root" "$worker" "$task" "$agent" git-index-lock \
+      "Git index is busy or held by an unmanaged process ($gd/index.lock exists). Unio will not remove an existing lock; inspect manually and ensure no Git writer is active before removing it." "$gd"
     die "Git index is busy or held by an unmanaged process ($gd/index.lock exists). Unio will not remove an existing lock; inspect manually and ensure no Git writer is active before removing it."
   fi
 
