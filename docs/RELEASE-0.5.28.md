@@ -1,6 +1,6 @@
 # Unio 0.5.28 — installation and startup safety
 
-Unreleased candidate. Final corrections, current-code review and the required
+Unreleased candidate. Source corrections are implemented; current-code review and the required
 combined gate are pending. A local version string is not a publication claim.
 
 ## Practical changes

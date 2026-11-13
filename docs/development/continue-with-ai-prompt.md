@@ -8,7 +8,7 @@ or this document does not.
 
 ## Current candidate: 0.5.28
 
-Installation and startup safety follows the shipped0.5.27 recovery/maintenance
+Installation and startup safety follows the shipped 0.5.27 recovery/maintenance
 release. See [scope and limits](../RELEASE-0.5.28.md) and the changelog.
 
 - Refuse accidental installer sourcing before writes or caller-shell changes;
@@ -23,7 +23,7 @@ release. See [scope and limits](../RELEASE-0.5.28.md) and the changelog.
   fragments, keeping parent acknowledgement distinct from provider execution.
 - Use portable test scratch selection and a stable README release link.
 
-Final source correction, exact-current-code independent review, lead assessment,
+Exact-current-code independent review, lead assessment,
 one full combined quality gate and tested installation remain pending. Check
 actual receipts and the official release before describing delivery as complete.
 Preserve original failures, reviews of earlier code and any Unknown outcomes.

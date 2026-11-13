@@ -12,7 +12,7 @@ version is released.
 - Append a distinct dated startup-refusal explanation to the task report and log when Git-lock or Gitdir checks stop a background child before provider launch.
 - Keep test fixtures under explicit scratch/TMPDIR destinations and keep the README's stable-release link current without a hardcoded version.
 
-See [release scope and limits](docs/RELEASE-0.5.28.md). Final corrections, independent review, the combined gate and publication remain pending.
+See [release scope and limits](docs/RELEASE-0.5.28.md). Final source corrections are implemented; independent review, the combined gate and publication remain pending.
 
 ## 0.5.27 — recovery and checkpoint maintenance — 2026-11-12
 

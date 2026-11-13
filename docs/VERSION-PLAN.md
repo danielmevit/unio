@@ -5,8 +5,8 @@
 Finish installation and startup safety before expanding session ownership or
 platform/UI scope. See [scope and limits](RELEASE-0.5.28.md). Installer accident
 containment and live/Unknown Git-lock preservation are implemented candidates;
-final diagnostic/test-portability corrections, fresh review and one combined
-gate remain pending. The stable-release link uses GitHub's latest release.
+diagnostic/test-portability corrections are implemented, with fresh review
+and one combined gate pending. The stable-release link uses GitHub's latest release.
 
 Fable's role is product/architecture assessment: understand Unio, score areas
 with reasons and confidence, then rank improvements. Workers perform tests,
