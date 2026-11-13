@@ -35,6 +35,11 @@ unio selftest       # rehearse the whole loop with mock agents — no quota
 unio version        # confirm what's installed
 ```
 
+Run the installer with `bash` (or pipe it into `bash`), never `source
+unio-install.sh`: the installer refuses accidental sourcing without changing
+anything and prints the command to run instead (see
+`docs/development/INSTALLER-SAFETY.md`).
+
 Tab-completion (commands, workers, tasks, agents) installs automatically;
 open a new shell to pick it up.
 

@@ -14,6 +14,23 @@
 #           ~/.config/unio/templates/
 # Then:     unio selftest   (mock-agent rehearsal, zero quota)
 #           cd <your repo clone> && unio init codex antigravity opencode grok
+# Accident containment, not an anti-abuse sandbox: this installer writes files
+# and tunes shell options, so refuse accidental sourcing before anything runs
+# or any caller shell setting changes. Detection only relies on 'return' being
+# legal while a file is sourced, so ordinary executed installs keep working,
+# including "bash unio-install.sh", a pipe feeding bash's standard input, and
+# "bash -c" runs where no script path needs to exist. A refused caller gets a
+# nonzero status and keeps its shell; this file never exits it for them.
+if (return 0 2>/dev/null); then
+  unio_source_hint='bash unio-install.sh'
+  if [ -n "${BASH_SOURCE:-}" ]; then
+    unio_source_hint="bash ${BASH_SOURCE:-}"
+  fi
+  echo "unio installer: refusing: this file was sourced instead of executed." >&2
+  echo "unio installer: nothing was installed and no shell settings changed." >&2
+  echo "unio installer: run it instead: $unio_source_hint" >&2
+  return 1
+fi
 set -euo pipefail
 
 BIN_DIR="${UNIO_BIN_DIR:-$HOME/.local/bin}"
@@ -25558,7 +25575,23 @@ not prohibit selling copies in compliance with the GNU AGPLv3.
 UNIO_NOTICE_EOF
 
 # ---------------------------------------------------------------- unio
-cat > "$BIN_DIR/unio" <<'UNIO_BIN_EOF'
+# Publish the main runtime through a private staging file and one atomic
+# rename inside BIN_DIR. An interpreter that already opened the previous
+# runtime keeps reading its own complete inode, and concurrent or new
+# invocations only ever see a complete file, never a truncated mix. A
+# failure before the rename leaves any existing runtime byte-identical and
+# prints no success message. Only this invocation's own staging directory is
+# cleaned up; unrelated files or leftover staging names are never touched.
+if [ -L "$BIN_DIR/unio" ] || { [ -e "$BIN_DIR/unio" ] && [ ! -f "$BIN_DIR/unio" ]; }; then
+  echo "unio: refusing unsafe runtime path: $BIN_DIR/unio is not a regular file" >&2
+  exit 1
+fi
+unio_runtime_stage=$(mktemp -d "$BIN_DIR/.unio-install-stage.XXXXXX")
+unio_runtime_tmp="$unio_runtime_stage/unio"
+trap 'rm -rf -- "$unio_runtime_stage"' EXIT
+(
+  BIN_DIR="$unio_runtime_stage"
+  cat > "$BIN_DIR/unio" <<'UNIO_BIN_EOF'
 #!/usr/bin/env bash
 # Unio — Copyright (C) 2026 Daniel Mitev
 # Public attribution: Daniel Mevit (@danielmevit)
@@ -38752,7 +38785,16 @@ case "${1:-help}" in
   *) die "unknown command '${1}' (unio help)";;
 esac
 UNIO_BIN_EOF
-chmod +x "$BIN_DIR/unio"
+  chmod +x "$BIN_DIR/unio"
+)
+# Keep an upgraded runtime's existing mode; a fresh install keeps the
+# umask-following mode 'cat' and 'chmod +x' produced above.
+if [ -f "$BIN_DIR/unio" ]; then
+  chmod --reference="$BIN_DIR/unio" "$unio_runtime_tmp"
+fi
+mv -f -- "$unio_runtime_tmp" "$BIN_DIR/unio"
+rmdir -- "$unio_runtime_stage"
+trap - EXIT
 # BEGIN EMBEDDED LEAD COOLDOWN
 mkdir -p "$CONF_DIR/lib"
 cat > "$CONF_DIR/lib/lead_cooldown.py" <<'LEAD_COOLDOWN_PY'
