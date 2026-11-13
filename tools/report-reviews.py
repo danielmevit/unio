@@ -271,12 +271,6 @@ def packet_create(root, worker, task, *paths):
                             bytes=len(data), identity=identity))
     coverage = 'paths' if entries else 'task_material'
     packet_id = uuid.uuid4().hex
-    manifest = dict(schema_version=SCHEMA_VERSION, id=packet_id, worker=worker, task=task,
-                    revision=rev, material_protocol=MATERIAL_PROTOCOL,
-                    material_sha256=hashlib.sha256(material).hexdigest(),
-                    material_bytes=len(material), coverage=coverage, paths=entries,
-                    created_at=stamp())
-    manifest_bytes = _canonical(manifest)
     parent = safe(root, 'coord', 'review-packets')
     fd = storage_directory(parent, create=True)
     pending = '.pending-' + packet_id
@@ -293,12 +287,23 @@ def packet_create(root, worker, task, *paths):
         except FileExistsError:
             fail('review packet collision; retry the command')
         try:
-            _write_exclusive(fd, pending + '/manifest.json', manifest_bytes)
             _write_exclusive(fd, pending + '/material.txt', material)
             for index, entry in enumerate(entries):
                 data, _ = _read_bounded(safe(wt, *entry['path'].split('/')),
                                         PACKET_FILES_LIMIT)
                 _write_exclusive(fd, pending + '/path-%d.txt' % index, data)
+                # The manifest records the stored copy's identity, so later
+                # reads prove the packet bytes were never replaced.
+                _, entry['identity'] = _read_bounded(
+                    os.path.join(parent, pending, 'path-%d.txt' % index),
+                    PACKET_FILES_LIMIT)
+            manifest = dict(schema_version=SCHEMA_VERSION, id=packet_id, worker=worker,
+                            task=task, revision=rev, material_protocol=MATERIAL_PROTOCOL,
+                            material_sha256=hashlib.sha256(material).hexdigest(),
+                            material_bytes=len(material), coverage=coverage,
+                            paths=entries, created_at=stamp())
+            manifest_bytes = _canonical(manifest)
+            _write_exclusive(fd, pending + '/manifest.json', manifest_bytes)
             try:
                 os.rename(pending, packet_id, src_dir_fd=fd, dst_dir_fd=fd)
                 published = True

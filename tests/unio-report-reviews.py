@@ -297,7 +297,8 @@ class ReportReviews(unittest.TestCase):
         self.conf.write_text(self.conf.read_text().replace(
             'printf work > hello.txt', 'printf work > hello2.txt').replace(
             'git add hello.txt', 'git add hello2.txt'))
-        self.task('other', scope='- hello2.txt', validate='$ test -s hello2.txt')
+        self.task('other', scope='- hello.txt\n- hello2.txt',
+                  validate='$ test -s hello2.txt')
         self.unio('run', 'mock', 'other')
         self.unio('verify', 'mock', 'other')
         other_packet = self.packet(target='other')
