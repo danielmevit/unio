@@ -129,8 +129,8 @@ class ReportReviews(unittest.TestCase):
         (self.tasks / (name + '.md')).write_text(
             '# Task\n## Allowed scope\n' + scope + '\n## Validate\n' + validate + '\n')
 
-    def packet(self, *paths, code=0, target=None):
-        args = ['review-packet', 'mock', target or self.target]
+    def packet(self, *paths, code=0, target=None, worker='mock'):
+        args = ['review-packet', worker, target or self.target]
         for path in paths:
             args += ['--path', path]
         p = self.unio(*args, code=code)
@@ -245,7 +245,7 @@ class ReportReviews(unittest.TestCase):
         self.packet('link.txt', code=2)
         link.unlink()
         big = wt / 'big.txt'
-        big.write_text('oversized path material\n' * 15000)
+        big.write_text('oversized path material line\n' * 9500)
         self.git_wt('add', 'big.txt')
         self.git_wt('commit', '-qm', 'big')
         self.unio('verify', 'mock', self.target)
@@ -294,14 +294,14 @@ class ReportReviews(unittest.TestCase):
         self.unio('verify', 'mock', self.target)
         p = self.bind(reviewer, code=2)
         self.assertIn('target revision changed', p.stderr)
-        self.conf.write_text(self.conf.read_text().replace(
-            'printf work > hello.txt', 'printf work > hello2.txt').replace(
-            'git add hello.txt', 'git add hello2.txt'))
-        self.task('other', scope='- hello.txt\n- hello2.txt',
-                  validate='$ test -s hello2.txt')
-        self.unio('run', 'mock', 'other')
-        self.unio('verify', 'mock', 'other')
-        other_packet = self.packet(target='other')
+        with self.conf.open('a') as stream:
+            stream.write("mock2=bash -c 'printf work > hello2.txt; "
+                         "git add hello2.txt; git commit -qm other'\n")
+        self.unio('init', 'mock2')
+        self.task('other', scope='- hello2.txt', validate='$ test -s hello2.txt')
+        self.unio('run', 'mock2', 'other')
+        self.unio('verify', 'mock2', 'other')
+        other_packet = self.packet(target='other', worker='mock2')
         other_reviewer = self.reviewer('5', other_packet)
         p = self.unio('reviews-bind', 'mock', self.target, 'rev5', other_reviewer, code=2)
         self.assertIn('different worker/task', p.stderr)
