@@ -30,9 +30,6 @@ def find_installer():
 
 def get_scratch_base():
     # Keep scratch files isolated to designated fixtures dir or system temp
-    cand = Path('/mnt/d/Vibe Coding/_vm/unio/tmp/unio-next/index-lock-gemini-medium-20261113/fixtures')
-    if cand.is_dir():
-        return cand
     if 'UNIO_TEST_SCRATCH' in os.environ:
         p = Path(os.environ['UNIO_TEST_SCRATCH'])
         if p.is_dir():
@@ -40,7 +37,78 @@ def get_scratch_base():
     return None
 
 
+def test_scratch_base_portability():
+    print("[REGRESSION] Scratch base portability and TMPDIR placement...")
+    orig_env = dict(os.environ)
+    orig_tempdir = tempfile.tempdir
+    try:
+        # 1. Explicit UNIO_TEST_SCRATCH preference
+        with tempfile.TemporaryDirectory(prefix='scratch-explicit-test-') as explicit_scratch:
+            explicit_path = Path(explicit_scratch)
+            os.environ['UNIO_TEST_SCRATCH'] = str(explicit_path)
+            base = get_scratch_base()
+            if base is None or base.resolve() != explicit_path.resolve():
+                raise AssertionError(f"Expected get_scratch_base() to return {explicit_path}, got {base}")
+            with tempfile.TemporaryDirectory(prefix='test-sub-', dir=base) as sub:
+                if Path(sub).resolve().parent != explicit_path.resolve():
+                    raise AssertionError(f"TemporaryDirectory not created inside UNIO_TEST_SCRATCH: {sub}")
+
+        # 2. Rejection of unconfigured/foreign directory:
+        # When UNIO_TEST_SCRATCH is unset, get_scratch_base() must return None,
+        # even if foreign fixture directories exist on the filesystem.
+        os.environ.pop('UNIO_TEST_SCRATCH', None)
+        base = get_scratch_base()
+        if base is not None:
+            raise AssertionError(f"Expected get_scratch_base() to be None when UNIO_TEST_SCRATCH is unset, got {base}")
+
+        # 3. Standard TMPDIR placement when get_scratch_base() returns None
+        with tempfile.TemporaryDirectory(prefix='scratch-tmpdir-test-') as custom_tmpdir:
+            custom_tmp_path = Path(custom_tmpdir)
+            os.environ['TMPDIR'] = str(custom_tmp_path)
+            os.environ.pop('UNIO_TEST_SCRATCH', None)
+            tempfile.tempdir = None  # Reset tempfile cached directory
+            base = get_scratch_base()
+            if base is not None:
+                raise AssertionError(f"Expected get_scratch_base() to return None under TMPDIR, got {base}")
+            with tempfile.TemporaryDirectory(prefix='test-tmpdir-sub-', dir=base) as sub:
+                if Path(sub).resolve().parent != custom_tmp_path.resolve():
+                    raise AssertionError(f"TemporaryDirectory not placed under TMPDIR: {sub}")
+
+        # Restore original TMPDIR before proceeding so subsequent calls use valid tempdir
+        if 'TMPDIR' in orig_env:
+            os.environ['TMPDIR'] = orig_env['TMPDIR']
+        else:
+            os.environ.pop('TMPDIR', None)
+        tempfile.tempdir = None
+
+        # 4. Fallback for invalid/non-directory UNIO_TEST_SCRATCH
+        os.environ['UNIO_TEST_SCRATCH'] = '/nonexistent/path/for/scratch/test'
+        base = get_scratch_base()
+        if base is not None:
+            raise AssertionError(f"Expected None for non-existent UNIO_TEST_SCRATCH, got {base}")
+
+        with tempfile.NamedTemporaryFile(prefix='scratch-file-test-') as f:
+            os.environ['UNIO_TEST_SCRATCH'] = f.name
+            base = get_scratch_base()
+            if base is not None:
+                raise AssertionError(f"Expected None when UNIO_TEST_SCRATCH is a regular file, got {base}")
+
+        # 5. Verify no machine-specific absolute path remains in get_scratch_base source
+        import inspect
+        src = inspect.getsource(get_scratch_base)
+        for forbidden in ['/mnt/', 'index-lock-gemini-medium']:
+            if forbidden in src:
+                raise AssertionError(f"Machine-specific pattern {forbidden!r} found in get_scratch_base")
+
+        print("  PASS: UNIO_TEST_SCRATCH explicit selection honored, TMPDIR placement verified, fallback preserved.")
+    finally:
+        os.environ.clear()
+        os.environ.update(orig_env)
+        tempfile.tempdir = orig_tempdir
+
+
 def run_tests():
+    test_scratch_base_portability()
     installer = find_installer()
     scratch_base = get_scratch_base()
     
