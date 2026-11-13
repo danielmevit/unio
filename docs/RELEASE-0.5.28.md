@@ -1,7 +1,8 @@
 # Unio 0.5.28 — installation and startup safety
 
-Unreleased candidate. Source corrections are implemented; current-code review and the required
-combined gate are pending. A local version string is not a publication claim.
+The installation and startup-safety release passed its full combined quality
+gate, independent scoped reviews, lead assessment and isolated installation
+checks. Check the official tag and asset provenance for publication status.
 
 ## Practical changes
 
@@ -42,15 +43,25 @@ Writing a diagnostic remains best effort when its destination is unavailable.
 
 ## Assessment and validation
 
-The initial installer and Git-lock changes have independent current-code
-review and lead reproduction evidence. The original installer review is
-preserved alongside later lead-discovered defects and their correction;
-approval was not transferred to changed code. Final followups need fresh
-review and the one full combined quality gate before delivery.
+The complete `bash tools/quality-check.sh` gate passed with exit 0 on the frozen
+combined candidate. Private installation passed version/help/license/policy
+checks; its generated runtime exactly matches the packaged installer body.
 
-The separate Fable assessment is advisory product and architecture work.
-Fable first understands and scores the app, then recommends improvements.
-Implementation workers own reproductions, regression tests and fixes. The
-incomplete earlier audit is not a whole-app approval or release prerequisite.
+Independent Mistral 4 review covers the earlier unchanged installer and Git-lock
+safety code. Current Google/Gemini review covers the Z.ai/GLM-authored reporting
+helper and startup call sites; current Z.ai/GLM review covers the Google-authored
+portable-test corrections. The lead assessed the composition and proved the
+unchanged regions and original safety assertions. The failed final Mistral 4
+alias-selection attempt supplied no verdict and remains a setup failure.
+
+Diagnostic report writes are best effort, not deadline-guaranteed. Current
+regular-file checks are not an adversarial race sandbox. A startup-refusal
+fragment does not invent a provider failure or replace canonical task results.
+Original failed runs and reviews of earlier revisions remain preserved.
+
+Fable's separate advisory assignment is to understand and score Unio as a
+product, then recommend improvements. Implementation workers own reproduction,
+regression and stress tests and fixes. The incomplete earlier audit is not a
+whole-app approval or a prerequisite for this release.
 
 Ownership/dashboard, phone, Windows and macOS expansion remain later work.

@@ -1,12 +1,12 @@
 # Unio version plan
 
-## Current reliability batch: 0.5.28 (unreleased)
+## 0.5.28 reliability checkpoint
 
 Finish installation and startup safety before expanding session ownership or
 platform/UI scope. See [scope and limits](RELEASE-0.5.28.md). Installer accident
 containment and live/Unknown Git-lock preservation are implemented candidates;
-diagnostic/test-portability corrections are implemented, with fresh review
-and one combined gate pending. The stable-release link uses GitHub's latest release.
+diagnostic/test-portability corrections, scoped independent reviews and lead
+assessment are complete; the one full combined gate and isolated install passed. The stable-release link uses GitHub's latest release.
 
 Fable's role is product/architecture assessment: understand Unio, score areas
 with reasons and confidence, then rank improvements. Workers perform tests,

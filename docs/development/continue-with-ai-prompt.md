@@ -23,8 +23,8 @@ release. See [scope and limits](../RELEASE-0.5.28.md) and the changelog.
   fragments, keeping parent acknowledgement distinct from provider execution.
 - Use portable test scratch selection and a stable README release link.
 
-Exact-current-code independent review, lead assessment,
-one full combined quality gate and tested installation remain pending. Check
+Independent scoped current-code reviews and the lead assessment completed.
+The one full combined quality gate and isolated installation checks passed. Check
 actual receipts and the official release before describing delivery as complete.
 Preserve original failures, reviews of earlier code and any Unknown outcomes.
 An approval on an earlier revision does not approve changed code.
