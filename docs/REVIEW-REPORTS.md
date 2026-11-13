@@ -119,3 +119,7 @@ itself. STOP, target revision/material and source evidence are rechecked
 immediately before the pending directory is renamed into place. An
 interrupted bind never publishes a partial record; replay of an
 incomplete or corrupt final directory refuses without overwrite.
+Unpublished `.pending-*` directories stay as evidence: packet and bind
+never sweep another writer's pending names under the shared parent.
+A process removes only the unpublished pending directory it just
+created, and only if that rename did not publish.

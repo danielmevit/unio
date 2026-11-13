@@ -124,24 +124,6 @@ def _release_worker_locks(fds):
         os.close(fds.pop())
 
 
-def _sweep_pending(parent, prefix):
-    # Caller holds the worker lock, so leftover pending names are from a killed writer.
-    try:
-        names = os.listdir(parent)
-    except FileNotFoundError:
-        return
-    for name in names:
-        if not name.startswith(prefix):
-            continue
-        stale = os.path.join(parent, name)
-        if os.path.islink(stale):
-            fail('refusing symlink in pending publication store: ' + name)
-        if os.path.isdir(stale):
-            shutil.rmtree(stale)
-        else:
-            os.unlink(stale)
-
-
 def _canonical(doc):
     return json.dumps(doc, sort_keys=True, ensure_ascii=True,
                       separators=(',', ':')).encode('utf-8') + b'\n'
@@ -369,7 +351,10 @@ def _packet_create_owned(root, worker, task, paths):
     pending = '.pending-' + packet_id
     published = False
     try:
-        _sweep_pending(parent, '.pending-')
+        # No shared pending sweep. Locks own only this worker, so leftover
+        # .pending-* names under the shared parent may belong to another live
+        # writer. This process removes only the unpublished directory it
+        # created below, never old evidence or another writer's pending dir.
         try:
             with os.scandir(parent) as scan:
                 if sum(1 for entry in scan if PACKET_ID_NAME.fullmatch(entry.name)) >= PACKETS_MAX:
@@ -668,7 +653,11 @@ def _reviews_bind_owned(root, target_worker, target_task, source_worker, source_
     name = os.path.basename(directory)
     published = False
     try:
-        _sweep_pending(reports_parent, '.pending-report-review-')
+        # No shared pending sweep. Bind locks only the participating target
+        # and source workers, so leftover .pending-report-review-* names
+        # under the shared reports parent may belong to another live writer.
+        # This process removes only the unpublished directory it created
+        # below, never old evidence or another writer's pending record.
         if os.path.lexists(directory):
             return _replay_bound(root, directory, receipt, verdict, manifest['coverage'])
         try:
