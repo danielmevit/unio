@@ -33,6 +33,7 @@ python3 -B tools/embed-task-dispatch.py --check
 python3 -B tools/embed-continuous-delegation.py --check
 python3 -B tools/embed-dashboard.py --check
 python3 -B tools/embed-adapters.py --check
+python3 -B tools/embed-route-profiles.py --check
 python3 -B tools/embed-model-experience.py --check
 python3 -B tools/embed-codex-worker.py --check
 python3 -B tools/embed-run-observation.py --check
@@ -43,6 +44,7 @@ UNIO_BIN_DIR="$QUALITY_CHECK_DIR/bin" UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" \
 shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
 python3 -B tests/unio-installer-safety.py
 python3 -B tests/unio-startup-refusal.py
+python3 -B tests/unio-neutral-startup.py
 python3 -B tests/unio-required-delivery.py
 python3 -B tests/unio-handoff-incomplete.py
 python3 -B tests/unio-task-outcomes.py
@@ -70,6 +72,7 @@ python3 -B tests/unio-vibe.py
 python3 -B tests/unio-copilot.py
 python3 -B tests/unio-antigravity.py
 python3 -B tests/unio-adapters-install.py
+python3 -B tests/unio-route-profiles.py
 python3 -B tests/unio-adapter-outcome.py
 python3 -B tests/unio-adapter-budget.py
 python3 -B bridge/tests/progress_test.py
