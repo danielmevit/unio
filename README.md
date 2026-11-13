@@ -160,6 +160,9 @@ Say you want to add search to a small website:
   task and propose code; an implementation agent reviews the proposal, makes
   suitable changes and tests them. The installer packages both adapter scripts;
   they require their own installed, signed-in tools and explicit configuration.
+- [Route profiles](docs/integrations/ROUTE-PROFILES.md) turn reusable Vibe launch
+  settings into an existing route command for you to review and add. Compilation
+  is local and read-only; it does not start an AI or change your configuration.
 - Unio does not get around usage limits or pool subscriptions. Each
   tool keeps its own plan, limits, and terms.
 - Switching AIs after a limit is supervised today: the next AI gets a
