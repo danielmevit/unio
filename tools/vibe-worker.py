@@ -64,6 +64,33 @@ CAP_FLOAT = re.compile(r'[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?\Z')
 PROMPT_BYTES = 1048576
 OUTPUT_BYTES = 16777216
 EXPORT_BYTES = 8388608
+# Native export error.message is inspected only for known setup outcomes, and
+# only the first SETUP_ERROR_CHARS characters. Anything longer is Unknown.
+SETUP_ERROR_CHARS = 512
+SETUP_PREFIX = "Vibe setup: "
+# Fixed operator text only. The raw CLI error is never copied.
+SETUP_SUMMARIES = {
+    "unavailable_model": "Requested model alias is unavailable on this CLI catalog",
+    "invalid_native_argument": "Native CLI rejected a launch argument",
+    "unknown": "Unknown setup failure",
+}
+SETUP_UNKNOWN = dict(state="unknown", category="unknown", alias=None, argument=None,
+                     summary=SETUP_SUMMARIES["unknown"])
+# Alias token captured from "Unknown model: TOKEN". Emitted only when TOKEN is
+# one of the adapter's known aliases or wire names; the Available: list is
+# never stored or printed.
+SETUP_ALIAS = re.compile(r"[A-Za-z][A-Za-z0-9._-]{0,63}\Z")
+SETUP_UNKNOWN_MODEL = re.compile(
+    r"Unknown model: ([A-Za-z][A-Za-z0-9._-]{0,63})(?:\.|\Z)")
+SETUP_INVALID_VALUE = re.compile(
+    r"Invalid value for '--([A-Za-z][A-Za-z0-9-]{0,31})'")
+SETUP_ARGPARSE_ARGUMENT = re.compile(
+    r"error: argument --([A-Za-z][A-Za-z0-9-]{0,31}):")
+SETUP_UNRECOGNIZED_ARGS = re.compile(r"(?:error: )?unrecognized arguments\b")
+# Native flags this adapter actually passes. Unlisted flags are not emitted.
+NATIVE_FLAGS = frozenset(("model", "prompt-file", "workdir", "trust", "agent",
+                          "output-dir", "output", "enabled-tools",
+                          "max-price", "max-tokens", "time-limit", "max-turns"))
 # Public progress bounds: one NDJSON record and total printed lines are capped so
 # a noisy or hostile stream can neither grow memory nor spam the public log.
 HEARTBEAT_SECONDS = 30.0
@@ -372,6 +399,64 @@ def owned_call(argv, env, seconds, log=None, output_limit=OUTPUT_BYTES, progress
         child.wait(timeout=5)
 
 
+def known_setup_aliases():
+    names = set(MODELS)
+    for spec in CLI_VERSIONS.values():
+        names.update(spec["models"])
+    for wire, *_rest in MODELS.values():
+        names.add(wire)
+    return names
+
+
+def setup_reason(outcome, error):
+    """Bounded setup classification from a native export error object.
+
+    Only usage_error and config_error are setup outcomes. Recognized CLI
+    shapes yield a fixed category and, when the captured token is
+    allowlisted, that alias or native flag. Arbitrary error.message,
+    available-model lists, URLs, paths, credentials and session ids are
+    never copied. Malformed, oversized or unsupported errors stay Unknown.
+    """
+    if outcome not in ("usage_error", "config_error"):
+        return None
+    if not isinstance(error, dict):
+        return dict(SETUP_UNKNOWN)
+    message = error.get("message")
+    if not isinstance(message, str) or not message or len(message) > SETUP_ERROR_CHARS:
+        return dict(SETUP_UNKNOWN)
+    match = SETUP_UNKNOWN_MODEL.match(message)
+    if match:
+        alias = match.group(1)
+        if alias in known_setup_aliases() and SETUP_ALIAS.fullmatch(alias):
+            return dict(state="recognized", category="unavailable_model",
+                        alias=alias, argument=None,
+                        summary=SETUP_SUMMARIES["unavailable_model"])
+        return dict(SETUP_UNKNOWN)
+    match = SETUP_INVALID_VALUE.match(message) or SETUP_ARGPARSE_ARGUMENT.match(message)
+    if match:
+        flag = match.group(1)
+        argument = flag if flag in NATIVE_FLAGS else None
+        return dict(state="recognized", category="invalid_native_argument",
+                    alias=None, argument=argument,
+                    summary=SETUP_SUMMARIES["invalid_native_argument"])
+    if SETUP_UNRECOGNIZED_ARGS.match(message):
+        return dict(state="recognized", category="invalid_native_argument",
+                    alias=None, argument=None,
+                    summary=SETUP_SUMMARIES["invalid_native_argument"])
+    return dict(SETUP_UNKNOWN)
+
+
+def setup_line(reason):
+    """Fixed public line; include only allowlisted alias or native flag."""
+    if reason["category"] == "unavailable_model" and reason.get("alias"):
+        text = "Requested model alias " + reason["alias"] + " is unavailable on this CLI catalog"
+    elif reason["category"] == "invalid_native_argument" and reason.get("argument"):
+        text = "Native CLI rejected launch argument --" + reason["argument"]
+    else:
+        text = reason["summary"]
+    return SETUP_PREFIX + text
+
+
 def export_summary(path, actual_exit, cli_version, requested=None, wire=None, thinking=None,
                    session_path=None):
     value = strict_json(read_regular(path, EXPORT_BYTES))
@@ -433,6 +518,9 @@ def export_summary(path, actual_exit, cli_version, requested=None, wire=None, th
                   steps=steps)
     if selection is not None:
         result["session_selection"] = selection
+    reason = setup_reason(value["outcome"], value.get("error"))
+    if reason is not None:
+        result["setup_reason"] = reason
     return result
 
 
@@ -946,6 +1034,8 @@ def main():
             record["session_selection"] = record["export"].get("session_selection") or dict(
                 state="unknown", session_alias=None, session_wire=None,
                 session_thinking=None, detail="no usable model metadata")
+            if record["export"].get("setup_reason") is not None:
+                record["setup_reason"] = record["export"]["setup_reason"]
         except (OSError, ValueError, UnicodeError, Refusal, TypeError, OverflowError, RecursionError):
             record["export_state"] = "invalid_or_missing"
             record["session_selection"] = dict(state="unknown", session_alias=None, session_wire=None,
@@ -989,6 +1079,10 @@ def main():
                 final["final_response"] = record["final_response"].get("state", "unknown")
             if progress is not None:
                 final.update(progress_events=progress.events, progress_last_label=progress.last_label)
+            reason = record.get("setup_reason")
+            if isinstance(reason, dict) and reason.get("category") in SETUP_SUMMARIES:
+                final["setup_reason"] = reason["category"]
+                print(setup_line(reason))
             print(json.dumps(final))
     return exit_code
 

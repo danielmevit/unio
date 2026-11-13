@@ -52,6 +52,10 @@ if mode=='noexport':
   print(json.dumps({'type':'message','role':'assistant','content':[{'type':'text','text':text}]}))
  raise SystemExit(code)
 x={'schema_version':1,'vibe_version':'2.26.1','outcome':'finished' if code==0 else 'token_limit','stop_reason':None if code==0 else 'interrupted','exit_code':code,'usage':{'input_tokens':198950,'output_tokens':2336,'cached_input_tokens':0,'total_tokens':201286},'cost_usd':.2888084,'config':{'secret':'NEVER-IN-RECEIPT'},'error':{'message':'NEVER-IN-RECEIPT'}}
+if os.environ.get('FAKE_OUTCOME'):x['outcome']=os.environ['FAKE_OUTCOME']
+if os.environ.get('FAKE_ERROR') is not None:x['error']=json.loads(os.environ['FAKE_ERROR'])
+if x['outcome'] in ('usage_error','config_error'):
+ x['usage']=None;x['cost_usd']=None;x['stop_reason']=None
 if mode=='nan':x['cost_usd']=float('nan')
 if mode=='bool':x['usage']['input_tokens']=True
 if mode=='legacy':x['usage']={'prompt_tokens':1,'completion_tokens':2,'total_tokens':3}
@@ -489,6 +493,9 @@ x={'schema_version':1,'vibe_version':'3.1.1','outcome':os.environ.get('FAKE_OUTC
              'max_price':None if get('--max-price') is None else float(get('--max-price')),
              'max_tokens':None if get('--max-tokens') is None else int(get('--max-tokens')),
              'time_limit_s':None if get('--time-limit') is None else float(get('--time-limit'))}}
+if os.environ.get('FAKE_ERROR') is not None:x['error']=json.loads(os.environ['FAKE_ERROR'])
+if x['outcome'] in ('usage_error','config_error'):
+ x['stop_reason']=None;x['usage']=None;x['cost_usd']=None
 if mode=='badlimits':x['limits']={'max_turns':'many'}
 if mode=='badsteps':x['steps']=-1
 out=pathlib.Path(get('--output-dir'))
@@ -832,6 +839,189 @@ class Vibe31Tests(unittest.TestCase):
         self.assertEqual(r['configured_wire_model'],'zai-glm-5-3')
         self.assertEqual(r['session_selection']['state'],'verified')
         self.assertEqual(r['session_selection']['session_wire'],'zai-glm-5-3')
+        self.assertNotIn('setup_reason',r)
+        self.assertNotIn('setup_reason',r.get('export') or {})
+        self.assertNotIn('Vibe setup:',p.stdout)
+
+    def test_311_usage_error_unavailable_alias_keeps_exit_one_and_unknown_usage(self):
+        # Sanitized original 2026-11-13 export shape: usage_error / Unknown
+        # model for the pinned mistral-large-4-0-3 alias. Available-list and
+        # credential-looking tail must never enter the receipt or public line.
+        original=('Unknown model: mistral-large-4-0-3. Available: glm-5-3, '
+                  'mistral-medium-3.5, zai-glm-5-3-flash '
+                  'sk-live-SECRET Bearer eyJhbGciOi https://evil.example/path '
+                  '/home/user/.config/vibe session-abc')
+        p=self.invoke(FAKE_EXIT='1',FAKE_OUTCOME='usage_error',
+                      FAKE_ERROR=json.dumps({'message':original,'code':None}))
+        self.assertEqual(p.returncode,1,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['process_exit'],1)
+        self.assertEqual(r['adapter_exit'],1)
+        self.assertEqual(r['export_state'],'valid')
+        self.assertEqual(r['export']['outcome'],'usage_error')
+        self.assertIsNone(r['export']['usage'])
+        self.assertEqual(r['remaining_allowance'],'unknown')
+        self.assertEqual(r['effective_model'],'unknown')
+        self.assertEqual(r['stop_reason'],'setup')
+        reason=r['setup_reason']
+        self.assertEqual(reason,r['export']['setup_reason'])
+        self.assertEqual(reason['state'],'recognized')
+        self.assertEqual(reason['category'],'unavailable_model')
+        self.assertEqual(reason['alias'],'mistral-large-4-0-3')
+        self.assertIsNone(reason['argument'])
+        self.assertEqual(reason['summary'],
+                         'Requested model alias is unavailable on this CLI catalog')
+        public=p.stdout
+        self.assertIn('Vibe setup: Requested model alias mistral-large-4-0-3 is unavailable on this CLI catalog',public)
+        final=json.loads(public.strip().splitlines()[-1])
+        self.assertEqual(final['setup_reason'],'unavailable_model')
+        self.assertEqual(final['adapter_exit'],1)
+        leaked=json.dumps(r)+public+p.stderr
+        for secret in ('sk-live-SECRET','Bearer eyJ','https://evil.example',
+                       '/home/user/.config/vibe','session-abc','NEVER-IN-RECEIPT',
+                       'mistral-medium-3.5','Available:'):
+            self.assertNotIn(secret,leaked)
+        # Cap/quota outcomes stay separate: a native limit is not a setup reason.
+        p=self.invoke(FAKE_EXIT='3',FAKE_OUTCOME='token_limit')
+        self.assertEqual(p.returncode,3,p.stderr)
+        latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
+        self.assertEqual(latest['stop_reason'],'token_cap')
+        self.assertNotIn('setup_reason',latest)
+        self.assertNotIn('Vibe setup:',p.stdout)
+
+    def test_311_unknown_malformed_and_invalid_native_argument_setup_reasons(self):
+        p=self.invoke(FAKE_EXIT='1',FAKE_OUTCOME='usage_error')
+        self.assertEqual(p.returncode,1,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['setup_reason']['state'],'unknown')
+        self.assertEqual(r['setup_reason']['category'],'unknown')
+        self.assertIsNone(r['setup_reason']['alias'])
+        self.assertNotIn('NEVER-IN-RECEIPT',json.dumps(r)+p.stdout+p.stderr)
+        self.assertIn('Vibe setup: Unknown setup failure',p.stdout)
+        p=self.invoke(FAKE_EXIT='1',FAKE_OUTCOME='config_error',
+                      FAKE_ERROR=json.dumps({'message':"error: argument --max-turns: invalid int value: 'nope'"}))
+        self.assertEqual(p.returncode,1,p.stderr)
+        latest=json.loads(sorted(self.receipts.glob('vibe-run-*/receipt.json'),key=lambda q:q.stat().st_mtime_ns)[-1].read_text())
+        reason=latest['setup_reason']
+        self.assertEqual(reason['category'],'invalid_native_argument')
+        self.assertEqual(reason['argument'],'max-turns')
+        self.assertIn('Vibe setup: Native CLI rejected launch argument --max-turns',p.stdout)
+        self.assertNotIn('nope',json.dumps(latest)+p.stdout+p.stderr)
+
+
+class SetupReasonTests(unittest.TestCase):
+    """Direct classifier coverage; no CLI and no provider."""
+
+    ORIGINAL=('Unknown model: mistral-large-4-0-3. Available: glm-5-3, '
+              'mistral-medium-3.5, zai-glm-5-3-flash')
+
+    def test_original_unavailable_alias_is_recognized_without_available_list(self):
+        reason=worker.setup_reason('usage_error',{'message':self.ORIGINAL,'code':None})
+        self.assertEqual(reason['category'],'unavailable_model')
+        self.assertEqual(reason['alias'],'mistral-large-4-0-3')
+        dumped=json.dumps(reason)
+        self.assertNotIn('Available:',dumped)
+        self.assertNotIn('mistral-medium-3.5',dumped)
+        self.assertNotIn(self.ORIGINAL,dumped)
+
+    def test_credential_looking_payloads_are_redacted(self):
+        payload=('Unknown model: mistral-large-4-0-3. Available: glm-5-3 '
+                 'sk-live-SECRET api_key=SECRET token=SECRET '
+                 'https://accounts.example/oauth /etc/passwd sess-XYZ')
+        reason=worker.setup_reason('usage_error',{'message':payload})
+        self.assertEqual(reason['alias'],'mistral-large-4-0-3')
+        dumped=json.dumps(reason)
+        for secret in ('sk-live-SECRET','api_key=SECRET','token=SECRET',
+                       'https://accounts.example','/etc/passwd','sess-XYZ','Available:'):
+            self.assertNotIn(secret,dumped)
+
+    def test_invalid_malformed_unknown_and_non_setup_outcomes_stay_unknown_or_absent(self):
+        self.assertIsNone(worker.setup_reason('finished',{'message':self.ORIGINAL}))
+        self.assertIsNone(worker.setup_reason('token_limit',{'message':self.ORIGINAL}))
+        self.assertEqual(worker.setup_reason('usage_error',None)['state'],'unknown')
+        self.assertEqual(worker.setup_reason('usage_error','boom')['state'],'unknown')
+        self.assertEqual(worker.setup_reason('usage_error',{'message':['x']})['state'],'unknown')
+        self.assertEqual(worker.setup_reason('usage_error',{'message':''})['state'],'unknown')
+        self.assertEqual(worker.setup_reason('usage_error',{'message':'A'*513})['state'],'unknown')
+        self.assertEqual(worker.setup_reason('usage_error',{'message':'quota exceeded'})['state'],'unknown')
+        self.assertEqual(worker.setup_reason('usage_error',
+            {'message':'Unknown model: not-a-pinned-alias'})['state'],'unknown')
+        self.assertIsNone(worker.setup_reason('usage_error',
+            {'message':'Unknown model: not-a-pinned-alias'})['alias'])
+        unrecognized=worker.setup_reason('config_error',{'message':'unrecognized arguments: --invented'})
+        self.assertEqual(unrecognized['category'],'invalid_native_argument')
+        self.assertIsNone(unrecognized['argument'])
+        self.assertNotIn('--invented',json.dumps(unrecognized))
+        flagged=worker.setup_reason('config_error',
+            {'message':"Invalid value for '--time-limit': -1"})
+        self.assertEqual(flagged['argument'],'time-limit')
+        unlisted=worker.setup_reason('config_error',
+            {'message':"Invalid value for '--evil-flag': SECRET"})
+        self.assertEqual(unlisted['category'],'invalid_native_argument')
+        self.assertIsNone(unlisted['argument'])
+        self.assertNotIn('SECRET',json.dumps(unlisted))
+        self.assertNotIn('evil-flag',json.dumps(unlisted))
+
+    def test_2261_thinking_overlay_unchanged_and_usage_error_classifies(self):
+        # Existing 2.26.1 thinking overlay path is a separate fixture class;
+        # this only asserts the shared classifier does not depend on CLI version.
+        reason=worker.setup_reason('usage_error',{'message':self.ORIGINAL})
+        self.assertEqual(reason['alias'],'mistral-large-4-0-3')
+        self.assertEqual(worker.THINKING_LEVELS,('low','medium','high'))
+        env,_,_=worker.model_environment('glm-5-3','medium',cli_version='2.26.1')
+        overlay=json.loads(env['VIBE_MODELS'])['glm-5-3']
+        self.assertEqual(overlay['thinking'],'medium')
+
+
+class Vibe2261SetupReasonTests(unittest.TestCase):
+    """2.26.1 mock path: thinking overlay stays, setup reason is additive."""
+
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory(prefix='vibe2261-setup-')
+        self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name)
+        self.prompt=self.root/'task.md'
+        self.prompt.write_text('c'*4096)
+        self.receipts=self.root/'receipts'
+        self.receipts.mkdir(mode=0o700)
+        cli=self.root/'vibe'
+        cli.write_text('#!'+sys.executable+'\n'+FAKE)
+        cli.chmod(0o700)
+        self.marker=self.root/'calls'
+        self.env=dict(os.environ,PATH=str(self.root)+os.pathsep+os.environ['PATH'],
+                      MARKER=str(self.marker),EXPECT_PROMPT_LENGTH='4096',
+                      VIBE_ACTIVE_MODEL='wrong',VIBE_INVENTED_OVERRIDE='wrong')
+
+    def invoke(self,*args,**env):
+        return subprocess.run([sys.executable,'-B',str(SCRIPT),'--model','glm-5-3',
+                               '--prompt-file',str(self.prompt),'--receipt-dir',str(self.receipts),*args],
+                              env=dict(self.env,**env),capture_output=True,text=True,timeout=30)
+
+    def receipt(self):
+        paths=list(self.receipts.glob('vibe-run-*/receipt.json'))
+        self.assertEqual(len(paths),1)
+        return json.loads(paths[0].read_text())
+
+    def test_2261_medium_thinking_success_has_no_setup_reason(self):
+        p=self.invoke('--thinking','medium',EXPECT_THINKING='medium')
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['requested_thinking'],'medium')
+        self.assertEqual(r['configured_wire_effort'],'medium')
+        self.assertNotIn('setup_reason',r)
+        self.assertNotIn('NEVER-IN-RECEIPT',json.dumps(r)+p.stdout+p.stderr)
+
+    def test_2261_usage_error_unavailable_glm_alias(self):
+        p=self.invoke(FAKE_EXIT='1',FAKE_OUTCOME='usage_error',
+                      FAKE_ERROR=json.dumps({'message':'Unknown model: glm-5-3. Available: other'}))
+        self.assertEqual(p.returncode,1,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['process_exit'],1)
+        self.assertEqual(r['export']['outcome'],'usage_error')
+        self.assertIsNone(r['export']['usage'])
+        self.assertEqual(r['setup_reason']['alias'],'glm-5-3')
+        self.assertNotIn('Available:',json.dumps(r)+p.stdout)
+        self.assertNotIn('NEVER-IN-RECEIPT',json.dumps(r)+p.stdout+p.stderr)
 
 
 if __name__=='__main__':
