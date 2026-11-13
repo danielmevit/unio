@@ -1,0 +1,2 @@
+- Add a reusable assessment prompt that has the lead map the product, to-do list and milestones before a read-only Fable assessment.
+- Require fresh actual authentication evidence and a bounded route/context diagnosis before repeating a confirmed login request. This is lead guidance, with no automatic authentication-manager or quota claim.
