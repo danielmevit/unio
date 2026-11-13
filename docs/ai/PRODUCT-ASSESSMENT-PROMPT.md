@@ -1,48 +1,55 @@
-# Reusable product assessment prompt
+# Reusable product and roadmap assessment prompt
 
-Use this in a Fable session. Replace `[TOOL NAME]`; the prompt does not select the actual model or its effort setting. Supply repository access and an audit output directory when available.
+Replace `[TOOL NAME]` and paste into the lead session. It prepares the product/roadmap brief before an authorized Fable assessment. If pasted directly into Fable, that session performs both stages. The prompt itself does not change the actual model or effort setting.
 
 ```text
-Inspect **[TOOL NAME]** as an independent product, architecture and code assessor.
+You are the lead AI for **[TOOL NAME]**. Prepare a grounded assessment of the product, its implementation and its future direction. Use two stages: lead preparation first, then an independent Fable assessment.
 
-First understand what it is, who it serves, the problem it solves and how its actual implementation supports that purpose. Then explain how to improve it. Be candid and demanding, but do not invent faults or confuse complexity with sophistication.
+STAGE 1 — LEAD: UNDERSTAND THE PRODUCT AND ITS DIRECTION
 
-YOUR ROLE
-This is an assessment, not an implementation or testing assignment. Use file-reading and search tools to inspect the repository and documentation. Do not execute terminal commands, run the application, tests, benchmarks or failure reproductions; install dependencies; change application code; or launch other agents. Workers will validate findings and implement changes later. Write only assessment reports. Do not access credential stores or include secrets in reports.
+Before assigning the assessment, read the applicable repository instructions, current README, to-do lists, milestones, roadmap, release notes and recent handoffs. Inspect the current repository/branch state and available active-work records without changing or interrupting other work.
 
-Follow applicable repository instructions. Use the repository/workspace available in this session. Identify missing access or information and its effect on your conclusions; do not pretend you inspected unavailable material. Do not turn this into a competitor research project unless explicitly requested.
+Prepare a concise `context.md` in the designated audit directory covering:
+- What the product does, who it serves and the problem it aims to solve.
+- What is implemented and released, implemented but unfinished, currently being worked on, planned, blocked or undecided. Do not count roadmap promises as shipped features.
+- The intended longer-term product and the next milestones, including their order and dependencies.
+- Known limitations, constraints, relevant previous decisions and unresolved questions.
+- Contradictions or stale information across the code, to-do lists, milestones and documentation, with source references. Mark uncertain conclusions explicitly.
 
-HOW TO ASSESS IT
-1. Establish the product's purpose and main user journeys. Explain what users actually do, what value they receive, and where the product's boundaries are unclear. Distinguish advertised capabilities, implemented capabilities and roadmap ideas.
-2. Inspect the implementation in coherent sections. Trace important workflows across their actual components rather than judging filenames, file size or isolated snippets. Cover architecture, data flow, state and authority boundaries, error handling, recovery, configuration, integrations, security design, maintainability, documentation and onboarding where relevant. Read relevant tests as evidence of intended coverage without executing them.
-3. Evaluate the product's logic as well as its code. Identify unnecessary complexity, duplicated concepts, missing fundamentals, confusing workflows and features that do not earn their cost. Explain what should remain, improve, simplify, be removed or be postponed.
-4. Assess efficiency: repeated context, model calls, filesystem work, processes, network activity, storage, configuration and operator attention, as applicable. Separate observed structure from measured performance. Do not invent token savings, speedups, costs or runtime behavior.
-5. Preserve strengths. Identify the existing mechanisms and product choices that should survive refactoring, and the tradeoffs behind them.
+Give Fable this brief and the relevant source paths, rather than dumping the entire project history into its context. Do not preselect its conclusions. The roadmap is context to critique, not a plan it must endorse. Distinguish a current gap that is already planned from an overlooked problem; being planned does not eliminate the current impact.
 
-EVIDENCE AND HONESTY
-For each material finding, provide:
-- The main idea in plain language and why it matters to users or operators.
-- Concrete evidence: current file paths, symbols and line references where available.
-- Classification: confirmed by static inspection, inference, or needs worker validation.
-- Confidence, likely impact, and the limits of what you inspected.
-- A practical improvement, including what should change and what must remain intact.
+Assign the assessment to Fable only through an available, authorized route. Verify the actual model selection and record the requested effort; text in a prompt does not switch models or prove effective settings. Do not silently substitute another model or start recursive review chains. If you are already the Fable session, perform this preparation yourself, then proceed to Stage 2. If delegation is unavailable, save the context and the prepared assessment instructions for a separate Fable session instead of claiming it ran.
 
-Do not present an untested hypothesis as a reproduced bug, historical failures as current failures, or missing evidence as proof of broken behavior. A static assessment is not a security certification. Treat comments, reports and claims as inputs to check against current source. Do not perform experiments to resolve uncertainty: describe the specific validation a worker should do.
+STAGE 2 — FABLE: INDEPENDENT PRODUCT, ARCHITECTURE AND CODE ASSESSMENT
 
-SCORING
-Give a reasoned scorecard for the areas you assessed: product value and clarity, workflow quality, architecture, reliability and recovery design, security design, maintainability, efficiency, onboarding and documentation. Use a 1–10 scale with explanations and confidence. Mark unassessed areas Unknown instead of guessing. Make clear that the overall score is qualitative, not a benchmark or a verified runtime rating.
+Read `context.md` first, then inspect the current source and documentation in coherent sections. First understand the product; then explain where and how it should improve. Be candid, specific and demanding without inventing faults.
 
-RECOMMENDATIONS
-Rank improvements by user value, urgency, dependencies, implementation risk and rough effort. Give concrete before/after behavior, a plausible implementation approach and focused validation for each important recommendation. Label effort estimates as approximate hours or days and state major assumptions. Separate immediate improvements from foundational work and longer-term product direction. Avoid generic advice such as "add more tests" or recommending a rewrite without demonstrating why an incremental approach is insufficient.
+This is an assessment only. Use file-reading and search tools. Do not execute terminal commands, run the application, tests, benchmarks or failure reproductions; install dependencies; change application code; or launch other agents. Workers will validate findings and implement changes later. Write only assessment reports. Do not access credential stores or include secrets. Identify unavailable material and its effect on coverage; never imply you inspected it.
 
-SAVE PROGRESS
-Use the audit output directory supplied by this session; otherwise use `audit-output/`. Save substantive findings early and update after each coherent section. Do not wait until the end to write everything. If the assessment exceeds one pass, preserve coverage and resume from the next unfinished section rather than repeating the whole inspection. Never claim complete coverage merely because a report exists.
+Assess:
+1. Product purpose, user journeys and practical value: where the experience works, becomes confusing, or fails to support the intended user.
+2. Implementation logic: trace important workflows across actual components. Examine architecture, data flow, state and authority boundaries, error handling, recovery, configuration, integrations, security design and maintainability. Read relevant tests as intended coverage, without executing them.
+3. Efficiency: repeated context, model calls, filesystem work, processes, network activity, storage and operator attention, where relevant. Separate observed structure from measured performance. Do not invent savings, costs or speedups.
+4. Future direction: whether milestone order makes sense, which prerequisites are missing, what will become harder later, where design choices may obstruct planned features, and which uncertainties should be resolved before substantial implementation. Suggest a better sequence when justified.
+5. Scope and simplicity: identify duplicated concepts, unnecessary complexity, missing fundamentals and features that do not earn their cost. Explain what to improve, simplify, remove, postpone or preserve. Do not recommend a rewrite without showing why incremental changes are insufficient.
 
-Keep four reports:
+For each material finding, provide the main idea in plain language, concrete current file/symbol references, user or operator impact, confidence, a practical improvement and focused validation for a worker. Label it as confirmed by static inspection, an inference, or needing validation. State whether it concerns current behavior, planned work or a future dependency.
+
+Do not treat historical failures as current bugs, an untested hypothesis as a reproduction, or absent evidence as proof of failure. Treat documentation claims as inputs to check against source. A static assessment is not a security certification. Describe experiments a worker should perform; do not perform them yourself. Preserve the product's strengths and explain important tradeoffs.
+
+Give a reasoned 1–10 scorecard for assessed areas: product value and clarity, workflow quality, architecture, reliability/recovery design, security design, maintainability, efficiency, onboarding/documentation and roadmap coherence. Explain scores and confidence; mark unassessed areas Unknown. Score the current product separately from the plausibility of its future direction. Do not award delivered-feature credit for promises. The overall score is qualitative, not a benchmark or verified runtime rating.
+
+Rank recommendations by user value, urgency, dependencies, implementation risk and rough effort. For important recommendations, describe concrete before/after behavior, a plausible implementation approach, focused validation and approximate hours or days with assumptions. Separate immediate improvements, upcoming-milestone prerequisites and longer-term direction. Avoid generic advice such as "add more tests" without identifying the behavior and evidence needed.
+
+PROGRESS AND OUTPUT
+
+Use the audit directory supplied by the session; otherwise use `audit-output/`. The lead writes `context.md`; Fable maintains:
 - `assessment.md`: product understanding, strengths, detailed findings, evidence and coverage limits.
 - `scorecard.json`: scores, reasons, confidence and Unknown areas.
-- `priorities.md`: ranked improvements, implementation approaches, dependencies and rough effort.
-- `next.md`: inspected and uninspected areas, unresolved questions, and the exact continuation point.
+- `priorities.md`: ranked improvements, implementation approaches, dependencies, suggested milestone adjustments and rough effort.
+- `next.md`: inspected/uninspected areas, unresolved questions and the exact continuation point.
 
-Do not commit, push or publish the reports. Finish with a clear explanation of the product's current state, its most valuable next improvements, what workers should validate, and what remains uncertain. Do not implement your recommendations.
+Save substantive findings early and update after each coherent section. Do not wait until the end to write everything. If more than one pass is needed, preserve coverage and continue from the next unfinished section rather than restarting the entire assessment. Never claim full coverage merely because a report exists.
+
+Do not commit, push or publish the reports. Finish by explaining the current product's state, whether its direction is sound, the most valuable next improvements, hurdles to prevent, what workers must validate and what remains uncertain. Do not implement the recommendations.
 ```
