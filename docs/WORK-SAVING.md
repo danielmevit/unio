@@ -187,6 +187,20 @@ last-good resolution is rechecked after the latest save moves, and a future
 run can create a new active save under the unchanged admission rules — no
 persistent worker ban or run/retry grant exists.
 
+The whole explicit application is bounded by one shared monotonic deadline:
+**60 seconds** by default, optionally configured with
+`UNIO_SAVE_ARCHIVE_TIMEOUT` in positive whole seconds from **1 through 900**.
+That single configured deadline governs every phase through one shared clock —
+the inventory and claim recheck, deep validation of exactly the selected bodies
+and bundle, each atomic move and the post-move rechecks — with no inner fixed
+bound that a larger budget cannot reach. An invalid value (including empty,
+zero, fractions, signs, whitespace or values above 900) refuses planning and
+application before locks, receipts, store effects or any move. The read-only
+plan keeps its own fixed 30-second observation budget and reports the
+configured apply budget additively; capture, inspect, restore and continuation
+budgets are unchanged, and this setting never archives, purges or retries
+anything automatically.
+
 A partial interruption is reported truthfully (nonzero/Unknown with the
 observed moved and remaining IDs, never relabeled or retried automatically),
 and each application records a bounded version-1 maintenance receipt outside
@@ -360,6 +374,13 @@ truthful partial/Unknown state, persisted maintenance receipts, and controlled
 fault injections for pre-effect timeouts, partial first moves, helper
 post-rename fsync failures, post-move inventory Refuse and OSError reporting,
 post-effect receipt failure, complete honest 0 archival and exact restoration.
+The bounded apply deadline is proven through a fake elapsed clock with no real
+60-second waits: invalid or out-of-range `UNIO_SAVE_ARCHIVE_TIMEOUT` values
+refuse before effects, the default 60-second budget refuses genuinely slow
+selected deep validation that a configured larger budget lets finish, the
+configured deadline is enforced and reported in additive receipt and output
+fields, the plan keeps its fixed read-only 30-second budget, and capture and
+usage ignore the variable entirely.
 
 Failed-run commits are separately opt-in with `unio wip on|off|status` (default
 off). See [WIP preservation](WORK-WIP.md) for text-only scope, safety refusals,
