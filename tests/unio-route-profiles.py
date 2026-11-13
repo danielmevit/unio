@@ -364,6 +364,7 @@ class RouteProfileTests(unittest.TestCase):
         self.assertFalse((self.base / 'missing receipts').exists())
         public = self.base / 'public receipts'
         public.mkdir(mode=0o750)
+        os.chmod(public, 0o750)
         self.registry({'vibeglm': self.route(receipt_dir=str(public))})
         loose = self.routes('compile', 'vibeglm')
         self.assertEqual(loose.returncode, 2)
@@ -429,6 +430,113 @@ class RouteProfileTests(unittest.TestCase):
         self.assertEqual(unknown.returncode, 2)
         self.assertIn('unknown route', unknown.stderr)
         self.assertNotIn('nosuch', unknown.stderr)
+        self.assert_no_sentinel()
+
+    def native_agent_prefix(self, worker):
+        """Apply the actual native cmd_run derivation: agent="${worker%%-*}". """
+        helper = Path(self.engine).read_text()
+        self.assertIn('local agent="${worker%%-*}"', helper)
+        applied = subprocess.run(
+            ['bash', '-c', 'worker=$1; agent="${worker%%-*}"; printf %s "$agent"',
+             'native-prefix', worker],
+            capture_output=True, text=True, timeout=10)
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        return applied.stdout
+
+    def test_compiled_alias_matches_native_worker_prefix_lookup(self):
+        self.install()
+        self.registry({'vibeglm_high': self.route()})
+        result = self.routes('compile', 'vibeglm_high')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(len(lines), 1)
+        alias, sep, command = lines[0].partition('=')
+        self.assertEqual(sep, '=')
+        self.assertEqual(alias, 'vibeglm_high')
+        self.assertTrue(command)
+        self.assertEqual(self.native_agent_prefix(alias + '-task'), alias)
+        self.assertEqual(self.native_agent_prefix(alias + '-feature'), alias)
+        # The hyphenated probe name is not a selectable prefix: native
+        # lookup of vibe-high-task yields vibe, so compile must refuse it.
+        self.assertEqual(self.native_agent_prefix('vibe-high-task'), 'vibe')
+        self.assertNotEqual(self.native_agent_prefix('vibe-high-task'), 'vibe-high')
+        for args in (('show', 'vibe-high'), ('compile', 'vibe-high')):
+            with self.subTest(args=args):
+                refused = self.routes(*args)
+                self.assertEqual(refused.returncode, 2, refused.stdout + refused.stderr)
+                self.assertIn('native agent prefixes', refused.stderr)
+                self.assertIn('no hyphen', refused.stderr)
+                self.assertNotIn('vibe-high', refused.stdout + refused.stderr)
+                self.assertEqual(refused.stdout, '')
+        self.registry({'vibe-high': self.route()})
+        for args in ((), ('--json',), ('show', 'vibe-high'), ('compile', 'vibe-high')):
+            with self.subTest(registry=args):
+                refused = self.routes(*args)
+                self.assertEqual(refused.returncode, 2, refused.stdout + refused.stderr)
+                self.assertIn('native agent prefixes', refused.stderr)
+                self.assertNotIn('vibe-high', refused.stdout + refused.stderr)
+                self.assertEqual(refused.stdout, '')
+        self.assert_no_sentinel()
+
+    def test_compile_refuses_control_characters_in_configuration_paths(self):
+        self.install()
+        self.registry({'vibeglm': self.route()})
+        normal = self.routes('compile', 'vibeglm')
+        self.assertEqual(normal.returncode, 0, normal.stdout + normal.stderr)
+        self.assertEqual(len(normal.stdout.splitlines()), 1)
+        self.assertTrue(normal.stdout.startswith('vibeglm='))
+
+        newline_conf = self.base / 'conf\nwith newline'
+        shutil.copytree(self.conf, newline_conf)
+        (newline_conf / 'route-profiles.json').write_text(
+            json.dumps({'schema_version': 1, 'routes': {'vibeglm': self.route()}}))
+        bel_conf = self.base / 'conf\x07with bel'
+        shutil.copytree(self.conf, bel_conf)
+        (bel_conf / 'route-profiles.json').write_text(
+            json.dumps({'schema_version': 1, 'routes': {'vibeglm': self.route()}}))
+
+        for label, conf in (('newline', newline_conf), ('bel', bel_conf)):
+            with self.subTest(conf=label):
+                env = dict(self.env, UNIO_CONF_DIR=str(conf))
+                before = snapshot(conf)
+                receipts_before = snapshot(self.receipts)
+                compiled = subprocess.run(
+                    [str(self.engine), 'routes', 'compile', 'vibeglm'],
+                    cwd=str(self.home), env=env, capture_output=True, text=True,
+                    timeout=60)
+                self.assertEqual(compiled.returncode, 2, compiled.stdout + compiled.stderr)
+                self.assertEqual(compiled.stdout, '')
+                self.assertIn('unio routes:', compiled.stderr)
+                self.assertIn('control character', compiled.stderr)
+                self.assertNotIn('vibeglm=', compiled.stdout + compiled.stderr)
+                self.assertNotIn('\nwith newline', compiled.stdout + compiled.stderr)
+                self.assertNotIn('\x07', compiled.stdout + compiled.stderr)
+                self.assertEqual(compiled.stderr.count('\n'), 1)
+                self.assertEqual(snapshot(conf), before)
+                self.assertEqual(snapshot(self.receipts), receipts_before)
+
+                listed = subprocess.run(
+                    [str(self.engine), 'routes', '--json'],
+                    cwd=str(self.home), env=env, capture_output=True, text=True,
+                    timeout=60)
+                self.assertEqual(listed.returncode, 0, listed.stdout + listed.stderr)
+                document = json.loads(listed.stdout)
+                self.assertEqual(document['schema_version'], 1)
+                self.assertTrue(document['registry_present'])
+                self.assertEqual([route['name'] for route in document['routes']], ['vibeglm'])
+
+                text = subprocess.run(
+                    [str(self.engine), 'routes'],
+                    cwd=str(self.home), env=env, capture_output=True, text=True,
+                    timeout=60)
+                self.assertEqual(text.returncode, 0, text.stdout + text.stderr)
+                self.assertIn('control characters; not shown', text.stdout)
+                self.assertNotIn('\nwith newline', text.stdout)
+                self.assertNotIn('\x07', text.stdout + text.stderr)
+
+        again = self.routes('compile', 'vibeglm')
+        self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+        self.assertEqual(again.stdout, normal.stdout)
         self.assert_no_sentinel()
 
     def test_legacy_routes_and_runtime_meaning_unchanged(self):

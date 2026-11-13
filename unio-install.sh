@@ -42253,6 +42253,12 @@ REGISTRY_BYTES = 1048576
 ADAPTER_RELATIVE = ('lib', 'adapters', 'vibe-worker.py')
 ADAPTER_BYTES = 2097152
 ROUTE_NAME = re.compile(r'[a-z][a-z0-9_-]{0,63}\Z')
+# Native cmd_run selects agents.conf with agent="${worker%%-*}". A compiled
+# V1 key must therefore be a usable prefix (no hyphen), or NAME-task selects
+# a different alias. Grammar still allows '-' so secret-shaped names keep
+# hitting the secret-like guard first and are never echoed.
+ROUTE_PREFIX = re.compile(r'[a-z][a-z0-9_]{0,63}\Z')
+CONTROL_CHARS = re.compile(r'[\x00-\x1f\x7f]')
 # Credential-shaped input is refused (and never echoed) even where the plain
 # grammar would accept it: a profile label or path is not a secret store.
 SECRET_LIKE = re.compile(r'(?i)(?:sk-|gh[pousr]_|github_pat_|AKIA)[A-Za-z0-9_-]{8,}')
@@ -42313,12 +42319,50 @@ def strict_json(data):
     return json.loads(data, object_pairs_hook=pairs, parse_constant=constant)
 
 
+def contains_control(value):
+    return isinstance(value, str) and bool(CONTROL_CHARS.search(value))
+
+
 def check_text(value, what):
     if not isinstance(value, str) or not value:
         raise Invalid(what + ' must be a non-empty string')
-    if re.search(r'[\x00-\x1f\x7f]', value):
+    if contains_control(value):
         raise Invalid(what + ' contains control characters')
     return value
+
+
+def check_compile_path(value, what):
+    """Refuse paths that cannot round-trip as one physical agents.conf line."""
+    if not isinstance(value, str) or not value:
+        raise Invalid(what + ' is missing')
+    if contains_control(value):
+        raise Invalid(what + ' contains a control character (not shown); '
+                     'compile prints one physical agents.conf line, so the '
+                     'configuration or packaged adapter path cannot contain '
+                     'newline or other control characters')
+
+
+def display_path(path):
+    """Human text must not emit raw control fragments from a configuration path."""
+    text = str(path)
+    if contains_control(text):
+        return '(configuration path contains control characters; not shown)'
+    return text
+
+
+def check_route_name(name):
+    """Grammar, then secret-shape, then native prefix; never echo the value."""
+    if not ROUTE_NAME.match(name):
+        raise Invalid('route name does not match the agent identifier grammar '
+                     '(a lowercase letter, then letters/digits/-/_, at most 64 characters)')
+    if SECRET_LIKE.search(name):
+        raise Invalid('route name contains a secret-like value (not shown); '
+                     'use a plain agent-style identifier')
+    if not ROUTE_PREFIX.match(name):
+        raise Invalid('compiled route names must be usable native agent prefixes '
+                     '(a lowercase letter, then letters/digits/underscore, at most '
+                     '64 characters, no hyphen); native run selects the agent '
+                     'before the first hyphen in the worker name')
 
 
 def check_cap(field, value):
@@ -42339,12 +42383,7 @@ def check_cap(field, value):
 
 
 def check_route(name, route):
-    if not ROUTE_NAME.match(name):
-        raise Invalid('route name does not match the agent identifier grammar '
-                     '(a lowercase letter, then letters/digits/-/_, at most 64 characters)')
-    if SECRET_LIKE.search(name):
-        raise Invalid('route name contains a secret-like value (not shown); '
-                     'use a plain agent-style identifier')
+    check_route_name(name)
     if not isinstance(route, dict):
         raise Invalid('route ' + name + ' must be a mapping')
     unknown = sorted(set(route) - set(FIELDS))
@@ -42390,13 +42429,10 @@ def check_requested_name(name):
     A requested name is untrusted free-form input, so no error branch may
     echo it: the plain grammar accepts credential-shaped lowercase values,
     and no secret-prefix list is exhaustive enough to safely quote them.
+    Hyphenated names that pass the grammar still fail the native prefix
+    rule with a fixed diagnostic.
     """
-    if not ROUTE_NAME.match(name):
-        raise Invalid('route name does not match the agent identifier grammar '
-                     '(a lowercase letter, then letters/digits/-/_, at most 64 characters)')
-    if SECRET_LIKE.search(name):
-        raise Invalid('route name contains a secret-like value (not shown); '
-                     'use a plain agent-style identifier')
+    check_route_name(name)
 
 
 def load_registry(conf_dir):
@@ -42468,7 +42504,7 @@ def print_list(routes, path, present, as_json):
                                    'and remaining allowance stay unknown'), ensure_ascii=False))
         return
     print('unio routes: declared route profiles (requested settings only)')
-    print('registry: ' + str(path) + ('' if present else ' (absent: empty inventory)'))
+    print('registry: ' + display_path(path) + ('' if present else ' (absent: empty inventory)'))
     if not routes:
         print('  (no route profiles declared)')
     for name in sorted(routes):
@@ -42554,6 +42590,7 @@ def format_cap(value):
 
 
 def compile_route(conf_dir, name):
+    check_compile_path(conf_dir, 'configuration directory')
     routes, _path, _present = load_registry(conf_dir)
     if name not in routes:
         raise Invalid("unknown route (requested name not echoed); use 'unio routes' "
@@ -42561,6 +42598,7 @@ def compile_route(conf_dir, name):
     route = routes[name]
     check_receipt_parent(route['receipt_dir'])
     adapter, adapter_path = load_adapter(conf_dir)
+    check_compile_path(str(adapter_path), 'packaged adapter path')
     cli_version = route['requested_cli_version']
     if route['model'] not in adapter.CLI_VERSIONS[cli_version]['models']:
         raise Invalid('unsupported model for the Vibe ' + cli_version + ' path (supported: '
@@ -42583,7 +42621,12 @@ def compile_route(conf_dir, name):
     problems = adapter.check_bounds(args, cli_version)
     if problems:
         raise Invalid('; '.join(problems) + '; edit the route profile and retry')
-    print(name + '=' + shlex.join(argv))
+    line = name + '=' + shlex.join(argv)
+    if contains_control(line) or '\n' in line:
+        raise Invalid('compiled agents.conf entry would not be one physical line '
+                     '(configuration or executable path contains a control character; '
+                     'not shown)')
+    print(line)
     print('unio routes: read-only compile; review the line and add it to agents.conf '
           'yourself (nothing was written, executed or verified)', file=sys.stderr)
     return 0

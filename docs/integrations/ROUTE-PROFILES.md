@@ -54,8 +54,13 @@ error.
 
 Field rules (closed schema, `schema_version` must be the integer 1):
 
-- Route names use the existing agent identifier grammar: a lowercase
-  letter, then letters/digits/`-`/`_`, at most 64 characters.
+- Compiled V1 route names are usable native agent **prefixes**: a
+  lowercase letter, then letters/digits/`_`, at most 64 characters, **no
+  hyphen** (for example `vibeglm` or `vibeglm_high`). Native `unio run`
+  selects the `agents.conf` alias as `${worker%%-*}` — the text before
+  the first hyphen in the worker name — so a compiled key `vibe-high`
+  would be selected as `vibe`. Hyphenated and secret-shaped names are
+  refused with a fixed diagnostic that never echoes the rejected value.
 - `adapter` must be `vibe`; `requested_cli_version` must be `3.1.1`;
   `model` must be `glm-5-3` — the frozen V1 contract covers the tested
   GLM 5.3 path only. Other adapter-pinned models (such as
@@ -100,6 +105,14 @@ vibeglm=python3 -I -S -B '/home/you/.config/unio/lib/adapters/vibe-worker.py' --
 - The line always refers to the actual configured trusted adapter path
   (`$UNIO_CONF_DIR/lib/adapters/vibe-worker.py`); compile requires the
   packaged adapter and refuses with a clear diagnostic when it is absent.
+- Compile prints exactly one physical line. A configuration directory or
+  packaged adapter path that contains a newline or other control
+  character is refused (exit 2) with a bounded diagnostic that does not
+  echo the path; the filesystem location is not rewritten into a
+  different path. Spaces, quotes and shell metacharacters in ordinary
+  paths stay quoted as before. Inventory JSON remains valid: JSON string
+  escaping is a representation, not a filesystem rename. Text list/show
+  never emit raw control fragments from a configuration path.
 - Paths with spaces and shell punctuation are quoted safely; hostile
   values are refused, never silently normalized.
 - Copy the line into your existing `agents.conf` yourself (the file uses
