@@ -35131,12 +35131,13 @@ cmd_run() {
   trap 'exit 143' TERM
   trap 'exit 130' INT
 
-  # a run killed mid-commit can leave git's index.lock behind — clear it
+  # a run killed mid-commit can leave git's index.lock behind — preserve existing locks
   local gd
-  gd=$(git -C "$wt" rev-parse --path-format=absolute --git-dir 2>/dev/null || true)
-  if [ -n "$gd" ] && [ -f "$gd/index.lock" ]; then
-    rm -f "$gd/index.lock"
-    echo "note: removed stale $gd/index.lock (a previous run died mid-commit)" >&2
+  if ! gd=$(git -C "$wt" rev-parse --path-format=absolute --git-dir 2>/dev/null) || [ -z "$gd" ]; then
+    die "cannot determine git directory for worktree '$wt'"
+  fi
+  if [ -e "$gd/index.lock" ] || [ -L "$gd/index.lock" ]; then
+    die "Git index is busy or held by an unmanaged process ($gd/index.lock exists). Unio will not remove an existing lock; inspect manually and ensure no Git writer is active before removing it."
   fi
 
   # efficiency guard: a worker branch behind the base builds against stale
@@ -44248,7 +44249,7 @@ when assigning tasks.
 | `unio result` shows stale evidence | Verify again, then review again. Never reuse old evidence. |
 | Review refused as incomplete material | Commit all work. Binary, non-UTF-8 or oversized changes need manual inspection. |
 | Worker lock busy ("already running a task") | Wait or `unio status`; abort a stray background run with `unio kill <task>`. |
-| Stale index.lock after a killed run | Cleared automatically at the next `unio run`; if git still complains, remove `<gitdir>/index.lock` by hand. |
+| Git index lock exists (`<gitdir>/index.lock`) | `unio run` refuses startup to protect active Git processes; inspect manually and ensure no writer is running before clearing `<gitdir>/index.lock`. |
 | Blocked on missing contract/file | I2/I6: flag, don't fix; wait. |
 | Task file ambiguous | LEAD: rewrite it. WORKER: state the ambiguity and the interpretation chosen; prefer the narrower reading. |
 | Merge conflict on integration | OWNER decision; LEAD proposes resolution order; nobody force-merges. Routine prevention: `unio sync` after every merge cycle. |

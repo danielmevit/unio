@@ -478,7 +478,7 @@ documented and acceptable.
 | "unsupported assume-unchanged/skip-worktree index flags" | Those git flags hide edits from scope and review → `git update-index --no-assume-unchanged --no-skip-worktree <path>` or `git sparse-checkout disable`. |
 | run: "post-run snapshot failed" | The worker left a FIFO, socket, device, nested repo or submodule. Its exit is recorded but the result stays not ready → remove the file, run again. |
 | "Python 3 is required before run/review/smoke" | Install `python3` (standard library only, nothing else is downloaded). |
-| git complains about `index.lock` | A killed run died mid-commit → the next `unio run` clears it automatically; by hand: delete `<gitdir>/index.lock`. |
+| git complains about `index.lock` | Existing lock detected at startup → `unio run` refuses startup to protect active Git processes; inspect manually and ensure no Git writer is active before removing `<gitdir>/index.lock`. |
 | "name must not contain a path separator / `..`" | Safety guard on worker/task ids (they build paths under `wt/` and `coord/tasks/`) → use the bare id, e.g. `T7-codex`. |
 | init: "this repo has no commits yet" | Worktrees branch from a commit → `git commit --allow-empty -m init`, then `unio init`. |
 | Two workers touched the same file | Scope overlap — accept one, reject the other, tell the foreman to fix disjointness. (Exception: a deliberate `race`, where only one branch merges anyway.) |

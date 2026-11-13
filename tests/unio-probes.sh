@@ -448,6 +448,19 @@ EOF
   NOTE="verify does not trust a worker-edited task file (rc=$rc)"; return 0
 }
 
+# --- R-02 / next0.5.28: unio run must never delete an existing index.lock
+p_run_preserves_existing_index_lock() {
+  local out rc=0
+  out=$(python3 -B "$HERE/unio-index-lock.py" 2>&1) || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    NOTE="unio run does not safely preserve existing index.lock: $out"
+    PROMISE="R-02 / next0.5.28 — unio run must never delete an existing index.lock; startup must refuse nonzero before provider execution"
+    return 1
+  fi
+  NOTE="run refuses startup when index.lock exists and preserves live writer"
+  return 0
+}
+
 # =====================================================================
 probe control-basic-loop                 p_control_basic_loop                 "control: ordinary run + verify works"
 probe verify-validate-stdin-swallow      p_verify_validate_stdin_swallow      "a '\$ ' line reading stdin swallows the remaining Validate lines"
@@ -463,6 +476,7 @@ probe run-during-verify-not-refused      p_run_not_refused_during_verify      "r
 probe verify-launders-worker-scope-rewrite p_verify_launders_worker_scope_rewrite "worker widens its own task scope post-run; verify PASSes the doctored scope"
 probe control-worker-lock                p_control_worker_lock                "control: per-worker lock refuses a concurrent run"
 probe control-id-escape                  p_control_id_escape                  "control: ../-style task/worker ids are refused"
+probe run-preserves-existing-index-lock   p_run_preserves_existing_index_lock   "unio run preserves live and Unknown Git index locks"
 
 # ------------------------------------------------------------------ main
 ONLY=""

@@ -397,7 +397,7 @@ when assigning tasks.
 | `unio result` shows stale evidence | Verify again, then review again. Never reuse old evidence. |
 | Review refused as incomplete material | Commit all work. Binary, non-UTF-8 or oversized changes need manual inspection. |
 | Worker lock busy ("already running a task") | Wait or `unio status`; abort a stray background run with `unio kill <task>`. |
-| Stale index.lock after a killed run | Cleared automatically at the next `unio run`; if git still complains, remove `<gitdir>/index.lock` by hand. |
+| Git index lock exists (`<gitdir>/index.lock`) | `unio run` refuses startup to protect active Git processes; inspect manually and ensure no writer is running before clearing `<gitdir>/index.lock`. |
 | Blocked on missing contract/file | I2/I6: flag, don't fix; wait. |
 | Task file ambiguous | LEAD: rewrite it. WORKER: state the ambiguity and the interpretation chosen; prefer the narrower reading. |
 | Merge conflict on integration | OWNER decision; LEAD proposes resolution order; nobody force-merges. Routine prevention: `unio sync` after every merge cycle. |
