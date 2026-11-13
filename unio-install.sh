@@ -21616,6 +21616,29 @@ Before leading an Unio project, read the current owner policy at
 Apply this workflow at startup/instruction refresh; editing a guide does not
 inject instructions into already running foreign sessions.
 <!-- /UNIO_PERSONAL_REVIEW_WORKFLOW_20261023 -->
+
+
+## Authentication evidence and repeated login requests
+
+Preserve an owner's login confirmation for the exact subscription route,
+executable, CLI version and user/profile context. One catalog/status response
+saying unauthenticated does not establish that a working login expired. Compare
+it with recent actual invocations and supported safe diagnostics; distinguish
+network, service startup, quota, configuration and authentication failures.
+Never read credential contents to diagnose this.
+
+Use an already authorized useful task when actual access must be established;
+do not create redundant model probes or blind retries. Normal CLI refresh of
+its existing login may work without intervention. Do not log out, replace
+credentials, change billing or bypass compatibility guards.
+
+Request login again only after a fresh actual authentication-specific failure
+in the intended route and a bounded diagnosis establishes that login is needed.
+Explain that evidence and the precise action once. Keep one pending request per
+route; do not repeat an answered confirmation without materially new evidence.
+Preserve original failures and Unknowns. Login success does not prove quota,
+effective model or effort. This is lead guidance; native `agents` authentication
+remains Unknown and no automatic authentication manager is claimed.
 UNIO_LEAD_ROUTING_MD
 fi
 if [ ! -e "$TPL_DIR/MODEL-EFFORT.md" ] && [ ! -L "$TPL_DIR/MODEL-EFFORT.md" ]; then
