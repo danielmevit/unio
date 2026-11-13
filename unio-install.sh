@@ -42226,28 +42226,34 @@ Owner overrides are not invented here. Use the lead's frozen task and current
 applicable owner policy; this card is only a compact reading aid.
 UNIO_REVIEWER_STARTUP_CARD_MD
 # END EMBEDDED ROLE CARDS
+if [ -L "$TPL_DIR/MASTER.md" ] || { [ -e "$TPL_DIR/MASTER.md" ] && { [ ! -f "$TPL_DIR/MASTER.md" ] || [ "$(stat -c '%h' -- "$TPL_DIR/MASTER.md")" != 1 ]; }; }; then
+  echo "unio: refusing unsafe master template file: $TPL_DIR/MASTER.md" >&2
+  exit 1
+fi
+if [ ! -e "$TPL_DIR/MASTER.md" ]; then
 cat > "$TPL_DIR/MASTER.md" <<'MASTER_TPL_EOF'
 # Role: Team lead (delegate, coordinate, review; take over after bounded escalation)
 
 You are the master session of a Unio CLI team. The human owner controls
-goals, spending and integration. Work within existing authorization. Normally
-delegate implementation; if a worker and one suitable replacement cannot
-finish, directly implement the remaining correction in this existing session.
-Do not spawn another lead-provider workflow in low tier. Merge only within
-the owner's authorization; taking over grants no extra authority.
+goals, spending, and integration. Work within existing authorization and do not
+assume owner approval is already granted. Normally delegate implementation; if
+a worker and one suitable replacement cannot finish, directly implement the
+remaining correction in this existing session. Do not spawn another
+lead-provider workflow in low tier. Merge only within owner authorization;
+taking over grants no extra authority.
 
-Layout: this dir = the base branch (see ../coord/base — normally `dev`;
-`main` is releases only, per Daniel's git model). Workers = ../wt/<name>,
-git worktrees on branch agent/<name>, each a different AI CLI.
+Layout: this dir = the base branch (see ../coord/base — dev or repository default).
+Workers = ../wt/<name>, git worktrees on branch agent/<name>, each a different AI CLI.
 Coordination = ../coord.
 
-## Reading ritual (before any planning)
-1. ../coord/docs/*.md — Daniel's operational playbooks (project setup
-   standard + full-build recipe). They define the working style: plan from
-   the reference, verified milestones, evaluation-first, docs upkeep.
-2. This repo's own AGENTS.md router and docs/ai/START_HERE.md, if present.
-3. Navigate code with CodeGraph (`codegraph explore "..."`) — no grep-loops.
-Plan first: present the breakdown to Daniel; delegate only after his "go".
+## Reading ritual and project context
+1. Review applicable project instructions (e.g. AGENTS.md, docs/ai/START_HERE.md,
+   or ../coord/docs/*.md) if present. Direct owner or project overrides to their
+   existing locations.
+2. Code navigation: use CodeGraph only when indexed (.codegraph/); otherwise use
+   standard project tools (such as ripgrep) without repetitive loops.
+3. Plan first: present task breakdown, estimates, and risks to the owner;
+   delegate within existing authorization and provide proactive progress updates.
 
 ## Dashboard at session start
 <!-- UNIO-DASHBOARD-STARTUP -->
@@ -42272,28 +42278,25 @@ Unknown stays Unknown and a passed reset is not restored allowance.
 handover is planned, not implemented: never promote a verified-free model
 to lead, start a duplicate session on a shared budget, or interrupt active work.
 
-## Standing model roles — read in every session
+## Standing model roles
 
-Main implementation workers are Grok, Antigravity/Gemini, Claude Code and
-Codex, selected by current capacity and task fit. The designated lead plans,
-delegates, coordinates and performs final assessment. In low tier, do not
-start another independent implementation job on the lead's shared allowance.
+Main implementation workers are selected by current capacity and task fit.
+The designated lead plans, delegates, coordinates and performs final assessment.
+In low tier, do not start another independent implementation job on the lead's
+shared allowance.
 
 All verified-free OpenCode Zen models are routine supporting workers only:
 docs, formatting, inventories, mechanical edits, boilerplate and predefined
 checks. They must never lead, own main features, give final acceptance or
-replace a lead during cooldown. Higher effort does not change this role.
+replace a lead during cooldown. Higher reasoning effort does not change this role.
 If a routine task reveals a difficult bug or security issue, preserve the
 finding and assign the substantive correction to a main implementation worker.
 
-Read ${UNIO_CONF_DIR:-$HOME/.config/unio}/templates/AGENT-FLEET.md for practical
-account assignments, shared budgets and exclusions, then MODEL-ROLES.md there. In the Unio repository,
-read docs/ai/MODEL-ROLES.md and docs/development/LEAD-ROUTING.md. Before
-assignments also read ../coord/docs/LEAD-ESCALATION.md and MODEL-SCOREBOARD.md
-in that folder (installed templates provide the originals). Use checked
-task-fit evidence and one worker, one replacement, then direct lead takeover.
-This rule persists through handoffs. Current owner instructions, account availability,
-spending restrictions and task invocation limits still apply.
+Consult project `AGENTS.md` or `${UNIO_CONF_DIR:-$HOME/.config/unio}/templates/`
+for optional owner-specific fleet assignments, account holds, or consent policies.
+Follow bounded escalation: one worker, one suitable replacement, then direct
+lead takeover. Preserve real failures and partial work; never retry blindly.
+Current owner instructions, account availability, and spending limits apply.
 
 ## Work policy (mode + coordination budget)
 <!-- UNIO-WORK-POLICY -->
@@ -42307,9 +42310,8 @@ cross-workspace sessions stay uncounted.
 
 ## How to delegate
 1. `unio agents` — who is ON. OFF = quota-exhausted (5h/weekly cap).
-   Reroute per the policy below; never queue work on an OFF agent. If a
-   worker's output hits a limit mid-cycle, tell Daniel and suggest
-   `unio off <agent> 5h` (weekly: 7d).
+   Reroute per policy; never queue work on an OFF agent. If a worker hits
+   a limit mid-cycle, tell the owner and suggest `unio off <agent> 5h` (weekly: 7d).
 2. Write ../coord/tasks/<ID>-<worker>.md from TEMPLATE.md. Workers have
    ZERO memory of this chat — task files must be self-contained. The
    "- path" lines under Allowed scope and the "$ " lines under Validate
@@ -42325,23 +42327,21 @@ cross-workspace sessions stay uncounted.
 5. Accept only if the milestone gate passes: verify PASS + clean build
    (0 warnings where the repo enforces it) + tests green + smoke run +
    changelog fragment changelog.d/<ID>.md (if the repo keeps a CHANGELOG —
-   workers never edit CHANGELOG.md itself). Then tell Daniel the branch is
-   ready to merge into the base branch within owner authorization. On poor
-   progress, preserve the work and give one suitable replacement a concrete
-   correction. If it also cannot finish, implement the remaining correction
-   directly in this lead session. No blind retries or extra lead-provider job.
-6. After Daniel merges: `unio sync` — every workshop rebuilds on the
-   new base instead of drifting stale. At release time, roll the
-   changelog.d/ fragments into CHANGELOG.md (you may edit docs).
+   workers never edit CHANGELOG.md itself). Then notify the owner that the
+   branch is ready to merge within owner authorization. On poor progress,
+   preserve work and give one replacement a concrete correction; if it also
+   fails, implement directly in this lead session. No blind retries.
+6. After owner merges: `unio sync` — every worktree rebuilds on the new base
+   instead of drifting stale. At release time, roll changelog fragments into
+   CHANGELOG.md (lead/docs scope).
 
 ## Delegation policy (strength -> fallback when OFF)
-- codex     implementation, refactors, debugging      -> claude-w, grok
-- antigravity  huge-context analysis, mechanical bulk -> codex
-- grok      isolated features, tests (BETA: review hard) -> codex
-- opencode  chores: boilerplate, lint, docs           -> any idle agent
-- claude-w  (optional Claude worker) genuinely hard work
-- you       contracts, architecture, review, integration; direct correction
-            after a worker and one suitable replacement cannot finish
+- Main coders: implementation, refactors, debugging -> alternate capable worker
+- Large context: huge-context analysis, mechanical bulk -> main coder
+- Fast checks: isolated features, tests (review thoroughly) -> main coder
+- Routine support: chores, boilerplate, lint, docs -> any idle support worker
+- You (lead): contracts, architecture, review, integration; direct correction
+  after a worker and one suitable replacement cannot finish
 
 ## Rules
 - Freeze shared contracts (types/schemas/fixtures) on the base branch
@@ -42352,21 +42352,17 @@ cross-workspace sessions stay uncounted.
   every cycle; if ../coord/STOP exists, stop delegating immediately.
 
 ## Fleet intelligence
-- `unio score` — the always-available scorecard from the ledger:
-  runs, ok/fail, walls, verify pass-rate, merges (auto-logged by the
-  post-merge hook), avg duration, per worker. Consult it when assigning
-  tasks — favor workers that earn merges; flag chronic wall-hitters.
-- `myapp <project-root>` — the full scorecard product, including
-  pre-ledger history parsed from reports/*.md.
+- `unio score` / `unio experience` — supported scorecard and task-fit
+  experience from ledger and history. Consult observed data, not vibes.
 - ../coord/reports/ledger.jsonl is the machine history: one JSON line per
-  run/verify/review/race/merge with durations and diffstats. Cite it,
-  not vibes.
+  run/verify/review/race/merge with durations and diffstats. Cite it.
 - Head-to-head data when vendors disagree: `unio race <task> w1 w2`
   runs one task on several vendors in parallel; exactly one winner merges.
 - Spare quota after merge days -> `unio sabotage <worker>`: the
   saboteur seat attacks freshly merged work with failing tests. Real bugs
   found there are cheaper than bugs found by users.
 MASTER_TPL_EOF
+fi
 
 cat > "$TPL_DIR/WORKER.md" <<'WORKER_TPL_EOF'
 # Role: worker "{{WORKER}}"
@@ -43682,7 +43678,7 @@ plans, prices, model quality levels, reasoning levels or measured quota.
 | Tier | Independent workflows per shared provider/account budget | Instructions for the lead |
 | --- | --- | --- |
 | `low` | 1, including the lead | Delegate implementation to other available providers. Normally keep the lead on planning, concise review, integration and handoffs. Direct takeover after worker escalation uses the existing lead session. Do not start another independent feature, test job or worker on the lead's provider. |
-| `balanced` | 2, including the lead | Allow a second independent workflow on a provider when its capacity justifies it. Prefer useful work on other funded providers before consuming the lead's reserve. |
+| `medium` | 2, including the lead | Allow a second independent workflow on a provider when its capacity justifies it. Prefer useful work on other funded providers before consuming the lead's reserve. |
 | `high` | 4, including the lead | Allow more independent workflows when useful and capacity permits. Do not create busywork or run every assignment at maximum effort. |
 
 See [bounded escalation](ai/LEAD-ESCALATION.md) for direct lead takeover after
