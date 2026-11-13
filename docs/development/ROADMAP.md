@@ -1,5 +1,27 @@
 # Unio roadmap and development priorities
 
+## Current reliability batch: 0.5.28 (unreleased)
+
+Finish installation and startup safety before expanding session ownership or
+platform/UI scope. See [scope and limits](../RELEASE-0.5.28.md). Installer accident
+containment and live/Unknown Git-lock preservation are implemented candidates;
+final diagnostic/test-portability corrections, fresh review and one combined
+gate remain pending. The stable-release link uses GitHub's latest release.
+
+Fable's role is product/architecture assessment: understand Unio, score areas
+with reasons and confidence, then rank improvements. Workers perform tests,
+reproductions and implementation. Its advisory assessment proceeds separately
+when access permits; original partial findings and failures remain evidence.
+
+Next operational priorities: report otherwise invisible startup failures;
+make persistent Unknown cleanup holds understandable without unsafe account
+release; preview inherited task scope; preserve append-only experience
+corrections. Validate and scope each before implementation. Managed lead
+lifecycle in the existing dashboard, session phone pairing, native Windows and
+then macOS follow the operational reliability work. Older dated plans below
+retain their historical context.
+
+
 ## 0.5.27 checkpoint
 
 The recovery/efficiency implementation, independent scoped reviews and lead

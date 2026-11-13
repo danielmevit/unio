@@ -4,6 +4,15 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.28 (unreleased) — installation and startup safety
+
+- Refuse accidental sourcing of the installer before installation writes or caller-shell changes; print a quoted command that works with paths containing spaces.
+- Publish the main runtime through a private staging file and atomic file replacement, preserving existing readers and the previous runtime on pre-publication failure.
+- Preserve existing live or Unknown Git index locks and refuse worker startup before provider invocation instead of deleting a potentially active writer's lock.
+- Keep the README's stable-release link current without a hardcoded version.
+
+See [release scope and limits](docs/RELEASE-0.5.28.md). Final corrections, independent review, the combined gate and publication remain pending.
+
 ## 0.5.27 — recovery and checkpoint maintenance — 2026-11-12
 
 Admission diagnostic tests now use a bounded content-test window while retaining explicit deadline checks. Production admission behavior is unchanged; the historical timeout cause remains unproven.

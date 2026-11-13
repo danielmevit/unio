@@ -49,7 +49,7 @@ a worker cannot finish, following your project instructions.
 
 **Available today:** a command-line tool for Linux, including Windows
 through WSL, with a local browser dashboard for tasks, worker output and files.
-Install [the latest stable release, Unio 0.5.21](https://github.com/danielmevit/unio/releases/tag/v0.5.21).
+Install [the latest stable release](https://github.com/danielmevit/unio/releases/latest).
 See [the changelog](CHANGELOG.md) for release history.
 
 ### Tools for everyday work
