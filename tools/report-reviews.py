@@ -252,7 +252,7 @@ def packet_create(root, worker, task, *paths):
     rev = snapshot(root, worker, task)
     d = load(root, worker, task)
     if (d['validation']['state'] != 'passed'
-            or d['validation']['revision'] != rev or d['stale']):
+            or d['validation']['revision'] != rev):
         fail('review packets require a current verify PASS at the live revision')
     material = material_bytes_v2(root, worker, task)
     wt = locations(root, worker, task)[0]
@@ -449,7 +449,7 @@ def reviews_bind(root, target_worker, target_task, source_worker, source_task):
     live_rev = snapshot(root, target_worker, target_task)
     target = load(root, target_worker, target_task)
     if (target['validation']['state'] != 'passed'
-            or target['validation']['revision'] != live_rev or target['stale']):
+            or target['validation']['revision'] != live_rev):
         fail('target task requires a current verify PASS at the live revision')
     d, source_rev, v, artifacts, verdict, findings_count = _source_report(
         root, source_worker, source_task)

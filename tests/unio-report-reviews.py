@@ -220,10 +220,14 @@ class ReportReviews(unittest.TestCase):
 
     def test_explicit_paths_packet(self):
         wt = self.root / 'project' / 'wt' / 'mock'
-        (wt / 'extra.txt').write_text('committed extra\n')
-        self.git_wt('add', 'extra.txt')
-        self.git_wt('commit', '-qm', 'extra')
-        self.unio('verify', 'mock', self.target)
+        self.conf.write_text(self.conf.read_text().replace(
+            'printf work > hello.txt; git add hello.txt; git commit -qm work',
+            'printf work > hello.txt; printf extra > extra.txt; '
+            'git add hello.txt extra.txt; git commit -qm work'))
+        self.task('paths', scope='- hello.txt\n- extra.txt\n- big.txt')
+        self.unio('run', 'mock', 'paths')
+        self.unio('verify', 'mock', 'paths')
+        self.target = 'paths'
         packet = self.packet('hello.txt', 'extra.txt')
         self.assertEqual(packet['coverage'], 'paths')
         self.assertEqual(packet['declared_paths'], ['hello.txt', 'extra.txt'])
@@ -240,11 +244,13 @@ class ReportReviews(unittest.TestCase):
         link.symlink_to(wt / 'hello.txt')
         self.packet('link.txt', code=2)
         link.unlink()
-        binary = wt / 'binary.bin'
-        binary.write_bytes(b'\xff\xfe\x00\x01')
-        self.git_wt('add', 'binary.bin')
-        self.git_wt('commit', '-qm', 'binary')
-        self.packet('binary.bin', code=2)
+        big = wt / 'big.txt'
+        big.write_text('oversized path material\n' * 15000)
+        self.git_wt('add', 'big.txt')
+        self.git_wt('commit', '-qm', 'big')
+        self.unio('verify', 'mock', self.target)
+        p = self.packet('big.txt', code=2)
+        self.assertIn('bounded readable text file', p.stderr)
 
     def test_declaration_negatives(self):
         packet = self.packet()
@@ -366,6 +372,20 @@ class ReportReviews(unittest.TestCase):
         reviewer = self.reviewer('1', packet)
         attached = json.loads(self.bind(reviewer).stdout)
         self.assertEqual(self.view().returncode, 0)
+        receipt = (self.coord / 'reports'
+                   / (self.target + '.report-review.' + attached['id']) / 'receipt.json')
+        original = receipt.read_bytes()
+        receipt.chmod(0o644)
+        receipt.write_text('{"schema_version":1,"kind":"other"}\n')
+        receipt.chmod(0o400)
+        p = self.view(code=1)
+        self.assertIn('invalid receipt', p.stdout)
+        p = self.bind(reviewer, code=2)
+        self.assertIn('report review receipt', p.stderr)
+        receipt.chmod(0o644)
+        receipt.write_bytes(original)
+        receipt.chmod(0o400)
+        self.assertEqual(self.view().returncode, 0)
         wt = self.root / 'project' / 'wt' / 'mock'
         (wt / 'hello.txt').write_text('advanced\n')
         self.git_wt('add', 'hello.txt')
@@ -376,15 +396,6 @@ class ReportReviews(unittest.TestCase):
         shutil.rmtree(self.coord / 'review-packets' / packet['id'])
         p = self.view(code=1)
         self.assertIn('evidence_unavailable', p.stdout)
-        receipt = (self.coord / 'reports'
-                   / (self.target + '.report-review.' + attached['id']) / 'receipt.json')
-        receipt.chmod(0o644)
-        receipt.write_text('{"schema_version":1,"kind":"other"}\n')
-        receipt.chmod(0o400)
-        p = self.view(code=1)
-        self.assertIn('invalid receipt', p.stdout)
-        p = self.bind(reviewer, code=2)
-        self.assertIn('report review receipt', p.stderr)
 
     def test_cli_surface(self):
         self.unio('review-packet', '--help')
