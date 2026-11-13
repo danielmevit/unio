@@ -41,6 +41,8 @@ if action != 'no_artifacts':
                                       'findings': control.get('findings', [])}))
 if action == 'bad_verdict':
     write('verdict.json', '{"schema_version":1,"verdict":"APPROVE","extra":1}')
+if action == 'bool_schema':
+    write('verdict.json', '{"schema_version":true,"verdict":"APPROVE"}')
 if action == 'bad_findings':
     write('findings.json', '{"schema_version":1,"findings":[{"severity":"nope",'
           '"path":null,"line":null,"summary":"s","detail":"d"}]}')
@@ -73,18 +75,17 @@ class ReportReviews(unittest.TestCase):
                            capture_output=True, text=True, timeout=120)
         assert p.returncode == 0, p.stderr
         cls.engine = str(cls.install / 'bin' / 'unio')
-        cls.old_engine = None
-        if OLD_INSTALLER.is_file():
-            old = tempfile.TemporaryDirectory(prefix='report reviews old reader ')
-            cls.addClassCleanup(old.cleanup)
-            old = Path(old.name)
-            oldenv = dict(cls.env)
-            oldenv.update(UNIO_BIN_DIR=str(old / 'bin'), UNIO_CONF_DIR=str(old / 'conf'),
-                          UNIO_COMPLETION_DIR=str(old / 'completion'))
-            p = subprocess.run(['bash', str(OLD_INSTALLER)], cwd=old, env=oldenv,
-                              capture_output=True, text=True, timeout=120)
-            if p.returncode == 0:
-                cls.old_engine = str(old / 'bin' / 'unio')
+        assert OLD_INSTALLER.is_file(), '0.5.29 reader installer is required'
+        old = tempfile.TemporaryDirectory(prefix='report reviews old reader ')
+        cls.addClassCleanup(old.cleanup)
+        old = Path(old.name)
+        oldenv = dict(cls.env)
+        oldenv.update(UNIO_BIN_DIR=str(old / 'bin'), UNIO_CONF_DIR=str(old / 'conf'),
+                      UNIO_COMPLETION_DIR=str(old / 'completion'))
+        p = subprocess.run(['bash', str(OLD_INSTALLER)], cwd=old, env=oldenv,
+                           capture_output=True, text=True, timeout=120)
+        assert p.returncode == 0, p.stderr
+        cls.old_engine = str(old / 'bin' / 'unio')
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='report project ')
@@ -103,7 +104,9 @@ class ReportReviews(unittest.TestCase):
         self.conf.write_text(
             "mock=bash -c 'printf work > hello.txt; git add hello.txt; git commit -qm work'\n")
         self.call(['git', 'init', '-q', '-b', 'dev'])
-        self.call(['git', 'commit', '--allow-empty', '-qm', 'initial'])
+        (self.repo / 'baseline.txt').write_text('unchanged baseline\n')
+        self.call(['git', 'add', 'baseline.txt'])
+        self.call(['git', 'commit', '-qm', 'initial'])
         self.unio('init', 'mock')
         self.coord = self.root / 'project' / 'coord'
         self.tasks = self.coord / 'tasks'
@@ -169,6 +172,7 @@ class ReportReviews(unittest.TestCase):
         path = self.coord / '.locks' / (worker + '.lock')
         path.parent.mkdir(parents=True, exist_ok=True)
         handle = open(path, 'a+')
+        os.chmod(path, 0o600)
         fcntl.flock(handle, fcntl.LOCK_EX)
         self.addCleanup(handle.close)
 
@@ -184,10 +188,9 @@ class ReportReviews(unittest.TestCase):
                    ('reviews', 'mock', self.target, '--json'),
                    ('result', 'mock', self.target))
         before = {args: self.call([self.engine, *args], code=None) for args in watched}
-        old_env = dict(self.env, UNIO_BIN_DIR=str(Path(self.old_engine).parent)) \
-            if self.old_engine else None
+        old_env = dict(self.env, UNIO_BIN_DIR=str(Path(self.old_engine).parent))
         old_before = {args: self.call([self.old_engine, *args], code=None, env=old_env)
-                      for args in watched} if old_env else None
+                      for args in watched}
         attached = json.loads(self.bind(reviewer).stdout)
         self.assertEqual((attached['attached'], attached['replay'], attached['verdict'],
                           attached['human_acceptance'], attached['native_readiness_effect']),
@@ -212,11 +215,10 @@ class ReportReviews(unittest.TestCase):
         result = json.loads(self.unio('result', 'mock', self.target).stdout)
         self.assertFalse(result['ready_for_human_review'])
         self.assertEqual(result['review']['state'], 'not_run')
-        if old_before:
-            for args, result in old_before.items():
-                after = self.call([self.old_engine, *args], code=None, env=old_env)
-                self.assertEqual(after.stdout, result.stdout, args)
-                self.assertEqual(after.returncode, result.returncode, args)
+        for args, result in old_before.items():
+            after = self.call([self.old_engine, *args], code=None, env=old_env)
+            self.assertEqual(after.stdout, result.stdout, args)
+            self.assertEqual(after.returncode, result.returncode, args)
 
     def test_explicit_paths_packet(self):
         wt = self.root / 'project' / 'wt' / 'mock'
@@ -237,6 +239,10 @@ class ReportReviews(unittest.TestCase):
         self.assertIn('coverage paths', self.view().stdout)
         for bad in ('hello.*', '../hello.txt', '/etc/passwd', 'missing.txt'):
             self.packet(bad, code=2)
+        p = self.packet('baseline.txt', code=2)
+        self.assertIn('not relevant to the target material', p.stderr)
+        p = self.packet('hello.txt', 'hello.txt', code=2)
+        self.assertIn('duplicate explicit packet path', p.stderr)
         (wt / 'uncommitted.txt').write_text('dirty\n')
         self.packet(code=2)
         (wt / 'uncommitted.txt').unlink()
@@ -273,6 +279,12 @@ class ReportReviews(unittest.TestCase):
         task_file.write_text(task_file.read_text() + packet['declaration'])
         p = self.bind(late, code=2)
         self.assertIn('changed since dispatch', p.stderr)
+        bool_decl = dict(packet)
+        bool_decl['declaration'] = packet['declaration'].replace(
+            '"schema_version":1', '"schema_version":true')
+        bool_src = self.reviewer('6', bool_decl)
+        p = self.bind(bool_src, code=2)
+        self.assertIn('Review packet declaration must be exactly', p.stderr)
 
     def test_target_and_packet_drift(self):
         packet = self.packet()
@@ -328,6 +340,9 @@ class ReportReviews(unittest.TestCase):
         bad_findings = self.reviewer('5', packet, action='bad_findings')
         p = self.bind(bad_findings, code=2)
         self.assertIn('invalid findings block schema', p.stderr)
+        bool_verdict = self.reviewer('6', packet, action='bool_schema')
+        p = self.bind(bool_verdict, code=2)
+        self.assertIn('verdict.json must be exactly', p.stderr)
         implementation = 'impltask'
         (self.tasks / (implementation + '.md')).write_text(
             '# Task\n## Allowed scope\n- *\n## Validate\n$ true\n')
@@ -346,9 +361,36 @@ class ReportReviews(unittest.TestCase):
         attached = json.loads(self.bind(reviewer).stdout)
         self.assertTrue(attached['attached'])
         self.hold_lock('mock')
-        self.packet(code=2)
+        p = self.packet(code=2)
+        self.assertIn('target worker is busy', p.stderr)
         self.hold_lock('rev1')
-        self.bind(reviewer, code=2)
+        p = self.bind(reviewer, code=2)
+        self.assertIn('worker is busy', p.stderr)
+
+    def test_publication_interruption_and_pending_sweep(self):
+        leftover = self.coord / 'review-packets' / ('.pending-' + 'ab' * 16)
+        leftover.mkdir(parents=True)
+        (leftover / 'junk.txt').write_text('partial packet\n')
+        packet = self.packet()
+        self.assertFalse(leftover.exists())
+        self.assertTrue((self.coord / 'review-packets' / packet['id'] / 'manifest.json').is_file())
+        reviewer = self.reviewer('1', packet)
+        attached = json.loads(self.bind(reviewer).stdout)
+        receipt_dir = self.coord / 'reports' / (self.target + '.report-review.' + attached['id'])
+        pending = self.coord / 'reports' / ('.pending-report-review-' + 'cd' * 8)
+        pending.mkdir()
+        (pending / 'receipt.json').write_text('{}\n')
+        replay = json.loads(self.bind(reviewer).stdout)
+        self.assertTrue(replay['replay'])
+        self.assertFalse(pending.exists())
+        findings = receipt_dir / 'findings.json'
+        findings.unlink()
+        p = self.bind(reviewer, code=2)
+        self.assertIn('incomplete', p.stderr)
+        self.assertTrue((receipt_dir / 'receipt.json').is_file())
+        self.assertFalse(findings.exists())
+        p = self.packet('baseline.txt', code=2)
+        self.assertIn('not relevant to the target material', p.stderr)
 
     def test_request_changes_retained_alongside_approval(self):
         packet = self.packet()

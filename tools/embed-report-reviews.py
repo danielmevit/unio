@@ -19,7 +19,7 @@ end = '# END QUALITY REPORT REVIEWS\n'
 helpers = ("for _helper in ('fail','ident','safe','storage_directory','stamp',"
            "'locations','snapshot','revision','load','task_mode','report_evidence',"
            "'outcome_directory','delivery_directory','delivery_check',"
-           "'material_bytes_v2','observed_lock','review_json','findings_block_schema',"
+           "'material_bytes_v2','changed','review_json','findings_block_schema',"
            "'regular','delivery_ns'):\n"
            "    report_reviews_ns[_helper] = globals()[_helper]\n")
 source = (ROOT / 'tools/report-reviews.py').read_text()

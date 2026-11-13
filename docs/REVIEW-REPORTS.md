@@ -38,7 +38,8 @@ section containing one fenced `json` block whose single line is:
 Without `--path`, coverage is `task_material` (the whole native protocol-2
 review material). With explicit `--path` arguments, coverage is `paths`:
 each path must be a safe relative path inside the target worktree (no
-globs, no `..`, no symlinks, bounded UTF-8 text file). Coverage labels
+globs, no `..`, no symlinks, no duplicates, bounded UTF-8 text file) and
+must appear in the target's committed review material. Coverage labels
 describe the supplied material, never whole-app approval.
 
 The packet is stored privately under `coord/review-packets/<id>/` and must
@@ -111,5 +112,10 @@ invalid; exit 2 is a hard refusal.
 ## STOP and busy states
 
 Read-only `--reports` views work during STOP. `review-packet` and
-`reviews-bind` refuse while STOP is active or while the target/source
-worker holds a live lock, before any work or publication.
+`reviews-bind` take exclusive nonblocking native worker locks for the
+target (and source, for bind) in sorted worker order, so a live Source
+cannot race publication and a process never waits on or deadlocks with
+itself. STOP, target revision/material and source evidence are rechecked
+immediately before the pending directory is renamed into place. An
+interrupted bind never publishes a partial record; replay of an
+incomplete or corrupt final directory refuses without overwrite.

@@ -23,11 +23,13 @@ Importable standalone: module-level engine names are resolved only inside
 functions, so importing this file without the engine namespace is safe for
 inspection; calling the entry points requires the embedded namespace.
 """
+import fcntl
 import hashlib
 import json
 import os
 import re
 import shutil
+import stat
 import uuid
 
 SCHEMA_VERSION = 1
@@ -47,6 +49,7 @@ VERDICTS = ('APPROVE', 'REQUEST-CHANGES')
 COVERAGES = ('task_material', 'paths')
 SAFE_RELATIVE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$')
 REPORT_REVIEW_NAME = re.compile(r'([A-Za-z0-9_.-]+)\.report-review\.([0-9a-f]{16})')
+PACKET_ID_NAME = re.compile(r'[0-9a-f]{32}')
 
 MANIFEST_FIELDS = {'schema_version', 'id', 'worker', 'task', 'revision',
                    'material_protocol', 'material_sha256', 'material_bytes',
@@ -67,15 +70,76 @@ NO_EFFECT_NOTE = ('observational report reviews only: no native-readiness '
                   'or human-acceptance effect')
 
 
+def _schema_int(value, expected):
+    return type(value) is int and value == expected
+
+
 def _stop_refused(root):
     if os.path.exists(safe(root, 'coord', 'STOP')):
         fail('STOP is active: review-packet and reviews-bind refuse before any '
              'work or publication in this slice; read-only --reports views still work')
 
 
-def _busy_refused(root, worker, label):
-    if observed_lock(root, worker) == 'held':
-        fail(label + ' worker is busy: refuse rather than race a live Source')
+def _acquire_worker_locks(root, *labeled):
+    """Exclusive nonblocking native worker locks, ordered to avoid deadlock.
+
+    Duplicate workers (target == source) are owned once, so this process never
+    observes its own lock as busy. Account slots, STOP files and grants are
+    untouched; there is no provider call.
+    """
+    labels = {}
+    for label, worker in labeled:
+        ident(worker)
+        labels.setdefault(worker, label)
+    ordered = sorted(labels)
+    fds = []
+    parent = storage_directory(safe(root, 'coord', '.locks'), create=True)
+    try:
+        for worker in ordered:
+            try:
+                fd = os.open(worker + '.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW
+                             | os.O_NONBLOCK, 0o600, dir_fd=parent)
+            except OSError:
+                fail(labels[worker] + ' worker lock is inaccessible')
+            fds.append(fd)
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid != os.getuid() or info.st_mode & 0o022):
+                fail('unsupported worker lock for ' + worker)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                fail(labels[worker] + ' worker is busy: refuse rather than race a live Source')
+        return fds
+    except BaseException:
+        while fds:
+            os.close(fds.pop())
+        raise
+    finally:
+        os.close(parent)
+
+
+def _release_worker_locks(fds):
+    while fds:
+        os.close(fds.pop())
+
+
+def _sweep_pending(parent, prefix):
+    # Caller holds the worker lock, so leftover pending names are from a killed writer.
+    try:
+        names = os.listdir(parent)
+    except FileNotFoundError:
+        return
+    for name in names:
+        if not name.startswith(prefix):
+            continue
+        stale = os.path.join(parent, name)
+        if os.path.islink(stale):
+            fail('refusing symlink in pending publication store: ' + name)
+        if os.path.isdir(stale):
+            shutil.rmtree(stale)
+        else:
+            os.unlink(stale)
 
 
 def _canonical(doc):
@@ -119,7 +183,7 @@ def parse_declarations(text):
                 if line == '```':
                     doc = review_json('\n'.join(collecting))
                     if (not isinstance(doc, dict) or set(doc) != DECLARATION_FIELDS
-                            or doc['schema_version'] != 1
+                            or not _schema_int(doc.get('schema_version'), 1)
                             or not isinstance(doc['id'], str)
                             or not re.fullmatch('[0-9a-f]{32}', doc['id'])
                             or not isinstance(doc['manifest_sha256'], str)
@@ -172,9 +236,9 @@ def _single_declaration(text, label):
 def _validate_manifest(doc, packet_id):
     if not isinstance(doc, dict) or set(doc) != MANIFEST_FIELDS:
         fail('invalid review packet manifest schema')
-    if (doc['schema_version'] != SCHEMA_VERSION or doc['id'] != packet_id
+    if (not _schema_int(doc['schema_version'], SCHEMA_VERSION) or doc['id'] != packet_id
             or not isinstance(doc['id'], str) or not re.fullmatch('[0-9a-f]{32}', doc['id'])
-            or doc['material_protocol'] != MATERIAL_PROTOCOL
+            or not _schema_int(doc['material_protocol'], MATERIAL_PROTOCOL)
             or doc['coverage'] not in COVERAGES
             or not isinstance(doc['material_sha256'], str)
             or not re.fullmatch('[0-9a-f]{64}', doc['material_sha256'])
@@ -207,7 +271,7 @@ def _validate_manifest(doc, packet_id):
                 or type(entry['bytes']) is not int
                 or not 0 < entry['bytes'] <= PACKET_FILES_LIMIT
                 or not isinstance(entry['identity'], list) or len(entry['identity']) != 5
-                or any(type(x) is not int or x < 0 for x in entry['identity'][:3])):
+                or any(type(x) is not int or x < 0 for x in entry['identity'])):
             fail('invalid review packet manifest path evidence')
     return doc
 
@@ -223,6 +287,8 @@ def _load_packet(root, declaration):
     directory = _packet_directory(root, declaration['id'])
     if not os.path.isdir(directory):
         fail('declared review packet is missing: ' + declaration['id'])
+    if os.path.islink(directory):
+        fail('review packet directory must not be a symlink: ' + declaration['id'])
     manifest_bytes, _ = _read_bounded(os.path.join(directory, 'manifest.json'), RECEIPT_LIMIT)
     if hashlib.sha256(manifest_bytes).hexdigest() != declaration['manifest_sha256']:
         fail('review packet manifest digest does not match the frozen declaration')
@@ -241,14 +307,53 @@ def _load_packet(root, declaration):
     return manifest, directory
 
 
+def _explicit_paths(root, worker, task, wt, paths):
+    if len(paths) > PACKET_PATHS_MAX:
+        fail('at most %d explicit paths per packet' % PACKET_PATHS_MAX)
+    seen = set()
+    relevant = None
+    entries = []
+    for path in paths:
+        if not isinstance(path, str) or not SAFE_RELATIVE.fullmatch(path):
+            fail('explicit packet paths must be safe relative paths without globs: ' + repr(path))
+        if any(part in ('', '.', '..') for part in path.split('/')):
+            fail('unsafe explicit packet path: ' + path)
+        if path in seen:
+            fail('duplicate explicit packet path: ' + path)
+        seen.add(path)
+        if relevant is None:
+            relevant = set(changed(root, worker, task)['committed'])
+        if path not in relevant:
+            fail('explicit packet path is not relevant to the target material: ' + path)
+        target = safe(wt, *path.split('/'))
+        try:
+            data, identity = _read_bounded(target, PACKET_FILES_LIMIT)
+        except (OSError, ValueError, UnicodeError):
+            fail('explicit packet path must be a bounded readable text file: ' + path)
+        try:
+            data.decode('utf-8')
+        except UnicodeError:
+            fail('explicit packet path must be a bounded readable text file: ' + path)
+        if b'\0' in data:
+            fail('explicit packet path must be a bounded readable text file: ' + path)
+        entries.append(dict(path=path, sha256=hashlib.sha256(data).hexdigest(),
+                            bytes=len(data), identity=identity))
+    return entries
+
+
 def packet_create(root, worker, task, *paths):
     """Prepare a bounded local material packet; no provider call, no slots."""
     ident(worker); ident(task)
     locations(root, worker, task)
+    locks = _acquire_worker_locks(root, ('target', worker))
+    try:
+        return _packet_create_owned(root, worker, task, paths)
+    finally:
+        _release_worker_locks(locks)
+
+
+def _packet_create_owned(root, worker, task, paths):
     _stop_refused(root)
-    _busy_refused(root, worker, 'target')
-    if len(paths) > PACKET_PATHS_MAX:
-        fail('at most %d explicit paths per packet' % PACKET_PATHS_MAX)
     rev = snapshot(root, worker, task)
     d = load(root, worker, task)
     if (d['validation']['state'] != 'passed'
@@ -256,19 +361,7 @@ def packet_create(root, worker, task, *paths):
         fail('review packets require a current verify PASS at the live revision')
     material = material_bytes_v2(root, worker, task)
     wt = locations(root, worker, task)[0]
-    entries = []
-    for path in paths:
-        if not isinstance(path, str) or not SAFE_RELATIVE.fullmatch(path):
-            fail('explicit packet paths must be safe relative paths without globs: ' + repr(path))
-        if any(part in ('', '.', '..') for part in path.split('/')):
-            fail('unsafe explicit packet path: ' + path)
-        target = safe(wt, *path.split('/'))
-        try:
-            data, identity = _read_bounded(target, PACKET_FILES_LIMIT)
-        except (OSError, ValueError):
-            fail('explicit packet path must be a bounded readable text file: ' + path)
-        entries.append(dict(path=path, sha256=hashlib.sha256(data).hexdigest(),
-                            bytes=len(data), identity=identity))
+    entries = _explicit_paths(root, worker, task, wt, paths)
     coverage = 'paths' if entries else 'task_material'
     packet_id = uuid.uuid4().hex
     parent = safe(root, 'coord', 'review-packets')
@@ -276,9 +369,10 @@ def packet_create(root, worker, task, *paths):
     pending = '.pending-' + packet_id
     published = False
     try:
+        _sweep_pending(parent, '.pending-')
         try:
             with os.scandir(parent) as scan:
-                if sum(1 for _ in scan) >= PACKETS_MAX:
+                if sum(1 for entry in scan if PACKET_ID_NAME.fullmatch(entry.name)) >= PACKETS_MAX:
                     fail('review packet bound reached: %d packets' % PACKETS_MAX)
         except OSError:
             fail('cannot observe review packet store')
@@ -291,6 +385,8 @@ def packet_create(root, worker, task, *paths):
             for index, entry in enumerate(entries):
                 data, _ = _read_bounded(safe(wt, *entry['path'].split('/')),
                                         PACKET_FILES_LIMIT)
+                if hashlib.sha256(data).hexdigest() != entry['sha256']:
+                    fail('explicit packet path changed while staging: ' + entry['path'])
                 _write_exclusive(fd, pending + '/path-%d.txt' % index, data)
                 # The manifest records the stored copy's identity, so later
                 # reads prove the packet bytes were never replaced.
@@ -304,6 +400,27 @@ def packet_create(root, worker, task, *paths):
                             paths=entries, created_at=stamp())
             manifest_bytes = _canonical(manifest)
             _write_exclusive(fd, pending + '/manifest.json', manifest_bytes)
+            staged = os.path.join(parent, pending)
+            stored_material, _ = _read_bounded(os.path.join(staged, 'material.txt'),
+                                               MATERIAL_LIMIT)
+            stored_manifest, _ = _read_bounded(os.path.join(staged, 'manifest.json'),
+                                               RECEIPT_LIMIT)
+            if stored_material != material or stored_manifest != manifest_bytes:
+                fail('review packet staged bytes do not match the captured material')
+            _validate_manifest(review_json(stored_manifest.decode('utf-8')), packet_id)
+            _stop_refused(root)
+            live_rev = snapshot(root, worker, task)
+            if live_rev != rev:
+                fail('target revision changed before packet publication')
+            live_material = material_bytes_v2(root, worker, task)
+            if live_material != material:
+                fail('target material changed before packet publication')
+            for index, entry in enumerate(entries):
+                data, _ = _read_bounded(safe(wt, *entry['path'].split('/')),
+                                        PACKET_FILES_LIMIT)
+                if hashlib.sha256(data).hexdigest() != entry['sha256']:
+                    fail('target path changed before packet publication: ' + entry['path'])
+            os.fsync(fd)
             try:
                 os.rename(pending, packet_id, src_dir_fd=fd, dst_dir_fd=fd)
                 published = True
@@ -357,7 +474,7 @@ def _source_report(root, source_worker, source_task):
         artifacts[name] = data
     verdict_doc = review_json(artifacts['verdict.json'].decode('utf-8'))
     if (not isinstance(verdict_doc, dict) or set(verdict_doc) != {'schema_version', 'verdict'}
-            or verdict_doc['schema_version'] != SCHEMA_VERSION
+            or not _schema_int(verdict_doc['schema_version'], SCHEMA_VERSION)
             or verdict_doc['verdict'] not in VERDICTS):
         fail('verdict.json must be exactly {"schema_version":1,'
              '"verdict":"APPROVE"|"REQUEST-CHANGES"}')
@@ -386,7 +503,7 @@ def _frozen_declaration(root, source_worker, source_task, d):
 def _validate_receipt(doc, target_task, receipt_id):
     if not isinstance(doc, dict) or set(doc) != RECEIPT_FIELDS:
         fail('invalid report review receipt schema')
-    if (doc['schema_version'] != SCHEMA_VERSION or doc['kind'] != 'report-review'
+    if (not _schema_int(doc['schema_version'], SCHEMA_VERSION) or doc['kind'] != 'report-review'
             or doc['id'] != receipt_id
             or not isinstance(doc['id'], str)
             or not re.fullmatch('[0-9a-f]{16}', doc['id'])
@@ -443,14 +560,53 @@ def _report_review_directory(root, target_task, receipt_id):
     return safe(root, 'coord', 'reports', target_task + '.report-review.' + receipt_id)
 
 
+def _replay_bound(root, directory, receipt, verdict, coverage):
+    existing, _ = _read_bounded(os.path.join(directory, 'receipt.json'), RECEIPT_LIMIT)
+    stored = _validate_receipt(review_json(existing.decode('utf-8')),
+                               receipt['target_task'], receipt['id'])
+    replay = dict(receipt)
+    replay.pop('recorded_at')
+    compare = dict(stored)
+    compare.pop('recorded_at')
+    if compare != replay:
+        fail('report review replay mismatch: bound evidence changed')
+    for artifact_name, recorded in stored['source_artifacts'].items():
+        try:
+            copy, _ = _read_bounded(os.path.join(directory, artifact_name),
+                                    PACKET_FILES_LIMIT)
+        except (OSError, ValueError, UnicodeError):
+            fail('report review receipt is incomplete; original bound record was not overwritten')
+        if (hashlib.sha256(copy).hexdigest() != recorded['sha256']
+                or len(copy) != recorded['bytes']):
+            fail('report review receipt is incomplete; original bound record was not overwritten')
+    return dict(schema_version=SCHEMA_VERSION, attached=True, replay=True,
+                id=receipt['id'], verdict=verdict, coverage=coverage,
+                human_acceptance=False, native_readiness_effect='none',
+                note=NO_EFFECT_NOTE)
+
+
+def _attached_result(receipt_id, verdict, coverage, replay):
+    return dict(schema_version=SCHEMA_VERSION, attached=True, replay=replay,
+                id=receipt_id, verdict=verdict, coverage=coverage,
+                human_acceptance=False, native_readiness_effect='none',
+                note=NO_EFFECT_NOTE)
+
+
 def reviews_bind(root, target_worker, target_task, source_worker, source_task):
     """Attach ONE verified report review; observational only, no provider call."""
     ident(target_worker); ident(target_task); ident(source_worker); ident(source_task)
     locations(root, target_worker, target_task)
     locations(root, source_worker, source_task)
+    locks = _acquire_worker_locks(root, ('target', target_worker), ('source', source_worker))
+    try:
+        return _reviews_bind_owned(root, target_worker, target_task,
+                                   source_worker, source_task)
+    finally:
+        _release_worker_locks(locks)
+
+
+def _reviews_bind_owned(root, target_worker, target_task, source_worker, source_task):
     _stop_refused(root)
-    _busy_refused(root, target_worker, 'target')
-    _busy_refused(root, source_worker, 'source')
     live_rev = snapshot(root, target_worker, target_task)
     target = load(root, target_worker, target_task)
     if (target['validation']['state'] != 'passed'
@@ -506,36 +662,77 @@ def reviews_bind(root, target_worker, target_task, source_worker, source_task):
                    human_acceptance=False, native_readiness_effect='none',
                    recorded_at=stamp())
     directory = _report_review_directory(root, target_task, receipt_id)
-    if os.path.lexists(directory):
-        existing, _ = _read_bounded(os.path.join(directory, 'receipt.json'), RECEIPT_LIMIT)
-        stored = _validate_receipt(review_json(existing.decode('utf-8')),
-                                   target_task, receipt_id)
-        replay = dict(receipt)
-        replay.pop('recorded_at')
-        compare = dict(stored)
-        compare.pop('recorded_at')
-        if compare != replay:
-            fail('report review replay mismatch: bound evidence changed')
-        return dict(schema_version=SCHEMA_VERSION, attached=True, replay=True,
-                    id=receipt_id, verdict=verdict, coverage=manifest['coverage'],
-                    human_acceptance=False, native_readiness_effect='none',
-                    note=NO_EFFECT_NOTE)
-    fd = storage_directory(safe(root, 'coord', 'reports'), create=True)
+    reports_parent = safe(root, 'coord', 'reports')
+    fd = storage_directory(reports_parent, create=True)
+    pending = '.pending-report-review-' + receipt_id
+    name = os.path.basename(directory)
+    published = False
     try:
-        name = os.path.basename(directory)
+        _sweep_pending(reports_parent, '.pending-report-review-')
+        if os.path.lexists(directory):
+            return _replay_bound(root, directory, receipt, verdict, manifest['coverage'])
         try:
-            os.mkdir(name, 0o700, dir_fd=fd)
+            with os.scandir(reports_parent) as scan:
+                n = sum(1 for entry in scan
+                        if REPORT_REVIEW_NAME.fullmatch(entry.name)
+                        and entry.name.startswith(target_task + '.report-review.'))
+            if n >= REPORT_REVIEWS_MAX:
+                fail('report review folder bound reached')
+        except OSError:
+            fail('cannot observe report review store')
+        try:
+            os.mkdir(pending, 0o700, dir_fd=fd)
         except FileExistsError:
             fail('report review publication collision: ' + receipt_id)
-        _write_exclusive(fd, name + '/receipt.json', _canonical(receipt))
-        for artifact_name in REQUIRED_SOURCE_ARTIFACTS:
-            _write_exclusive(fd, name + '/' + artifact_name, artifacts[artifact_name])
+        try:
+            _write_exclusive(fd, pending + '/receipt.json', _canonical(receipt))
+            for artifact_name in REQUIRED_SOURCE_ARTIFACTS:
+                _write_exclusive(fd, pending + '/' + artifact_name, artifacts[artifact_name])
+            staged = os.path.join(reports_parent, pending)
+            staged_receipt, _ = _read_bounded(os.path.join(staged, 'receipt.json'),
+                                              RECEIPT_LIMIT)
+            stored = _validate_receipt(review_json(staged_receipt.decode('utf-8')),
+                                       target_task, receipt_id)
+            expect = dict(receipt); expect.pop('recorded_at')
+            compare = dict(stored); compare.pop('recorded_at')
+            if compare != expect:
+                fail('staged report review receipt does not match prepared evidence')
+            for artifact_name, payload in artifacts.items():
+                copy, _ = _read_bounded(os.path.join(staged, artifact_name),
+                                        PACKET_FILES_LIMIT)
+                if copy != payload:
+                    fail('staged report review artifact does not match source: ' + artifact_name)
+            _stop_refused(root)
+            if snapshot(root, target_worker, target_task) != live_rev:
+                fail('target revision changed before report review publication')
+            if hashlib.sha256(material_bytes_v2(root, target_worker, target_task)).hexdigest() \
+                    != manifest['material_sha256']:
+                fail('target material changed before report review publication')
+            again = _source_report(root, source_worker, source_task)
+            if (again[0]['outcome']['run_id'] != o['run_id']
+                    or again[4] != verdict
+                    or {name: hashlib.sha256(data).hexdigest()
+                        for name, data in again[3].items()}
+                    != {name: hashlib.sha256(data).hexdigest()
+                        for name, data in artifacts.items()}):
+                fail('source evidence changed before report review publication')
+            if os.path.lexists(directory):
+                return _replay_bound(root, directory, receipt, verdict, manifest['coverage'])
+            os.fsync(fd)
+            try:
+                os.rename(pending, name, src_dir_fd=fd, dst_dir_fd=fd)
+                published = True
+            except OSError:
+                if os.path.lexists(directory):
+                    return _replay_bound(root, directory, receipt, verdict,
+                                         manifest['coverage'])
+                fail('report review publication collision: ' + receipt_id)
+        finally:
+            if not published:
+                shutil.rmtree(os.path.join(reports_parent, pending), ignore_errors=True)
     finally:
         os.close(fd)
-    return dict(schema_version=SCHEMA_VERSION, attached=True, replay=False,
-                id=receipt_id, verdict=verdict, coverage=manifest['coverage'],
-                human_acceptance=False, native_readiness_effect='none',
-                note=NO_EFFECT_NOTE)
+    return _attached_result(receipt_id, verdict, manifest['coverage'], False)
 
 
 def _row_current(root, receipt):
