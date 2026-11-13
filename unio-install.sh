@@ -29367,6 +29367,18 @@ def capture_seconds():
     return int(significant)
 
 
+def archive_apply_seconds():
+    value = os.environ.get('UNIO_SAVE_ARCHIVE_TIMEOUT')
+    if value is None:
+        return int(ARCHIVE_WORKER_APPLY_SECONDS)
+    # ASCII whole seconds only; avoid converting an unbounded integer string.
+    significant = value.lstrip('0')
+    if (not re.fullmatch('[0-9]+', value) or not significant or len(significant) > 3
+            or int(significant) > 900):
+        raise Refuse('excessive', 'UNIO_SAVE_ARCHIVE_TIMEOUT must be positive whole seconds 1–900 (default 60 when unset)')
+    return int(significant)
+
+
 class Budget:
     def __init__(self, seconds, reads=MAX_OBSERVED):
         self.seconds, self.deadline, self.left = seconds, time.monotonic() + seconds, reads
@@ -32373,6 +32385,7 @@ def write_maintenance_receipt(receipts, name, doc):
 
 
 def plan_archive_worker(root, worker, as_json):
+    apply_seconds = archive_apply_seconds()
     store = open_store(root, False)
     if store is None:
         raise Refuse('invalid_save', 'no saves in this project')
@@ -32404,6 +32417,7 @@ def plan_archive_worker(root, worker, as_json):
                    archive_cap_bytes=ARCHIVE_CAP_BYTES,
                    archive_after_saves=after_saves, archive_after_bytes=after_bytes,
                    archive_capacity=capacity, freed_slots=len(view['selected']),
+                   apply_budget_seconds=apply_seconds,
                    native_activity={True: 'busy', False: 'idle', 'unknown': 'unknown'}[busy],
                    unmanaged_activity='unknown', content_validation='metadata_only',
                    apply_usage='unio save archive-worker %s --apply %s --confirm-inactive'
@@ -32435,6 +32449,7 @@ def plan_archive_worker(root, worker, as_json):
           out['archive_after_bytes'], out['freed_slots']))
     print('  archive capacity: %s' % out['archive_capacity'])
     print('  plan hash: %s' % out['plan_hash'])
+    print('  apply budget: %d second(s) (UNIO_SAVE_ARCHIVE_TIMEOUT; explicit apply only)' % out['apply_budget_seconds'])
     print(out['apply_usage'])
     return 0
 
@@ -32467,9 +32482,10 @@ def archive_worker_save_state(store, archive, save_id):
     return 'unknown'
 
 
-def archive_worker_failure_outcome(receipts, stem, worker, plan_hash, moved, remaining, unknown_ids, error):
+def archive_worker_failure_outcome(receipts, stem, worker, plan_hash, apply_seconds, moved, remaining, unknown_ids, error):
     doc = dict(schema_version=1, kind=MAINTENANCE_RECEIPT_KIND,
                status='partial', worker=worker, plan_hash=plan_hash,
+               apply_budget_seconds=apply_seconds,
                confirm_inactive=True, moved=list(moved),
                remaining=list(remaining),
                message=getattr(error, 'message', str(error)),
@@ -32495,6 +32511,7 @@ def archive_worker_failure_outcome(receipts, stem, worker, plan_hash, moved, rem
 def apply_archive_worker(root, worker, plan_hash, as_json):
     # A free native lock never proves inactivity; --confirm-inactive is caller
     # authority, never proof of human identity or of no unmanaged process.
+    apply_seconds = archive_apply_seconds()  # refused before locks or effects
     busy = worker_busy(root, worker)
     if busy is True:
         raise Refuse('lock_busy', 'the native worker %s is busy or locked; explicit archival refused' % worker)
@@ -32507,7 +32524,9 @@ def apply_archive_worker(root, worker, plan_hash, as_json):
             raise Refuse('invalid_save', 'no saves in this project')
         slock = saves_lock(root)
         try:
-            budget = Budget(ARCHIVE_WORKER_APPLY_SECONDS)
+            # One shared monotonic deadline governs the whole application:
+            # inventory recheck, selected deep validation, moves and rechecks.
+            budget = Budget(apply_seconds)
             budget.remaining()
             view = archive_worker_material(store, worker, budget)
             if view['plan_hash'] != plan_hash:
@@ -32532,6 +32551,7 @@ def apply_archive_worker(root, worker, plan_hash, as_json):
                 write_maintenance_receipt(receipts, stem + '.intent.json',
                                           dict(schema_version=1, kind=MAINTENANCE_RECEIPT_KIND,
                                                status='applying', worker=worker, plan_hash=plan_hash,
+                                               apply_budget_seconds=apply_seconds,
                                                confirm_inactive=True, selected=remaining, started_at=stamp()))
             except FileExistsError:
                 raise Refuse('unknown', 'maintenance evidence for this exact plan already exists; inspect coord/reports/.checkpoint-archive and plan again')
@@ -32567,13 +32587,15 @@ def apply_archive_worker(root, worker, plan_hash, as_json):
                     last_good_check = 'unknown'
                 active_after, corrupt_after = scan_store(store, budget=budget)
             except (Refuse, OSError) as error:
-                archive_worker_failure_outcome(receipts, stem, worker, plan_hash, moved, remaining, unknown_ids, error)
+                archive_worker_failure_outcome(receipts, stem, worker, plan_hash,
+                                               apply_seconds, moved, remaining, unknown_ids, error)
 
             receipt_failed = None
             try:
                 write_maintenance_receipt(receipts, stem + '.outcome.json',
                                           dict(schema_version=1, kind=MAINTENANCE_RECEIPT_KIND,
                                                status='archived', worker=worker, plan_hash=plan_hash,
+                                               apply_budget_seconds=apply_seconds,
                                                confirm_inactive=True, moved=moved, remaining=[],
                                                last_good_id=last_good_id, last_good_check=last_good_check,
                                                active_saves_after=len(active_after) + len(corrupt_after),
@@ -32583,6 +32605,7 @@ def apply_archive_worker(root, worker, plan_hash, as_json):
                 receipt_failed = getattr(error, 'message', str(error))  # Effects happened; never roll bytes back.
             out = dict(schema_version=1, command='save archive-worker', worker=worker, mode='apply',
                        confirm_inactive=True, plan_hash=plan_hash, moved=moved, remaining=[],
+                       apply_budget_seconds=apply_seconds,
                        freed_active_slots=len(moved),
                        active_saves=len(active_after) + len(corrupt_after),
                        archived_saves=len(view['historical']) + len(moved),
@@ -32605,6 +32628,7 @@ def apply_archive_worker(root, worker, plan_hash, as_json):
     else:
         print('explicit archive of worker %s: %s' % (worker, out['status']))
         print('  moved save(s): %s' % (', '.join(out['moved']) or 'none'))
+        print('  apply budget: %d second(s) (UNIO_SAVE_ARCHIVE_TIMEOUT)' % out['apply_budget_seconds'])
         if 'receipt_error' in out:
             print('  Warning: %s' % out['receipt_error'])
         print('  every moved ID and byte is preserved; inspect works at the archive path')
@@ -38919,6 +38943,8 @@ Env: UNIO_TIMEOUT (3600s)  UNIO_VERIFY_TIMEOUT (900s)
      UNIO_REVIEW_TIMEOUT (900s)  UNIO_ALLOW_SECRETS=1 (init override)
      UNIO_ADMISSION_TIMEOUT (whole seconds 1..300; default 30; admission handshake only)
      UNIO_SAVE_CAPTURE_TIMEOUT (whole seconds 1–300; default 30; save capture only)
+     UNIO_SAVE_ARCHIVE_TIMEOUT (whole seconds 1–900; default 60; explicit
+                                save archive-worker apply only)
      UNIO_AUTO_OFF (accepted for compatibility, no effect: worker output
                     never benches an agent; bench only via 'unio off/on')
      UNIO_AUTO_VERIFY=1 (append verify verdict; propagate failed/incomplete checks)
