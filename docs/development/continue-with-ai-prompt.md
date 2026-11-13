@@ -20,9 +20,11 @@ preserved separately. Current independent SOURCE reviews cover disjoint author
 scopes; they do not approve each other's labs' code. Before accepting composition,
 compare exact source files/installer regions with those reviewed revisions, inspect
 the combined diff, and run the required full gate once on a frozen candidate.
-Current reviews, full gate, official publication and install checks are PENDING;
-read actual receipts before describing them as complete. Never transfer stale
-approval to changed code or call process0 accepted delivery.
+Current scoped source reviews, the lead assessment, the one full combined quality
+gate and the isolated installation check passed; official publication and the
+global install remain separate pending steps. Read actual receipts before
+describing them as complete. Never transfer stale approval to changed code or
+call process0 accepted delivery.
 
 ## Priorities after this batch
 

@@ -1,10 +1,10 @@
 # Unio 0.5.29 — clearer setup and reusable launch recipes
 
-Unreleased candidate. All source tasks have native validation evidence; current
-independent source reviews, lead composition assessment and the single full
-combined quality gate are still required. Official publication and installation
-are separate steps. Check the official tag/assets and actual receipts before
-claiming delivery.
+Validated candidate. All source tasks have native validation evidence; the
+independent scoped source reviews, the lead composition assessment, the single
+full combined quality gate and the isolated installation check passed. Official
+publication and the global installation are separate pending steps. Check the
+official tag/assets and actual receipts before claiming delivery.
 
 ## Practical changes
 

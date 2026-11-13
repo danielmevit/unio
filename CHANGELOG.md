@@ -4,13 +4,13 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.29 — clearer setup and reusable launch recipes (unreleased)
+## 0.5.29 — clearer setup and reusable launch recipes — 2026-11-13
 
 - Add optional `unio routes` inventory/show/compile for typed Vibe3.1.1/GLM5.3 launch recipes. Compilation is offline/read-only and emits one existing `agents.conf` entry for deliberate manual use, with canonical adapter bounds and safe input/path handling. Requested settings remain separate from effective Unknowns, account grouping and actual access.
 - Give fresh installs neutral lead instructions, conditional CodeGraph guidance and supported score/experience commands. Preserve existing custom MASTER templates and project routers; reject unsafe template targets. Correct the medium coordination-tier label while keeping balanced work mode distinct.
 - Explain recognized Vibe setup failures using bounded fixed text and allowlisted aliases/arguments. Raw upstream messages, credentials and available-model lists are not copied; real exits, Unknown usage and limit classifications stay intact.
 
-Independent source reviews and the single combined quality gate are pending. See [scope and limits](docs/RELEASE-0.5.29.md); this heading remains unreleased until actual delivery checks finish.
+Independent scoped source reviews, the lead composition assessment, the single full combined quality gate and the isolated installation check passed. See [scope and limits](docs/RELEASE-0.5.29.md); official publication and the global install remain separate pending steps.
 
 ## 0.5.28 — installation and startup safety — 2026-11-13
 
