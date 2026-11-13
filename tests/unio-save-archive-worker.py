@@ -7,7 +7,9 @@
 Reproduces the protected-latest cap in tiny private fixtures (clones of one
 real native save with changed ID/worker/time), then checks read-only plans,
 deterministic plan hashes, explicit selected-worker application, protected
-pinned/corrupt/unsafe evidence, races, caps and an interrupted move. No live
+pinned/corrupt/unsafe evidence, races, caps, an interrupted move and the
+bounded apply deadline (UNIO_SAVE_ARCHIVE_TIMEOUT) proven through a fake
+elapsed clock without real 60-second waits. No live
 provider is used and no owner store is touched.
 """
 import fcntl
@@ -41,6 +43,7 @@ with tempfile.TemporaryDirectory(prefix='save-archive-worker-') as directory:
                GIT_AUTHOR_NAME='mock', GIT_COMMITTER_NAME='mock', GIT_AUTHOR_EMAIL='mock@example.invalid',
                GIT_COMMITTER_EMAIL='mock@example.invalid')
     env.pop('UNIO_SAVE_TEST_FAULT', None)
+    env.pop('UNIO_SAVE_ARCHIVE_TIMEOUT', None)
     subprocess.run(['bash', str(SOURCE/'unio-install.sh')], env=env, check=True, capture_output=True)
     engine = str(base/'bin/unio')
     project = base/'project with spaces'
@@ -50,8 +53,11 @@ with tempfile.TemporaryDirectory(prefix='save-archive-worker-') as directory:
     calls = base/'mock-calls'
     (base/'conf/agents.conf').write_text('mock=sh -c \'echo invoked >> "%s"; exit 7\'\n' % calls)
 
-    def unio(*args, fault=None):
-        return subprocess.run([engine, *args], cwd=repo, env=dict(env, UNIO_SAVE_TEST_FAULT=fault or ''),
+    def unio(*args, fault=None, extra=None):
+        run_env = dict(env, UNIO_SAVE_TEST_FAULT=fault or '')
+        if extra:
+            run_env.update(extra)
+        return subprocess.run([engine, *args], cwd=repo, env=run_env,
                               text=True, capture_output=True, timeout=90)
 
     def git(*args):
@@ -110,9 +116,9 @@ with tempfile.TemporaryDirectory(prefix='save-archive-worker-') as directory:
             args += ['--plan', '--json']
         return unio(*args)
 
-    def apply(worker, plan_hash, fault=None):
+    def apply(worker, plan_hash, fault=None, extra=None):
         return unio('save', 'archive-worker', worker, '--apply', plan_hash, '--confirm-inactive', '--json',
-                    fault=fault)
+                    fault=fault, extra=extra)
 
     initial, originals = seed(True)
     r = unio('save', 'create', workers[8], 'T1')
@@ -488,4 +494,159 @@ with tempfile.TemporaryDirectory(prefix='save-archive-worker-') as directory:
     check('exact restoration of honestly archived save works unchanged',
           restored_a.returncode == 0 and ordered_a[0] in ids(archive)
           and (project/'wt'/target_worker/'README.md').read_text() == 'native saved bytes\n')
+
+    # ---------------------------------------------------------------
+    # Bounded apply deadline: UNIO_SAVE_ARCHIVE_TIMEOUT (fake clock only;
+    # no real 60-second wait ever happens in these checks)
+    # ---------------------------------------------------------------
+
+    initial, _ = seed(True)
+    default_plan = json.loads(plan('iso-4').stdout)
+    check('plan reports the default 60-second apply budget additively',
+          default_plan['apply_budget_seconds'] == 60)
+    invalid_values = ['bad', '', '0', '00', '-1', '+5', '1.5', ' 5', '5 ', '1e2',
+                      '0x10', '60.0', '901', '999', '1000', '٢']
+    refused = 0
+    for bad_value in invalid_values:
+        r = apply('iso-4', default_plan['plan_hash'], extra=dict(UNIO_SAVE_ARCHIVE_TIMEOUT=bad_value))
+        refused += (r.returncode == 1 and 'excessive' in r.stderr
+                    and 'UNIO_SAVE_ARCHIVE_TIMEOUT' in r.stderr and '1–900' in r.stderr)
+    check('invalid or out-of-range apply budgets refuse before effects',
+          refused == len(invalid_values) and ids(store) == set(initial)
+          and not archive.exists()
+          and not any(p.name.startswith('iso-4-') for p in receipts.iterdir()))
+    r = unio('save', 'archive-worker', 'iso-4', '--plan', '--json',
+             extra=dict(UNIO_SAVE_ARCHIVE_TIMEOUT='0'))
+    check('invalid apply budget also refuses the read-only plan before effects',
+          r.returncode == 1 and 'UNIO_SAVE_ARCHIVE_TIMEOUT' in r.stderr
+          and ids(store) == set(initial) and not archive.exists())
+
+    r = apply('iso-4', default_plan['plan_hash'])
+    done_default = json.loads(r.stdout)
+    stem4 = 'iso-4-' + default_plan['plan_hash'][:16]
+    check('absent variable keeps the default 60-second apply budget and completes',
+          r.returncode == 0 and done_default['status'] == 'archived'
+          and done_default['apply_budget_seconds'] == 60
+          and json.loads((receipts/(stem4 + '.intent.json')).read_text())['apply_budget_seconds'] == 60
+          and json.loads((receipts/(stem4 + '.outcome.json')).read_text())['apply_budget_seconds'] == 60
+          and initial[4] in ids(archive) and initial[4] not in ids(store))
+
+    initial, _ = seed(True)
+    big_plan = json.loads(unio('save', 'archive-worker', 'iso-7', '--plan', '--json',
+                               extra=dict(UNIO_SAVE_ARCHIVE_TIMEOUT='300')).stdout)
+    check('plan reports a configured larger apply budget', big_plan['apply_budget_seconds'] == 300)
+    r = apply('iso-7', big_plan['plan_hash'], extra=dict(UNIO_SAVE_ARCHIVE_TIMEOUT='300'))
+    done_big = json.loads(r.stdout)
+    stem7 = 'iso-7-' + big_plan['plan_hash'][:16]
+    check('configured larger apply budget completes and is recorded in receipts',
+          r.returncode == 0 and done_big['status'] == 'archived'
+          and done_big['apply_budget_seconds'] == 300 and initial[7] in ids(archive)
+          and json.loads((receipts/(stem7 + '.outcome.json')).read_text())['apply_budget_seconds'] == 300)
+    check('capture and usage ignore the archive apply budget variable entirely',
+          unio('save', 'create', workers[8], 'T1',
+               extra=dict(UNIO_SAVE_ARCHIVE_TIMEOUT='bad')).returncode == 0
+          and json.loads(unio('save', 'usage', '--json',
+                              extra=dict(UNIO_SAVE_ARCHIVE_TIMEOUT='bad')).stdout)['status'] == 'observed')
+
+    # Fake elapsed clock: genuinely slow selected deep validation (70 fake
+    # seconds) against the one shared deadline, without real 60-second waits.
+    initial, _ = seed(True)
+    slow_plan = json.loads(plan('iso-8').stdout)
+    slow_hash = slow_plan['plan_hash']
+    real_time = core['time']
+
+    class FakeClock:
+        def __init__(self):
+            self.now = 1000.0
+        def monotonic(self):
+            return self.now
+        def __getattr__(self, name):
+            return getattr(real_time, name)
+
+    clock = FakeClock()
+    orig_load_save = core['load_save']
+
+    def slow_deep_load(path, save_id, deep):
+        if deep:
+            clock.now += 70.0
+        return orig_load_save(path, save_id, deep)
+
+    core['time'] = clock
+    core['load_save'] = slow_deep_load
+    try:
+        try:
+            core['apply_archive_worker'](str(project), 'iso-8', slow_hash, True)
+            default_refused = False
+        except core['Refuse'] as error:
+            default_refused = (error.code == 'excessive' and '60 second bound' in error.message
+                               and getattr(error, 'moved', None) is None)
+        os.environ['UNIO_SAVE_ARCHIVE_TIMEOUT'] = '90'
+        clock.now = 1000.0
+        try:
+            core['apply_archive_worker'](str(project), 'iso-8', slow_hash, True)
+            big_finished = False
+        except core['Refuse']:
+            big_finished = False
+        else:
+            big_finished = True
+    finally:
+        core['time'] = real_time
+        core['load_save'] = orig_load_save
+        os.environ.pop('UNIO_SAVE_ARCHIVE_TIMEOUT', None)
+    stem8 = 'iso-8-' + slow_hash[:16]
+    check('default 60 refuses genuinely slow selected validation before effects',
+          default_refused and initial[8] in ids(store) and initial[8] not in ids(archive)
+          and not any(p.name.startswith('iso-8-') for p in receipts.iterdir()))
+    check('explicit larger budget lets the same slow validation finish',
+          big_finished and initial[8] in ids(archive) and initial[8] not in ids(store)
+          and json.loads((receipts/(stem8 + '.intent.json')).read_text())['apply_budget_seconds'] == 90
+          and json.loads((receipts/(stem8 + '.outcome.json')).read_text())['apply_budget_seconds'] == 90)
+
+    initial, _ = seed(True)
+    enforced_plan = json.loads(plan('iso-6').stdout)
+    clock.now = 1000.0
+    core['time'] = clock
+    core['load_save'] = slow_deep_load
+    try:
+        os.environ['UNIO_SAVE_ARCHIVE_TIMEOUT'] = '65'
+        try:
+            core['apply_archive_worker'](str(project), 'iso-6', enforced_plan['plan_hash'], True)
+            enforced = False
+        except core['Refuse'] as error:
+            enforced = (error.code == 'excessive' and '65 second bound' in error.message
+                        and getattr(error, 'moved', None) is None)
+    finally:
+        core['time'] = real_time
+        core['load_save'] = orig_load_save
+        os.environ.pop('UNIO_SAVE_ARCHIVE_TIMEOUT', None)
+    check('configured deadline is enforced through the shared clock, not just reported',
+          enforced and initial[6] in ids(store) and initial[6] not in ids(archive)
+          and not any(p.name.startswith('iso-6-') for p in receipts.iterdir()))
+
+    # The read-only plan keeps its own fixed 30-second budget even when a much
+    # larger apply budget is configured.
+    initial, _ = seed(True)
+    clock.now = 1000.0
+
+    def slow_meta_load(path, save_id, deep):
+        if not deep:
+            clock.now += 35.0
+        return orig_load_save(path, save_id, deep)
+
+    core['time'] = clock
+    core['load_save'] = slow_meta_load
+    try:
+        os.environ['UNIO_SAVE_ARCHIVE_TIMEOUT'] = '300'
+        try:
+            core['plan_archive_worker'](str(project), 'iso-19', True)
+            plan_budget_unchanged = False
+        except core['Refuse'] as error:
+            plan_budget_unchanged = (error.code == 'excessive' and '30 second bound' in error.message)
+    finally:
+        core['time'] = real_time
+        core['load_save'] = orig_load_save
+        os.environ.pop('UNIO_SAVE_ARCHIVE_TIMEOUT', None)
+    check('plan keeps its fixed 30-second read-only budget regardless of the apply budget',
+          plan_budget_unchanged and ids(store) == set(initial)
+          and not any(p.name.startswith('iso-19-') for p in receipts.iterdir()))
     print('Save archive-worker: %d checks passed' % passed)
