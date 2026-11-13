@@ -9,7 +9,8 @@ version is released.
 - Refuse accidental sourcing of the installer before installation writes or caller-shell changes; print a quoted command that works with paths containing spaces.
 - Publish the main runtime through a private staging file and atomic file replacement, preserving existing readers and the previous runtime on pre-publication failure.
 - Preserve existing live or Unknown Git index locks and refuse worker startup before provider invocation instead of deleting a potentially active writer's lock.
-- Keep the README's stable-release link current without a hardcoded version.
+- Append a distinct dated startup-refusal explanation to the task report and log when Git-lock or Gitdir checks stop a background child before provider launch.
+- Keep test fixtures under explicit scratch/TMPDIR destinations and keep the README's stable-release link current without a hardcoded version.
 
 See [release scope and limits](docs/RELEASE-0.5.28.md). Final corrections, independent review, the combined gate and publication remain pending.
 

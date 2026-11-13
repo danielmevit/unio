@@ -1,43 +1,82 @@
 # Continue Unio development
 
-This guide covers the reviewed and gated 0.5.27 recovery release. Check the
-official tag and installed version for actual publication and delivery status.
+Read repository AGENTS.md, the newest enclosing coord/AGENT-LOG.md when
+available, and the current personal OWNER-WORKFLOW.md before planning. Inspect
+actual Git state, installed version, native jobs and current account holds.
+The official tag and its assets establish publication; a local version number
+or this document does not.
 
-Read AGENTS.md, current local OWNER-WORKFLOW.md when available, newest workspace
-coordination log and the actual installed version. Check Git, official latest
-release and native workflows. Preserve active jobs, failures and dirty work;
-use CodeGraph only if the repository is already indexed. Keep private receipts,
-authentication stores and research outside public Git.
+## Current candidate: 0.5.28
 
-The candidate combines incomplete failed-run context handoffs, explicit worker
-checkpoint archival with truthful partial outcomes, compact role startup cards
-and precise experience freshness diagnostics. See
-[release scope](../RELEASE-0.5.27.md), [work saving](../WORK-SAVING.md),
-[handoffs](../AI-HANDOFF.md) and [experience](../MODEL-EXPERIENCE.md).
+Installation and startup safety follows the shipped0.5.27 recovery/maintenance
+release. See [scope and limits](../RELEASE-0.5.28.md) and the changelog.
 
-Independent current-code Mistral 4 reviews and lead assessments cover the scoped
-components. The archive correction's original inherited-scope failure remains
-recorded; its 3 validation commands passed, and separate deterministic whole-
-candidate scope verification passed without an AI call. Do not rewrite that
-failure or confuse a report-only verification with an implementation contribution.
-The full combined gate passed with exit 0. The isolated installation and real
-failed-source handoff smoke passed. The package provenance and official release
-checksums identify final delivery; do not invent publication from a local version.
+- Refuse accidental installer sourcing before writes or caller-shell changes;
+  print a quoted rerun command for paths with spaces.
+- Stage and atomically replace the main runtime file. Preserve old open readers,
+  pre-publication failure safety and owned-staging-only cleanup. Helpers and
+  configuration still require idle maintenance; this is not whole-installation
+  atomicity, zero-downtime upgrading or a security sandbox.
+- Preserve live and Unknown Git index locks and refuse before provider/admission.
+  The existing writer can finish; Unio never guesses that a lock is stale.
+- Explain background Git-lock/Gitdir startup refusals in dated report/log
+  fragments, keeping parent acknowledgement distinct from provider execution.
+- Use portable test scratch selection and a stable README release link.
 
-Record final experience only after review and before base integration, under
-the original run configuration. Pending notes belong outside its immutable
-assessment store. Requested model/effort, client selection, effective Unknowns,
-actual exits, delivery, checks and acceptance remain separate.
+Final source correction, exact-current-code independent review, lead assessment,
+one full combined quality gate and tested installation remain pending. Check
+actual receipts and the official release before describing delivery as complete.
+Preserve original failures, reviews of earlier code and any Unknown outcomes.
+An approval on an earlier revision does not approve changed code.
 
-Use current owner workflow and eligible non-held routes. Personal review policy
-is one independent external reviewer plus the existing lead unless stricter
-project requirements apply. Current owner Codex lead-only and Fable-only Claude
-holds are local instructions; refresh them from the owner's current workflow.
-No blind retries, fake account groups or paid API fallback.
+## Fable's assessment role
 
-The Fable whole-app audit is separate and incomplete. Continue it in bounded
-[module-sized passes](INCREMENTAL-AUDITS.md), preserving actual findings and
-coverage; do not convert preliminary hypotheses into confirmed defects. After
-this operational release, triage remaining field evidence before managed lead,
-phone and Windows/macOS work. Do not pull unrelated old private candidates into
-a release merely because their version labels match.
+The maintainer's current assignment for Fable is advisory product and
+architecture assessment. First understand Unio: its purpose, users, workflow,
+capabilities, limits and design. Then give scores with reasons, evidence and
+confidence, and rank concrete improvements by value, urgency, effort and
+relationships. Explain what to keep, simplify, defer or change. A score is
+qualitative advice, not a benchmark or release certification.
+
+Feature reproductions, failure injection, stress tests, regression tests and
+implementation belong to other assigned workers. Do not resume the earlier
+shutdown-test trajectory as Fable's next task. Preserve those partial results
+as historical evidence and delegate validation of material claims. Save an
+early substantive assessment and useful section checkpoints. The advisory
+assessment does not hold up otherwise reviewed and gated app delivery.
+
+## Next priorities
+
+Make persistent Unknown cleanup holds understandable and provide safe operator
+recovery, without releasing shared-account capacity while process ownership
+remains Unknown. Independently validate natural failure paths before selecting
+fixes; a protective quarantine is not automatically a defect.
+
+Preview task scope against inherited branch changes before dispatch, without
+silently expanding authority. Design append-only correction history for final
+experience records, preserving the original evidence and assessments.
+
+Managed lead lifecycle in the existing dashboard follows operational reliability,
+then session-scoped phone pairing, native Windows and macOS. Reuse existing
+foundations and inspect their actual state before assigning new work; no
+replacement dashboard or speculative platform delivery is implied.
+
+## Operating rules
+
+Delegate source changes through Unio according to current owner routing; the
+lead scopes, independently assesses, reviews and integrates. Use separate
+worker checkouts, precise allowed paths, meaningful Validate lines and early
+commits/artifacts. Follow actual shared-account slots, lead reservation, STOP
+and owner holds. Requested startup model/effort, effective Unknown, real exits,
+required delivery, tests, independent findings and acceptance are separate.
+
+Respect spending/authentication restrictions and supported CLI/model controls;
+check updates while idle and never update an active worker. No blind retries
+or paid fallback. Preserve original failed attempts and partial work. Consult
+[lead routing](LEAD-ROUTING.md), [model experience](../MODEL-EXPERIENCE.md) and
+[work modes](../WORK-MODES.md); the latest owner workflow prevails over old copies.
+
+Answer status questions with the practical goal and current concrete evidence,
+then continue authorized useful work. Give estimates and proactive updates.
+Do not imply the lead works after its turn ends; identify actual continuing jobs
+and the exact next action in a handoff when capacity or runtime ends.

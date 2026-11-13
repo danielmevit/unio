@@ -33,9 +33,12 @@ Existing Git locks are not automatically classified as stale or removed.
 Investigate active Git writers before manually removing an abandoned lock.
 No deadline-based release of Unknown process ownership is introduced here.
 
-Background parent acknowledgement does not establish provider execution,
-delivery, verification, review or acceptance. A focused visibility correction
-is being prepared and is not yet part of an accepted release.
+Background Git-lock/Gitdir refusals append dated startup-refused explanations
+to the task report and log for `unio report` and `unio tail`. A background
+parent acknowledgement remains separate from provider execution, delivery,
+verification, review and acceptance. The explanation says no provider started
+and preserves original report/log content and canonical task results.
+Writing a diagnostic remains best effort when its destination is unavailable.
 
 ## Assessment and validation
 
