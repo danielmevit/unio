@@ -3,15 +3,24 @@
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
 """Installer accident-containment regressions.
 
-Two properties of the standalone installer:
+Three properties of the standalone installer:
 1. Accidental sourcing is refused before any installation filesystem write
    or caller-shell setting change, with a nonzero status and an actionable
-   message, and the caller shell keeps running.
+   message, and the caller shell keeps running. The refusal also writes no
+   shell variables of its own (a caller's pre-existing variables are
+   untouched) and prints the rerun command quoted with printf %q, so a
+   script path containing spaces stays a single argument and the printed
+   command is directly actionable.
 2. The main runtime publishes through a private staging file and one atomic
    rename: interpreters that already opened the previous runtime keep a
    complete read, new invocations always see a complete file, and a failure
    before publication leaves the existing runtime byte-identical while
    cleaning up only this invocation's own staging path.
+3. Publication is target-directory strict (--no-target-directory): a
+   destination swapped to a directory between the preflight and the rename
+   fails the install honestly — nonzero status, no success message, the
+   directory's foreign contents untouched, the runtime never nested inside
+   it — instead of silently succeeding with a nested file.
 
 Standard library only, offline. Every installer invocation in this file,
 including refused sourcing, receives explicit UNIO_BIN_DIR, UNIO_CONF_DIR and
@@ -283,6 +292,111 @@ class InstallerSafetyTests(unittest.TestCase):
         self.assertIn('refusing unsafe runtime path', result.stderr)
         self.assertEqual((runtime / 'unrelated').read_text(), 'not a runtime\n')
         self.assertEqual(sorted(os.listdir(runtime)), ['unrelated'])
+
+    def test_publication_fails_when_destination_swaps_to_directory(self):
+        """A destination swapped to a directory behind the preflight fails.
+
+        Controlled fault injection: a private PATH shim placed in front of
+        the real mv swaps the seeded regular runtime for a directory right
+        before the publication rename runs unchanged. The install must fail
+        nonzero without a success message, never nest the staged runtime
+        inside the directory, leave the foreign contents untouched and
+        preserve the moved-aside previous runtime.
+        """
+        runtime = self.bin_dir / 'unio'
+        runtime.write_text('#!/usr/bin/env bash\nexit 7\n')
+        os.chmod(runtime, 0o711)
+        backup = self.base / 'previous runtime'
+        shim_dir = self.base / 'mv shim dir'
+        shim_dir.mkdir()
+        marker_name = 'foreign-payload.txt'
+        (shim_dir / 'mv').write_text(
+            '#!/usr/bin/env bash\n'
+            'dest=""\n'
+            'for arg in "$@"; do\n'
+            '  dest="$arg"\n'
+            'done\n'
+            'if [ "$dest" = "$UNIO_TEST_SWAP_DEST" ] && [ -f "$UNIO_TEST_SWAP_DEST" ]; then\n'
+            '  /usr/bin/mv -- "$UNIO_TEST_SWAP_DEST" "$UNIO_TEST_SWAP_BACKUP"\n'
+            '  mkdir -- "$UNIO_TEST_SWAP_DEST"\n'
+            '  printf \'foreign payload\\n\' > "$UNIO_TEST_SWAP_DEST/' + marker_name + '"\n'
+            'fi\n'
+            'exec /usr/bin/mv "$@"\n'
+        )
+        os.chmod(shim_dir / 'mv', 0o755)
+        result = self.invoke(['bash', INSTALLER], self.environment(
+            PATH=str(shim_dir) + ':/usr/bin:/bin',
+            UNIO_TEST_SWAP_DEST=str(runtime),
+            UNIO_TEST_SWAP_BACKUP=str(backup),
+        ))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('Unio installed', result.stdout)
+        self.assertTrue(runtime.is_dir(), 'destination must still be the swapped directory')
+        self.assertFalse((runtime / 'unio').exists(),
+                         'staged runtime must never be nested inside the directory')
+        self.assertEqual((runtime / marker_name).read_text(), 'foreign payload\n')
+        self.assertEqual(backup.read_text(), '#!/usr/bin/env bash\nexit 7\n')
+        self.assertEqual(oct(os.stat(backup).st_mode & 0o777), oct(0o711))
+        self.assertEqual(sorted(os.listdir(self.bin_dir)), ['unio'],
+                         'this run\'s staging directory must be cleaned')
+
+    def test_sourced_refusal_quotes_hint_and_preserves_caller_state(self):
+        """The refusal leaves caller variables alone and prints a usable hint.
+
+        A caller script sets unio_source_hint itself, then sources a copy of
+        the installer from a directory whose name contains a space. The
+        refusal must not clobber unio_source_hint, change shell state or the
+        fixture, and the printed rerun command must re-tokenize to exactly
+        [bash, <script path>] and, run verbatim, perform a normal private
+        executed install.
+        """
+        fixture_dir = self.base / 'sourced install dir'
+        fixture_dir.mkdir()
+        copied = fixture_dir / 'unio-install.sh'
+        copied.write_text(INSTALLER.read_text())
+
+        def fixture_snapshot():
+            state = {}
+            for path, dirs, files in os.walk(fixture_dir):
+                for name in sorted(dirs):
+                    state[os.path.join(path, name)] = 'dir'
+                for name in sorted(files):
+                    full = os.path.join(path, name)
+                    with open(full, 'rb') as handle:
+                        state[full] = hashlib.sha256(handle.read()).hexdigest()
+            return state
+
+        before = fixture_snapshot()
+        caller = self.base / 'hint caller.sh'
+        caller.write_text(
+            'unio_source_hint=CALLER-SENTINEL\n'
+            'echo "state $- $(set +o | md5sum)"\n'
+            'source ' + shlex.quote(str(copied)) + '\n'
+            'rc=$?\n'
+            'echo "state $- $(set +o | md5sum)"\n'
+            'echo "sourced-rc=$rc caller-alive"\n'
+            'echo "hint-after=$unio_source_hint"\n'
+        )
+        result = self.invoke(['bash', caller], self.environment())
+        self.assert_refusal(result)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(fixture_snapshot(), before)
+        lines = result.stdout.splitlines()
+        self.assertEqual(lines[0], lines[1], 'caller shell state must not change')
+        self.assertIn('sourced-rc=1 caller-alive', lines)
+        self.assertIn('hint-after=CALLER-SENTINEL', lines)
+        hint_lines = [line for line in result.stderr.splitlines()
+                      if 'run it instead:' in line]
+        self.assertEqual(len(hint_lines), 1, result.stderr)
+        hint = hint_lines[0].split('run it instead: ', 1)[1]
+        self.assertEqual(shlex.split(hint), ['bash', str(copied)],
+                         'printed command must re-tokenize to exactly bash + path')
+        # Running the printed hint verbatim installs normally into the
+        # private fixture destinations; no global path is touched.
+        rerun = self.invoke(['bash', '-c', hint], self.environment())
+        self.assertEqual(rerun.returncode, 0, rerun.stderr)
+        self.assertIn('Unio installed', rerun.stdout)
+        self.assertTrue((self.bin_dir / 'unio').exists())
 
 
 if __name__ == '__main__':

@@ -24,6 +24,11 @@ and before any destination variable is used, so:
   after the `source` command. The installer never calls `exit` on the
   caller's behalf. If the caller itself runs `set -e`, its own errexit
   policy may still abort the caller — that choice belongs to the caller.
+- The refusal writes no shell variables at all: the guard assigns nothing,
+  so a caller's pre-existing `unio_source_hint` (or any other variable) is
+  untouched. The rerun hint is printed with `printf %q` quoting, so a
+  script path containing spaces stays a single argument and the printed
+  command is directly actionable.
 
 Detection relies on `return` being legal only while a file is sourced
 (`if (return 0 2>/dev/null); then ... return 1; fi`), not on
@@ -81,6 +86,12 @@ published with a single `mv` rename. Consequences, all covered by
 - An upgraded runtime keeps its existing mode (`chmod --reference`); a
   fresh install keeps the umask-following mode `cat` + `chmod +x` always
   produced.
+- Publication is target-directory strict (`mv -f --no-target-directory`):
+  if the destination is swapped to a directory behind the preflight (race
+  or sabotage), the rename fails honestly — nonzero status, no success
+  message, the directory's foreign contents untouched, the runtime never
+  nested inside it. A symlink destination is replaced as its own entry,
+  never followed into another directory.
 
 What is deliberately *not* claimed:
 
@@ -98,3 +109,28 @@ What is deliberately *not* claimed:
 
 Regression entry point: `python3 -B tests/unio-installer-safety.py`
 (registered in `tools/quality-check.sh`).
+
+## 3. Correction 2026-11-13
+
+Independent fault injection against the accident-safety state found three
+gaps, all corrected the same day:
+
+- Publication could nest into a directory destination: if `BIN_DIR/unio`
+  was swapped to a directory between the preflight and the publication
+  (`mv -f` moves a staged file *into* an existing directory and exits 0),
+  the installer printed success while the command path was a directory.
+  Publication is now target-directory strict (`--no-target-directory`).
+- The sourced-refusal rerun hint was printed unquoted, so a script path
+  containing a space split into extra arguments and was not actionable.
+  The hint is now printed with `printf %q`.
+- The refusal assigned `unio_source_hint`, clobbering a caller's
+  pre-existing variable of that name. The refusal now writes no shell
+  variables at all.
+
+New regressions in `tests/unio-installer-safety.py`:
+`test_publication_fails_when_destination_swaps_to_directory` (a private
+PATH shim swaps the destination right before the publication rename),
+`test_sourced_refusal_quotes_hint_and_preserves_caller_state` (hint
+re-tokenization for a path with spaces, verbatim hint execution, and a
+caller-variable sentinel). All earlier accident-safety regressions are
+kept green and unchanged.

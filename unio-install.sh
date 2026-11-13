@@ -20,15 +20,18 @@
 # legal while a file is sourced, so ordinary executed installs keep working,
 # including "bash unio-install.sh", a pipe feeding bash's standard input, and
 # "bash -c" runs where no script path needs to exist. A refused caller gets a
-# nonzero status and keeps its shell; this file never exits it for them.
+# nonzero status and keeps its shell; this file never exits it for them. The
+# refusal also writes no shell variables of its own and prints the rerun
+# command quoted with printf %q, so a script path containing spaces stays a
+# single argument.
 if (return 0 2>/dev/null); then
-  unio_source_hint='bash unio-install.sh'
-  if [ -n "${BASH_SOURCE:-}" ]; then
-    unio_source_hint="bash ${BASH_SOURCE:-}"
-  fi
   echo "unio installer: refusing: this file was sourced instead of executed." >&2
   echo "unio installer: nothing was installed and no shell settings changed." >&2
-  echo "unio installer: run it instead: $unio_source_hint" >&2
+  if [ -n "${BASH_SOURCE:-}" ]; then
+    printf 'unio installer: run it instead: bash %q\n' "$BASH_SOURCE" >&2
+  else
+    printf 'unio installer: run it instead: bash unio-install.sh\n' >&2
+  fi
   return 1
 fi
 set -euo pipefail
@@ -25582,6 +25585,10 @@ UNIO_NOTICE_EOF
 # failure before the rename leaves any existing runtime byte-identical and
 # prints no success message. Only this invocation's own staging directory is
 # cleaned up; unrelated files or leftover staging names are never touched.
+# Publication is target-directory strict (--no-target-directory): if the
+# destination is swapped to a directory behind the preflight, the rename
+# fails instead of nesting the runtime inside it, and a symlink destination
+# is replaced as its own entry, never followed into another directory.
 if [ -L "$BIN_DIR/unio" ] || { [ -e "$BIN_DIR/unio" ] && [ ! -f "$BIN_DIR/unio" ]; }; then
   echo "unio: refusing unsafe runtime path: $BIN_DIR/unio is not a regular file" >&2
   exit 1
@@ -38792,7 +38799,7 @@ UNIO_BIN_EOF
 if [ -f "$BIN_DIR/unio" ]; then
   chmod --reference="$BIN_DIR/unio" "$unio_runtime_tmp"
 fi
-mv -f -- "$unio_runtime_tmp" "$BIN_DIR/unio"
+mv -f --no-target-directory -- "$unio_runtime_tmp" "$BIN_DIR/unio"
 rmdir -- "$unio_runtime_stage"
 trap - EXIT
 # BEGIN EMBEDDED LEAD COOLDOWN
