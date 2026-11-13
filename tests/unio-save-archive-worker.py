@@ -580,6 +580,8 @@ with tempfile.TemporaryDirectory(prefix='save-archive-worker-') as directory:
         except core['Refuse'] as error:
             default_refused = (error.code == 'excessive' and '60 second bound' in error.message
                                and getattr(error, 'moved', None) is None)
+        default_no_effects = (initial[8] in ids(store) and initial[8] not in ids(archive)
+                              and not any(p.name.startswith('iso-8-') for p in receipts.iterdir()))
         os.environ['UNIO_SAVE_ARCHIVE_TIMEOUT'] = '90'
         clock.now = 1000.0
         try:
@@ -595,8 +597,7 @@ with tempfile.TemporaryDirectory(prefix='save-archive-worker-') as directory:
         os.environ.pop('UNIO_SAVE_ARCHIVE_TIMEOUT', None)
     stem8 = 'iso-8-' + slow_hash[:16]
     check('default 60 refuses genuinely slow selected validation before effects',
-          default_refused and initial[8] in ids(store) and initial[8] not in ids(archive)
-          and not any(p.name.startswith('iso-8-') for p in receipts.iterdir()))
+          default_refused and default_no_effects)
     check('explicit larger budget lets the same slow validation finish',
           big_finished and initial[8] in ids(archive) and initial[8] not in ids(store)
           and json.loads((receipts/(stem8 + '.intent.json')).read_text())['apply_budget_seconds'] == 90
