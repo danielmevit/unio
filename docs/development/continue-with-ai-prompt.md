@@ -1,70 +1,81 @@
 # Continue Unio development
 
-Read AGENTS.md, newest enclosing coord/AGENT-LOG.md when available and the current
-personal OWNER-WORKFLOW.md before planning/final acceptance. Inspect actual local
-and remote Git state, installed version, active native runs, holds and current
-capacity observations. These are maintainer instructions, not universal product
-defaults. A version label or this prompt does not prove publication.
+Read AGENTS.md, the newest enclosing coord/AGENT-LOG.md when available and the
+current personal OWNER-WORKFLOW.md before planning or final acceptance. Check
+actual local and remote Git state, installed version, active native runs, owner
+holds and current capacity observations. This file and a version string do not
+prove official publication, global installation or available provider capacity.
 
-## Shipped baseline and current candidate
+## Current release scope
 
-Official0.5.28 is the installation/startup-safety baseline. Current0.5.29 candidate
-adds reusable typed route recipes, neutral fresh lead instructions/custom-template
-preservation, the mode/tier correction and safe Vibe setup-reason hints. See
-[release scope](../RELEASE-0.5.29.md) and [profile guide](../integrations/ROUTE-PROFILES.md).
-V1 profiles compile the existing tested Vibe3.1.1/GLM5.3 route; they do not dispatch,
-modify configuration/accounts or prove effective identity, allowance or access.
+0.5.30 adds observational report-review packets and report links, a configurable
+explicit archive-apply deadline, login-confirmation guidance and a reusable
+lead-to-Fable product-assessment prompt. See [release evidence and limits](../RELEASE-0.5.30.md)
+and [report-review guide](../REVIEW-REPORTS.md). These links never establish native
+readiness, whole-task coverage or owner acceptance. Failed, stale or incomplete
+reviewer Sources remain ineligible; old reports do not become fresh by attachment.
 
-All implementation tasks have native gates, with actual failures and corrections
-preserved separately. Current independent SOURCE reviews cover disjoint author
-scopes; they do not approve each other's labs' code. Before accepting composition,
-compare exact source files/installer regions with those reviewed revisions, inspect
-the combined diff, and run the required full gate once on a frozen candidate.
-Current scoped source reviews, the lead assessment, the one full combined quality
-gate and the isolated installation check passed; official publication and the
-global install remain separate pending steps. Read actual receipts before
-describing them as complete. Never transfer stale approval to changed code or
-call process0 accepted delivery.
+Independent scoped current-code reviews, the existing lead assessment, the full
+combined quality gate and a private installation with six offline checks passed.
+The initial gate failure and its reviewed test-only completion correction remain
+separate evidence. Final release Markdown changes preserve every gated runtime,
+installer and test byte. Read official tag/assets and current installation receipts
+before describing publication or this machine's installation as completed.
 
-## Priorities after this batch
+The preceding 0.5.29 launch recipes compile one tested Vibe3.1.1/GLM5.3 agents.conf
+entry for deliberate manual use; they do not automatically dispatch or establish
+effective identity, account availability or allowance. Existing custom owner
+templates remain authoritative and are preserved on install.
 
-1. Bind current-code/report-only external review evidence and ordinary-task owner
-   acceptance to exact native task/revision/material, reusing existing review-set,
-   receipt/finding and freshness machinery. Native review binding already exists;
-   investigate the missing path precisely rather than replacing the whole system.
-2. Preview inherited task scope before provider launch so a valid implementation
-   is not discovered out-of-scope only at the end. Preserve authoritative scope,
-   task hashes, STOP, account admission and original refusals; no silent widening.
-3. Separate remaining personal trial/hold prose from neutral installed defaults,
-   preserving custom owner playbooks and all licensing/attribution. Optional lead
-   policy data must not break the existing six-key work-policy schema.
-4. Measure current save-cap/latency behavior after recent optimizations before
-   changing recovery internals. Preserve newest/pinned/corrupt evidence and all
-   secret, stability, retention and Unknown safeguards. No automatic deletion.
-5. Extract one embedded module byte-equivalently, then refine ordinary-task
-   scheduling/help and arrange a real independent-person onboarding trial.
+## Next coherent batch
 
-Managed lead in the existing dashboard follows operational reliability, then
-session-scoped phone pairing, native Windows/Store/trial/localization, then macOS.
-Reuse existing foundations. Do not replace the dashboard or attach later features
-to an already frozen release gate.
+1. Finish the separate optional `verify --preview` scope observation. Bind task and
+   Git observations across parsing; preserve exact paths, native locks, exit2 for
+   Unknown, STOP readability and the authoritative normal verify gate. Keep test
+   injection exclusively in disposable fixtures, never a shipped command hook.
+2. Review and integrate tested exact Antigravity1.5.9 compatibility alongside the
+   retained 1.3.5 route. Record the observed version and supported explicit effort;
+   do not broaden model availability or erase process0/terminalERROR failures.
+3. Use the new packet-before-dispatch report-link workflow on useful assignments,
+   retaining exact material, currentness, bounded typed artifacts and the existing
+   lead's independent acceptance. Additions must not widen canonical approvals.
+4. Measure protected checkpoint capacity and archive latency using read-only plans
+   first. Explicit maintenance may set `UNIO_SAVE_ARCHIVE_TIMEOUT` (1..900 seconds, default 60);
+   preserve newest/pinned/corrupt evidence, original failures and partial Unknowns.
+   No automatic deletion, purge, blind retry or benchmark-evidence cleanup.
+5. Separate remaining personal policy from neutral defaults without weakening
+   owner rules or the existing work-policy schema. Then perform one byte-equivalent
+   module extraction, simplify help/scheduling and arrange a real onboarding trial.
 
-## Assessment and operating rules
+The preview and adapter changes are separate work, not implied shipped by0.5.30.
+Inspect their actual branches, Sources, corrections and current reviews; inherited
+old gates or successful process exits do not accept a new composition. Do not add
+later work to an already frozen release gate.
 
-Fable's product/architecture assessment is advisory reading and recommendations,
-not testing, reproduction, implementation or release certification. Preserve its
-saved work and real guard failures; validate material claims with appropriate
-workers. Scores and structural cost guesses are not measured benchmarks.
+Managed-lead ownership in the existing dashboard follows operational reliability,
+then session-scoped phone pairing, native Windows/Store/private trial/localization,
+then macOS. Reuse current foundations. Fable's saved product and architecture
+assessment is advisory and only partly implemented; it is not a release certificate,
+measured token-saving benchmark or a reason to repeat the whole audit.
 
-Delegate code changes according to current owner routing. One focused task and
-isolated worktree per change; preserve partial work, exact failed attempts, current
-account/lead reservations and supported CLI/model pins. Requested startup effort,
-coordination tier and effective Unknown are separate. No blind retries or paid
-fallback. Check CLI updates while idle; do not update a frozen provider call.
+## Operating continuity
 
-Use precise scopes and meaningful offline regressions, independent eligible
-current-code assessment plus the existing lead, and required project/CI gates.
-Answer status with practical goal and current concrete state, then continue
-already-authorized work. Give estimates and proactive updates. Preserve active
-controllers, receipts and the exact next step before an actual runtime/access or
-capacity block; don't imply the lead is working after its turn ends.
+Delegate code changes using current owner routing, one focused task and isolated
+worktree per change. Preserve partial work, failed attempts, real shared-account
+groups, lead reservations, holds and STOP. Requested model/startup effort,
+coordination tier and effective Unknown are separate facts. Refresh observations
+before admission. Check supported CLI updates only while idle and freeze the exact
+version for each assignment; never update beneath Source or native verification.
+
+One eligible independent current-code external reviewer plus the existing lead is
+the current personal default unless a stricter project/CI rule applies. Consult
+OWNER-WORKFLOW for current model holds; historical copied permission does not
+override them. No blind retries, paid fallback or auth/billing changes. A status
+message alone does not justify asking the owner to log in again: compare the exact
+route/context, owner confirmation and actual invocation evidence first.
+
+Answer status with the feature's purpose and concrete current state, give estimates
+and proactive updates, then continue already-authorized work in the same turn.
+Completed versions are checkpoints. Before an actual access, capacity, authority
+or runtime block, preserve receipts, active controllers and the exact next step.
+Do not imply the lead keeps working after its turn ends.
