@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
-"""Optional Antigravity CLI (agy) 1.3.5 worker with a truthful terminal verdict.
+"""Optional Antigravity CLI (agy) 1.3.5 and 1.5.9 worker with a truthful verdict.
 
 The adapter distinguishes the actual CLI process exit from the structured
 terminal status in the native NDJSON stream, so a process exit 0 plus a
@@ -23,13 +23,17 @@ import sys
 import tempfile
 import time
 
-VERSION = "1.3.5"
-# Fixed Gemini 3.8 Flash selectors advertised by the pinned CLI; the generic
-# --effort flag is never passed for these variants and requested effort is
-# derived from the selector name only.
+VERSIONS = ("1.3.5", "1.5.9")
+# Fixed Gemini 3.8 Flash selectors advertised by both pinned CLIs. agy 1.3.5
+# has no generic effort flag: requested effort is derived from the selector
+# name only. agy 1.5.9 documents --effort, and the proven 1.5.9 review passed
+# it explicitly after the model selector; the adapter passes exactly the
+# selected low/medium/high, never an inherited max/ultra default.
 SELECTORS = {"high": "gemini-3.8-flash-high",
              "medium": "gemini-3.8-flash-medium",
              "low": "gemini-3.8-flash-low"}
+# Versions whose documented help includes the generic --effort flag.
+EFFORT_FLAG_VERSIONS = ("1.5.9",)
 # agy has no prompt-file flag. Its help documents an NDJSON stdin input mode
 # whose message schema is not established from help or owned logs, so no stdin
 # format is guessed: the task travels as the single -p argv string. Linux caps
@@ -361,9 +365,11 @@ def main():
         if not cli:
             raise Refusal("missing_cli")
         cli = os.path.realpath(cli)
-        # Quiet metadata preflight: version only, no provider call.
-        code, version, _ = owned_call([cli, "--version"], None, 30, output_limit=4096)
-        if code or version.decode("ascii", errors="replace").strip() != VERSION:
+        # Quiet metadata preflight: version only, no provider call. The
+        # observed version is recorded truthfully; it is never assumed.
+        code, version_out, _ = owned_call([cli, "--version"], None, 30, output_limit=4096)
+        version = version_out.decode("ascii", errors="replace").strip()
+        if code or version not in VERSIONS:
             raise Refusal("unsupported_cli")
         directory = Path(tempfile.mkdtemp(prefix="antigravity-run-", dir=parent))
         receipt = directory / "receipt.json"
@@ -372,7 +378,8 @@ def main():
         stderr_path = directory / "native-stderr.log"
         private_file(task, data)
         record = dict(schema_version=1, started_at=date(), role="implementation_worker",
-                      transport="Antigravity CLI print mode", cli_version=VERSION,
+                      transport="Antigravity CLI print mode", cli_version=version,
+                      native_effort_flag=version in EFFORT_FLAG_VERSIONS,
                       cli_sha256=file_sha256(cli), task_sha256=hashlib.sha256(data).hexdigest(),
                       task_bytes=len(data), prompt_transport="argv_single_argument",
                       prompt_transport_bound_bytes=TASK_ARG_BYTES,
@@ -391,10 +398,14 @@ def main():
                       stderr_path=str(stderr_path))
         write_receipt(receipt, record)
         argv = [cli, "-p", data.decode("utf-8"), "--mode", "accept-edits",
-                "--model", SELECTORS[args.selector],
-                "--dangerously-skip-permissions", "--disable-slash-commands",
-                "--print-timeout", native_duration(args.time_limit),
-                "--output-format", "stream-json"]
+                "--model", SELECTORS[args.selector]]
+        if version in EFFORT_FLAG_VERSIONS:
+            # 1.5.9 argv form: the documented generic effort flag follows the
+            # model selector and carries exactly the selected effort level.
+            argv += ["--effort", args.selector]
+        argv += ["--dangerously-skip-permissions", "--disable-slash-commands",
+                 "--print-timeout", native_duration(args.time_limit),
+                 "--output-format", "stream-json"]
         record["invocations"] = 1
         record["outcome"] = "starting"
         write_receipt(receipt, record)

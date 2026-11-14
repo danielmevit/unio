@@ -35,11 +35,23 @@ argv = sys.argv[1:]
 assert argv[0] == '-p' and argv[2:4] == ['--mode', 'accept-edits'], argv
 assert argv[4] == '--model', argv
 assert argv[5] in ('gemini-3.8-flash-high', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-low'), argv
-assert argv[6] == '--dangerously-skip-permissions', argv
-assert argv[7] == '--disable-slash-commands', argv
-assert argv[8] == '--print-timeout', argv
-assert argv[10:] == ['--output-format', 'stream-json'], argv
-assert '--effort' not in argv and '-e' not in argv, argv
+effort = {'gemini-3.8-flash-high': 'high', 'gemini-3.8-flash-medium': 'medium',
+          'gemini-3.8-flash-low': 'low'}[argv[5]]
+if os.environ.get('FAKE_VERSION', '1.3.5') == '1.5.9':
+    # 1.5.9 argv form: the documented generic effort flag follows the model
+    # selector and carries exactly the selected low/medium/high, never an
+    # inherited max/ultra default.
+    assert argv[6:8] == ['--effort', effort], argv
+    assert effort in ('low', 'medium', 'high'), argv
+    tail = argv[8:]
+else:
+    # 1.3.5 legacy argv form: no generic effort flag is ever passed.
+    assert '--effort' not in argv and '-e' not in argv, argv
+    tail = argv[6:]
+assert tail[0] == '--dangerously-skip-permissions', argv
+assert tail[1] == '--disable-slash-commands', argv
+assert tail[2] == '--print-timeout', argv
+assert tail[4:] == ['--output-format', 'stream-json'], argv
 task = Path(os.environ['FAKE_TASK']).read_bytes()
 assert argv[1].encode() == task, 'task text must arrive as the single -p argument'
 mode = os.environ.get('FAKE_MODE', 'success')
@@ -222,6 +234,8 @@ def main():
               first_call['argv'][2:4] == ['--mode', 'accept-edits']
               and first_call['argv'][6] == '--dangerously-skip-permissions'
               and first_call['argv'][7] == '--disable-slash-commands')
+        check('1.3.5 legacy argv form records no generic effort flag',
+              record['native_effort_flag'] is False)
 
         # Explicit medium/low selectors derive effort from the selector only.
         for selector, model in (('medium', 'gemini-3.8-flash-medium'), ('low', 'gemini-3.8-flash-low')):
@@ -231,6 +245,45 @@ def main():
         result = h.run('--prompt-file', str(h.task))
         check('--prompt-file transport matches TASKFILE bytes',
               result.returncode == 0 and len(h.provider_calls()) == 4)
+
+        # agy 1.5.9: same pinned selectors plus the documented --effort flag
+        # carrying exactly the selected low/medium/high; the observed version
+        # is recorded truthfully instead of a hardcoded 1.3.5.
+        result = h.run(env={'FAKE_VERSION': '1.5.9'})
+        check('1.5.9 default run: adapter 0 on native 0 plus clean terminal SUCCESS',
+              result.returncode == 0 and result.stderr == '')
+        summary = public_summary(result)
+        check('1.5.9 public summary stays finite operational metadata',
+              summary['native_exit'] == 0 and summary['outcome'] == 'terminal_success'
+              and summary['terminal_status'] == 'SUCCESS' and summary['terminal_error'] is False)
+        record = json.loads(Path(summary['receipt']).read_text())
+        check('1.5.9 receipt records the observed version and effort flag',
+              record['cli_version'] == '1.5.9' and record['native_effort_flag'] is True
+              and record['requested_model'] == 'gemini-3.8-flash-high'
+              and record['requested_effort'] == 'high'
+              and record['effective_model'] == 'unknown'
+              and record['effective_effort'] == 'unknown'
+              and record['remaining_allowance'] == 'unknown')
+        check('1.5.9 argv passes the model selector then --effort high',
+              h.provider_calls()[-1]['argv'][4:8]
+              == ['--model', 'gemini-3.8-flash-high', '--effort', 'high'])
+        for selector, model in (('medium', 'gemini-3.8-flash-medium'), ('low', 'gemini-3.8-flash-low')):
+            result = h.run('--selector', selector, env={'FAKE_VERSION': '1.5.9'})
+            check('1.5.9 ' + selector + ' selector passes matching --effort ' + selector,
+                  result.returncode == 0
+                  and h.provider_calls()[-1]['argv'][4:8] == ['--model', model, '--effort', selector])
+        result = h.run(mode='error_with_response', env={'FAKE_VERSION': '1.5.9'})
+        summary = public_summary(result)
+        check('1.5.9 native 0 plus terminal ERROR stays adapter 2',
+              result.returncode == 2 and summary['native_exit'] == 0
+              and summary['outcome'] == 'terminal_error'
+              and summary['terminal_status'] == 'ERROR'
+              and summary['terminal_error'] is True)
+        result = h.run(mode='missing', env={'FAKE_VERSION': '1.5.9'})
+        summary = public_summary(result)
+        check('1.5.9 missing terminal proof refuses invented success',
+              result.returncode == 2 and summary['native_exit'] == 0
+              and summary['outcome'] == 'missing_terminal_result')
 
         # process 0 plus terminal ERROR with a response body is not success.
         result = h.run(mode='error_with_response')
@@ -310,6 +363,13 @@ def main():
               result.returncode == 2 and 'unsupported_cli' in result.stderr
               and len(h.provider_calls()) == calls_before
               and h.invocations()[-1]['argv'] == ['--version'])
+        for bad in ('1.5.8', '1.6.0'):
+            calls_before = len(h.provider_calls())
+            result = h.run(env={'FAKE_VERSION': bad})
+            check('unsupported CLI version ' + bad + ' refused before provider call',
+                  result.returncode == 2 and 'unsupported_cli' in result.stderr
+                  and len(h.provider_calls()) == calls_before
+                  and h.invocations()[-1]['argv'] == ['--version'])
 
         # Bounded output overflow is a truthful bounded failure.
         result = h.run(mode='overflow')
