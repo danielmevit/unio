@@ -21,8 +21,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-OLD_INSTALLER = Path('/mnt/d/Vibe Coding/_vm/unio/tmp/unio-next/'
-                     'fable-implementation-0529-20261113/assets/unio-install.sh')
+OLD_READER_FIXTURE = ROOT / 'tests' / 'fixtures' / 'report-review-reader-0529'
+OLD_READER = OLD_READER_FIXTURE / 'unio-reader'
 
 PROVIDER = '''import json, os, sys
 control = json.loads(open(sys.argv[1]).read())
@@ -64,6 +64,7 @@ class ReportReviews(unittest.TestCase):
                        UNIO_CONF_DIR=str(cls.install / 'conf'),
                        UNIO_COMPLETION_DIR=str(cls.install / 'completion'),
                        UNIO_AUTO_VERIFY='0', UNIO_AUTO_OFF='0', UNIO_AUTO_SYNC='0',
+                       UNIO_CLI_UPDATES_OFFLINE='1',
                        UNIO_TIMEOUT='30', GIT_CONFIG_GLOBAL='/dev/null',
                        GIT_CONFIG_NOSYSTEM='1', GIT_AUTHOR_NAME='mock',
                        GIT_COMMITTER_NAME='mock', GIT_AUTHOR_EMAIL='mock@test.invalid',
@@ -75,17 +76,9 @@ class ReportReviews(unittest.TestCase):
                            capture_output=True, text=True, timeout=120)
         assert p.returncode == 0, p.stderr
         cls.engine = str(cls.install / 'bin' / 'unio')
-        assert OLD_INSTALLER.is_file(), '0.5.29 reader installer is required'
-        old = tempfile.TemporaryDirectory(prefix='report reviews old reader ')
-        cls.addClassCleanup(old.cleanup)
-        old = Path(old.name)
-        oldenv = dict(cls.env)
-        oldenv.update(UNIO_BIN_DIR=str(old / 'bin'), UNIO_CONF_DIR=str(old / 'conf'),
-                      UNIO_COMPLETION_DIR=str(old / 'completion'))
-        p = subprocess.run(['bash', str(OLD_INSTALLER)], cwd=old, env=oldenv,
-                           capture_output=True, text=True, timeout=120)
-        assert p.returncode == 0, p.stderr
-        cls.old_engine = str(old / 'bin' / 'unio')
+        assert OLD_READER.is_file(), 'portable 0.5.29 reader fixture is required'
+        assert os.access(OLD_READER, os.X_OK), '0.5.29 reader fixture must be executable'
+        cls.old_engine = str(OLD_READER)
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='report project ')
@@ -175,6 +168,18 @@ class ReportReviews(unittest.TestCase):
         os.chmod(path, 0o600)
         fcntl.flock(handle, fcntl.LOCK_EX)
         self.addCleanup(handle.close)
+
+    def tree_bytes(self, path):
+        items = {}
+        for child in sorted(path.rglob('*')):
+            rel = str(child.relative_to(path))
+            if child.is_symlink():
+                items[rel] = ('link', os.readlink(child))
+            elif child.is_dir():
+                items[rel] = ('dir', None)
+            else:
+                items[rel] = ('file', child.read_bytes())
+        return items
 
     def test_positive_flow_idempotency_and_unchanged_defaults(self):
         packet = self.packet()
@@ -367,22 +372,29 @@ class ReportReviews(unittest.TestCase):
         p = self.bind(reviewer, code=2)
         self.assertIn('worker is busy', p.stderr)
 
-    def test_publication_interruption_and_pending_sweep(self):
+    def test_publication_interruption_preserves_pending_evidence(self):
         leftover = self.coord / 'review-packets' / ('.pending-' + 'ab' * 16)
         leftover.mkdir(parents=True)
-        (leftover / 'junk.txt').write_text('partial packet\n')
+        junk = leftover / 'junk.txt'
+        junk.write_text('partial packet\n')
+        leftover_bytes = self.tree_bytes(leftover)
         packet = self.packet()
-        self.assertFalse(leftover.exists())
+        self.assertEqual(self.tree_bytes(leftover), leftover_bytes)
         self.assertTrue((self.coord / 'review-packets' / packet['id'] / 'manifest.json').is_file())
+        pending_names = sorted(p.name for p in leftover.parent.iterdir()
+                               if p.name.startswith('.pending-'))
+        self.assertEqual(pending_names, [leftover.name])
         reviewer = self.reviewer('1', packet)
         attached = json.loads(self.bind(reviewer).stdout)
         receipt_dir = self.coord / 'reports' / (self.target + '.report-review.' + attached['id'])
         pending = self.coord / 'reports' / ('.pending-report-review-' + 'cd' * 8)
         pending.mkdir()
         (pending / 'receipt.json').write_text('{}\n')
+        pending_bytes = self.tree_bytes(pending)
         replay = json.loads(self.bind(reviewer).stdout)
         self.assertTrue(replay['replay'])
-        self.assertFalse(pending.exists())
+        self.assertEqual(self.tree_bytes(pending), pending_bytes)
+        self.assertEqual(self.tree_bytes(leftover), leftover_bytes)
         findings = receipt_dir / 'findings.json'
         findings.unlink()
         p = self.bind(reviewer, code=2)
@@ -391,6 +403,60 @@ class ReportReviews(unittest.TestCase):
         self.assertFalse(findings.exists())
         p = self.packet('baseline.txt', code=2)
         self.assertIn('not relevant to the target material', p.stderr)
+        self.assertEqual(self.tree_bytes(leftover), leftover_bytes)
+        self.assertEqual(self.tree_bytes(pending), pending_bytes)
+
+    def test_other_worker_pending_records_stay_byte_identical_under_lock(self):
+        with self.conf.open('a') as stream:
+            stream.write("mock2=bash -c 'printf work > hello2.txt; "
+                         "git add hello2.txt; git commit -qm other'\n")
+        self.unio('init', 'mock2')
+        self.task('other', scope='- hello2.txt', validate='$ test -s hello2.txt')
+        self.unio('run', 'mock2', 'other')
+        self.unio('verify', 'mock2', 'other')
+        packets = self.coord / 'review-packets'
+        packets.mkdir(parents=True, exist_ok=True)
+        other_packet = packets / ('.pending-' + '11' * 16)
+        other_packet.mkdir()
+        (other_packet / 'material.txt').write_text('other worker unpublished packet\n')
+        (other_packet / 'manifest.json').write_text('{"writer":"mock2"}\n')
+        packet_before = self.tree_bytes(other_packet)
+        self.hold_lock('mock2')
+        packet = self.packet()
+        self.assertEqual(self.tree_bytes(other_packet), packet_before)
+        self.assertTrue((packets / packet['id'] / 'manifest.json').is_file())
+        reports = self.coord / 'reports'
+        other_bind = reports / ('.pending-report-review-' + '22' * 8)
+        other_bind.mkdir()
+        (other_bind / 'receipt.json').write_text('{"writer":"mock2-bind"}\n')
+        (other_bind / 'summary.md').write_text('other unpublished bind\n')
+        bind_before = self.tree_bytes(other_bind)
+        leftover = packets / ('.pending-' + 'ab' * 16)
+        leftover.mkdir()
+        (leftover / 'junk.txt').write_text('interrupted leftover\n')
+        leftover_before = self.tree_bytes(leftover)
+        reviewer = self.reviewer('1', packet)
+        attached = json.loads(self.bind(reviewer).stdout)
+        self.assertTrue(attached['attached'])
+        self.assertEqual(self.tree_bytes(other_packet), packet_before)
+        self.assertEqual(self.tree_bytes(other_bind), bind_before)
+        self.assertEqual(self.tree_bytes(leftover), leftover_before)
+        p = self.packet(target='other', worker='mock2', code=2)
+        self.assertIn('worker is busy', p.stderr)
+        self.assertEqual(self.tree_bytes(other_packet), packet_before)
+
+    def test_frozen_0529_reader_is_portable_offline_and_genuine(self):
+        self.assertEqual(Path(self.old_engine).resolve(), OLD_READER.resolve())
+        self.assertTrue(OLD_READER.resolve().is_relative_to(ROOT.resolve()))
+        self.assertEqual(self.env['UNIO_CLI_UPDATES_OFFLINE'], '1')
+        provenance = (OLD_READER_FIXTURE / 'PROVENANCE.md').read_text()
+        self.assertIn('65d2a2975d71adb16362f33ac0f6e06027d378fd', provenance)
+        self.assertIn('2543b26a84235d4c5b8057d3106d0f3f3a84cdf9f398a4b036fb3d695ad01cb3', provenance)
+        self.assertIn("r'\\.review\\.[A-Za-z0-9]{8}'", provenance)
+        quality = (OLD_READER_FIXTURE / 'quality.py').read_text()
+        self.assertIn("re.escape(task)+r'\\.review\\.[A-Za-z0-9]{8}'", quality)
+        self.assertNotIn('report-review', quality)
+        self.assertNotIn('review-packet', quality)
 
     def test_request_changes_retained_alongside_approval(self):
         packet = self.packet()

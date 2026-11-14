@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Unio — Copyright (C) 2026 Daniel Mitev
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
+# Frozen 0.5.29 reviews/result reader. See PROVENANCE.md. This is not the
+# current engine: it only exposes the 0.5.29 quality reviews and result
+# commands used to prove the new report-review namespace is ignored.
+set -euo pipefail
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+QUALITY_PY="$HERE/quality.py"
+CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
+
+die() { echo "unio: $*" >&2; exit 1; }
+
+# Verbatim 0.5.29 check_id / find_root from official unio-install.sh.
+check_id() { # $1=value $2=what it is
+  case "$1" in
+    ''|.|..)      die "empty or invalid $2 name";;
+    */*|*\\*)     die "$2 name must not contain a path separator: '$1'";;
+    -*)           die "$2 name must not start with '-': '$1'";;
+    *..*)         die "$2 name must not contain '..': '$1'";;
+  esac
+  case "$1" in
+    *[[:cntrl:][:space:]]*) die "$2 name must not contain whitespace or control characters";;
+  esac
+}
+
+find_root() {
+  local d boundary="" owner
+  d=$(pwd -P) || return 1
+  while [ "$d" != "/" ]; do
+    if [ -d "$d/coord" ] && [ -d "$d/wt" ]; then
+      if [ -n "$boundary" ]; then
+        owner=$(dirname -- "$boundary")
+        if [ "$owner" != "$d" ] && [ "$owner" != "$d/wt" ]; then
+          echo "unio: refusing to act on the enclosing project from inside an unrelated Git repository" >&2
+          echo "  you are inside the Git repository: $boundary" >&2
+          echo "  enclosing Unio project: $d — only direct child clones and wt/ worktrees act on it" >&2
+          echo "  to work on the enclosing project: cd '$d' (or a non-Git directory inside it)" >&2
+          echo "  to work on this repository: cd to its root and run 'unio init' there" >&2
+          return 1
+        fi
+      fi
+      echo "$d"; return 0
+    fi
+    if [ -z "$boundary" ] && [ -e "$d/.git" ]; then boundary="$d"; fi
+    d=$(dirname -- "$d")
+  done
+  return 1
+}
+
+quality() {
+  command -v python3 >/dev/null || die "Python 3 is required before reviews/result"
+  UNIO_QUALITY_CONF="$CONF_DIR" python3 -B "$QUALITY_PY" "$@"
+}
+
+# Verbatim 0.5.29 cmd_reviews argument handling, then frozen quality reviews.
+cmd_reviews() {
+  if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then
+    [ "$#" = 1 ] || return 2
+    echo 'usage: unio reviews <worker> <task> [--expect agent[,agent...]] [--findings] [--json]'
+    echo 'Read recorded reviews; no provider call, retry, human acceptance or merge.'
+    echo '--findings also extracts structured unio-findings-v1 blocks from current'
+    echo 'evidence; exit 0 only for recorded approvals with valid empty findings.'
+    return 0
+  fi
+  if [ "$#" -lt 2 ]; then
+    echo 'usage: unio reviews <worker> <task> [--expect agent[,agent...]] [--findings] [--json]' >&2; return 2
+  fi
+  local worker="$1" task="${2%.md}" expected="" mode="text" seen_expect=0 seen_json=0 seen_findings=0 root
+  shift 2
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --expect)
+        [ "$#" -ge 2 ] && [ "$seen_expect" = 0 ] && [ -n "$2" ] || { echo 'unio reviews: invalid or duplicate --expect' >&2; return 2; }
+        expected="$2"; seen_expect=1; shift 2;;
+      --json)
+        [ "$seen_json" = 0 ] || { echo 'unio reviews: duplicate --json' >&2; return 2; }
+        seen_json=1; shift;;
+      --findings)
+        [ "$seen_findings" = 0 ] || { echo 'unio reviews: duplicate --findings' >&2; return 2; }
+        seen_findings=1; shift;;
+      *) echo 'unio reviews: unsupported argument' >&2; return 2;;
+    esac
+  done
+  if [ "$seen_findings" = 1 ]; then
+    if [ "$seen_json" = 1 ]; then mode=--findings-json; else mode=--findings; fi
+  elif [ "$seen_json" = 1 ]; then mode=--json; fi
+  quality reviews-arguments "$worker" "$task" "$expected" || return 2
+  root=$(find_root) || { echo 'unio reviews: not inside a Unio project' >&2; return 2; }
+  quality reviews "$root" "$worker" "$task" "$expected" "$mode"
+}
+
+# Verbatim 0.5.29 cmd_evidence result path: quality paths then quality result.
+cmd_result() {
+  local worker="${1:-}" task="${2:-}" root
+  check_id "$worker" worker; check_id "$task" task
+  task="${task%.md}"
+  root=$(find_root) || die "not inside a Unio project"
+  quality paths "$root" "$worker" "$task" || return $?
+  quality result "$root" "$worker" "$task"
+}
+
+case "${1:-}" in
+  reviews) shift; cmd_reviews "$@";;
+  result)  shift; cmd_result "$@";;
+  *) echo "frozen 0.5.29 reader: usage: unio-reader reviews|result ..." >&2; exit 2;;
+esac
