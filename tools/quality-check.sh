@@ -40,6 +40,7 @@ python3 -B tools/embed-run-observation.py --check
 python3 -B tools/embed-cli-updates.py --check
 python3 -B tools/embed-role-cards.py --check
 python3 -B tools/embed-report-reviews.py --check
+python3 -B tools/embed-task-preview.py --check
 UNIO_BIN_DIR="$QUALITY_CHECK_DIR/bin" UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" \
   UNIO_COMPLETION_DIR="$QUALITY_CHECK_DIR/completion" bash unio-install.sh > "$QUALITY_CHECK_DIR/install.log"
 shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
@@ -54,6 +55,7 @@ python3 -B tests/unio-selftest.py
 bash tests/unio-quality.sh
 python3 -B tests/unio-tail.py
 python3 -B tests/unio-scope-annotations.py
+python3 -B tests/unio-task-preview.py
 python3 -B tests/unio-review-receipts.py
 python3 -B tests/unio-review-collection.py
 python3 -B tests/unio-review-coherence.py
