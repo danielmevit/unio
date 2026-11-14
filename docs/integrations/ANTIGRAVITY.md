@@ -10,9 +10,10 @@ status are evaluated separately, and both must be clean for exit 0.
 
 ## What the adapter pins
 
-The adapter supports the inspected `agy` 1.3.5 only; any other `--version`
-output is refused before a provider call. It selects one fixed Gemini 3.8
-Flash variant advertised by that CLI:
+The adapter supports the inspected `agy` 1.3.5 and 1.5.9 only; any other
+`--version` output is refused before a provider call, and the receipt
+records the version the CLI actually reported rather than an assumed one.
+It selects one fixed Gemini 3.8 Flash variant advertised by both CLIs:
 
 | Selector | Requested model | Requested effort |
 | --- | --- | --- |
@@ -20,10 +21,15 @@ Flash variant advertised by that CLI:
 | `medium` | `gemini-3.8-flash-medium` | medium |
 | `low` | `gemini-3.8-flash-low` | low |
 
-The generic `--effort` flag is never passed: these fixed variants embed the
-effort level, and agy 1.3.4 rejected a matching high model plus a separate
-effort flag before inference. Requested effort is derived from the selector
-name only. The effective model, AI lab, effort and remaining allowance stay
+The generic `--effort` flag is version-dependent. `agy` 1.3.5 has no such
+flag in its documented interface — these fixed variants embed the effort
+level, and agy 1.3.4 rejected a matching high model plus a separate effort
+flag before inference — so the 1.3.5 argv never passes it and requested
+effort is derived from the selector name only. `agy` 1.5.9 documents
+`--effort`, and the proven 1.5.9 review passed it explicitly after the
+model selector, so on 1.5.9 the adapter passes `--effort` with exactly the
+selected low, medium or high; no inherited max or ultra default exists.
+The effective model, AI lab, effort and remaining allowance stay
 `unknown`: the adapter does not verify what the account actually served.
 There is no fallback model, no retry and no second invocation.
 
@@ -48,7 +54,10 @@ work into smaller tasks instead of raising the bound.
 The invocation is `agy -p <task> --mode accept-edits --model <selector>
 --dangerously-skip-permissions --disable-slash-commands --print-timeout <limit>
 --output-format stream-json`, run in the adapter's current working
-directory. The raw NDJSON stream is preserved in a private
+directory. On `agy` 1.5.9 the documented `--effort <selected>` pair follows
+the `--model <selector>` pair, carrying exactly the selected low, medium or
+high; on 1.3.5 the argv stays the legacy form above and no generic effort
+flag is ever passed. The raw NDJSON stream is preserved in a private
 `native-stdout.log`; the adapter parses only the top-level
 `event`/`result` envelope. Text inside assistant or tool content never
 produces a verdict, and a forged result record inside streamed content is
@@ -128,6 +137,18 @@ publicly; keep the raw logs private. Legacy raw `agents.conf` command lines
 are left untouched: the adapter is opt-in, and a legacy line keeps its own
 native behavior.
 
+## CLI compatibility is not model availability
+
+Supporting `agy` 1.5.9 is a command-line compatibility statement only. It
+does not prove that any Gemini model, catalog entry or effort level is
+available to the signed-in account, and it grants no account access beyond
+what the owner's own `agy` sign-in already provides. Unio also has no
+global native auto-update exclusion: the Antigravity CLI can update itself
+underneath a pinned route — an idle 1.5.8 installation was observed to
+become 1.5.9 before a run — and the adapter's version preflight refuses the
+changed, unsupported version rather than silently accepting it. Supporting
+a version here never means Unio updates, installs or authenticates the CLI.
+
 ## Trial status
 
 The adapter passed focused offline fake-CLI regressions only. No live
@@ -143,4 +164,11 @@ COPILOT-JSONL-GEMINI-CORRECTION-1 with native exit 0, structured terminal
 SUCCESS and adapter exit 0. Effective model, effort and allowance stay
 Unknown. That call does not accept the correction, which stays outside
 this candidate. The earlier process-0/terminal-ERROR observation remains
-a recorded failure.
+a recorded failure. On 2026-11-14 an independent review through an
+experimental 1.5.9 wrapper recorded CLI exit 0, adapter exit 0 and a
+structured terminal SUCCESS with complete artifacts using
+`gemini-3.8-flash-high` plus an explicit `--effort high`; its earlier
+1.5.8 attempt on the same task failed with a network stream ERROR despite
+CLI exit 0, and that failure equally remains a recorded failure. These are
+route evidence for the exact versions named, not certification of other
+versions, quota, effective server identity or model benchmarks.
