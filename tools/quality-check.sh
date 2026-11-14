@@ -39,6 +39,7 @@ python3 -B tools/embed-codex-worker.py --check
 python3 -B tools/embed-run-observation.py --check
 python3 -B tools/embed-cli-updates.py --check
 python3 -B tools/embed-role-cards.py --check
+python3 -B tools/embed-report-reviews.py --check
 UNIO_BIN_DIR="$QUALITY_CHECK_DIR/bin" UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" \
   UNIO_COMPLETION_DIR="$QUALITY_CHECK_DIR/completion" bash unio-install.sh > "$QUALITY_CHECK_DIR/install.log"
 shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
@@ -57,6 +58,7 @@ python3 -B tests/unio-review-receipts.py
 python3 -B tests/unio-review-collection.py
 python3 -B tests/unio-review-coherence.py
 python3 -B tests/unio-review-findings.py
+python3 -B tests/unio-report-reviews.py
 python3 -B tests/unio-run-identity.py
 python3 tests/unio-loop-brake.py
 python3 tests/unio-limit-wall.py
