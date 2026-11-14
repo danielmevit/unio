@@ -70,6 +70,9 @@ See [the changelog](CHANGELOG.md) for release history.
   reviewer's evidence and disagreement. Reviews leave acceptance with you.
   [Report-review links](docs/REVIEW-REPORTS.md) attach separately assigned
   reports to exact code packets and expose stale evidence without changing acceptance.
+  [Task scope preview](docs/TASK-PREVIEW.md) (`unio verify --preview`) shows
+  inherited scope surprises before another model call; it does not run
+  Validate commands or claim acceptance.
 - **Assess a product and its direction.** Use the [Fable research prompt](docs/ai/PRODUCT-ASSESSMENT-PROMPT.md)
   to have your lead brief a research worker from the current code, to-do list and roadmap.
 - **Preserve unfinished work.** [Recovery saves](docs/WORK-SAVING.md) keep local
