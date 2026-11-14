@@ -4,14 +4,14 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.30 — review evidence and bounded archive maintenance (unreleased)
+## 0.5.30 — review evidence and bounded archive maintenance — 2026-11-14
 
 - Prepare exact code packets before separately assigned report-only reviews; bind complete verified reports to those packets and inspect their freshness with `unio reviews --reports`. Semantic verdicts, findings, coverage and native readiness remain separate; attachment never grants owner acceptance.
 - Preserve other workers' pending review evidence and publish complete local packets and report links atomically under native worker locks. Include a portable genuine 0.5.29-reader regression fixture.
 - Configure the explicit worker archive application's shared deadline with `UNIO_SAVE_ARCHIVE_TIMEOUT` (1..900 whole seconds, default 60). Keep the plan's 30-second bound, integrity checks, caps and explicit confirmation; no automatic cleanup or retry.
 - Preserve confirmed login context and require fresh actual authentication evidence before repeating a login request. Add a reusable lead-to-Fable product research prompt with roadmap context and explicit model selection.
 
-Candidate source checks have passed separately. Combined independent review, lead acceptance, the full quality gate, installation and official publication are pending. See [scope and limits](docs/RELEASE-0.5.30.md).
+Independent scoped current-code reviews, the lead composition assessment, the full combined quality gate and an isolated installation with six offline smoke checks passed. The original failed gate and corrected completion assertion remain documented. See [scope and limits](docs/RELEASE-0.5.30.md); official assets identify publication and distribution.
 
 ## 0.5.29 — clearer setup and reusable launch recipes — 2026-11-13
 
