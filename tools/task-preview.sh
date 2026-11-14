@@ -98,8 +98,19 @@ cmd_verify_preview() {
     echo 'usage: unio verify <worker> <task> --preview [--json]' >&2
     return 2
   }
-  check_id "$worker" worker || return 2
-  check_id "$task" task || return 2
+  # Same rules as check_id, but unknown/unsupported IDs are preview exit 2.
+  # Do not call check_id/die (exit 1) or change unflagged verify helpers.
+  preview_check_id() {
+    case "$1" in
+      ''|.|..) echo "unio preview: empty or invalid $2 name" >&2; return 1;;
+      */*|*\\*) echo "unio preview: $2 name must not contain a path separator: '$1'" >&2; return 1;;
+      -*) echo "unio preview: $2 name must not start with '-': '$1'" >&2; return 1;;
+      *..*) echo "unio preview: $2 name must not contain '..': '$1'" >&2; return 1;;
+      *[[:cntrl:][:space:]]*) echo "unio preview: $2 name must not contain whitespace or control characters" >&2; return 1;;
+    esac
+  }
+  preview_check_id "$worker" worker || return 2
+  preview_check_id "$task" task || return 2
   local root
   root=$(find_root) || { echo 'unio preview: not inside a Unio project' >&2; return 2; }
   task="${task%.md}"
@@ -201,10 +212,20 @@ open(sys.argv[2]+"/all_paths","wb").write(b"".join(p.encode("utf-8")+b"\0" for p
     done < "$tmp/all_paths"
   fi
 
+  # Close the observation window after canonical task_section parsing and
+  # path classification. facts() before/after only covers the Python helpers;
+  # a task/Git move here must not emit in_scope with a mixed hash/scope.
+  # One extra snapshot(), not another changed() inventory.
+  if ! quality snapshot "$root" "$worker" "$task" > "$tmp/end.json"; then
+    echo "unio preview: unsupported or unknown Git/task state (fail closed)" >&2
+    rm -rf -- "$tmp"
+    return 2
+  fi
+
   local base
   base=$(get_base "$root")
   python3 -B - "$tmp/facts.json" "$tmp/patterns" "$tmp/warnings" "$tmp/validate" \
-    "$tmp/out_of_scope" "$worker" "$task" "$base" "$stop_active" "$as_json" <<'PY' || rc=$?
+    "$tmp/out_of_scope" "$tmp/end.json" "$worker" "$task" "$base" "$stop_active" "$as_json" <<'PY' || rc=$?
 import json, sys
 
 NOTE = ('preview is an observation; Validate commands were NOT run; '
@@ -222,13 +243,23 @@ def read_nul(path):
     return out
 
 
-facts_path, patterns_path, warnings_path, validate_path, oos_path = sys.argv[1:6]
-worker, task, base_ref, stop_raw, as_json = sys.argv[6:11]
+facts_path, patterns_path, warnings_path, validate_path, oos_path, end_path = sys.argv[1:7]
+worker, task, base_ref, stop_raw, as_json = sys.argv[7:12]
 facts = json.loads(open(facts_path, encoding='utf-8').read())
 patterns = read_nul(patterns_path)
 warnings = read_nul(warnings_path)
 validate_commands = read_nul(validate_path)
 out_of_scope = read_nul(oos_path)
+try:
+    end = json.loads(open(end_path, encoding='utf-8').read())
+except (OSError, ValueError, UnicodeError):
+    sys.stderr.write('unio preview: unsupported or unknown Git/task state (fail closed)\n')
+    sys.exit(2)
+if not isinstance(end, dict):
+    sys.stderr.write('unio preview: unsupported or unknown Git/task state (fail closed)\n')
+    sys.exit(2)
+if end != (facts.get('before') or {}):
+    facts['changed_during'] = True
 stop_active = stop_raw == '1'
 changed = facts.get('changed') or {}
 for key in ('committed', 'staged', 'unstaged', 'untracked'):

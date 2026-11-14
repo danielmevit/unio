@@ -23,7 +23,9 @@ unio verify <worker> <task> --preview [--json]
 ```
 
 Flags may appear before or after the worker and task names. `--json`
-without `--preview` is still ignored by unflagged verify.
+without `--preview` is still ignored by unflagged verify, which runs
+Validate. Shell completion therefore offers `--json` only after
+`--preview` is already present.
 
 ## What it shows
 
@@ -46,7 +48,7 @@ Human and JSON views carry the same facts. JSON uses
 | --- | --- |
 | 0 | Implementation (or legacy) paths currently in declared scope |
 | 1 | Scope mismatch: at least one current path is out of scope |
-| 2 | Missing scope or Validate, invalid required-artifact syntax, report-only unsupported, busy worker, change during observation, or unsupported/unknown Git state |
+| 2 | Missing scope or Validate, invalid required-artifact syntax, report-only unsupported, busy worker, invalid/unknown worker or task ID, change during observation (including after Python facts, while canonical task-section parsing still runs), or unsupported/unknown Git state |
 
 Zero current changes is a valid observation (exit 0 when scope and
 Validate are present). It is not accepted or no-op delivery.
@@ -59,10 +61,16 @@ in this first slice.
 
 Preview takes the existing nonblocking participating worker lock so a
 native Source cannot race the observation. A busy worker is refused
-(exit 2). Lock metadata is the only coordination bookkeeping: no
-receipts, results, ledger, saves or task edits. STOP remains
-read-only. Unsupported Git or file states fail closed through the
-existing snapshot/changed helpers.
+(exit 2). Invalid worker or task IDs are unknown on this path (exit 2)
+and take no lock, run no Validate and call no provider. Unflagged
+`unio verify` still refuses those IDs with `check_id`/`die` (exit 1).
+Lock metadata is the only coordination bookkeeping: no receipts,
+results, ledger, saves or task edits. STOP remains read-only.
+Unsupported Git or file states fail closed through the existing
+snapshot/changed helpers. A conservative snapshot after canonical
+task-section parsing binds the whole observation: if the task or Git
+state moved, preview returns `scope_status` `changed` (exit 2) and
+never claims `in_scope` with a mixed task hash and scope list.
 
 ## What it does not do
 

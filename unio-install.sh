@@ -45546,7 +45546,19 @@ _unio() {
     verify)
       if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "$workers" -- "$cur") )
       elif [ "$COMP_CWORD" -eq 3 ]; then COMPREPLY=( $(compgen -W "$tasks" -- "$cur") )
-      else COMPREPLY=( $(compgen -W "--preview --json" -- "$cur") ); fi;;
+      else
+        local _verify_preview=0 _verify_json=0 _verify_word _verify_opts=""
+        for _verify_word in "${COMP_WORDS[@]:2:COMP_CWORD-2}"; do
+          case "$_verify_word" in
+            --preview) _verify_preview=1;;
+            --json) _verify_json=1;;
+          esac
+        done
+        if [ "$_verify_preview" = 0 ]; then _verify_opts="--preview"
+        elif [ "$_verify_json" = 0 ]; then _verify_opts="--json"
+        fi
+        COMPREPLY=( $(compgen -W "$_verify_opts" -- "$cur") )
+      fi;;
     result|handoff)
       if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "$workers" -- "$cur") )
       elif [ "$COMP_CWORD" -eq 3 ]; then COMPREPLY=( $(compgen -W "$tasks" -- "$cur") ); fi;;
