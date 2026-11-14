@@ -72,6 +72,19 @@ class ReviewCollection(unittest.TestCase):
     def collect(self,code=0,env=None):
         return self.unio('review-set','mock','evidence','revone','revtwo',code=code,env=env)
 
+    def complete(self,words):
+        # Exercise the real generated bash completion offline: source it in an
+        # isolated shell, drive _unio through COMP_WORDS/COMP_CWORD and read
+        # back the offered COMPREPLY tokens instead of matching list literals.
+        script=('source %s\n'
+                'COMP_WORDS=(%s)\n'
+                'COMP_CWORD=%d\n'
+                '_unio\n'
+                'for reply in "${COMPREPLY[@]}"; do printf \'%%s\\n\' "$reply"; done\n')
+        p=self.call(['bash','-c',script%(shlex.quote(str(self.install/'completion/unio')),
+            shlex.join(words),len(words)-1)],cwd=self.root)
+        return p.stdout.split()
+
     def manifest(self):
         files=list((self.coord/'reports').glob('evidence.review-set.*/collection.json'))
         return json.loads(max(files,key=lambda p:p.stat().st_mtime_ns).read_text())
@@ -141,8 +154,15 @@ class ReviewCollection(unittest.TestCase):
                      ('mock','evidence','revone','revtwo','--help'),
                      ('mock','evidence','revone','revtwo',*['x'+str(i) for i in range(7)])):
             self.unio('review-set',*args,code=2,cwd=self.root)
-        completion=(self.install/'completion/unio').read_text()
-        self.assertIn('reviews review-set race',completion)
+        # Legacy reviews/review-set/race and new review-packet/reviews-bind
+        # must stay completable whatever their order in the command list, and
+        # prefix filtering must be exact; drive the real function for that.
+        offered=set(self.complete(['unio','']))
+        for command in ('reviews','review-set','race','review-packet','reviews-bind'):
+            self.assertIn(command,offered)
+        self.assertEqual(set(self.complete(['unio','reviews'])),{'reviews','reviews-bind'})
+        self.assertEqual(set(self.complete(['unio','review-'])),{'review-packet','review-set'})
+        self.assertEqual(set(self.complete(['unio','race'])),{'race'})
         self.unio('stop');self.collect(code=2);self.unio('resume')
         self.unio('review-set','mock','evidence','revone','missing',code=2)
         self.unio('review-set','mock','evidence','revone','mock',code=2)
