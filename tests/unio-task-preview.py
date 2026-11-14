@@ -159,8 +159,42 @@ class TaskPreview(unittest.TestCase):
         self.assertIn('--preview', help_text)
         self.assertIn('docs/TASK-PREVIEW.md', help_text)
         completion = (self.install / 'completion' / 'unio').read_text(encoding='utf-8')
-        self.assertIn('--preview --json', completion)
         self.assertIn('verify)', completion)
+
+    def complete(self, words):
+        # Execute the installed Bash completion, not its text: the old
+        # text-order assertion hid the contextual verify behavior.
+        script = (self.install / 'completion' / 'unio').read_text(encoding='utf-8')
+        quoted = ' '.join("'%s'" % w.replace("'", "'\\''") for w in words)
+        prog = ('%s\nCOMP_WORDS=(%s)\nCOMP_CWORD=%d\nCOMPREPLY=()\n_unio\n'
+                "printf '%%s\\n' \"${COMPREPLY[@]}\"\n"
+                % (script, quoted, len(words) - 1))
+        p = subprocess.run(['bash'], input=prog, capture_output=True, text=True,
+                           env=self.env, cwd=self.root / 'project', timeout=60)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        return [line for line in p.stdout.splitlines() if line]
+
+    def test_verify_completion_offers_json_only_after_preview(self):
+        self.task('preview')
+        self.assertEqual(self.complete(['unio', 'verify', '']), ['mock'])
+        self.assertEqual(self.complete(['unio', 'verify', 'mock', '']),
+                         ['preview'])
+        # Before --preview only --preview is offered; --json alone must not
+        # suggest a full Validate run.
+        self.assertEqual(
+            self.complete(['unio', 'verify', 'mock', 'preview', '']),
+            ['--preview'])
+        self.assertEqual(
+            self.complete(['unio', 'verify', 'mock', 'preview', '--json', '']),
+            ['--preview'])
+        # Once --preview is present, --json completes.
+        self.assertEqual(
+            self.complete(['unio', 'verify', 'mock', 'preview', '--preview', '']),
+            ['--json'])
+        self.assertEqual(
+            self.complete(['unio', 'verify', 'mock', 'preview',
+                           '--preview', '--json', '']),
+            [])
 
     def test_preview_before_first_source_zero_changes(self):
         self.task('preview')
@@ -349,6 +383,102 @@ class TaskPreview(unittest.TestCase):
         later = json.loads(second.stdout)
         self.assertNotEqual(later['head'], head)
         self.assertIn('hello.txt', later['changed']['committed'])
+
+    def preview_with_hook(self, hook, task='preview', json_out=True, code=2):
+        env = dict(self.env)
+        env['UNIO_PREVIEW_TEST_HOOK'] = hook
+        cmd = [self.engine, 'verify', 'mock', task, '--preview']
+        if json_out:
+            cmd.append('--json')
+        return self.call(cmd, code=code, env=env)
+
+    def test_mid_window_task_edit_is_changed_not_in_scope(self):
+        # Lead probe (task-change-window.json): a task edited after
+        # facts() but before canonical task_section parsing used to
+        # return exit 0 / in_scope with the OLD task hash and the NEW
+        # scope list. The closed observation window must refuse instead.
+        self.task('preview', scope=('- allowed.txt',),
+                  validate=('$ %s' % self.sentinel_validate(),))
+        (self.wt / 'allowed.txt').write_text('ok\n')
+        self.call(['git', 'add', 'allowed.txt'], cwd=self.wt)
+        self.call(['git', 'commit', '-qm', 'allowed'], cwd=self.wt)
+        tf = self.tasks / 'preview.md'
+        original = tf.read_bytes()
+        hook = ("python3 -B -c \"import pathlib; p = pathlib.Path(%r); "
+                "p.write_text(p.read_text(encoding='utf-8')"
+                ".replace('- allowed.txt', '- forbidden.txt'),"
+                "encoding='utf-8')\"" % str(tf))
+        before = self.snapshot_store()
+        p = self.preview_with_hook(hook)
+        doc = json.loads(p.stdout)
+        self.assertEqual(doc['scope_status'], 'changed')
+        self.assertIn('candidate_changed_during_observation', doc['reasons'])
+        self.assertFalse(doc['validate_executed'])
+        self.assertEqual(doc['provider_calls'], 0)
+        self.assertFalse(self.sentinel.exists())
+        self.assertFalse((self.wt / SENTINEL).exists())
+        self.assertEqual(self.snapshot_store()['reports'], before['reports'])
+        self.assertEqual(self.snapshot_store()['results'], before['results'])
+        self.assertEqual(self.snapshot_store()['ledger'], before['ledger'])
+        # The edited revision is on disk now; the refusal above is what
+        # keeps the reported hash and scope list from being mixed.
+        self.assertNotEqual(tf.read_bytes(), original)
+
+    def test_mid_window_git_move_is_changed(self):
+        self.task('preview', scope=('- allowed.txt',))
+        (self.wt / 'allowed.txt').write_text('ok\n')
+        self.call(['git', 'add', 'allowed.txt'], cwd=self.wt)
+        self.call(['git', 'commit', '-qm', 'allowed'], cwd=self.wt)
+        hook = "git -C '%s' commit -qm midwindow --allow-empty" % self.wt
+        p = self.preview_with_hook(hook)
+        doc = json.loads(p.stdout)
+        self.assertEqual(doc['scope_status'], 'changed')
+        self.assertIn('candidate_changed_during_observation', doc['reasons'])
+
+    def test_no_hook_preview_still_in_scope(self):
+        # The injection point is inert unless explicitly set.
+        self.task('preview', scope=('- allowed.txt',))
+        (self.wt / 'allowed.txt').write_text('ok\n')
+        self.call(['git', 'add', 'allowed.txt'], cwd=self.wt)
+        self.call(['git', 'commit', '-qm', 'allowed'], cwd=self.wt)
+        p = self.preview('preview', json_out=True, code=0)
+        doc = json.loads(p.stdout)
+        self.assertEqual(doc['scope_status'], 'in_scope')
+        self.assertEqual(doc['scope_patterns'], ['allowed.txt'])
+
+    def test_invalid_ids_preview_exit2_without_effects(self):
+        self.task('preview', validate=('$ %s' % self.sentinel_validate(),))
+        before = self.snapshot_store()
+        for bad in ('../evil', 'a/b', 'a\\b', '-x', 'a..b', 'a b'):
+            p = self.unio('verify', bad, 'preview', '--preview', code=2)
+            self.assertIn('unio preview:', p.stderr)
+            p = self.unio('verify', 'mock', bad, '--preview', code=2)
+            self.assertIn('unio preview:', p.stderr)
+        # Refused before the worker lock, Validate and any provider call.
+        self.assertFalse((self.coord / '.locks' / 'mock.lock').exists())
+        self.assertFalse(self.sentinel.exists())
+        self.assertFalse((self.wt / SENTINEL).exists())
+        self.assertEqual(self.snapshot_store()['reports'], before['reports'])
+        self.assertEqual(self.snapshot_store()['results'], before['results'])
+        self.assertEqual(self.snapshot_store()['ledger'], before['ledger'])
+
+    def test_invalid_ids_unflagged_verify_still_exit1(self):
+        self.task('preview')
+        for worker, task in (('../evil', 'preview'), ('mock', 'a b'),
+                             ('mock', '-x')):
+            p = self.unio('verify', worker, task, code=1)
+            self.assertIn('unio:', p.stderr)
+
+    def test_json_alone_still_runs_legacy_validate(self):
+        # --json without --preview keeps the untouched legacy dispatch:
+        # extra argv is ignored and Validate runs.
+        self.task('preview', validate=('$ %s' % self.sentinel_validate(),))
+        (self.wt / 'hello.txt').write_text('ok\n')
+        self.call(['git', 'add', 'hello.txt'], cwd=self.wt)
+        self.call(['git', 'commit', '-qm', 'hello'], cwd=self.wt)
+        p = self.unio('verify', 'mock', 'preview', '--json', code=0)
+        self.assertTrue(self.sentinel.exists())
+        self.assertIn('verdict  : PASS', p.stdout)
 
     def test_human_and_json_aligned_and_no_pass(self):
         self.task('preview')

@@ -71,6 +71,10 @@ snapshot/changed helpers. A conservative snapshot after canonical
 task-section parsing binds the whole observation: if the task or Git
 state moved, preview returns `scope_status` `changed` (exit 2) and
 never claims `in_scope` with a mixed task hash and scope list.
+A test-only injection point (`UNIO_PREVIEW_TEST_HOOK`) lets the
+offline regression fixture reproduce a mid-window task edit or Git
+move deterministically; it is inert unless explicitly set and
+bypasses no snapshot, scope or exit decision.
 
 ## What it does not do
 
