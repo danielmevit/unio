@@ -4,13 +4,22 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.30 — review evidence and bounded archive maintenance (unreleased)
+
+- Prepare exact code packets before separately assigned report-only reviews; bind complete verified reports to those packets and inspect their freshness with `unio reviews --reports`. Semantic verdicts, findings, coverage and native readiness remain separate; attachment never grants owner acceptance.
+- Preserve other workers' pending review evidence and publish complete local packets and report links atomically under native worker locks. Include a portable genuine 0.5.29-reader regression fixture.
+- Configure the explicit worker archive application's shared deadline with `UNIO_SAVE_ARCHIVE_TIMEOUT` (1..900 whole seconds, default 60). Keep the plan's 30-second bound, integrity checks, caps and explicit confirmation; no automatic cleanup or retry.
+- Preserve confirmed login context and require fresh actual authentication evidence before repeating a login request. Add a reusable lead-to-Fable product research prompt with roadmap context and explicit model selection.
+
+Candidate source checks have passed separately. Combined independent review, lead acceptance, the full quality gate, installation and official publication are pending. See [scope and limits](docs/RELEASE-0.5.30.md).
+
 ## 0.5.29 — clearer setup and reusable launch recipes — 2026-11-13
 
 - Add optional `unio routes` inventory/show/compile for typed Vibe3.1.1/GLM5.3 launch recipes. Compilation is offline/read-only and emits one existing `agents.conf` entry for deliberate manual use, with canonical adapter bounds and safe input/path handling. Requested settings remain separate from effective Unknowns, account grouping and actual access.
 - Give fresh installs neutral lead instructions, conditional CodeGraph guidance and supported score/experience commands. Preserve existing custom MASTER templates and project routers; reject unsafe template targets. Correct the medium coordination-tier label while keeping balanced work mode distinct.
 - Explain recognized Vibe setup failures using bounded fixed text and allowlisted aliases/arguments. Raw upstream messages, credentials and available-model lists are not copied; real exits, Unknown usage and limit classifications stay intact.
 
-Independent scoped source reviews, the lead composition assessment, the single full combined quality gate and the isolated installation check passed. See [scope and limits](docs/RELEASE-0.5.29.md); official publication and the global install remain separate pending steps.
+Independent scoped source reviews, the lead composition assessment, the single full combined quality gate and the isolated installation check passed. See [scope and limits](docs/RELEASE-0.5.29.md); published assets identify the official source and distribution.
 
 ## 0.5.28 — installation and startup safety — 2026-11-13
 

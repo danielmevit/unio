@@ -8,9 +8,10 @@ commands. This is not the current engine and is not a substitute
 
 ## Source
 
-- Official 0.5.29 installer read locally (prepare-time input only, never a
-  runtime test dependency):
-  `/mnt/d/Vibe Coding/_vm/unio/tmp/unio-next/fable-implementation-0529-20261113/assets/unio-install.sh`
+- Official 0.5.29 `unio-install.sh` from the source commit below,
+  checked against its published distribution during fixture preparation.
+  Runtime tests use only this committed fixture; no maintainer workspace,
+  download or Git history is required.
 - Version: 0.5.29
 - Source commit: `65d2a2975d71adb16362f33ac0f6e06027d378fd`
 - Source tree: `a3c884cc3020e5d8745f23f23e7fbb79e4c5529b`

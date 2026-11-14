@@ -68,6 +68,10 @@ See [the changelog](CHANGELOG.md) for release history.
 - **Review changes independently.** Collect [reviews in parallel](docs/REVIEW-COLLECTION.md)
   and inspect [structured findings](docs/REVIEW-FINDINGS.md), preserving each
   reviewer's evidence and disagreement. Reviews leave acceptance with you.
+  [Report-review links](docs/REVIEW-REPORTS.md) attach separately assigned
+  reports to exact code packets and expose stale evidence without changing acceptance.
+- **Assess a product and its direction.** Use the [Fable research prompt](docs/ai/PRODUCT-ASSESSMENT-PROMPT.md)
+  to have your lead brief a research worker from the current code, to-do list and roadmap.
 - **Preserve unfinished work.** [Recovery saves](docs/WORK-SAVING.md) keep local
   snapshots before, during and after worker runs, with inspection, restore
   and separately authorized continuation. Saves are not off-device backups.

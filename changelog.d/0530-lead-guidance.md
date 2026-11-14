@@ -1,2 +1,2 @@
-- Add a reusable assessment prompt that has the lead map the product, to-do list and milestones before a read-only Fable assessment.
+- Add a reusable assessment prompt that has the lead check the latest stable Unio, select a Fable5.2/xhigh worker and map the product, to-do list and milestones before an independently directed Fable assessment.
 - Require fresh actual authentication evidence and a bounded route/context diagnosis before repeating a confirmed login request. This is lead guidance, with no automatic authentication-manager or quota claim.

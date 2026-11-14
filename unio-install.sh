@@ -22108,6 +22108,7 @@ search anchors):
 | Helper / source | Bound | Configurable? |
 | --- | --- | --- |
 | `unio-install.sh`: `capture_seconds`, `capture_child`, `create_locked` | Save capture 30 seconds, monotonic budget | `UNIO_SAVE_CAPTURE_TIMEOUT`, 1..300 |
+| `unio-install.sh`: `archive_apply_seconds`, `apply_archive_worker` | Explicit worker archive application 60 seconds, shared monotonic budget; read-only plan 30 seconds | `UNIO_SAVE_ARCHIVE_TIMEOUT`, 1..900 for application only |
 | `unio-install.sh`: `CAPTURE_SECONDS`, `Budget`, `observe`, `RESTORE_SECONDS` | Other save observations 30 seconds; restore 120 seconds | Fixed constants; capture override does not globally change these |
 | `unio-install.sh`: `spawn_owned_provider`, `_await_byte` | Provider session readiness 2 seconds; owned supervisor acknowledgement 15 seconds | Fixed |
 | `unio-install.sh`: `quality` Python `git`, `snapshot`, `cmd_evidence`, `handoff` | Native result/handoff and result-start snapshot have no enclosing wall deadline; Git subprocess has no timeout | No native result deadline option |
@@ -25731,7 +25732,7 @@ trap 'rm -rf -- "$unio_runtime_stage"' EXIT
 #   PROJECT/coord/    board.md, base, docs/, tasks/, reports/, blockers.md, STOP
 set -euo pipefail
 
-UNIO_VERSION="0.5.29"
+UNIO_VERSION="0.5.30"
 CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
 CONF_FILE="$CONF_DIR/agents.conf"
 TPL_DIR="$CONF_DIR/templates"
