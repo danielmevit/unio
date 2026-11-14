@@ -4,6 +4,14 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.31 — task-scope preview and current Antigravity compatibility (unreleased)
+
+- Inspect an implementation task's current paths, scope, declared checks and Git revision with `unio verify WORKER TASK --preview [--json]`. Preview runs no validation or provider, preserves results and recovery state, works during STOP and refuses busy or changing observations.
+- Keep task hashes and parsed scope tied to one bounded observation; preserve exact filenames and return Unknown/incomplete exit 2 for unsupported inputs. Offer JSON completion only after preview is selected; ordinary verification stays unchanged.
+- Support exactly Antigravity CLI 1.5.9 alongside the retained 1.3.5 route. Record the observed version, pass supported effort explicitly on 1.5.9 and preserve legacy arguments, unknown-version refusal and terminal-error handling.
+
+Focused native checks, an independent current-code review and the lead assessment passed. The combined release gate and installation are pending. See [scope and limits](docs/RELEASE-0.5.31.md).
+
 ## 0.5.30 — review evidence and bounded archive maintenance — 2026-11-14
 
 - Prepare exact code packets before separately assigned report-only reviews; bind complete verified reports to those packets and inspect their freshness with `unio reviews --reports`. Semantic verdicts, findings, coverage and native readiness remain separate; attachment never grants owner acceptance.

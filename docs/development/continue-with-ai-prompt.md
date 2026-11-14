@@ -8,6 +8,9 @@ prove official publication, global installation or available provider capacity.
 
 ## Current release scope
 
+Official 0.5.30 is published and installed in the current workspace; verify actual local/remote state when this handoff ages. The separate 0.5.31 candidate adds opt-in task-scope preview and exact Antigravity 1.5.9 compatibility. Final author native gates and independent scoped current-code review plus lead assessment passed; its own combined release gate and installation are pending. See [0.5.31 scope and evidence](../RELEASE-0.5.31.md). Keep the reviewed implementation worktree frozen; later literal version/documentation preparation has its own fidelity proof. Existing review opinions are not imported as fresh canonical approvals after base changes.
+
+
 0.5.30 adds observational report-review packets and report links, a configurable
 explicit archive-apply deadline, login-confirmation guidance and a reusable
 lead-to-Fable product-assessment prompt. See [release evidence and limits](../RELEASE-0.5.30.md)
@@ -29,11 +32,11 @@ templates remain authoritative and are preserved on install.
 
 ## Next coherent batch
 
-1. Finish the separate optional `verify --preview` scope observation. Bind task and
+1. Complete the separate 0.5.31 release gate and delivery for `verify --preview`. Its implementation binds task and
    Git observations across parsing; preserve exact paths, native locks, exit2 for
    Unknown, STOP readability and the authoritative normal verify gate. Keep test
    injection exclusively in disposable fixtures, never a shipped command hook.
-2. Review and integrate tested exact Antigravity1.5.9 compatibility alongside the
+2. Deliver the independently reviewed exact Antigravity 1.5.9 compatibility alongside the
    retained 1.3.5 route. Record the observed version and supported explicit effort;
    do not broaden model availability or erase process0/terminalERROR failures.
 3. Use the new packet-before-dispatch report-link workflow on useful assignments,

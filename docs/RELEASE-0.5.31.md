@@ -1,0 +1,33 @@
+# Unio 0.5.31 — inspect scope before spending a worker run
+
+This candidate makes current task scope easier to inspect and supports the tested Antigravity CLI 1.5.9 interface. The combined gate and installation remain pending; check official release assets before treating a working-copy version as shipped.
+
+## Task preview
+
+Run `unio verify WORKER TASK --preview`, optionally with `--json`, to inspect the task's current scope, declared validation commands, required artifact names and classified changed paths. It observes the current worktree; it does not predict what a future worker will change or establish admission, delivery, verification PASS or owner acceptance.
+
+Preview reuses native task, Git and scope helpers, takes the participating worker's nonblocking lock and checks for observed task/Git drift across parsing. It runs no Validate command or provider and leaves results, reports, recovery saves and the ledger unchanged. STOP remains readable. Busy, changing, incomplete or unsupported input returns 2; an observed scope mismatch returns 1. Report-only preview is deliberately unsupported in this first slice. Native lock metadata and disposable temporary files are operational details, not a claim of zero filesystem activity.
+
+Bash completion offers `--json` only after `--preview`. Ordinary verification and its existing extra-argument behavior remain unchanged. Deterministic race regressions instrument only private disposable fixture engines; the production command contains no executable test hook. Snapshot checks detect observed drift; they do not exclude arbitrary unmanaged host writers or adversarial changes that return to the same state between observations.
+
+See [task preview](TASK-PREVIEW.md).
+
+## Antigravity compatibility
+
+The optional canonical adapter supports exactly CLI 1.3.5 and 1.5.9. It records the observed version. On 1.5.9 it passes the selected low, medium or high effort explicitly after the fixed Gemini selector; the 1.3.5 argument form is retained. Process exit 0 plus a terminal stream ERROR remains a failure. Unknown versions refuse before a provider invocation, without fallback or retry.
+
+This is CLI compatibility, not proof of account access, effective model, reasoning effort or remaining allowance. No additional model catalog entries are authorized and Unio does not exclude an external CLI auto-updater globally. The compatibility tests use offline fake CLIs. Real successful 1.5.9 reviews used the separately pinned experimental wrapper; they are route evidence, not a claim of a live trial through the new canonical adapter.
+
+See [Antigravity adapter](integrations/ANTIGRAVITY.md).
+
+## Evidence
+
+Grok subscription/Build 1.0.77/requested Grok 4.6 HIGH authored the initial preview. Mistral subscription/Vibe 3.1.1/client-selected GLM 5.3 with high catalog declaration completed its bounded corrections and authored the compatibility update. Effective server identity and effort remain Unknown. Final author Sources exited 0 and passed five native validation commands each. The final preview suite contains 22 tests; the adapter suite has 52 checks.
+
+An independent Antigravity/agy 1.5.9 review requesting Gemini 3.8 Flash HIGH returned CLI/adapter/Source 0, terminal SUCCESS, four complete report artifacts, native verify PASS and APPROVE. It ran the 22 preview tests and 52 adapter checks. The existing lead assessed the composition and verified exact author-module bytes and both embeddings. The reviewed implementation remains frozen in its original worktree. Subsequent preparation incorporates the released 0.5.30 documentation and changes only release documentation and the literal version value, with a separate fidelity proof; it does not invent a fresh canonical approval.
+
+Original failures remain separate: Grok's correction stopped on actual HTTP 402 allowance exhaustion with WIP preserved; an earlier GLM correction passed its checks but introduced a forbidden production test hook that the lead rejected; a later lead setup refusal happened before any model call. Passing process exits and earlier checks alone did not accept those revisions. No extra credit purchase, paid fallback, authentication change or model substitution was used.
+
+## Remaining scope
+
+The full combined release gate, isolated installation and official delivery have their own required receipts. This update does not add automatic preview at dispatch, report-only prediction, global account visibility, automatic CLI updates, managed-lead ownership or a new dashboard. Operational policy separation, measured recovery optimization, one-module extraction and onboarding work remain before the later phone and desktop milestones. No measured token saving or whole-app certification is claimed.
