@@ -8,7 +8,9 @@ projects, never real coord stores or global config. Proves preview
 before first Source, classified paths, annotations, fenced examples,
 safe JSON filenames, STOP read-only, busy refusal, zero Validate
 execution (sentinel vs old engine), no result/report/store writes, and
-that unflagged verify still runs Validate.
+that unflagged verify still runs Validate. Mid-window race regressions
+run against private disposable fixture-engine copies; the installed
+production engine keeps no test hook or fault seam.
 """
 import json
 import os
@@ -143,11 +145,11 @@ class TaskPreview(unittest.TestCase):
             if (self.tasks / 'preview.md').exists() else b'',
         }
 
-    def preview(self, task='preview', code=0, json_out=False):
+    def preview(self, task='preview', code=0, json_out=False, engine=None):
         cmd = ['verify', 'mock', task, '--preview']
         if json_out:
             cmd.append('--json')
-        return self.unio(*cmd, code=code)
+        return self.unio(*cmd, code=code, engine=engine)
 
     def sentinel_validate(self):
         # Absolute path outside the worktree so unflagged verify is not
@@ -384,13 +386,33 @@ class TaskPreview(unittest.TestCase):
         self.assertNotEqual(later['head'], head)
         self.assertIn('hello.txt', later['changed']['committed'])
 
-    def preview_with_hook(self, hook, task='preview', json_out=True, code=2):
-        env = dict(self.env)
-        env['UNIO_PREVIEW_TEST_HOOK'] = hook
-        cmd = [self.engine, 'verify', 'mock', task, '--preview']
-        if json_out:
-            cmd.append('--json')
-        return self.call(cmd, code=code, env=env)
+    def fixture_engine(self, inject, drop_end_check=False):
+        # Private disposable engine copy for the mid-window race
+        # regressions: the injection is baked into this fixture only,
+        # right after facts() and before canonical task_section
+        # parsing. The installed production engine keeps no runtime
+        # test hook, fault flag or environment-command seam.
+        text = Path(self.engine).read_text(encoding='utf-8')
+        marker = ('  facts=$(quality task-preview-facts "$root" '
+                  '"$worker" "$task") || {\n'
+                  '    echo "unio preview: unsupported or unknown '
+                  'Git/task state (fail closed)" >&2\n'
+                  '    return 2\n'
+                  '  }\n')
+        self.assertEqual(text.count(marker), 1,
+                         'after-facts injection marker must be unique')
+        patched = text.replace(marker, marker + '  %s\n' % inject, 1)
+        if drop_end_check:
+            # Old-bug sensitivity only: remove the final end-snapshot
+            # comparison from this private fixture, nothing else.
+            end_check = "if end != (facts.get('before') or {}):\n"
+            self.assertEqual(patched.count(end_check), 1,
+                             'end-snapshot comparison marker must be unique')
+            patched = patched.replace(end_check, 'if False:\n', 1)
+        path = self.root / 'fixture-unio'
+        path.write_text(patched, encoding='utf-8')
+        os.chmod(path, 0o700)
+        return str(path)
 
     def test_mid_window_task_edit_is_changed_not_in_scope(self):
         # Lead probe (task-change-window.json): a task edited after
@@ -404,13 +426,17 @@ class TaskPreview(unittest.TestCase):
         self.call(['git', 'commit', '-qm', 'allowed'], cwd=self.wt)
         tf = self.tasks / 'preview.md'
         original = tf.read_bytes()
-        hook = ("python3 -B -c \"import pathlib; p = pathlib.Path(%r); "
-                "p.write_text(p.read_text(encoding='utf-8')"
-                ".replace('- allowed.txt', '- forbidden.txt'),"
-                "encoding='utf-8')\"" % str(tf))
+        inject = ("python3 -B -c \"import pathlib; p = pathlib.Path(%r); "
+                  "p.write_text(p.read_text(encoding='utf-8')"
+                  ".replace('- allowed.txt', '- forbidden.txt'),"
+                  "encoding='utf-8')\"" % str(tf))
+        engine = self.fixture_engine(inject)
         before = self.snapshot_store()
-        p = self.preview_with_hook(hook)
+        p = self.preview('preview', json_out=True, code=2, engine=engine)
         doc = json.loads(p.stdout)
+        # The injection actually ran: the edited revision is on disk.
+        self.assertNotEqual(tf.read_bytes(), original)
+        self.assertIn(b'- forbidden.txt', tf.read_bytes())
         self.assertEqual(doc['scope_status'], 'changed')
         self.assertIn('candidate_changed_during_observation', doc['reasons'])
         self.assertFalse(doc['validate_executed'])
@@ -422,21 +448,61 @@ class TaskPreview(unittest.TestCase):
         self.assertEqual(self.snapshot_store()['ledger'], before['ledger'])
         # The edited revision is on disk now; the refusal above is what
         # keeps the reported hash and scope list from being mixed.
-        self.assertNotEqual(tf.read_bytes(), original)
 
     def test_mid_window_git_move_is_changed(self):
         self.task('preview', scope=('- allowed.txt',))
         (self.wt / 'allowed.txt').write_text('ok\n')
         self.call(['git', 'add', 'allowed.txt'], cwd=self.wt)
         self.call(['git', 'commit', '-qm', 'allowed'], cwd=self.wt)
-        hook = "git -C '%s' commit -qm midwindow --allow-empty" % self.wt
-        p = self.preview_with_hook(hook)
+        head_before = self.call(['git', 'rev-parse', 'HEAD'],
+                                cwd=self.wt).stdout.strip()
+        inject = "git -C '%s' commit -qm midwindow --allow-empty" % self.wt
+        engine = self.fixture_engine(inject)
+        p = self.preview('preview', json_out=True, code=2, engine=engine)
         doc = json.loads(p.stdout)
+        # The injection actually ran: HEAD moved mid-window.
+        head_after = self.call(['git', 'rev-parse', 'HEAD'],
+                               cwd=self.wt).stdout.strip()
+        self.assertNotEqual(head_after, head_before)
         self.assertEqual(doc['scope_status'], 'changed')
         self.assertIn('candidate_changed_during_observation', doc['reasons'])
+        self.assertFalse(doc['validate_executed'])
+        self.assertEqual(doc['provider_calls'], 0)
 
-    def test_no_hook_preview_still_in_scope(self):
-        # The injection point is inert unless explicitly set.
+    def test_mid_window_regression_detects_missing_end_snapshot(self):
+        # Old-bug sensitivity: a private fixture with ONLY the final
+        # end-snapshot comparison removed must let the same mid-window
+        # Git move pass as in_scope with a stale head — the mixed-state
+        # bug the lead probe showed — proving the changed/exit-2
+        # assertions above are load-bearing.
+        self.task('preview', scope=('- allowed.txt',))
+        (self.wt / 'allowed.txt').write_text('ok\n')
+        self.call(['git', 'add', 'allowed.txt'], cwd=self.wt)
+        self.call(['git', 'commit', '-qm', 'allowed'], cwd=self.wt)
+        head_before = self.call(['git', 'rev-parse', 'HEAD'],
+                                cwd=self.wt).stdout.strip()
+        inject = "git -C '%s' commit -qm midwindow --allow-empty" % self.wt
+        engine = self.fixture_engine(inject, drop_end_check=True)
+        p = self.preview('preview', json_out=True, code=0, engine=engine)
+        doc = json.loads(p.stdout)
+        head_after = self.call(['git', 'rev-parse', 'HEAD'],
+                               cwd=self.wt).stdout.strip()
+        self.assertNotEqual(head_after, head_before)
+        self.assertEqual(doc['scope_status'], 'in_scope')
+        self.assertNotIn('candidate_changed_during_observation',
+                         doc['reasons'])
+        # Mixed state: the reported head is the pre-move commit.
+        self.assertEqual(doc['head'], head_before)
+
+    def test_production_engine_has_no_test_hook_seam(self):
+        # Lead finding (0531-PREVIEW-SEAM): the installed production
+        # preview command must not run arbitrary bash from a runtime
+        # test-hook environment variable again.
+        engine = Path(self.engine).read_text(encoding='utf-8')
+        self.assertNotIn('UNIO_PREVIEW_TEST_HOOK', engine)
+        helper = (ROOT / 'tools' / 'task-preview.sh').read_text(encoding='utf-8')
+        self.assertNotIn('UNIO_PREVIEW_TEST_HOOK', helper)
+        # The uninstrumented production preview stays a clean observation.
         self.task('preview', scope=('- allowed.txt',))
         (self.wt / 'allowed.txt').write_text('ok\n')
         self.call(['git', 'add', 'allowed.txt'], cwd=self.wt)

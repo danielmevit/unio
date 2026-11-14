@@ -147,17 +147,6 @@ cmd_verify_preview() {
     return 2
   }
 
-  # Test-only mid-window injection (tests/unio-task-preview.py): when
-  # UNIO_PREVIEW_TEST_HOOK is set, the command runs exactly here — after
-  # facts(), before canonical task_section parsing — so the regression
-  # fixture can edit the task or move Git deterministically at the point
-  # the lead probe showed. Like UNIO_SAVE_TEST_FAULT it only injects
-  # input; it cannot bypass any snapshot, scope or exit decision, and it
-  # is inert unless explicitly set.
-  if [ -n "${UNIO_PREVIEW_TEST_HOOK:-}" ]; then
-    bash -c "$UNIO_PREVIEW_TEST_HOOK" >/dev/null 2>&1 || true
-  fi
-
   local pats=() scope_warnings=() line
   while IFS= read -r line; do
     case "$line" in '- '*)
