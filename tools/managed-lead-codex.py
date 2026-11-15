@@ -68,6 +68,19 @@ Frozen contract:
   reconciliation stays unsupported/Unknown until the future native owner
   proves it. No persistent provider-id schema is added to the core.
 
+Opt-in adaptive effort (contract 0532-ADAPTIVE-LEAD-EFFORT-V1), legacy
+default preserved exactly: when ``supported_efforts`` is not given the
+bridge behaves byte-for-byte as before and rejects any per-turn effort in
+the facts. When the caller supplies the explicit supported set (queried
+once on the owned connection), the pinned effort must be in it and
+``send_turn`` accepts one optional ``facts['effort']``: it must be a
+member of the supported set (anything else — max, ultra, unadvertised —
+is refused before any RPC; there is no fallback) and is sent explicitly
+as the ``effort`` override of that one ``turn/start`` on the same owned
+thread. The app-server schema has no effort override on ``turn/steer``,
+so an effort change is only ever applied by the next turn/start; the
+effective provider effort remains Unknown.
+
 The future native caller still owns: creating the connection and thread,
 routing notifications, native admission, the lead reservation and claiming
 the registered lead exactly once. See docs/development/MANAGED-LEAD-CODEX.md.
@@ -133,13 +146,28 @@ class CodexLeadTransport:
     def __init__(self, rpc, thread_id, *, model, effort,
                  rejection=RPCRejected,
                  buffer_events=DEFAULT_BUFFER_EVENTS,
-                 buffer_bytes=DEFAULT_BUFFER_BYTES):
+                 buffer_bytes=DEFAULT_BUFFER_BYTES,
+                 supported_efforts=None):
         if not callable(rpc):
             raise Refusal('owned rpc callable required')
         self._rpc = rpc
         self._thread = _bounded(thread_id, ID_BOUND, 'thread id')
         self._model = _bounded(model, LABEL_BOUND, 'model')
         self._effort = _bounded(effort, LABEL_BOUND, 'effort')
+        if supported_efforts is None:
+            self._supported_efforts = None
+        else:
+            if (not isinstance(supported_efforts, (list, tuple))
+                    or not supported_efforts):
+                raise Refusal('invalid supported effort set')
+            seen = []
+            for item in supported_efforts:
+                item = _bounded(item, LABEL_BOUND, 'supported effort')
+                if item not in seen:
+                    seen.append(item)
+            self._supported_efforts = tuple(seen)
+            if self._effort not in self._supported_efforts:
+                raise Refusal('pinned effort not in the supported set')
         if isinstance(rejection, tuple):
             ok = bool(rejection) and all(
                 isinstance(item, type) and issubclass(item, BaseException)
@@ -210,6 +238,9 @@ class CodexLeadTransport:
             'model': self._model,
             'effort': self._effort,
             'effective': 'Unknown',
+            'adaptive_efforts': self._supported_efforts is not None,
+            'supported_efforts': (list(self._supported_efforts)
+                                  if self._supported_efforts is not None else None),
             'inflight': self._inflight is not None,
             'buffered_events': len(self._buffer),
             'dropped_events': self._dropped,
@@ -260,7 +291,14 @@ class CodexLeadTransport:
             self._last_send = {'status': 'uncertain',
                                'reason': 'mapping capacity exhausted; explicit handoff required'}
             return dict(self._last_send)
-        params = {'threadId': self._thread, 'model': self._model, 'effort': self._effort,
+        effort = self._effort
+        if 'effort' in facts:
+            if self._supported_efforts is None:
+                raise Refusal('per-turn effort not enabled on this bridge')
+            effort = facts['effort']
+            if not isinstance(effort, str) or effort not in self._supported_efforts:
+                raise Refusal('unsupported per-turn effort refused before any rpc')
+        params = {'threadId': self._thread, 'model': self._model, 'effort': effort,
                   'input': [{'type': 'text', 'text': text}]}
         self._inflight = {'turn_id': turn_id, 'generation': generation}
         self._current = turn_id
@@ -315,6 +353,7 @@ class CodexLeadTransport:
         counts = self._settle(provider_turn)
         self._last_send = {
             'status': 'accepted', 'provider_turn_id': provider_turn,
+            'effort': effort,
             'dropped_events': self._dropped, **counts,
             'gap': self._gap, 'gap_recorded': (turn_id, GAP_EVENT) in self._marks}
         return dict(self._last_send)
