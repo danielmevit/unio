@@ -10,12 +10,14 @@ FILES = (('tools', 'managed-lead.py', 'UNIO_MANAGED_LEAD_PY'),
          ('tools', 'managed-lead-codex.py', 'UNIO_MANAGED_LEAD_CODEX_PY'),
          ('tools', 'lead-effort.py', 'UNIO_LEAD_EFFORT_PY'),
          ('tools', 'lead-session.py', 'UNIO_LEAD_SESSION_PY'),
+         ('tools', 'lead-session-codex.py', 'UNIO_LEAD_SESSION_CODEX_PY'),
          ('docs', 'ADAPTIVE-LEAD-EFFORT.md', 'UNIO_ADAPTIVE_LEAD_EFFORT_MD'))
 BEGIN = '# BEGIN EMBEDDED MANAGED LEAD\n'
 END = '# END EMBEDDED MANAGED LEAD\n'
 DIRS = ('"$CONF_DIR/lib"',)
 NAMES = ('managed-lead.py', 'managed-lead-codex.py', 'lead-effort.py',
-         'lead-session.py', 'ADAPTIVE-LEAD-EFFORT.md')
+         'lead-session.py', 'lead-session-codex.py',
+         'ADAPTIVE-LEAD-EFFORT.md')
 
 
 def embedded_block():

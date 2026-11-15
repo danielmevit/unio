@@ -23729,7 +23729,7 @@ for lead_dir in "$CONF_DIR/lib"; do
     exit 1
   fi
 done
-for lead_name in "managed-lead.py" "managed-lead-codex.py" "lead-effort.py" "lead-session.py" "ADAPTIVE-LEAD-EFFORT.md"; do
+for lead_name in "managed-lead.py" "managed-lead-codex.py" "lead-effort.py" "lead-session.py" "lead-session-codex.py" "ADAPTIVE-LEAD-EFFORT.md"; do
   lead_file="$CONF_DIR/lib/$lead_name"
   if [ -L "$lead_file" ] || { [ -e "$lead_file" ] && { [ ! -f "$lead_file" ] || [ "$(stat -c '%h' -- "$lead_file")" != 1 ]; }; }; then
     echo "unio: refusing unsafe managed lead file: $lead_file" >&2
@@ -25713,22 +25713,38 @@ cat > "$CONF_DIR/lib/lead-session.py" <<'UNIO_LEAD_SESSION_PY'
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
 """Native `unio lead-session` CLI — adaptive-effort owned lead controller.
 
-Experimental vertical slice for contract 0532-ADAPTIVE-LEAD-EFFORT-V1.
-It wires the managed lead core (`tools/managed-lead.py`), the owned Codex
-app-server bridge (`tools/managed-lead-codex.py`) and the adaptive effort
-policy (`tools/lead-effort.py`) into one explicit owner-controlled lead
+Experimental vertical slice for contracts 0532-ADAPTIVE-LEAD-EFFORT
+V1/V2/V3. It wires the managed lead core (`tools/managed-lead.py`), the
+owned Codex app-server bridge (`tools/managed-lead-codex.py`), the
+adaptive effort policy (`tools/lead-effort.py`) and the owned connection
+(`tools/lead-session-codex.py`) into one explicit owner-controlled lead
 session per workspace. It is NOT a replacement dashboard and it never
-adopts an unmanaged TUI or connection.
+adopts an unmanaged TUI or connection: the operator must close or retire
+their unmanaged lead before `start`, and there is no supported setter
+for the current TUI.
 
 Guarantees kept by this controller:
 - explicit owner start with a goal file and model; one managed owner per
-  workspace recorded under `coord/lead-effort/owner.json`; conflicting or
-  unknown ownership refuses;
+  workspace recorded under `coord/lead-effort/owner.json`, claimed
+  atomically under the workspace owner lock (owner lock before session
+  lock); conflicting or unknown ownership refuses;
+- the owned transport (default) owns ONE new Codex app-server process
+  per command: `start` initializes the connection, verifies the
+  subscription account, queries the model catalog once and starts ONE
+  new owned thread whose exact id is persisted; every later `run`
+  resumes that exact thread before its one `turn/start`. A per-command
+  process plus the exact durable thread is the supported process model;
+  no daemon is built. Admission (STOP, owner holds, contention) is
+  checked before the owned process is spawned;
 - every turn is one explicit `run` with bounded owner input; the decided
   effort is sent explicitly with `turn/start` on the same owned thread;
   nothing is ever sent automatically, so zero model calls happen while
-  the lead waits for workers, and status/effort/worker/stop/output make
-  no provider calls at all;
+  the lead waits for workers, and status/effort/worker/stop/output open
+  no owned connection at all;
+- a proven active turn is reconciled only inside an explicit `run` from
+  the provider's own thread state (`thread/read`), for the exact
+  acknowledged provider turn id; an unacknowledged turn is never
+  reconciled, replayed or resent;
 - STOP blocks new turns (both here and in the injected authority) without
   killing workers, and nothing resumes it automatically: no command in
   this slice clears a STOP, a stopped session stays stopped;
@@ -25739,20 +25755,22 @@ Guarantees kept by this controller:
   bridge; an unproven, incomplete or mismatched handoff refuses instead
   of inventing recovery, and an uncertain (outcome_unknown) turn can
   never be handed over;
-- the effective provider effort stays Unknown; only requested efforts,
-  reasons and immutable per-turn decisions are recorded;
-- this first adaptive interface exposes only auto, low and xhigh (contract
-  0532-ADAPTIVE-LEAD-EFFORT-V2): medium and high are not choices in
-  adaptive mode, while advertised sets containing them and fixed legacy
-  worker/core settings stay compatible.
+- the effective provider model/effort stay Unknown; only requested
+  efforts, reasons and immutable per-turn decisions are recorded;
+- this first adaptive interface exposes only auto, low and xhigh
+  (contract 0532-ADAPTIVE-LEAD-EFFORT-V2): medium and high are not
+  choices in adaptive mode, while advertised sets containing them and
+  fixed legacy worker/core settings stay compatible.
 
-Honest boundary of this slice: the real owned app-server connection
-(thread creation, notification routing, native account/lead reservation)
-is NOT wired here. `--transport fake` selects a deterministic fake
-connection for tests and demos; the default refuses with an explicit
-message instead of fabricating authority. See docs/ADAPTIVE-LEAD-EFFORT.md.
+`--transport fake` keeps the deterministic in-process fake connection as
+a test seam. The owned path is the production path; it is exercised
+offline against an executable fake Codex app-server speaking the same
+JSON-RPC protocol (tests/unio-lead-session-codex.py). No real Codex
+model call happens during development or validation. See
+docs/ADAPTIVE-LEAD-EFFORT.md.
 """
 import argparse
+import contextlib
 import hashlib
 import importlib.util
 import json
@@ -25760,6 +25778,7 @@ import os
 from pathlib import Path
 import stat
 import sys
+import time
 
 HERE = Path(__file__).resolve().parent
 MAX_INPUT_BYTES = 8192
@@ -25771,11 +25790,11 @@ ROUTE_DEFAULT = 'codex-app-server'
 BUDGET_DEFAULT = 'codex-shared'
 STATE_KEYS = frozenset(
     'session_id workspace route budget_label model thread_id baseline_effort '
-    'transport fake_efforts goal_sha256 max_requests max_mappings '
+    'transport codex_binary fake_efforts goal_sha256 max_requests max_mappings '
     'provider_turns policy stopped waiting workers created_at updated_at'.split())
 WORKER_STATES = ('registered', 'terminal')
 CAUTION = ('requested effort only; the effective provider effort remains Unknown; '
-           'no native lead is claimed by this slice')
+           'no unmanaged TUI is adopted')
 
 
 class Refusal(Exception):
@@ -25792,6 +25811,7 @@ def _load_module(name, filename):
 ml = _load_module('unio_managed_lead', 'managed-lead.py')
 bx = _load_module('unio_managed_lead_codex', 'managed-lead-codex.py')
 pe = _load_module('unio_lead_effort', 'lead-effort.py')
+cx = _load_module('unio_lead_session_codex', 'lead-session-codex.py')
 
 
 def _now():
@@ -25832,10 +25852,21 @@ def _validate_state(doc):
         refuse()
     if not ml.SESSION_ID.fullmatch(doc['session_id']):
         refuse()
-    if doc['transport'] != 'fake':
+    if doc['transport'] not in ('owned', 'fake'):
+        refuse()
+    binary = doc.get('codex_binary')
+    if not isinstance(binary, str) or '\x00' in binary:
+        refuse()
+    if doc['transport'] == 'owned':
+        if not binary or len(binary.encode('utf-8')) > 1024:
+            refuse()
+    elif binary != '':
         refuse()
     efforts = doc.get('fake_efforts')
-    if not isinstance(efforts, list) or not efforts:
+    if doc['transport'] == 'fake':
+        if not isinstance(efforts, list) or not efforts:
+            refuse()
+    elif efforts != []:
         refuse()
     for item in efforts:
         if not isinstance(item, str) or not item or '\x00' in item:
@@ -25921,6 +25952,23 @@ def _load_owner(root):
 def _save_owner(root, session_id):
     ml._atomic_write(_owner_path(root),
                      json.dumps({'session_id': session_id}).encode('utf-8'))
+
+
+@contextlib.contextmanager
+def _owner_guard(root):
+    """Serialize the workspace ownership claim (owner lock before the
+    per-session core lock; no other command takes both)."""
+    fd = ml._acquire_lock(_state_dir(root) / 'owner.lock')
+    try:
+        yield
+    finally:
+        os.close(fd)
+
+
+def _closed_rpc(method, params):
+    """Rpc callable for read-only commands: zero provider calls, ever."""
+    raise Refusal('owned connection not open in this command; read-only '
+                  'commands make zero provider calls')
 
 
 def _read_input(path, bound):
@@ -26136,45 +26184,51 @@ def _ownership(root, session_id):
 def _open(root, state):
     """Rebuild the session, bridge and policy from durable state.
 
-    The proven provider mappings are handed over explicitly. A session
-    with an unacknowledged (outcome_unknown) turn cannot be handed over;
-    it reopens for inspection only, so an identical request replay can
-    still return its recorded result while every new turn refuses.
+    Zero provider calls in every read-only command: the owned transport
+    gets a closed rpc callable that refuses if anything ever tries to
+    send. The proven provider mappings are handed over explicitly. A
+    session with an unacknowledged (outcome_unknown) turn cannot be
+    handed over; it reopens for inspection only, so an identical request
+    replay can still return its recorded result while every new turn
+    refuses.
     """
     policy = pe.AdaptiveEffortPolicy.load(state['policy'])
-    if state['transport'] != 'fake':
-        raise Refusal('only the fake test transport is wired in this slice; '
-                      'the real owned app-server connection seam is not '
-                      'implemented (see docs/ADAPTIVE-LEAD-EFFORT.md)')
-    directory = _state_dir(root)
-    rpc = FakeLeadRPC(directory / (state['session_id'] + '.rpclog.jsonl'),
-                      state['thread_id'], state['model'],
-                      state['fake_efforts'],
-                      directory / (state['session_id'] + '.fake.json'))
     wrapper = EffortTransport(None, policy, None, None)
     session = ml.LeadSession(ml.safe_path(Path(root)), state['session_id'],
                              transport=wrapper,
                              authority=_authority(root, state['session_id']),
                              ownership=_ownership(root, state['session_id']))
+    if state['transport'] == 'fake':
+        directory = _state_dir(root)
+        rpc = FakeLeadRPC(directory / (state['session_id'] + '.rpclog.jsonl'),
+                          state['thread_id'], state['model'],
+                          state['fake_efforts'],
+                          directory / (state['session_id'] + '.fake.json'))
+    else:
+        rpc = None
     try:
         bridge = bx.CodexLeadTransport(
-            rpc, state['thread_id'], model=state['model'],
+            rpc if rpc is not None else _closed_rpc,
+            state['thread_id'], model=state['model'],
             effort=state['baseline_effort'],
             supported_efforts=policy.supported(),
             max_mappings=state['max_mappings'],
             prior_mappings=state['provider_turns'])
-        rpc.bridge = bridge
+        if rpc is not None:
+            rpc.bridge = bridge
         bridge.bind(session)
     except (bx.Refusal, ml.Refusal):
         # Inspection-only reopen: no sending is possible from this bind
         # (the core refuses new turns on non-open states and the bridge
         # refuses sends), but recorded replay results stay readable.
         bridge = bx.CodexLeadTransport(
-            rpc, state['thread_id'], model=state['model'],
+            rpc if rpc is not None else _closed_rpc,
+            state['thread_id'], model=state['model'],
             effort=state['baseline_effort'],
             supported_efforts=policy.supported(),
             max_mappings=state['max_mappings'])
-        rpc.bridge = bridge
+        if rpc is not None:
+            rpc.bridge = bridge
         bridge.bind(session)
     wrapper.bridge = bridge
     return session, bridge, rpc, policy, wrapper
@@ -26240,12 +26294,6 @@ def _emit(args, payload, human):
 
 
 def _cmd_start(root, args):
-    if args.transport != 'fake':
-        raise Refusal(
-            'the real owned app-server connection seam (native thread '
-            'creation, notification routing, account/lead reservation) is '
-            'not implemented in this slice; only --transport fake is '
-            'available for tests and demos')
     goal = _read_input(args.goal, MAX_INPUT_BYTES)
     goal_sha = hashlib.sha256(goal.encode('utf-8')).hexdigest()
     owner = _load_owner(root)
@@ -26262,9 +26310,6 @@ def _cmd_start(root, args):
     if args.ceiling not in pe.INTERFACE_EFFORTS:
         raise Refusal('ceiling must be low or xhigh in this first adaptive '
                       'interface: ' + args.ceiling)
-    efforts = [item.strip() for item in args.fake_efforts.split(',') if item.strip()]
-    if not efforts:
-        raise Refusal('no fake efforts advertised')
     if args.effort != 'auto':
         if args.effort not in pe.RANK:
             raise Refusal('unknown effort: ' + args.effort)
@@ -26272,6 +26317,11 @@ def _cmd_start(root, args):
             raise Refusal('only auto, low and xhigh are exposed in this '
                           'first adaptive interface: ' + args.effort)
     baseline = args.ceiling if args.effort == 'auto' else args.effort
+    if args.transport == 'owned':
+        return _cmd_start_owned(root, args, goal_sha, baseline)
+    efforts = [item.strip() for item in args.fake_efforts.split(',') if item.strip()]
+    if not efforts:
+        raise Refusal('no fake efforts advertised')
     policy = pe.AdaptiveEffortPolicy(ceiling=args.ceiling)
     wrapper = EffortTransport(None, policy, None, None)
     session = ml.create_lead_session(
@@ -26314,7 +26364,8 @@ def _cmd_start(root, args):
         'session_id': sid, 'workspace': args.workspace, 'route': args.route,
         'budget_label': args.budget_label, 'model': args.model,
         'thread_id': THREAD_FAKE, 'baseline_effort': baseline,
-        'transport': 'fake', 'fake_efforts': efforts, 'goal_sha256': goal_sha,
+        'transport': 'fake', 'codex_binary': '', 'fake_efforts': efforts,
+        'goal_sha256': goal_sha,
         'max_requests': args.max_requests, 'max_mappings': args.max_mappings,
         'provider_turns': {}, 'policy': policy.snapshot(), 'stopped': False,
         'waiting': False, 'workers': {}, 'created_at': now, 'updated_at': now,
@@ -26328,6 +26379,194 @@ def _cmd_start(root, args):
     return 0
 
 
+def _cmd_start_owned(root, args, goal_sha, baseline):
+    """Start one owned app-server connection and ONE new owned thread.
+
+    Contention, STOP and owner holds are checked before the owned process
+    is spawned; the ownership claim is atomic under the workspace owner
+    lock, so a concurrent start refuses honestly instead of creating a
+    second managed owner. The exact provider thread id is persisted; no
+    turn is started here.
+    """
+    with _owner_guard(root):
+        owner = _load_owner(root)
+        if isinstance(owner, dict) and owner['session_id']:
+            try:
+                existing = _load_state(root, owner['session_id'])
+            except Refusal:
+                existing = None
+            if existing is not None and not existing['stopped']:
+                raise Refusal('workspace already has an active managed '
+                              'lead session: ' + owner['session_id'])
+        conn = cx.OwnedCodexConnection(args.codex_binary, cwd=str(root))
+        try:
+            conn.initialize()
+            efforts = conn.query_model_efforts(args.model)
+            thread_id = conn.start_thread(args.model)
+        finally:
+            conn.close()
+        policy = pe.AdaptiveEffortPolicy(ceiling=args.ceiling)
+        policy.query_supported(lambda: list(efforts))
+        if args.effort != 'auto':
+            policy.set_manual(args.effort, 'explicit owner start effort')
+        wrapper = EffortTransport(None, policy, None, None)
+        session = ml.create_lead_session(
+            ml.safe_path(Path(root)), transport=wrapper,
+            authority=_authority(root, 'pending'),
+            ownership=_ownership(root, 'pending'),
+            workspace=args.workspace, budget_label=args.budget_label,
+            route=args.route, model=args.model, effort=baseline,
+            max_requests=args.max_requests)
+        sid = session.session_id
+        state = {
+            'session_id': sid, 'workspace': args.workspace,
+            'route': args.route, 'budget_label': args.budget_label,
+            'model': args.model, 'thread_id': thread_id,
+            'baseline_effort': baseline, 'transport': 'owned',
+            'codex_binary': args.codex_binary, 'fake_efforts': [],
+            'goal_sha256': goal_sha,
+            'max_requests': args.max_requests,
+            'max_mappings': args.max_mappings,
+            'provider_turns': {}, 'policy': policy.snapshot(),
+            'stopped': False, 'waiting': False, 'workers': {},
+            'created_at': _now(), 'updated_at': _now(),
+        }
+        _save_state(root, state)
+        _save_owner(root, sid)
+    session, bridge, rpc, policy, wrapper = _open(root, state)
+    view = _session_view(root, state, session, bridge, policy)
+    _emit(args, view, 'lead session started: %s (model %s, ceiling %s, '
+                      'baseline effort %s, owned thread %s)'
+          % (sid, args.model, args.ceiling, baseline, thread_id))
+    return 0
+
+
+def _reconcile_active(root, state, session, conn, view):
+    """Reconcile one proven active turn from the provider's own thread state.
+
+    Only the exact provider turn id validated by a previous acknowledgement
+    can be reconciled, and only inside this explicit owner `run`. An
+    unacknowledged turn, a provider that no longer reports the turn, or a
+    still-running turn changes nothing: the core refuses the new turn
+    honestly instead of inventing recovery.
+    """
+    if view['state'] not in ('pending', 'running', 'outcome_unknown'):
+        return view
+    active = view['turn']
+    if active is None:
+        return view
+    provider_turn = None
+    for provider_id, local in state['provider_turns'].items():
+        if local['turn_id'] == active['turn_id']:
+            provider_turn = provider_id
+    if provider_turn is None:
+        return view
+    turns = conn.read_thread_turns(state['thread_id'])
+    status = cx.reconcile_status(turns.get(provider_turn))
+    if status is None:
+        return view
+    session.observe_terminal(session_id=state['session_id'],
+                             generation=active['generation'],
+                             turn_id=active['turn_id'], status=status,
+                             exit_code=None)
+    return session.status(session_id=state['session_id'])
+
+
+def _cmd_run_owned(root, state, args, text):
+    """One explicit owner turn over the owned production transport.
+
+    Admission (STOP, owner holds) is checked before the owned process is
+    spawned. The command then owns ONE app-server process: initialize,
+    account, exact thread/resume, optional reconciliation of a proven
+    active turn, one turn/start with the decided effort, and bounded
+    waiting for the turn's terminal notification. The core's idempotent
+    request check and its open-state check decide replays and uncertain
+    sessions; nothing is ever resent, and an unacknowledged turn is
+    never reconciled. The connection is closed in a finally so no owned
+    process outlives the command.
+    """
+    owner = _load_owner(root)
+    if not isinstance(owner, dict) or owner.get('session_id') != state['session_id']:
+        raise Refusal('workspace owner mismatch')
+    session, bridge, _rpc, policy, wrapper = _open(root, state)
+    view = session.status(session_id=state['session_id'])
+    wrapper.kind = args.kind
+    wrapper.reason = args.reason
+    conn = cx.OwnedCodexConnection(state['codex_binary'], cwd=str(root))
+    try:
+        conn.initialize()
+        conn.resume_thread(state['thread_id'])
+        view = _reconcile_active(root, state, session, conn, view)
+        try:
+            live = bx.CodexLeadTransport(
+                conn.rpc, state['thread_id'], model=state['model'],
+                effort=state['baseline_effort'],
+                supported_efforts=policy.supported(),
+                max_mappings=state['max_mappings'],
+                prior_mappings=dict(state['provider_turns']),
+                rejection=cx.ProviderRejected)
+            live.bind(session)
+        except (bx.Refusal, ml.Refusal):
+            # Unproven handoff (for example an unacknowledged turn):
+            # inspection only. The core still returns recorded replay
+            # results; every new send refuses with zero turn starts.
+            live = bx.CodexLeadTransport(
+                conn.rpc, state['thread_id'], model=state['model'],
+                effort=state['baseline_effort'],
+                supported_efforts=policy.supported(),
+                max_mappings=state['max_mappings'],
+                rejection=cx.ProviderRejected)
+            live.bind(session)
+        conn.on_notification = live.handle_notification
+        wrapper.bridge = live
+        generation = view['generation']
+        try:
+            result = session.submit_next_turn(
+                session_id=state['session_id'], generation=generation,
+                request_id=args.request_id, text=text)
+        finally:
+            _persist(root, state, policy, live, session)
+        decision = wrapper.last_decision
+        if decision is None:
+            for item in policy.decisions():
+                if item['turn_id'] == result.get('turn_id'):
+                    decision = item
+        completed = False
+        if result.get('state') == 'accepted' and args.turn_wait > 0:
+            turn_id = result['turn_id']
+            deadline = time.monotonic() + args.turn_wait
+            while True:
+                view = session.status(session_id=state['session_id'])
+                if view['turn'] is None:
+                    last = view['last_turn']
+                    completed = bool(last and last['turn_id'] == turn_id
+                                     and last['status'] == 'completed')
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                conn.pump(min(0.2, remaining))
+        payload = {
+            'session_id': state['session_id'], 'request_id': args.request_id,
+            'generation': result.get('generation'),
+            'turn_id': result.get('turn_id'), 'status': result.get('state'),
+            'effort': decision['effort'] if decision else None,
+            'kind': decision['kind'] if decision else None,
+            'source': decision['source'] if decision else None,
+            'turn_completed': completed, 'thread_id': state['thread_id'],
+            'bridge': live.status(), 'effective': 'Unknown',
+            'caution': CAUTION,
+        }
+        _emit(args, payload, 'turn %s: %s (effort %s, kind %s, source %s, '
+                             'owned thread %s)'
+              % (result.get('turn_id'), result.get('state'),
+                 payload['effort'], payload['kind'], payload['source'],
+                 state['thread_id']))
+        return 0
+    finally:
+        conn.close()
+
+
 def _cmd_run(root, args):
     state = _load_state(root, args.session)
     if state['stopped']:
@@ -26335,6 +26574,8 @@ def _cmd_run(root, args):
     text = _read_input(args.file, MAX_INPUT_BYTES)
     if args.kind is not None and args.kind not in pe.KINDS:
         raise Refusal('unknown work kind: ' + args.kind)
+    if state['transport'] == 'owned':
+        return _cmd_run_owned(root, state, args, text)
     session, bridge, rpc, policy, wrapper = _open(root, state)
     wrapper.kind = args.kind
     wrapper.reason = args.reason
@@ -26522,7 +26763,12 @@ def build_parser():
     start.add_argument('--max-mappings', type=int,
                        default=bx.OWNED_MAPPING_BOUND,
                        help='explicit provider-turn mapping bound (1..64)')
-    start.add_argument('--transport', default='owned', choices=('owned', 'fake'))
+    start.add_argument('--transport', default='owned', choices=('owned', 'fake'),
+                       help='owned: one real owned app-server process per '
+                            'command and the exact durable thread (default); '
+                            'fake: deterministic in-process test transport')
+    start.add_argument('--codex-binary', default='codex',
+                       help='owned app-server binary (default: codex on PATH)')
     start.add_argument('--fake-efforts', default='low,medium,high,xhigh',
                        help='comma-separated efforts advertised by the fake '
                             'owned connection')
@@ -26535,6 +26781,10 @@ def build_parser():
                      help='explicit work kind (default: review when a '
                           'worker wakeup is pending, else coordination)')
     run.add_argument('--reason', default=None)
+    run.add_argument('--turn-wait', type=int, default=600,
+                     help='owned transport: seconds to wait for the turn '
+                          'terminal notification (0 returns right after '
+                          'the acknowledgement; default 600)')
     run.add_argument('--session', default=None)
     run.add_argument('--json', action='store_true')
 
@@ -26593,6 +26843,9 @@ def main(argv=None):
             raise Refusal('no managed lead session in this workspace; '
                           'start one first')
         args.session = owner['session_id']
+    if getattr(args, 'turn_wait', None) is not None:
+        if not 0 <= args.turn_wait <= 86400:
+            raise Refusal('turn wait must be 0..86400 seconds')
     if args.command == 'start':
         return _cmd_start(root, args)
     if args.command == 'run':
@@ -26613,10 +26866,333 @@ def main(argv=None):
 if __name__ == '__main__':
     try:
         sys.exit(main())
-    except (Refusal, ml.Refusal, pe.Refusal, bx.Refusal) as exc:
+    except (Refusal, ml.Refusal, pe.Refusal, bx.Refusal, cx.Refusal) as exc:
         print('unio lead-session: ' + str(exc), file=sys.stderr)
         sys.exit(1)
 UNIO_LEAD_SESSION_PY
+cat > "$CONF_DIR/lib/lead-session-codex.py" <<'UNIO_LEAD_SESSION_CODEX_PY'
+#!/usr/bin/env python3
+# Unio — Copyright (C) 2026 Daniel Mitev
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
+"""Owned Codex app-server connection for the native lead-session CLI.
+
+Importable transport component (contract 0532-ADAPTIVE-LEAD-EFFORT-V3)
+that owns ONE new Codex app-server process per command: it spawns
+``codex app-server --listen stdio://``, initializes the JSON-RPC
+connection, verifies the ChatGPT subscription account, queries the model
+catalog, starts or resumes the exact owned thread and routes every
+notification to a caller-bound handler. It never adopts an existing
+unmanaged TUI or connection, never reads auth tokens, never touches
+billing and has no paid API fallback.
+
+Process model (explicitly allowed by the V3 contract): one owned process
+per CLI command plus the exact durable thread. ``start`` creates the
+thread; every later ``run`` resumes the same thread id before its one
+``turn/start``. No daemon, desktop app or supervisor is built here, and
+nothing from ``tools/codex-worker.py`` is copied wholesale — only the
+small proven framing/timeout pieces of its ``Server.rpc`` seam.
+
+Enforced by this component:
+- the binary is an explicit owner choice (default ``codex``); an API-key
+  environment (``OPENAI_API_KEY``/``CODEX_API_KEY``) is refused like the
+  subscription Source refuses it — there is no paid fallback;
+- ``initialize`` + ``initialized`` + ``account/read`` happen before any
+  thread or turn operation; a non-chatgpt account refuses honestly;
+- ``thread/start`` and ``thread/resume`` acknowledgements must carry the
+  exact expected thread id; anything missing, malformed or foreign refuses
+  — no fallback thread, no adoption, no retry;
+- ``thread/read`` returns the provider's own turn statuses for
+  reconciliation of an already acknowledged provider turn; it never
+  invents a status for an unknown turn;
+- every RPC is id-correlated; a provider error reply raises the typed
+  ``ProviderRejected`` (injected into the bridge as its rejection class);
+  timeouts, exits and malformed wire data raise ``Refusal`` and stay
+  untyped/uncertain — the bridge decides how they settle;
+- notifications arriving while an RPC waits are routed in arrival order
+  to the bound handler (the bridge holds and replays them itself); the
+  connection adds no buffering of its own beyond one line;
+- ``close()`` terminates the owned process group (TERM, brief wait,
+  KILL) and never raises; the caller invokes it in a ``finally`` so no
+  owned process outlives its command. If the host process is killed
+  outright the session leader child can survive; the next command's
+  thread/resume reconciliation discovers the turn's real status.
+
+The caller (``tools/lead-session.py``) still owns: admission (STOP,
+owner holds, contention) before spawning this connection, the effort
+policy, the bridge/core wiring and counting the registered lead exactly
+once. See docs/ADAPTIVE-LEAD-EFFORT.md and
+docs/development/MANAGED-LEAD-CODEX.md.
+"""
+import json
+import os
+import select
+import signal
+import subprocess
+import sys
+import time
+
+RPC_TIMEOUT = 8.0
+READ_CHUNK = 65536
+WIRE_BOUND = 2 * 1024 * 1024
+ID_BOUND = 128
+LABEL_BOUND = 128
+BINARY_BOUND = 1024
+MODEL_PAGES = 16
+TERMINAL_TURN_STATUS = ('completed', 'failed', 'interrupted')
+CAUTION = ('owned connection metadata only; effective model/effort remain '
+           'Unknown and no unmanaged TUI is adopted')
+
+
+class Refusal(Exception):
+    """A controlled owned-connection failure; the original error is kept."""
+
+
+class ProviderRejected(Exception):
+    """Typed explicit provider rejection of one owned RPC call."""
+
+
+def _bounded(value, bound, name):
+    if (not isinstance(value, str) or not value or '\x00' in value
+            or len(value.encode('utf-8', 'replace')) > bound):
+        raise Refusal('invalid ' + name)
+    return value
+
+
+class OwnedCodexConnection:
+    """One owned app-server process bound to one CLI command.
+
+    The caller sets ``on_notification`` (the bridge's handler) before any
+    turn operation; construction itself only spawns the process.
+    """
+
+    def __init__(self, binary, *, cwd, rpc_timeout=RPC_TIMEOUT):
+        _bounded(binary, BINARY_BOUND, 'codex binary')
+        if not isinstance(cwd, str) or not cwd or '\x00' in cwd:
+            raise Refusal('invalid owned cwd')
+        if os.environ.get('OPENAI_API_KEY') or os.environ.get('CODEX_API_KEY'):
+            raise Refusal('subscription owned connection refuses '
+                          'API-key environment')
+        if type(rpc_timeout) is not float or not 0.1 <= rpc_timeout <= 600.0:
+            raise Refusal('invalid owned rpc timeout')
+        self._cwd = cwd
+        self._rpc_timeout = rpc_timeout
+        self.on_notification = None
+        self._buffer = b''
+        self._counter = 0
+        self._closed = False
+        try:
+            self._child = subprocess.Popen(
+                [binary, 'app-server', '--listen', 'stdio://'],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError as exc:
+            raise Refusal('owned app-server connection failed: '
+                          '%s: %s' % (type(exc).__name__, exc)) from exc
+
+    # -- wire framing (small reuse of the codex-worker Server seam) ----
+
+    def _send(self, data):
+        try:
+            self._child.stdin.write((json.dumps(data) + '\n').encode())
+            self._child.stdin.flush()
+        except (OSError, ValueError) as exc:
+            raise Refusal('owned app-server write failed: %s' % exc) from exc
+
+    def _message(self, deadline):
+        while b'\n' not in self._buffer:
+            if time.monotonic() >= deadline:
+                raise Refusal('owned rpc timeout')
+            ready, _, _ = select.select([self._child.stdout], [], [],
+                                       min(.2, max(0.0, deadline - time.monotonic())))
+            if not ready:
+                continue
+            data = os.read(self._child.stdout.fileno(), READ_CHUNK)
+            if not data:
+                raise Refusal('owned app-server exited')
+            self._buffer += data
+            if len(self._buffer) > WIRE_BOUND:
+                raise Refusal('owned message bound exceeded')
+        line, self._buffer = self._buffer.split(b'\n', 1)
+        try:
+            msg = json.loads(line)
+        except (ValueError, UnicodeError, RecursionError) as exc:
+            raise Refusal('invalid owned message') from exc
+        if (not isinstance(msg, dict)
+                or ('method' in msg and (not isinstance(msg['method'], str)
+                                          or not isinstance(msg.get('params', {}),
+                                                            dict)))):
+            raise Refusal('invalid owned message')
+        return msg
+
+    def _route(self, msg):
+        """One provider message that is not our pending reply."""
+        if msg.get('method') is not None:
+            if self.on_notification is not None:
+                self.on_notification(msg)
+        if 'id' in msg and msg.get('method'):
+            # Noninteractive owned lead: never auto-approve provider requests.
+            self._send({'id': msg['id'],
+                        'error': {'code': -32601,
+                                  'message': 'Noninteractive owned lead request '
+                                             'unsupported'}})
+
+    def rpc(self, method, params):
+        """One id-correlated owned RPC call; typed rejection on error reply."""
+        self._counter += 1
+        request_id = self._counter
+        self._send({'id': request_id, 'method': method, 'params': params})
+        deadline = time.monotonic() + self._rpc_timeout
+        while True:
+            msg = self._message(deadline)
+            if msg.get('id') == request_id and 'method' not in msg:
+                if 'error' in msg:
+                    raise ProviderRejected('owned app-server rejected '
+                                           + str(method))
+                return msg.get('result', {})
+            self._route(msg)
+
+    def pump(self, timeout):
+        """Route pending notifications until the timeout elapses.
+
+        Returns after routing whatever arrived; never raises for a quiet
+        connection. A provider exit or malformed wire line raises Refusal
+        with the original reason.
+        """
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            while b'\n' in self._buffer:
+                line, self._buffer = self._buffer.split(b'\n', 1)
+                try:
+                    msg = json.loads(line)
+                except (ValueError, UnicodeError, RecursionError) as exc:
+                    raise Refusal('invalid owned message') from exc
+                if not isinstance(msg, dict):
+                    raise Refusal('invalid owned message')
+                self._route(msg)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            ready, _, _ = select.select([self._child.stdout], [], [],
+                                       min(.2, remaining))
+            if not ready:
+                continue
+            data = os.read(self._child.stdout.fileno(), READ_CHUNK)
+            if not data:
+                return  # provider exited; the caller's status stays honest
+            self._buffer += data
+            if len(self._buffer) > WIRE_BOUND:
+                raise Refusal('owned message bound exceeded')
+
+    # -- owned lifecycle operations ---------------------------------------
+
+    def initialize(self):
+        """Initialize the connection and verify the subscription account."""
+        self.rpc('initialize', {'clientInfo': {'name': 'unio-managed-lead',
+                                               'version': '1'},
+                                'capabilities': {'experimentalApi': True}})
+        self._send({'method': 'initialized', 'params': {}})
+        reply = self.rpc('account/read', {'refreshToken': False})
+        account = reply.get('account') if isinstance(reply, dict) else None
+        if not isinstance(account, dict) or account.get('type') != 'chatgpt':
+            raise Refusal('ChatGPT subscription login required')
+
+    def query_model_efforts(self, model):
+        """Advertised reasoning efforts for the pinned model (paged list)."""
+        _bounded(model, LABEL_BOUND, 'model')
+        cursor = None
+        for _ in range(MODEL_PAGES):
+            catalog = self.rpc('model/list', {'cursor': cursor, 'limit': 100})
+            data = catalog.get('data') if isinstance(catalog, dict) else None
+            for entry in data or []:
+                if (isinstance(entry, dict)
+                        and (entry.get('model') == model
+                             or entry.get('id') == model)):
+                    efforts = []
+                    for opt in entry.get('supportedReasoningEfforts') or []:
+                        if (isinstance(opt, dict)
+                                and isinstance(opt.get('reasoningEffort'), str)):
+                            efforts.append(opt['reasoningEffort'])
+                    return efforts
+            cursor = catalog.get('nextCursor') if isinstance(catalog, dict) else None
+            if not cursor:
+                break
+        raise Refusal('owned model not advertised: ' + model)
+
+    def start_thread(self, model):
+        """Start ONE new owned thread; its exact id is returned and persisted."""
+        _bounded(model, LABEL_BOUND, 'model')
+        startup = {'model': model, 'modelProvider': 'openai', 'cwd': self._cwd,
+                   'allowProviderModelFallback': False,
+                   'experimentalRawEvents': False}
+        reply = self.rpc('thread/start', startup)
+        thread = reply.get('thread') if isinstance(reply, dict) else None
+        thread_id = thread.get('id') if isinstance(thread, dict) else None
+        _bounded(thread_id, ID_BOUND, 'thread/start acknowledgement')
+        return thread_id
+
+    def resume_thread(self, thread_id):
+        """Resume the EXACT persisted thread; anything else refuses."""
+        _bounded(thread_id, ID_BOUND, 'thread id')
+        reply = self.rpc('thread/resume', {'threadId': thread_id})
+        thread = reply.get('thread') if isinstance(reply, dict) else None
+        resumed = thread.get('id') if isinstance(thread, dict) else None
+        if resumed != thread_id:
+            raise Refusal('thread/resume acknowledgement missing, malformed '
+                          'or foreign; no fallback thread')
+        return thread_id
+
+    def read_thread_turns(self, thread_id):
+        """The provider's own turn statuses for the exact owned thread."""
+        _bounded(thread_id, ID_BOUND, 'thread id')
+        reply = self.rpc('thread/read', {'threadId': thread_id,
+                                         'includeTurns': True})
+        thread = reply.get('thread') if isinstance(reply, dict) else None
+        if not isinstance(thread, dict) or thread.get('id') != thread_id:
+            raise Refusal('thread/read acknowledgement missing, malformed '
+                          'or foreign')
+        turns = {}
+        for turn in thread.get('turns') or []:
+            if (isinstance(turn, dict) and isinstance(turn.get('id'), str)
+                    and isinstance(turn.get('status'), str)):
+                turns[turn['id']] = turn['status']
+        return turns
+
+    # -- teardown -----------------------------------------------------------
+
+    def close(self):
+        """Terminate the owned process group; never raises."""
+        if self._closed:
+            return
+        self._closed = True
+        child = getattr(self, '_child', None)
+        if child is None:
+            return
+        try:
+            os.killpg(child.pid, signal.SIGTERM)
+            deadline = time.monotonic() + .2
+            while time.monotonic() < deadline:
+                time.sleep(.01)
+            os.killpg(child.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+        finally:
+            try:
+                child.wait()
+            except OSError:
+                pass
+        for stream in (child.stdin, child.stdout):
+            try:
+                stream.close()
+            except (OSError, ValueError):
+                pass
+
+
+def reconcile_status(status):
+    """Map one provider turn status to a core terminal status, or None."""
+    if status in TERMINAL_TURN_STATUS:
+        return status
+    return None
+UNIO_LEAD_SESSION_CODEX_PY
 cat > "$CONF_DIR/lib/ADAPTIVE-LEAD-EFFORT.md" <<'UNIO_ADAPTIVE_LEAD_EFFORT_MD'
 # Adaptive lead effort (experimental)
 
@@ -41988,11 +42564,14 @@ switches
   unio session send WORKER --file PATH --request-id ID [--json]
   unio lead-session start --goal FILE --model MODEL [--ceiling low|xhigh]
                                      [--effort auto|low|xhigh]
-                                     [--transport fake] [--json]
+                                     [--transport owned|fake]
+                                     [--codex-binary PATH] [--json]
                                      experimental adaptive-effort managed lead
-                                     session; explicit owner start, per-turn
-                                     requested effort, worker wakeups, STOP;
-                                     effective effort stays Unknown
+                                     session; explicit owner start, one owned
+                                     app-server process per command on the
+                                     exact durable thread, per-turn requested
+                                     effort, worker wakeups, STOP; effective
+                                     effort stays Unknown
   unio fleet [--project PATH] [--json] [--timeout seconds]
                                      local read-only snapshot: agent admission,
                                      occupied shared groups, STOP, cached auth
@@ -48238,6 +48817,8 @@ _unio() {
     lead-session)
       case "$COMP_CWORD:${COMP_WORDS[2]}" in
         2:*) COMPREPLY=( $(compgen -W "start run status effort worker stop output" -- "$cur") );;
+        3:start) COMPREPLY=( $(compgen -W "--goal --model --ceiling --effort --transport --codex-binary --max-requests --max-mappings --json" -- "$cur") );;
+        3:run) COMPREPLY=( $(compgen -W "--file --request-id --kind --reason --turn-wait --json" -- "$cur") );;
         3:effort) COMPREPLY=( $(compgen -W "show auto manual request" -- "$cur") );;
         3:worker) COMPREPLY=( $(compgen -W "register wait terminal" -- "$cur") );;
         4:manual|4:request) COMPREPLY=( $(compgen -W "low xhigh" -- "$cur") );;

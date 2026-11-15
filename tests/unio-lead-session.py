@@ -32,10 +32,11 @@ cli = _load('lead_session', 'tools/lead-session.py')
 ml = cli.ml
 bx = cli.bx
 pe = cli.pe
+cx = cli.cx
 
 MODEL = 'gpt-5.4-codex'
 THREAD = 'fake-owned-thread-1'
-REFUSALS = (cli.Refusal, ml.Refusal, pe.Refusal, bx.Refusal)
+REFUSALS = (cli.Refusal, ml.Refusal, pe.Refusal, bx.Refusal, cx.Refusal)
 
 
 def refuses(argv):
@@ -141,17 +142,22 @@ class Workspace:
 
 
 def run_suite(base):
-    # 0. Module surface: no process/network launch, honest gap message.
+    # 0. Module surface: no process/network launch in the CLI module, honest
+    #    owned-connection failure, nothing written on that failure. The
+    #    owned default transport is the production path; it is exercised
+    #    against an executable fake app-server in unio-lead-session-codex.py,
+    #    never against a real codex binary here.
     assert not any(hasattr(cli, name) for name in
                    ('subprocess', 'socket', 'pty', 'Popen', 'system', 'fork'))
     ws = Workspace(base)
     goal = ws.input('owner goal\n')
     message = refuses(['--project', str(ws.root), 'start', '--goal', goal,
-                       '--model', MODEL])
-    assert 'real owned app-server connection seam' in message
-    assert 'not implemented in this slice' in message
-    print('ok default transport refuses with the honest integration gap',
-          flush=True)
+                       '--model', MODEL, '--codex-binary',
+                       str(ws.root / 'missing-codex-binary')])
+    assert 'owned app-server connection failed' in message
+    assert not (ws.root / 'coord' / 'lead-effort' / 'owner.json').exists()
+    print('ok default owned transport fails honestly without fabricating '
+          'authority', flush=True)
 
     # 1. Start: exactly one supported-effort query, zero turn starts;
     #    every read-only command makes zero provider calls.
