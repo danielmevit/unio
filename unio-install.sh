@@ -21728,6 +21728,24 @@ request if useful; before any decision or without evidence, show not started or
 Unknown. Keep requested settings separate from effective provider Unknowns.
 Do not imply that Unio controls an existing unmanaged AI CLI or its own header.
 Pace, coordination tier and effort remain separate settings.
+
+
+## Review routing correction — OpenAI and Claude
+
+For this owner's Unio work, OpenAI reviews Claude/Opus implementations and
+Claude/Opus reviews OpenAI implementations when an independent review is
+needed. The existing OpenAI lead may review Opus directly; do not start an
+extra Codex worker when current lead-only restrictions apply. Mistral and
+Gemini are not substitutes for these reviews by default. If the preferred
+reviewer reaches its allowance or is unavailable, preserve the work and wait;
+use another reviewer only on explicit owner authorization. Do not automatically
+reroute merely to keep calls running. Keep project approvals and original
+review/cancellation receipts. This is an owner routing preference informed by
+observed outcomes, not a universal benchmark claim or invented model score.
+
+Customer-facing Gemini/Mistral implementations still require Opus5.5 MEDIUM
+and the existing lead's assessment. Existing implementation assignments can
+finish; this correction changes review routing, not their task scope.
 UNIO_LEAD_ROUTING_MD
 fi
 if [ ! -e "$TPL_DIR/MODEL-EFFORT.md" ] && [ ! -L "$TPL_DIR/MODEL-EFFORT.md" ]; then
