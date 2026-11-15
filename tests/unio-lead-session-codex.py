@@ -127,6 +127,25 @@ def main():
     # this process is killed its in-flight turn stays inProgress in the
     # durable state; no later process ever completes it on its own.
     running = {}
+    # Native lazy materialization (observed with codex-cli 0.169.0 by a
+    # zero-inference control): thread/start creates a thread known ONLY to
+    # this process; nothing durable exists until its first accepted
+    # turn/start. thread/resume of an unmaterialized thread refuses with
+    # -32600 "no rollout found" -- even in the creating process -- while
+    # thread/read in the creating process still answers.
+    unmaterialized = {}
+
+    def materialize(tid):
+        if tid in unmaterialized:
+            doc['threads'][tid] = unmaterialized.pop(tid)
+            save_state(doc)
+            log('materialize', threadId=tid)
+        return doc['threads'].get(tid)
+
+    def no_rollout(rid, tid):
+        send({'id': rid, 'error': {
+            'code': -32600,
+            'message': 'no rollout found for thread id %s' % tid}})
 
     def set_status(tid, uid, status):
         for turn in doc['threads'][tid]['turns']:
@@ -196,21 +215,28 @@ def main():
                         {'reasoningEffort': e} for e in efforts]}],
                     'nextCursor': None}})
         elif method == 'thread/start':
-            tid = 'fake-thread-%d' % (len(doc['threads']) + 1)
-            doc['threads'][tid] = {'turns': []}
+            if behavior() == 'reject-thread-start':
+                send({'id': rid, 'error': {'code': -32000,
+                                            'message': 'fake thread/start rejection'}})
+                continue
+            # Unique ids across processes; the counter is not a thread.
+            doc['created'] = doc.get('created', 0) + 1
             save_state(doc)
-            send({'id': rid, 'result': {'thread': {'id': tid,
-                                                   'reasoningEffort': None}}})
+            tid = 'fake-thread-%d' % doc['created']
+            unmaterialized[tid] = {'turns': []}
+            log('thread-created', threadId=tid)
+            send({'id': rid, 'result': {'thread': {
+                'id': tid, 'reasoningEffort': None, 'ephemeral': False,
+                'path': '/fake/sessions/rollout-%s.jsonl' % tid}}})
         elif method == 'thread/resume':
             tid = params.get('threadId')
             if tid not in doc['threads']:
-                send({'id': rid, 'error': {'code': -32000,
-                                            'message': 'unknown thread'}})
+                no_rollout(rid, tid)
             else:
                 send({'id': rid, 'result': {'thread': {'id': tid}}})
         elif method == 'thread/read':
             tid = params.get('threadId')
-            thread = doc['threads'].get(tid)
+            thread = doc['threads'].get(tid) or unmaterialized.get(tid)
             if thread is None:
                 send({'id': rid, 'error': {'code': -32000,
                                             'message': 'unknown thread'}})
@@ -226,7 +252,7 @@ def main():
                     'turns': [dict(turn) for turn in thread['turns']]}}})
         elif method == 'turn/start':
             tid = params.get('threadId')
-            thread = doc['threads'].get(tid)
+            thread = doc['threads'].get(tid) or unmaterialized.get(tid)
             if thread is None:
                 send({'id': rid, 'error': {'code': -32000,
                                             'message': 'unknown thread'}})
@@ -261,6 +287,7 @@ def main():
             if mode == 'die-waiting':
                 # Acknowledge the turn, then die without any terminal
                 # notification: the run's wait loop must stop promptly.
+                thread = materialize(tid)
                 doc['turns'] += 1
                 uid = 'fake-turn-%d' % doc['turns']
                 thread['turns'].append({'id': uid, 'status': 'inProgress'})
@@ -277,6 +304,7 @@ def main():
                 notify('item/agentMessage/delta',
                        {'threadId': 'other-thread', 'turnId': 'other-turn',
                         'itemId': 'x', 'delta': 'foreign output'})
+            thread = materialize(tid)
             doc['turns'] += 1
             uid = 'fake-turn-%d' % doc['turns']
             thread['turns'].append({'id': uid, 'status': 'inProgress'})
