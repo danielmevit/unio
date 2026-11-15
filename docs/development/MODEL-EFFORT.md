@@ -99,8 +99,10 @@ An elapsed reset estimate is not proof that capacity returned.
 ## Check the actual route
 
 A model, its CLI and its gateway can expose different controls. Check the
-exact model ID, installed CLI version and route metadata before choosing a
-setting. A flag accepted by a CLI does not prove the model uses that level.
+exact model ID, installed CLI version (recorded as Unknown when unavailable)
+and route metadata before choosing a setting. Under the latest-CLI operation
+policy, adapters judge actual operations rather than exact version allowlists.
+A flag accepted by a CLI does not prove the model uses that level.
 Likewise, a reasoning-capable model need not expose adjustable effort.
 
 The following inventory was researched on **2026-10-06** using official

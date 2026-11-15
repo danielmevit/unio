@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
-"""Optional Antigravity CLI (agy) 1.3.5 and 1.5.9 worker with a truthful verdict.
+"""Optional Antigravity CLI (agy) worker with a truthful verdict.
 
 The adapter distinguishes the actual CLI process exit from the structured
 terminal status in the native NDJSON stream, so a process exit 0 plus a
@@ -24,15 +24,13 @@ import tempfile
 import time
 
 VERSIONS = ("1.3.5", "1.5.9")
-# Fixed Gemini 3.8 Flash selectors advertised by both pinned CLIs. agy 1.3.5
+# Fixed Gemini 3.8 Flash selectors advertised by the CLI. agy 1.3.5 legacy
 # has no generic effort flag: requested effort is derived from the selector
-# name only. agy 1.5.9 documents --effort, and the proven 1.5.9 review passed
-# it explicitly after the model selector; the adapter passes exactly the
-# selected low/medium/high, never an inherited max/ultra default.
+# name only. Modern releases (1.5.9 and newer) document --effort, and the adapter
+# passes exactly the selected low/medium/high after the model selector.
 SELECTORS = {"high": "gemini-3.8-flash-high",
              "medium": "gemini-3.8-flash-medium",
              "low": "gemini-3.8-flash-low"}
-# Versions whose documented help includes the generic --effort flag.
 EFFORT_FLAG_VERSIONS = ("1.5.9",)
 # agy has no prompt-file flag. Its help documents an NDJSON stdin input mode
 # whose message schema is not established from help or owned logs, so no stdin
@@ -367,10 +365,15 @@ def main():
         cli = os.path.realpath(cli)
         # Quiet metadata preflight: version only, no provider call. The
         # observed version is recorded truthfully; it is never assumed.
-        code, version_out, _ = owned_call([cli, "--version"], None, 30, output_limit=4096)
-        version = version_out.decode("ascii", errors="replace").strip()
-        if code or version not in VERSIONS:
-            raise Refusal("unsupported_cli")
+        # Provenance only: failure of --version alone does not block
+        # otherwise working operation, recorded as Unknown.
+        try:
+            code, version_out, _ = owned_call([cli, "--version"], None, 30, output_limit=4096)
+            version = version_out.decode("ascii", errors="replace").strip() if code == 0 else ""
+        except Exception:
+            version = ""
+        if not version:
+            version = "Unknown"
         directory = Path(tempfile.mkdtemp(prefix="antigravity-run-", dir=parent))
         receipt = directory / "receipt.json"
         task = directory / "task.md"
@@ -379,7 +382,7 @@ def main():
         private_file(task, data)
         record = dict(schema_version=1, started_at=date(), role="implementation_worker",
                       transport="Antigravity CLI print mode", cli_version=version,
-                      native_effort_flag=version in EFFORT_FLAG_VERSIONS,
+                      native_effort_flag=version != "1.3.5",
                       cli_sha256=file_sha256(cli), task_sha256=hashlib.sha256(data).hexdigest(),
                       task_bytes=len(data), prompt_transport="argv_single_argument",
                       prompt_transport_bound_bytes=TASK_ARG_BYTES,
@@ -399,9 +402,9 @@ def main():
         write_receipt(receipt, record)
         argv = [cli, "-p", data.decode("utf-8"), "--mode", "accept-edits",
                 "--model", SELECTORS[args.selector]]
-        if version in EFFORT_FLAG_VERSIONS:
-            # 1.5.9 argv form: the documented generic effort flag follows the
-            # model selector and carries exactly the selected effort level.
+        if version != "1.3.5":
+            # Modern releases pass the documented generic effort flag following the
+            # model selector, carrying exactly the selected effort level.
             argv += ["--effort", args.selector]
         argv += ["--dangerously-skip-permissions", "--disable-slash-commands",
                  "--print-timeout", native_duration(args.time_limit),

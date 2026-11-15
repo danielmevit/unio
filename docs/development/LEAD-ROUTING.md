@@ -138,8 +138,11 @@ those holds in the project's instructions and handoff until explicitly revoked.
 
 For each newly prepared or changed Source/review launcher, check syntax without
 executing it: use `ast.parse` for a local Python wrapper or `bash -n` for a shell
-wrapper. Verify the pinned CLI version, adapter/config hashes and required private
-receipt directories before opening a native workflow. Transport prompts as files
+wrapper. Verify observed CLI version (or Unknown when unavailable),
+adapter/config hashes and required private receipt directories before opening a
+native workflow. Under the latest-CLI operation policy, judge actual operations
+rather than version-number-only refusals; failure of `--version` alone records
+Unknown without blocking an otherwise working launch. Transport prompts as files
 or safely encoded data rather than interpolating prose into source literals.
 These local checks make no model call and do not authorize command probes,
 credential inspection or changes to a frozen active run.

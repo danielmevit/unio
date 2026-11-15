@@ -218,11 +218,10 @@ class VibeTests(unittest.TestCase):
         env,_,_=worker.model_environment('glm-5-3',{'VIBE_HOME':'owned'})
         self.assertEqual(env['VIBE_HOME'],'owned')
 
-    def test_invalid_bounds_unknown_model_and_unsupported_version_pre_call(self):
+    def test_invalid_bounds_and_unknown_model_pre_call(self):
         for args in [('--max-price','nan'),('--max-price','inf'),('--max-tokens','0'),
                      ('--max-turns','0'),('--time-limit','nan'),('--model','wrong')]:
             with self.subTest(args=args):self.assertNotEqual(self.invoke(*args).returncode,0)
-        self.assertNotEqual(self.invoke(FAKE_VERSION='2.0.0').returncode,0)
         self.assertFalse(self.marker.exists())
         self.assertFalse(list(self.receipts.iterdir()))
 
@@ -438,6 +437,7 @@ class VibeTests(unittest.TestCase):
 FAKE31 = r'''
 import json,os,pathlib,sys,time
 if sys.argv[1:]==['--version']:
+ if os.environ.get('FAKE_VERSION_FAIL'):sys.exit(1)
  print('vibe '+os.environ.get('FAKE_VERSION','3.1.1'));raise SystemExit()
 a=sys.argv[1:]
 pathlib.Path(os.environ['MARKER']).open('a').write('call\n')
@@ -810,13 +810,53 @@ class Vibe31Tests(unittest.TestCase):
         self.assertIn('none',p.stderr)
         self.assertFalse(self.marker.exists())
         self.assertFalse(list(self.receipts.iterdir()))
-        # Unknown versions still refuse before provider.
-        for unknown in ('3.1.3', '3.2.0'):
-            with self.subTest(version=unknown):
-                p=self.invoke(FAKE_VERSION=unknown)
-                self.assertEqual(p.returncode,2,p.stderr)
-                self.assertIn('unsupported_cli',p.stderr)
-                self.assertFalse(self.marker.exists())
+        # Future versions with the modern contract launch once, succeed, and record observed version.
+        import shutil
+        for future in ('3.1.3', '3.2.0'):
+            with self.subTest(version=future):
+                for path in self.receipts.glob('vibe-run-*'):
+                    shutil.rmtree(path)
+                if self.marker.exists(): self.marker.unlink()
+                p=self.invoke(FAKE_VERSION=future)
+                self.assertEqual(p.returncode,0,p.stderr)
+                self.assertEqual(self.marker.read_text(),'call\n')
+                r=self.receipt()
+                self.assertEqual(r['cli_version'],future)
+
+        # Unavailable version metadata plus working operation records Unknown and launches once.
+        for path in self.receipts.glob('vibe-run-*'):
+            shutil.rmtree(path)
+        if self.marker.exists(): self.marker.unlink()
+        p=self.invoke(FAKE_VERSION_FAIL='1')
+        self.assertEqual(p.returncode,0,p.stderr)
+        self.assertEqual(self.marker.read_text(),'call\n')
+        r=self.receipt()
+        self.assertEqual(r['cli_version'],'Unknown')
+        final=json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual(final['cli_version'],'Unknown')
+
+        # Thinking low/medium on future and unknown versions refuses before provider.
+        for path in self.receipts.glob('vibe-run-*'):
+            shutil.rmtree(path)
+        if self.marker.exists(): self.marker.unlink()
+        p=self.invoke('--thinking','low',FAKE_VERSION='3.2.0')
+        self.assertEqual(p.returncode,2,p.stderr)
+        self.assertIn('--thinking low is not supported',p.stderr)
+        self.assertFalse(self.marker.exists())
+        p=self.invoke('--thinking','low',FAKE_VERSION_FAIL='1')
+        self.assertEqual(p.returncode,2,p.stderr)
+        self.assertIn('--thinking low is not supported',p.stderr)
+        self.assertFalse(self.marker.exists())
+
+        # Unsupported model on future and unknown versions refuses before provider.
+        p=self.invoke('--model','mistral-medium-3-5',FAKE_VERSION='3.2.0')
+        self.assertEqual(p.returncode,2,p.stderr)
+        self.assertIn('unsupported_model_for_cli_version',p.stderr)
+        self.assertFalse(self.marker.exists())
+        p=self.invoke('--model','mistral-medium-3-5',FAKE_VERSION_FAIL='1')
+        self.assertEqual(p.returncode,2,p.stderr)
+        self.assertIn('unsupported_model_for_cli_version',p.stderr)
+        self.assertFalse(self.marker.exists())
 
     def test_311_contract_parity_for_new_alias_and_none(self):
         def contract(*args):

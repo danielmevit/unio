@@ -54,10 +54,13 @@ work into smaller tasks instead of raising the bound.
 The invocation is `agy -p <task> --mode accept-edits --model <selector>
 --dangerously-skip-permissions --disable-slash-commands --print-timeout <limit>
 --output-format stream-json`, run in the adapter's current working
-directory. On `agy` 1.5.9 the documented `--effort <selected>` pair follows
-the `--model <selector>` pair, carrying exactly the selected low, medium or
-high; on 1.3.5 the argv stays the legacy form above and no generic effort
-flag is ever passed. The raw NDJSON stream is preserved in a private
+directory. On modern releases (1.5.9 and newer, or when version query fails)
+the documented `--effort <selected>` pair follows the `--model <selector>`
+pair, carrying exactly the selected low, medium or high; on 1.3.5 the argv
+stays the legacy form above and no generic effort flag is ever passed. If
+the `--version` query fails, version metadata is recorded as `Unknown`
+without blocking an otherwise working operation. The raw NDJSON stream is
+preserved in a private
 `native-stdout.log`; the adapter parses only the top-level
 `event`/`result` envelope. Text inside assistant or tool content never
 produces a verdict, and a forged result record inside streamed content is
@@ -137,17 +140,23 @@ publicly; keep the raw logs private. Legacy raw `agents.conf` command lines
 are left untouched: the adapter is opt-in, and a legacy line keeps its own
 native behavior.
 
-## CLI compatibility is not model availability
+## Latest-CLI policy and model availability
 
-Supporting `agy` 1.5.9 is a command-line compatibility statement only. It
-does not prove that any Gemini model, catalog entry or effort level is
-available to the signed-in account, and it grants no account access beyond
-what the owner's own `agy` sign-in already provides. Unio also has no
-global native auto-update exclusion: the Antigravity CLI can update itself
-underneath a pinned route — an idle 1.5.8 installation was observed to
-become 1.5.9 before a run — and the adapter's version preflight refuses the
-changed, unsupported version rather than silently accepting it. Supporting
-a version here never means Unio updates, installs or authenticates the CLI.
+In accordance with Unio's latest-CLI operation policy, the adapter uses the
+latest installed CLI and judges actual operations rather than enforcing exact
+version allowlists:
+- **Legacy 1.3.5**: Retains the tested legacy argv form without `--effort`.
+- **Modern releases (1.5.9 and newer)**: Passes the documented explicit
+  `--effort <selected>` flag directly after `--model <selector>`.
+- **Provenance & Unknown metadata**: The detected CLI version is recorded as
+  provenance. If `--version` query fails, version metadata is recorded as
+  `Unknown` without blocking an otherwise working operation.
+- **Truthful failure contract**: Supporting a CLI release is a command-line
+  compatibility statement only; it does not guarantee model availability or
+  quota. Actual unsupported arguments, model catalog errors, terminal errors,
+  timeouts, and native exits remain honest failures; no retry or silent fallback
+  is performed. Supporting a version here never means Unio updates, installs
+  or authenticates the CLI.
 
 ## Trial status
 

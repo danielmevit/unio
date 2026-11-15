@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
-"""Optional, explicitly pinned Vibe worker (2.26.1, 3.1.1 and 3.1.2). No dependency installation."""
+"""Optional Vibe worker (legacy 2.26.1 overlay, modern 3.1.1+ explicit contract). No dependency installation."""
 import argparse
 import codecs
 from datetime import datetime, timezone
@@ -330,9 +330,9 @@ def model_environment(label, thinking="high", inherited=None, cli_version="2.26.
         inherited, thinking = thinking, "high"
     wire, lab, inp, cache, out = MODELS[label]
     env = base_environment(inherited)
-    if CLI_VERSIONS[cli_version]["overlay"]:
+    if cli_version == "2.26.1":
         # 2.26.1 tested mechanism: process-local model definition. Never used
-        # on 3.1.1, where --model ALIAS is the documented selection instead.
+        # on 3.1.1 or newer versions, where --model ALIAS is the documented selection instead.
         model = dict(name=wire, alias=label, provider="mistral", thinking=thinking,
                      thinking_levels=[thinking], input_price=inp,
                      cached_input_price=cache, output_price=out)
@@ -464,7 +464,11 @@ def export_summary(path, actual_exit, cli_version, requested=None, wire=None, th
     value = strict_json(read_regular(path, EXPORT_BYTES))
     if not isinstance(value, dict) or type(value.get("schema_version")) is not int or value["schema_version"] != 1:
         raise Refusal("invalid_export")
-    if value.get("vibe_version") != cli_version or type(value.get("exit_code")) is not int or value["exit_code"] != actual_exit:
+    if not isinstance(value.get("vibe_version"), str):
+        raise Refusal("invalid_export")
+    if cli_version != "Unknown" and value["vibe_version"] != cli_version:
+        raise Refusal("invalid_export")
+    if type(value.get("exit_code")) is not int or value["exit_code"] != actual_exit:
         raise Refusal("invalid_export")
     outcomes = {"finished": 0, "usage_error": 1, "config_error": 1,
                 "infrastructure_failure": 2, "token_limit": 3, "price_limit": 3,
@@ -797,20 +801,20 @@ def check_bounds(args, cli_version=None):
     explicitly, never clamped or silently substituted.
     """
     problems = []
-    allow_none = cli_version in (None, "3.1.1", "3.1.2")
-    # 3.1.1 and 3.1.2 have no adapter-supported per-run thinking control: the VIBE_* model
-    # overlay is a 2.26.1-only mechanism and neither 3.1.1 nor 3.1.2 documents a thinking
-    # flag, so a requested low/medium would silently execute the account's
+    allow_none = cli_version != "2.26.1"
+    # Modern releases (3.1.1 and newer) have no adapter-supported per-run thinking control:
+    # the VIBE_* model overlay is a 2.26.1-only mechanism and modern CLIs document no
+    # thinking flag, so a requested low/medium would silently execute the account's
     # existing catalog level. There is no honest subset to run, so such a
     # request is refused before any provider invocation. "high" is accepted
     # only because it matches the catalog declaration observed for the
     # validated aliases (selection reference 2026-11-10); the adapter claims no
     # control and records the effective effort as Unknown either way.
-    if cli_version in ("3.1.1", "3.1.2") and args.thinking != "high":
-        problems.append("--thinking " + args.thinking + " is not supported on Vibe " + cli_version + ": "
+    if cli_version is not None and cli_version != "2.26.1" and args.thinking != "high":
+        problems.append("--thinking " + args.thinking + " is not supported on Vibe " + str(cli_version) + ": "
                        "the CLI has no per-run thinking control (model overlays are a 2.26.1-only "
                        "mechanism and no native thinking flag exists), so the request would "
-                       "silently execute the account's existing level; keep " + cli_version + " runs at the "
+                       "silently execute the account's existing level; keep " + str(cli_version) + " runs at the "
                        "observed catalog level high with the effective effort recorded as "
                        "unknown, or use the pinned 2.26.1 route for low/medium control; "
                        "edit the agents.conf route and retry")
@@ -821,7 +825,7 @@ def check_bounds(args, cli_version=None):
     for flag, value, bound, kind, unit in caps:
         if value is None:
             if not allow_none:
-                problems.append(flag + " none (omitted native cap) is only supported on Vibe 3.1.1 and 3.1.2; "
+                problems.append(flag + " none (omitted native cap) is only supported on modern Vibe (3.1.1 and newer); "
                                 "select a numeric bound for this CLI version")
             continue
         if kind == "int":
@@ -946,17 +950,27 @@ def main():
             raise Refusal("missing_cli")
         # Version preflight with a neutral environment: no VIBE_* model
         # overlay (a 2.26.1-only mechanism) is assumed before the version is
-        # known. Unknown versions refuse here, before any provider invocation.
-        code, version = owned_call([cli, "--version"], base_environment(), 15, output_limit=4096)
-        detected = version.decode("ascii", errors="strict").strip() if code == 0 else ""
-        cli_version = detected[5:] if detected.startswith("vibe ") else None
-        if cli_version not in CLI_VERSIONS:
-            raise Refusal("unsupported_cli")
+        # known. Failure of --version alone does not block otherwise working
+        # operation, recorded as Unknown.
+        try:
+            code, version = owned_call([cli, "--version"], base_environment(), 15, output_limit=4096)
+            detected = version.decode("ascii", errors="strict").strip() if code == 0 else ""
+            if detected.startswith("vibe ") and len(detected) > 5:
+                cli_version = detected[5:].strip()
+            elif detected:
+                cli_version = detected
+            else:
+                cli_version = None
+        except Exception:
+            cli_version = None
+        if not cli_version:
+            cli_version = "Unknown"
         # The same shared validator narrows per detected version before launch.
         problems = check_bounds(args, cli_version)
         if problems:
             raise Refusal("; ".join(problems))
-        if args.model not in CLI_VERSIONS[cli_version]["models"]:
+        allowed_models = CLI_VERSIONS[cli_version]["models"] if cli_version in CLI_VERSIONS else ("glm-5-3", "mistral-large-4-0-3")
+        if args.model not in allowed_models:
             raise Refusal("unsupported_model_for_cli_version")
         env, wire, lab = model_environment(args.model, args.thinking, cli_version=cli_version)
         directory = Path(tempfile.mkdtemp(prefix="vibe-run-", dir=parent))
@@ -991,18 +1005,18 @@ def main():
                             ("--time-limit", args.time_limit), ("--max-turns", args.max_turns)):
             if value is not None:
                 cap_args.extend([flag, str(value)])
-        if cli_version in ("3.1.1", "3.1.2"):
-            argv = [cli, "--model", args.model, "--prompt-file", str(task),
-                    "--workdir", str(Path.cwd()), "--trust", "--agent", "auto-approve"]
-            argv += cap_args
-            argv += ["--output-dir", str(export), "--output", "json"]
-            output_mode = "json"
-        else:
+        if cli_version == "2.26.1":
             argv = [cli, "--prompt-file", str(task), "--workdir", str(Path.cwd()), "--trust",
                     "--agent", "auto-approve"]
             argv += cap_args
             argv += ["--output-dir", str(export), "--output", "streaming"]
             output_mode = "streaming"
+        else:
+            argv = [cli, "--model", args.model, "--prompt-file", str(task),
+                    "--workdir", str(Path.cwd()), "--trust", "--agent", "auto-approve"]
+            argv += cap_args
+            argv += ["--output-dir", str(export), "--output", "json"]
+            output_mode = "json"
         for name in ("bash", "read_file", "write_file", "edit", "grep"):
             argv.extend(["--enabled-tools", name])
         # The owned-process supervisor bound is separate from the requested

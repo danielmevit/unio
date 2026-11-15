@@ -27,27 +27,31 @@ log = os.environ['FAKE_LOG']
 with open(log, 'a') as f:
     f.write(json.dumps({'argv': sys.argv[1:], 'pid': os.getpid()}) + '\n')
 if sys.argv[1:] == ['--version']:
+    if os.environ.get('FAKE_VERSION_FAIL'):
+        sys.exit(1)
     print(os.environ.get('FAKE_VERSION', '1.3.5'))
     sys.exit(0)
 if os.environ.get('FAKE_VERSION_ONLY'):
     sys.exit(0)
+if os.environ.get('FAKE_REJECT_ARG'):
+    print('error: unrecognized argument: ' + os.environ['FAKE_REJECT_ARG'], file=sys.stderr)
+    sys.exit(2)
 argv = sys.argv[1:]
 assert argv[0] == '-p' and argv[2:4] == ['--mode', 'accept-edits'], argv
 assert argv[4] == '--model', argv
 assert argv[5] in ('gemini-3.8-flash-high', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-low'), argv
 effort = {'gemini-3.8-flash-high': 'high', 'gemini-3.8-flash-medium': 'medium',
           'gemini-3.8-flash-low': 'low'}[argv[5]]
-if os.environ.get('FAKE_VERSION', '1.3.5') == '1.5.9':
-    # 1.5.9 argv form: the documented generic effort flag follows the model
-    # selector and carries exactly the selected low/medium/high, never an
-    # inherited max/ultra default.
-    assert argv[6:8] == ['--effort', effort], argv
-    assert effort in ('low', 'medium', 'high'), argv
-    tail = argv[8:]
-else:
+if os.environ.get('FAKE_VERSION', '1.3.5') == '1.3.5' and not os.environ.get('FAKE_VERSION_FAIL'):
     # 1.3.5 legacy argv form: no generic effort flag is ever passed.
     assert '--effort' not in argv and '-e' not in argv, argv
     tail = argv[6:]
+else:
+    # 1.5.9 and modern releases argv form: the documented generic effort flag follows
+    # the model selector and carries exactly the selected low/medium/high.
+    assert argv[6:8] == ['--effort', effort], argv
+    assert effort in ('low', 'medium', 'high'), argv
+    tail = argv[8:]
 assert tail[0] == '--dangerously-skip-permissions', argv
 assert tail[1] == '--disable-slash-commands', argv
 assert tail[2] == '--print-timeout', argv
@@ -356,20 +360,33 @@ def main():
               and len(h.invocations()) == calls_before
               and len(list(h.receipts.glob('antigravity-run-*'))) == runs_before)
 
-        # Unsupported CLI version refused before the provider call.
+        # Future CLI version launches once with modern contract.
         calls_before = len(h.provider_calls())
-        result = h.run(env={'FAKE_VERSION': '1.3.4'})
-        check('unsupported CLI version refused before provider call',
-              result.returncode == 2 and 'unsupported_cli' in result.stderr
-              and len(h.provider_calls()) == calls_before
-              and h.invocations()[-1]['argv'] == ['--version'])
-        for bad in ('1.5.8', '1.6.0'):
-            calls_before = len(h.provider_calls())
-            result = h.run(env={'FAKE_VERSION': bad})
-            check('unsupported CLI version ' + bad + ' refused before provider call',
-                  result.returncode == 2 and 'unsupported_cli' in result.stderr
-                  and len(h.provider_calls()) == calls_before
-                  and h.invocations()[-1]['argv'] == ['--version'])
+        result = h.run(env={'FAKE_VERSION': '1.6.0'})
+        check('future CLI version 1.6.0 launches once with modern contract',
+              result.returncode == 0 and result.stderr == ''
+              and len(h.provider_calls()) == calls_before + 1
+              and h.provider_calls()[-1]['argv'][4:8] == ['--model', 'gemini-3.8-flash-high', '--effort', 'high'])
+        summary = public_summary(result)
+        record = json.loads(Path(summary['receipt']).read_text())
+        check('future CLI version receipt records observed version and effort flag',
+              record['cli_version'] == '1.6.0' and record['native_effort_flag'] is True)
+
+        # Unavailable version metadata plus working operation records Unknown and launches once.
+        calls_before = len(h.provider_calls())
+        result = h.run(env={'FAKE_VERSION_FAIL': '1'})
+        check('unavailable version metadata plus working operation launches once',
+              result.returncode == 0 and result.stderr == ''
+              and len(h.provider_calls()) == calls_before + 1)
+        summary = public_summary(result)
+        record = json.loads(Path(summary['receipt']).read_text())
+        check('unavailable version metadata records Unknown and native effort flag True',
+              record['cli_version'] == 'Unknown' and record['native_effort_flag'] is True)
+
+        # Actual native argument failure stays an honest failure.
+        result = h.run(env={'FAKE_REJECT_ARG': '--effort'})
+        check('actual native argument failure stays adapter failure',
+              result.returncode == 2 and json.loads(result.stdout)['outcome'] == 'native_failed')
 
         # Bounded output overflow is a truthful bounded failure.
         result = h.run(mode='overflow')
@@ -429,6 +446,7 @@ def main():
         check('symlink task refused', result.returncode == 2 and 'invalid_or_oversized_file' in result.stderr)
         public_parent = h.base / 'public-receipts'
         public_parent.mkdir(mode=0o755)
+        public_parent.chmod(0o755)
         result = subprocess.run(['python3', '-I', '-S', '-B', str(ADAPTER), '--receipt-dir',
                                 str(public_parent), '--prompt-file', str(h.task), '--time-limit', '6'],
                                env=dict(h.env, FAKE_MODE='success'), capture_output=True, text=True, timeout=60)

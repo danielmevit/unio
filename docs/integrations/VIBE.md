@@ -2,25 +2,32 @@
 
 This document records the machine-readable delivery contract and terminal usage
 validation for the optional Mistral Vibe adapter (`tools/vibe-worker.py`),
-supporting explicitly validated CLI versions **2.26.1**, **3.1.1**, and **3.1.2**.
+supporting legacy **2.26.1**, modern **3.1.1**, **3.1.2**, and future CLI releases under the latest-CLI policy.
 
 For general worker setup, installation paths, and account budget configuration,
 see the [Mistral Vibe setup guide](MISTRAL-VIBE.md).
 
-## Validated CLI version allowlist
+## CLI operation policy and version contract
 
-The adapter enforces an exact version allowlist. Unvalidated versions or version
-ranges refuse before any provider invocation (`unsupported_cli`):
+In accordance with Unio's latest-CLI operation policy, the adapter uses the
+latest installed CLI and judges actual operations rather than enforcing exact
+version allowlists:
 
 - **2.26.1**: Process-local `VIBE_*` model overlays, `--output streaming` with
   NDJSON progress parsing, explicit numeric bounds, and thinking levels (`low`,
-  `medium`, `high`). Validated models: `glm-5-3` and `mistral-medium-3-5`.
-- **3.1.1**: Documented startup `--model <ALIAS>` flag, `--output json` message
-  list history, bounded `session/meta.json` metadata verification, omittable
-  native caps (`none`), and catalog-level thinking (`high` only; `low`/`medium`
-  refuse before launch). Validated models: `glm-5-3` and `mistral-large-4-0-3`.
-- **3.1.2**: Same documented startup `--model <ALIAS>` flag and `--output json`
-  transport as 3.1.1. Validated models: `glm-5-3` and `mistral-large-4-0-3`.
+  `medium`, `high`). Supported models: `glm-5-3` and `mistral-medium-3-5`.
+- **Modern releases (3.1.1, 3.1.2, and newer)**: Documented startup
+  `--model <ALIAS>` flag, `--output json` message list history, bounded
+  `session/meta.json` metadata verification, omittable native caps (`none`),
+  and catalog-level thinking (`high` only; `low`/`medium` refuse before launch
+  because modern CLIs have no per-run thinking control). Supported models:
+  `glm-5-3` and `mistral-large-4-0-3`.
+- **Provenance & Unknown metadata**: The detected CLI version is recorded as
+  provenance. If `--version` query fails, the version metadata is recorded as
+  `Unknown` without blocking an otherwise working operation.
+- **Honest failure contract**: Actual unsupported arguments, model catalog
+  errors, schema defects, timeouts, and native exits remain truthful failures;
+  no retry, silent fallback, or parameter guessing is performed.
 
 ## Delivery contract and terminal usage shape
 
@@ -126,7 +133,9 @@ package (`mistral_vibe-3.1.2.dist-info`):
      before provider launch.
   4. Immediate refusal of unsupported model aliases (e.g. `mistral-medium-3-5`
      on 3.1.2) before provider invocation.
-  5. Immediate refusal of unvalidated CLI versions (e.g. `3.1.3`, `3.2.0`).
+  5. Latest-CLI operation: future versions (e.g. `3.1.3`, `3.2.0`) launch with
+     the modern explicit `--model`/json contract; unavailable version metadata
+     records `Unknown` without blocking an otherwise working operation.
   6. Additive outcome binding and classification in `adapter-outcome.py`.
 - **Execution bounds**: Trusted-host execution only; no OS sandbox, no network
   fallback, and no modification of user credentials or global configuration.
