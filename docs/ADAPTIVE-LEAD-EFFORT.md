@@ -127,6 +127,39 @@ unio lead-session output [--after N] [--limit N] [--json]
   Unknown (no live evidence in this slice). The run never assumes it kept
   computing or finished.
 
+### First turn and the owned thread lifecycle
+
+The native Codex app-server writes a thread's rollout only with that
+thread's first turn. A zero-inference control with codex-cli 0.169.0 showed
+`thread/start` returning a rollout `path` that did not exist after 1s or
+after a clean exit, and `thread/resume` refusing with `-32600 no rollout
+found` even in the process that created the thread. Unio 0.5.31 `start`
+created the thread and then closed its process, so the first `run` could
+never resume it (the confirmed live failure).
+
+So `start` now checks admission, ownership, the subscription account and
+the model catalog, and creates **no thread** (`thread_lifecycle:
+deferred`, `thread_id: null`). The first `run` creates the exact thread in
+its own process, after every local refusal and right before its first
+`turn/start`. It saves the new id under the control lock before sending,
+and never resumes it in that process. Later runs resume that same id. No
+bootstrap or dummy model request is ever sent.
+
+| `thread_lifecycle` | Meaning | Next `run` |
+|---|---|---|
+| `deferred` | No thread yet | Creates it with the first turn |
+| `started` | Id saved; first `turn/start` not acknowledged | Resumes the exact id. If that refuses, recorded replays still answer and new sends refuse before `turn/start` |
+| `acknowledged` | A `turn/start` on this thread was acknowledged | Resumes the exact id |
+| `legacy` | State written before this fix | Resumes the exact id. A thread that never ran a turn refuses with the native error and a stop/start hint |
+
+A thread is never replaced after a resume refusal. There is one narrow
+exception. If the command that created the thread gets a proven
+never-delivered first attempt (a typed rejection or a local refusal), the
+thread never carried a turn. The session then returns to `deferred` and
+the run payload reports `discarded_unused_thread_id`. Run payloads also
+show `thread_created`, `thread_unavailable` and this command's verbatim
+`not_sent_reason`.
+
 ### Recovering a stale turn
 
 `unio lead-session recover` handles a turn that was acknowledged (its
