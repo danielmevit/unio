@@ -21673,6 +21673,23 @@ route; do not repeat an answered confirmation without materially new evidence.
 Preserve original failures and Unknowns. Login success does not prove quota,
 effective model or effort. This is lead guidance; native `agents` authentication
 remains Unknown and no automatic authentication manager is claimed.
+
+
+## Owner customer-facing review rule — 2026-11-15
+
+For this owner's Unio workflow, user-facing work produced through Gemini or
+Mistral routes receives an independent Claude Code / `claude-opus-5-5` /
+`medium` review, followed by the existing lead's final assessment. This covers
+dashboard/UI, onboarding, setup, CLI wording, documentation and prompts. Review
+the actual current implementation; a design opinion or passing checks alone
+does not satisfy this requirement. Preserve stricter project approvals and real
+account limits, holds and STOP. If Opus is unavailable, report the missing
+evidence and leave acceptance pending; do not fabricate approval or use paid
+fallback. Requested model/effort remain distinct from effective Unknowns.
+
+This is the owner's workflow preference; consult the current personal
+`~/.config/unio/OWNER-WORKFLOW.md` and project instructions. It does not add
+automatic reviewer dispatch or change another user's policies.
 UNIO_LEAD_ROUTING_MD
 fi
 if [ ! -e "$TPL_DIR/MODEL-EFFORT.md" ] && [ ! -L "$TPL_DIR/MODEL-EFFORT.md" ]; then
