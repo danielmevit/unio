@@ -719,6 +719,70 @@ def run_suite(base):
     print('ok deadline interrupt keeps Unknown without a terminal; explicit '
           'same-thread recover', flush=True)
 
+    # 4z. Owner replacement is fail-closed (V10 item 5), checked before any
+    #     new owned process: a stopped owner with a PROVEN unresolved turn
+    #     must be recovered on the same thread first; unreadable or unknown
+    #     owner state is refused, never reset or replaced.
+    ws = Workspace(base)
+    old_view = ws.start()
+    old_sid = old_view['session_id']
+    owner_path = ws.root / 'coord' / 'lead-effort' / 'owner.json'
+    ws.set_behavior('hold', interrupt='silent')
+    held, held_code = ws.run_exit('r1', 'long turn then stop\n',
+                                  '--turn-wait', '1', '--interrupt-drain', '1')
+    assert held_code == 6 and held['delivery'] == 'unknown', held
+    ws.stop()
+    owner_bytes = owner_path.read_bytes()
+    before_spawns = len(ws.spawns())
+    msg = refuses(['--project', str(ws.root), 'start', '--goal',
+                   ws.input('replacement goal\n'), '--model', MODEL,
+                   '--transport', 'owned', '--codex-binary', str(ws.binary),
+                   '--json'])
+    assert 'proven unresolved active turn' in msg, msg
+    assert ('recover --session %s --interrupt' % old_sid) in msg, msg
+    assert len(ws.spawns()) == before_spawns  # refused before any process
+    assert owner_path.read_bytes() == owner_bytes
+    # Same-thread recovery works on the stopped owner, then start proceeds.
+    ws.set_behavior('ok', interrupt='ok')
+    rec, rec_code = ws.recover('--interrupt')
+    assert rec_code == 0 and rec['outcome'] == 'reconciled', rec
+    assert rec['thread_id'] == old_view['thread_id']
+    new_view = ws.start()
+    assert new_view['session_id'] != old_sid
+    hist, _, hist_code = invoke(['--project', str(ws.root), 'status',
+                                 '--session', old_sid, '--json'])
+    assert hist_code == 0 and hist['historical'] is True
+    assert hist['last_turn']['status'] == 'interrupted'
+    # Unreadable current-owner state: refused, zero spawns, nothing reset.
+    ws.stop()
+    state_file = ws.root / 'coord' / 'lead-effort' / (new_view['session_id']
+                                                      + '.json')
+    assert state_file.is_file()
+    fd = os.open(state_file, os.O_WRONLY | os.O_TRUNC)
+    os.write(fd, b'{not json')
+    os.close(fd)
+    owner_bytes = owner_path.read_bytes()
+    before_spawns = len(ws.spawns())
+    msg = refuses(['--project', str(ws.root), 'start', '--goal',
+                   ws.input('replace corrupt owner\n'), '--model', MODEL,
+                   '--transport', 'owned', '--codex-binary', str(ws.binary),
+                   '--json'])
+    assert 'unreadable or unknown control state' in msg, msg
+    assert len(ws.spawns()) == before_spawns
+    assert owner_path.read_bytes() == owner_bytes
+    # Unknown owner (record points to a session with no state): refused.
+    owner_path.write_text(json.dumps({'session_id': 'lead-' + '1' * 24})
+                          + '\n')
+    os.chmod(owner_path, 0o600)
+    msg = refuses(['--project', str(ws.root), 'start', '--goal',
+                   ws.input('replace unknown owner\n'), '--model', MODEL,
+                   '--transport', 'owned', '--codex-binary', str(ws.binary),
+                   '--json'])
+    assert 'unreadable or unknown control state' in msg, msg
+    assert len(ws.spawns()) == before_spawns
+    print('ok owner replacement refuses proven unresolved turns and '
+          'unreadable/unknown owners before any process', flush=True)
+
     # 4b. Deadline interrupt WITH a terminal event inside the run itself:
     #     interrupted (exit 5), session usable; a typed interrupt rejection
     #     keeps Unknown (exit 6).

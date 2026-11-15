@@ -26670,11 +26670,21 @@ def _compute_effort_display(view, policy, state):
         active_effort = None
         active_kind = None
         active_source = None
-        active_status = 'idle' if not state.get('waiting') else 'waiting'
+        active_status = 'waiting' if _waiting_on_workers(state) else 'idle'
+
+    # Delivery of the exact active turn's request stays distinct from its
+    # requested effort: 'accepted' (acknowledged, running), 'pending' (not
+    # yet acknowledged) or 'uncertain' (outcome_unknown: never shown as an
+    # ordinary confirmed active turn; effective remains Unknown).
+    delivery = None
+    if is_active:
+        delivery = {'running': 'accepted', 'pending': 'pending',
+                    'outcome_unknown': 'uncertain'}[view.get('state')]
 
     current_request = {
         'active': is_active,
         'state': active_status,
+        'delivery': delivery,
         'effort': active_effort,
         'kind': active_kind,
         'source': active_source,
@@ -26695,6 +26705,40 @@ def _compute_effort_display(view, policy, state):
         'effective': 'Unknown',
         'caution': CAUTION,
     }
+
+
+def _waiting_on_workers(state):
+    """Truthful waiting: flagged AND at least one registered worker is not
+    terminal, or a terminal worker's review wakeup is still unconsumed."""
+    if not state.get('waiting'):
+        return False
+    if any(w.get('state') != 'terminal'
+           for w in state.get('workers', {}).values()):
+        return True
+    return bool(state.get('policy', {}).get('wakeups'))
+
+
+def _active_delivery_note(disp):
+    delivery = disp['current_request'].get('delivery')
+    if delivery == 'uncertain':
+        return '; delivery uncertain, effective Unknown'
+    if delivery == 'pending':
+        return '; delivery not yet acknowledged'
+    return ''
+
+
+def _clear_waiting_after_completion(root, session_id):
+    """After an observed completed turn, clear a stale `waiting` flag.
+
+    Under the short control lock the fresh disk state is re-read, so a
+    concurrent `worker register`/`wait` on a non-terminal worker (or a
+    still-unconsumed review wakeup) keeps the lead waiting. Zero calls.
+    """
+    with _control_guard(root, session_id):
+        disk = _load_state(root, session_id)
+        if disk['waiting'] and not _waiting_on_workers(disk):
+            disk['waiting'] = False
+            _save_state(root, disk)
 
 
 def _format_status_human(view, disp, state):
@@ -26719,8 +26763,9 @@ def _format_status_human(view, disp, state):
             last_str = '; last requested: %s (%s)' % (eff, st)
 
     if disp['current_request']['active']:
-        effort_part = 'effort %s (policy %s%s)' % (
-            disp['active_effort'], policy_label, pending_str)
+        effort_part = 'effort %s (policy %s%s%s)' % (
+            disp['active_effort'], policy_label, pending_str,
+            _active_delivery_note(disp))
     elif disp['active_status'] == 'not started':
         effort_part = 'effort not started (policy %s%s)' % (
             policy_label, pending_str)
@@ -26731,7 +26776,8 @@ def _format_status_human(view, disp, state):
     return ('lead session %s: state %s, generation %d, %s, stopped %s, '
             'waiting %s%s'
             % (state['session_id'], view['state'], view['generation'],
-               effort_part, view['stopped'], view['waiting'], hist_str))
+               effort_part, view['stopped'], _waiting_on_workers(state),
+               hist_str))
 
 
 def _format_effort_show(disp, status):
@@ -26759,9 +26805,10 @@ def _format_effort_show(disp, status):
     if disp['current_request']['active']:
         req = disp['current_request']
         return ('requested effort: %s (active turn %s, kind %s; '
-                'policy %s, ceiling %s%s)%s'
+                'policy %s, ceiling %s%s%s)%s'
                 % (disp['active_effort'], req.get('turn_id'), req.get('kind'),
-                   policy_label, ceiling, pending_str, hist_str))
+                   policy_label, ceiling, pending_str,
+                   _active_delivery_note(disp), hist_str))
     elif disp['active_status'] == 'not started':
         return ('requested effort: not started (policy %s, ceiling %s%s)%s'
                 % (policy_label, ceiling, pending_str, hist_str))
@@ -26788,7 +26835,7 @@ def _session_view(root, state, session, bridge, policy):
         'max_requests': view['max_requests'],
         'max_mappings': state['max_mappings'],
         'provider_turns_recorded': len(state['provider_turns']),
-        'stopped': state['stopped'], 'waiting': state['waiting'],
+        'stopped': state['stopped'], 'waiting': _waiting_on_workers(state),
         'workers': {wid: dict(worker) for wid, worker in
                     state['workers'].items()},
         'effort': policy.status(),
@@ -26811,18 +26858,53 @@ def _emit(args, payload, human):
         print(human)
 
 
+def _refuse_owner_replacement(root):
+    """Fail-closed check before a new start may replace the recorded owner.
+
+    Runs before any new process, thread or inference (zero calls). Refuses
+    when the owner record or the owner's control state is unreadable or
+    unknown (no implicit reset or forged ownership), when the owner is not
+    stopped, and when a stopped owner still has a PROVEN unresolved active
+    turn (an acknowledged provider turn id without an observed terminal):
+    replacing it would make same-thread `recover` impossible. A stopped
+    owner whose active turn was never acknowledged (no provider id) has no
+    recovery path by design and may be replaced; its views stay readable
+    as historical.
+    """
+    owner = _load_owner(root)  # an invalid/unreadable record refuses here
+    if not isinstance(owner, dict):
+        return
+    sid = owner['session_id']
+    try:
+        existing = _load_state(root, sid)
+        session = _open(root, existing)[0]
+        view = session.status(session_id=sid)
+    except (Refusal, ml.Refusal, bx.Refusal) as exc:
+        raise Refusal('current workspace owner %s has unreadable or unknown '
+                      'control state (%s); refusing to replace it. Inspect '
+                      'coord/lead-effort/; nothing was reset or started'
+                      % (sid, exc))
+    if not existing['stopped']:
+        raise Refusal('workspace already has an active managed lead '
+                      'session: ' + sid)
+    turn = view.get('turn')
+    if (turn is not None
+            and view.get('state') in ('pending', 'running', 'outcome_unknown')
+            and _provider_turn_for(existing, turn['turn_id']) is not None):
+        if existing['transport'] == 'owned':
+            hint = ('recover it on the same thread first: unio lead-session '
+                    'recover --session %s --interrupt' % sid)
+        else:
+            hint = 'the fake transport has no recovery path'
+        raise Refusal('stopped owner session %s still has a proven '
+                      'unresolved active turn %s; refusing to replace it '
+                      '(%s)' % (sid, turn['turn_id'], hint))
+
+
 def _cmd_start(root, args):
     goal = _read_input(args.goal, MAX_INPUT_BYTES)
     goal_sha = hashlib.sha256(goal.encode('utf-8')).hexdigest()
-    owner = _load_owner(root)
-    if isinstance(owner, dict) and owner['session_id']:
-        try:
-            existing = _load_state(root, owner['session_id'])
-        except Refusal:
-            existing = None
-        if existing is not None and not existing['stopped']:
-            raise Refusal('workspace already has an active managed lead '
-                          'session: ' + owner['session_id'])
+    _refuse_owner_replacement(root)
     if args.ceiling not in pe.RANK:
         raise Refusal('ceiling must be a known effort no higher than xhigh')
     if args.ceiling not in pe.INTERFACE_EFFORTS:
@@ -26912,15 +26994,7 @@ def _cmd_start_owned(root, args, goal_sha, baseline):
         root, expected_agent='codex', budget_label=args.budget_label)
     try:
         with _owner_guard(root):
-            owner = _load_owner(root)
-            if isinstance(owner, dict) and owner['session_id']:
-                try:
-                    existing = _load_state(root, owner['session_id'])
-                except Refusal:
-                    existing = None
-                if existing is not None and not existing['stopped']:
-                    raise Refusal('workspace already has an active managed '
-                                  'lead session: ' + owner['session_id'])
+            _refuse_owner_replacement(root)
             conn = cx.OwnedCodexConnection(args.codex_binary, cwd=str(root))
             try:
                 conn.initialize()
@@ -27243,6 +27317,8 @@ def _cmd_run_owned(root, state, args, text):
             completed = turn_status == 'completed'
             provider_exited = conn.exited
             delivery, code = _delivery_state(result.get('state'), turn_status)
+            if delivery == 'completed':
+                _clear_waiting_after_completion(root, state['session_id'])
             live_status = live.status()
             payload = {
                 'session_id': state['session_id'], 'request_id': args.request_id,
@@ -27335,6 +27411,8 @@ def _cmd_run(root, args):
             turn_status = 'completed'
         completed = turn_status == 'completed'
     delivery, code = _delivery_state(result.get('state'), turn_status)
+    if delivery == 'completed':
+        _clear_waiting_after_completion(root, state['session_id'])
     bridge_status = bridge.status()
     payload = {
         'session_id': state['session_id'], 'request_id': args.request_id,

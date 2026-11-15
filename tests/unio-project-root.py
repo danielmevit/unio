@@ -22,6 +22,7 @@ initialized inner workspace using its own state, and an explicitly targeted
 read-only command keep working. No live provider is called; the configured agent
 command writes a canary file that must stay absent.
 """
+import json
 import os
 import subprocess
 import sys
@@ -115,6 +116,10 @@ with tempfile.TemporaryDirectory(prefix='project-root-') as directory:
 
     policy_file = root / 'coord' / 'work-policy.json'
     stop_file = root / 'coord' / 'STOP'
+    # The internal/stored schema-1 value stays 'yolo'; only the human
+    # `unio mode` output uses the public Fast name (FAST-MODE-NAME-V1).
+    check('stored outer policy keeps the internal yolo value',
+          json.loads(policy_file.read_text()).get('mode') == 'yolo')
 
     def snapshot():
         locks = sorted((str(p.relative_to(root)), p.is_symlink(),
@@ -210,7 +215,7 @@ with tempfile.TemporaryDirectory(prefix='project-root-') as directory:
                     ('symlinked clone path', link / 'src')):
         out = unio('mode', cwd=d)
         check('%s reads the outer policy' % name,
-              out.returncode == 0 and out.stdout.strip() == 'mode: yolo', out)
+              out.returncode == 0 and out.stdout.strip() == 'mode: fast', out)
         out = unio('account', cwd=d)
         check('%s reads outer accounts' % name,
               out.returncode == 0 and 'mockagent=codex' in out.stdout, out)
@@ -233,7 +238,7 @@ with tempfile.TemporaryDirectory(prefix='project-root-') as directory:
     (worker / '.unio-worker').unlink()
     out = unio('mode', cwd=worker / 'src')
     check('pre-marker worker worktree still selected',
-          out.returncode == 0 and out.stdout.strip() == 'mode: yolo', out)
+          out.returncode == 0 and out.stdout.strip() == 'mode: fast', out)
     (worker / '.unio-worker').write_text('mockworker\n')
 
     # Initialized inner workspace: its own state, outer bytes untouched.
@@ -256,7 +261,7 @@ with tempfile.TemporaryDirectory(prefix='project-root-') as directory:
           out.returncode == 0 and out.stdout.strip() == 'mode: thorough', out)
     out = unio('mode', cwd=clone / 'src')
     check('outer project still reads its own mode',
-          out.returncode == 0 and out.stdout.strip() == 'mode: yolo', out)
+          out.returncode == 0 and out.stdout.strip() == 'mode: fast', out)
     out = unio('stop', cwd=inner_clone)
     check('inner stop touches only the inner project',
           out.returncode == 0

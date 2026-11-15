@@ -234,9 +234,17 @@ def run_suite(base):
     assert ws.status()['waiting'] is True
     assert ws.status()['workers']['w2']['state'] == 'terminal'
     assert len(ws.rpc_log()) == before  # waiting and polling: zero calls
+    queued = ws.effort('show')
+    assert queued['pending_wakeups'] == 1, queued
+    consumed_before = queued['wakeups_consumed']
     review = ws.run('r4', 'review the worker outcome\n')
     assert review['kind'] == 'review' and review['effort'] == 'xhigh'
-    assert 'worker terminal wakeup: w2' in review['source'] or True
+    # The review kind came from the recorded w2 terminal wakeup (automatic
+    # selection, not a pending/manual request) and consumed it exactly once.
+    assert review['source'] == 'auto', review
+    after_review = ws.effort('show')
+    assert after_review['pending_wakeups'] == 0, after_review
+    assert after_review['wakeups_consumed'] == consumed_before + 1, after_review
     routine = ws.run('r5', 'back to routine coordination\n')
     assert routine['kind'] == 'coordination' and routine['effort'] == 'low'
     ws.worker('register', 'w3')
@@ -427,6 +435,66 @@ def run_suite(base):
     message = refuses(['--project', str(ws.root), 'run', '--file',
                        ws.input('foreign\n'), '--request-id', 'r1', '--json'])
     assert 'unknown lead session control state' in message
+    # start refuses an unknown owner instead of replacing it (V10 item 5):
+    # no new session state, rpc log or owner change.
+    lead_dir = ws.root / 'coord' / 'lead-effort'
+    files_before = sorted(p.name for p in lead_dir.iterdir())
+    owner_bytes = owner_path.read_bytes()
+    message = refuses(['--project', str(ws.root), 'start', '--goal',
+                       ws.input('replace unknown owner\n'), '--model', MODEL,
+                       '--transport', 'fake', '--json'])
+    assert 'unreadable or unknown control state' in message, message
+    assert owner_path.read_bytes() == owner_bytes
+    assert sorted(p.name for p in lead_dir.iterdir()) == files_before
+    # Corrupt (unreadable) state of a stopped owner also refuses.
+    ws = Workspace(base)
+    ws.start()
+    ws.stop()
+    lead_dir = ws.root / 'coord' / 'lead-effort'
+    owner_path = lead_dir / 'owner.json'
+    state_file = lead_dir / (ws.sid + '.json')
+    fd = os.open(state_file, os.O_WRONLY | os.O_TRUNC)
+    os.write(fd, b'{corrupt')
+    os.close(fd)
+    files_before = sorted(p.name for p in lead_dir.iterdir())
+    owner_bytes = owner_path.read_bytes()
+    message = refuses(['--project', str(ws.root), 'start', '--goal',
+                       ws.input('replace corrupt owner\n'), '--model', MODEL,
+                       '--transport', 'fake', '--json'])
+    assert 'unreadable or unknown control state' in message, message
+    assert owner_path.read_bytes() == owner_bytes
+    assert sorted(p.name for p in lead_dir.iterdir()) == files_before
+    # A stopped owner with a proven (acknowledged, mapped) held turn is not
+    # replaced: that would make same-thread recovery impossible.
+    ws = Workspace(base)
+    ws.start()
+    old_sid = ws.sid
+    ws.set_behavior(behavior='hold')
+    _, held_code = ws.run_exit('r1', 'held turn then stop\n')
+    assert held_code == 6
+    ws.stop()
+    lead_dir = ws.root / 'coord' / 'lead-effort'
+    files_before = sorted(p.name for p in lead_dir.iterdir())
+    calls_before = len(ws.rpc_log())
+    message = refuses(['--project', str(ws.root), 'start', '--goal',
+                       ws.input('replace held owner\n'), '--model', MODEL,
+                       '--transport', 'fake', '--json'])
+    assert 'proven unresolved active turn' in message, message
+    assert old_sid in message
+    assert sorted(p.name for p in lead_dir.iterdir()) == files_before
+    assert len(ws.rpc_log()) == calls_before
+    # A cleanly stopped owner (no active turn) is replaced; the old one
+    # stays readable as historical.
+    ws = Workspace(base)
+    ws.start()
+    old_sid = ws.sid
+    ws.stop()
+    ws._sid = None
+    ws.start()
+    assert ws.sid != old_sid
+    old_view = call(['--project', str(ws.root), 'status', '--session',
+                     old_sid, '--json'])[0]
+    assert old_view['historical'] is True and old_view['stopped'] is True
     print('ok one managed owner per workspace; unknown ownership refuses',
           flush=True)
 

@@ -215,63 +215,65 @@ mkdir -p "$BRAND_SANDBOX/project/wt/w1" "$BRAND_SANDBOX/project/coord/tasks"
 : > "$BRAND_SANDBOX/project/coord/tasks/T1.md"
 : > "$BRAND_SANDBOX/project/coord/tasks/TEMPLATE.md"
 entry=unio
-  bash -euo pipefail -s -- "$entry" "$BRAND_SANDBOX/project" <<'COMPLETION_TEST'
+  bash -euo pipefail -s -- "$entry" "$BRAND_SANDBOX/project" <<'COMPLETION_TEST' \
+  || fail 'completion checks failed (condition reported above)'
 entry=$1
+# Every failed condition prints what was expected and what was offered, so a
+# failure cannot vanish silently under set -e.
+cfail() { echo "FAIL: completion: $*" >&2; exit 1; }
+set -E
+trap 'echo "FAIL: completion: line $LINENO: [$BASH_COMMAND] exited $?" >&2' ERR
+complete_words() {
+  COMPREPLY=(); COMP_WORDS=("$@"); COMP_CWORD=$((${#COMP_WORDS[@]} - 1))
+  # Bash ignores a completion function's return status (compgen returns 1
+  # when nothing matches); the contract is COMPREPLY, asserted exactly by want.
+  "$function_name" || :
+}
+want() {
+  # want <expected candidates> <description>
+  [ "${COMPREPLY[*]-}" = "$1" ] \
+    || cfail "$2: expected [$1], offered [${COMPREPLY[*]-}]"
+}
 source "$UNIO_COMPLETION_DIR/$entry"
 registration=$(complete -p "$entry")
-[ "$registration" = "complete -F _unio unio" ]
+[ "$registration" = "complete -F _unio unio" ] \
+  || cfail "registration: expected [complete -F _unio unio], got [$registration]"
 function_name=${registration#* -F }
 function_name=${function_name%% *}
-declare -F "$function_name" >/dev/null
-COMP_WORDS=("$entry" '') COMP_CWORD=1
-"$function_name"
-[ "${#COMPREPLY[@]}" -gt 20 ]
+declare -F "$function_name" >/dev/null || cfail "function $function_name not defined"
+complete_words "$entry" ''
+[ "${#COMPREPLY[@]}" -gt 20 ] || cfail "top level: expected >20 commands, offered ${#COMPREPLY[@]}"
 for candidate in "${COMPREPLY[@]}"; do
   # Each offered command must occur in the installed dispatch table.
-  grep -Eq "^  ([a-z-]+\|)*${candidate}(\)|\|)" "$UNIO_BIN_DIR/unio"
+  grep -Eq "^  ([a-z-]+\|)*${candidate}(\)|\|)" "$UNIO_BIN_DIR/unio" \
+    || cfail "top-level candidate [$candidate] is not in the installed dispatch table"
 done
-COMP_WORDS=("$entry" ver) COMP_CWORD=1
-"$function_name"
-[ "${COMPREPLY[*]}" = 'verify version' ]
-COMP_WORDS=("$entry" resul) COMP_CWORD=1
-"$function_name"
-[ "${COMPREPLY[*]}" = 'result' ]
-COMP_WORDS=("$entry" hand) COMP_CWORD=1
-"$function_name"
-[ "${COMPREPLY[*]}" = 'handoff' ]
-COMP_WORDS=("$entry" agents '') COMP_CWORD=2
-"$function_name"
-[ "${COMPREPLY[*]}" = '--json' ]
-COMPREPLY=(); COMP_WORDS=("$entry" update '') COMP_CWORD=2
-"$function_name"
-[ "${COMPREPLY[*]}" = 'clis' ]
-COMPREPLY=(); COMP_WORDS=("$entry" update clis '') COMP_CWORD=3
-"$function_name"
-[ "${COMPREPLY[*]}" = '--check --json antigravity vibe grok copilot opencode claude codex' ]
-COMPREPLY=(); COMP_WORDS=("$entry" update clis --ch) COMP_CWORD=3
-"$function_name"
-[ "${COMPREPLY[*]}" = '--check' ]
-COMPREPLY=(); COMP_WORDS=("$entry" update clis antigrav) COMP_CWORD=3
-"$function_name"
-[ "${COMPREPLY[*]}" = 'antigravity' ]
+complete_words "$entry" ver;      want 'verify version' 'prefix ver'
+complete_words "$entry" resul;    want 'result' 'prefix resul'
+complete_words "$entry" hand;     want 'handoff' 'prefix hand'
+complete_words "$entry" agents '';   want '--json' 'agents options'
+complete_words "$entry" update '';   want 'clis' 'update subcommand'
+complete_words "$entry" update clis ''
+want '--check --json antigravity vibe grok copilot opencode claude codex' 'update clis options'
+complete_words "$entry" update clis --ch;     want '--check' 'update clis --ch'
+complete_words "$entry" update clis antigrav; want 'antigravity' 'update clis antigrav'
 cd "$2"
 for command in verify result handoff review; do
-  COMPREPLY=(); COMP_WORDS=("$entry" "$command" '') COMP_CWORD=2
-  "$function_name"
-  [ "${COMPREPLY[*]}" = 'w1' ]
-  COMPREPLY=(); COMP_WORDS=("$entry" "$command" w1 '') COMP_CWORD=3
-  "$function_name"
-  [ "${COMPREPLY[*]}" = 'T1' ]
+  complete_words "$entry" "$command" '';    want 'w1' "$command worker"
+  complete_words "$entry" "$command" w1 ''; want 'T1' "$command task"
+done
+# verify takes the task-preview flag: exactly --preview first, then only
+# --json after --preview, and nothing once both are present.
+complete_words "$entry" verify w1 T1 '';                 want '--preview' 'verify after task'
+complete_words "$entry" verify w1 T1 --preview '';       want '--json' 'verify after --preview'
+complete_words "$entry" verify w1 T1 --preview --json ''; want '' 'verify after --preview --json'
+complete_words "$entry" verify w1 T1 --json '';  want '--preview' 'verify after --json only'
+# result and handoff take no further arguments.
+for command in result handoff; do
+  complete_words "$entry" "$command" w1 T1 ''; want '' "$command after task"
 done
 # Only review takes a third argument (the reviewer agent).
-for command in verify result handoff; do
-  COMPREPLY=(); COMP_WORDS=("$entry" "$command" w1 T1 '') COMP_CWORD=4
-  "$function_name"
-  [ "${#COMPREPLY[@]}" -eq 0 ]
-done
-COMPREPLY=(); COMP_WORDS=("$entry" review w1 T1 '') COMP_CWORD=4
-"$function_name"
-[ "${COMPREPLY[*]}" = 'mock' ]
+complete_words "$entry" review w1 T1 '';  want 'mock' 'review reviewer agent'
 COMPLETION_TEST
 
 # Legacy environment names are ignored by the installer and runtime.

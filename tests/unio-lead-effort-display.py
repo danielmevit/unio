@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
-"""Regression tests for lead-session effort-first display (V8 / V8A).
+"""Regression tests for lead-session effort-first display.
+
+Contract: docs/development/contracts/0531-EFFORT-PRESENTATION-V8.md, with the
+bounded V10 truth corrections (0531-FINAL-REVIEW-CORRECTIONS-V10.md).
 
 Validates:
 - Concrete requested LOW/XHIGH is primary; adaptive/AUTO policy is secondary.
@@ -12,10 +15,23 @@ Validates:
 - Provider rejection does not claim effort was used (disclosed as rejected attempt).
 - Uncertain turns retain attempted effort with delivery uncertain and effective Unknown.
 - Historical views on stale sessions are clearly labelled.
-- Read-only status and effort show make zero provider/RPC calls.
+- Read-only status and effort show make zero provider/RPC calls (counted in
+  the exact <session>.rpclog.jsonl the fake transport writes).
+- An outcome_unknown attempt is marked delivery uncertain, never shown as an
+  ordinary confirmed active turn.
+- `waiting` clears once every registered worker is terminal and a review turn
+  completes; a real concurrent wait on a non-terminal worker stays visible.
+
+Fixture note: the product refuses group/other-accessible state files
+(fail-closed). Every fixture file the product reads as owned state is
+therefore written 0600 explicitly, independent of the caller's umask. The
+original Google native verification failed line `held_code == 6` because a
+umask-022 environment produced a 0644 behavior sidecar (the run then exited 3,
+uncertain); a umask-0077 shell passed. See test_umask_independent_fixture.
 - Backwards compatibility of existing JSON fields alongside structured display.
 """
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -90,7 +106,15 @@ class Workspace:
                                 '--file', path, '--request-id', request_id,
                                 '--json'] + list(extra))
         payload = json.loads(out) if out.strip() else None
+        self.last_run = (code, out, err)
         return payload, code
+
+    def expect_run(self, code, expected):
+        """Actionable assertion: report the actual rc, stdout and stderr."""
+        actual, out, err = self.last_run
+        assert actual == expected, (
+            'run exit %r, expected %r\nstdout:\n%s\nstderr:\n%s'
+            % (actual, expected, out, err))
 
     def effort(self, *args):
         return call(['--project', str(self.root), 'effort']
@@ -115,9 +139,10 @@ class Workspace:
         return call(['--project', str(self.root), 'stop', '--json'])[0]
 
     def rpc_log(self):
-        log_path = self.root / 'coord' / 'lead-effort' / 'fake-rpc.jsonl'
-        if not log_path.is_file():
-            return []
+        # The exact log FakeLeadRPC writes: coord/lead-effort/<sid>.rpclog.jsonl
+        log_path = (self.root / 'coord' / 'lead-effort'
+                    / (self.sid + '.rpclog.jsonl'))
+        assert log_path.is_file(), 'fake rpc log missing: %s' % log_path
         records = []
         for line in log_path.read_text(encoding='utf-8').splitlines():
             if line.strip():
@@ -141,7 +166,11 @@ class Workspace:
         if release_held is not None:
             doc['release_held'] = release_held
         path.parent.mkdir(mode=0o700, exist_ok=True)
-        path.write_text(json.dumps(doc) + '\n', encoding='utf-8')
+        # Owned state: always 0600, whatever the caller's umask is.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            stream.write(json.dumps(doc) + '\n')
+        os.chmod(path, 0o600)
 
 
 def test_suite():
@@ -149,6 +178,10 @@ def test_suite():
         # 1. Pre-first-turn: 'not started', zero provider calls, no AUTO effort headline
         ws = Workspace(base)
         start_msg = ws.start_human()
+        # start queries supported efforts once: real fixture traffic.
+        start_log = ws.rpc_log()
+        assert [rec['method'] for rec in start_log] == ['model/list'], start_log
+        rpc_before = len(start_log)
         assert 'effort not started' in start_msg
         assert 'policy adaptive' in start_msg
         assert 'effort auto' not in start_msg.lower()
@@ -179,14 +212,14 @@ def test_suite():
         assert disp['effective'] == 'Unknown'
 
         # Read-only status & effort show made zero provider calls
-        assert len(ws.rpc_log()) == 0
+        assert len(ws.rpc_log()) == rpc_before, ws.rpc_log()
         print('ok pre-first-turn displays not started with zero provider calls', flush=True)
 
         # 2. Active LOW turn
         ws.set_behavior(behavior='hold')
         held_low, held_code = ws.run_exit('r1', 'routine coordination turn\n',
                                           '--kind', 'coordination')
-        assert held_code == 6
+        ws.expect_run(held_code, 6)
         assert held_low['turn_completed'] is False
 
         st_low = ws.status()
@@ -196,11 +229,15 @@ def test_suite():
         assert disp_low['active_effort'] == 'low'
         assert disp_low['current_request']['effort'] == 'low'
         assert disp_low['current_request']['kind'] == 'coordination'
+        # Acknowledged running turn: confirmed accepted, not uncertain.
+        assert disp_low['current_request']['delivery'] == 'accepted'
 
         st_low_h = ws.status_human()
         assert 'effort low (policy adaptive)' in st_low_h
+        assert 'uncertain' not in st_low_h
         eff_low_h = ws.effort_human('show')
         assert 'requested effort: low' in eff_low_h
+        assert 'uncertain' not in eff_low_h
         assert 'kind coordination' in eff_low_h
 
         # 3. Queued opposite next-turn effort (XHIGH) stays next-only
@@ -231,7 +268,7 @@ def test_suite():
         # 4. Consumed queued next-turn effort (XHIGH active)
         ws.set_behavior(behavior='hold')
         held_high, high_code = ws.run_exit('r2', 'substantive turn using queued request\n')
-        assert high_code == 6
+        ws.expect_run(high_code, 6)
         st_high = ws.status()
         assert st_high['state'] == 'running'
         disp_high = st_high['effort_display']
@@ -300,7 +337,7 @@ def test_suite():
         # 7. Rejected attempt: disclosed as rejected, effort not claimed as used
         ws.set_behavior(behavior='reject')
         rej, rej_code = ws.run_exit('r3', 'turn rejected by provider\n')
-        assert rej_code == 2
+        ws.expect_run(rej_code, 2)
         assert rej['delivery'] == 'rejected'
 
         st_rej = ws.status()
@@ -319,7 +356,7 @@ def test_suite():
         # 8. Uncertain attempt: preserved evidence, delivery uncertain, effective Unknown
         ws.set_behavior(behavior='raise')
         unc, unc_code = ws.run_exit('r4', 'turn that crashes in flight\n')
-        assert unc_code == 3
+        ws.expect_run(unc_code, 3)
         assert unc['status'] == 'uncertain'
 
         st_unc = ws.status()
@@ -327,8 +364,18 @@ def test_suite():
         disp_unc = st_unc['effort_display']
         assert disp_unc['current_request']['active'] is True
         assert disp_unc['effective'] == 'Unknown'
+        # The attempted effort is kept but never shown as an ordinary
+        # confirmed active turn.
+        assert disp_unc['current_request']['state'] == 'outcome_unknown'
+        assert disp_unc['current_request']['delivery'] == 'uncertain'
+        assert disp_unc['current_request']['effort'] == unc['effort']
         st_unc_h = ws.status_human()
         assert 'state outcome_unknown' in st_unc_h
+        assert 'delivery uncertain, effective Unknown' in st_unc_h
+        eff_unc_h = ws.effort_human('show')
+        assert eff_unc_h.startswith('requested effort: %s (active turn '
+                                    % unc['effort']), eff_unc_h
+        assert 'delivery uncertain, effective Unknown' in eff_unc_h, eff_unc_h
         print('ok uncertain attempt preserves evidence with effective Unknown', flush=True)
 
         # 9. Historical labelling on stale session
@@ -360,8 +407,82 @@ def test_suite():
         print('ok backwards-compatible JSON fields and structured display verified', flush=True)
 
 
+def test_waiting_truth():
+    """`waiting` is truthful: a real wait on a non-terminal worker stays,
+    and it clears once every worker is terminal and the review completed."""
+    with tempfile.TemporaryDirectory(prefix='unio-lead-effort-wait-') as base:
+        ws = Workspace(base)
+        ws.start()
+        ws.worker('register', 'w1')
+        ws.worker('register', 'w2')
+        ws.worker('wait')
+        assert ws.status()['waiting'] is True
+        # No turn yet: 'not started' stays the effort truth while waiting.
+        assert ws.status()['effort_display']['active_status'] == 'not started'
+        ws.worker('terminal', 'w1')
+        # One review wakeup queued; w2 still running: still waiting.
+        first = ws.run('rw1', 'review w1 outcome\n')
+        assert first['turn_completed'] is True and first['kind'] == 'review'
+        view = ws.status()
+        assert view['waiting'] is True, view['workers']
+        assert view['effort_display']['active_status'] == 'waiting'
+        assert 'waiting True' in ws.status_human()
+        ws.worker('terminal', 'w2')
+        # Terminal but its review wakeup is unconsumed: still waiting.
+        assert ws.status()['waiting'] is True
+        second = ws.run('rw2', 'review w2 outcome\n')
+        assert second['turn_completed'] is True and second['kind'] == 'review'
+        view = ws.status()
+        assert view['waiting'] is False, view
+        assert view['effort_display']['active_status'] == 'idle'
+        assert view['effort_display']['current_request']['state'] == 'idle'
+        human = ws.status_human()
+        assert 'waiting False' in human and 'effort no active turn' in human
+        assert 'requested effort: no active turn' in ws.effort_human('show')
+        # A new real wait is shown again (concurrent waits are preserved).
+        ws.worker('register', 'w3')
+        ws.worker('wait')
+        assert ws.status()['waiting'] is True
+        print('ok waiting clears after all workers terminal and review '
+              'completes; real waits stay visible', flush=True)
+
+
+def test_umask_independent_fixture():
+    """Regression for the original Google native-verify failure at
+    `held_code == 6`: under umask 022 the old fixture wrote a 0644 behavior
+    sidecar, the product correctly refused it as unsafe owned state and the
+    run exited 3 (uncertain). The fixture now writes 0600 explicitly."""
+    old = os.umask(0o022)
+    try:
+        with tempfile.TemporaryDirectory(prefix='unio-lead-effort-umask-') as base:
+            ws = Workspace(base)
+            ws.start()
+            ws.set_behavior(behavior='hold')
+            sidecar = (ws.root / 'coord' / 'lead-effort'
+                       / (ws.sid + '.fake.json'))
+            assert (sidecar.stat().st_mode & 0o777) == 0o600
+            _, code = ws.run_exit('ru1', 'held turn under umask 022\n')
+            ws.expect_run(code, 6)
+            # Fail-closed product behavior stays: a group/other-readable
+            # owned sidecar is refused, so a new turn is never delivered.
+            ws2 = Workspace(base)
+            ws2.start()
+            bad = (ws2.root / 'coord' / 'lead-effort'
+                   / (ws2.sid + '.fake.json'))
+            bad.write_text('{"behavior": "hold"}\n', encoding='utf-8')
+            os.chmod(bad, 0o644)
+            _, code = ws2.run_exit('ru2', 'unsafe sidecar\n')
+            ws2.expect_run(code, 3)
+    finally:
+        os.umask(old)
+    print('ok fixture is umask-independent; unsafe sidecar still fails closed',
+          flush=True)
+
+
 def main():
     test_suite()
+    test_waiting_truth()
+    test_umask_independent_fixture()
     print('all lead effort display presentation checks passed')
 
 
