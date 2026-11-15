@@ -4,7 +4,7 @@
 
 These prompts are for a separate project, not a takeover of an existing lead.
 They assume the experimental managed-lead effort controls are available for
-testing. Official0.5.30 does not include those controls. Check the actual installed
+testing. Official 0.5.30 does not include those controls. Check the actual installed
 version and supported commands; a prompt alone cannot enable or change the
 reasoning effort of an unmanaged CLI. Requested effort is not proof of effective
 effort. The first adaptive interface uses AUTO, LOW and XHIGH only.

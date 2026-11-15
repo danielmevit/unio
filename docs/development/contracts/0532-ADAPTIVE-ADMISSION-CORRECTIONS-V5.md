@@ -1,0 +1,11 @@
+# V5 — close confirmed native admission review findings
+
+Target baseline includes9d4f60a. Mistral independent review returned REQUEST-CHANGES; root independently reproduced the installed-hold and larger-slot cases. Reports are immutable under coord/results/vibeglm-admission-review-0532-20261115; root probes under tmp/unio-next/adaptive-admission-review-glm-0532-20261115/lead-probes/result.json. No real provider calls in probes.
+
+Fix default installed configuration/off discovery: normal unio lead-session entrypoint must pass the actual resolved configuration to its helper, and direct helper use must have a consistent documented default. A fake HOME/.config/unio/off/codex hold with neither UNIO_CONF_DIR nor CONF_DIR currently admits a child; explicit UNIO_CONF_DIR refuses. Do not merely test coord/off. Preserve actual installed off writer/expiry semantics and intentional trusted shared off-directory references; no credential/global-off changes.
+
+Align slot counting/validation with native contract (4096-byte metadata bound). An existing locked2500-byte valid JSON slot currently counts0 because new helper has2048 bound. Missing directories may mean0; unreadable, invalid or unsafe state cannot silently mean no active work. Preserve real flock ownership, strict labels/schema/timestamps and native account mapping/count-once semantics. Do not weaken native policy to match the new helper. Add genuine fault/permission tests without relying on root being restricted by chmod000.
+
+Fix low-severity native label-validation mismatch while in this helper. Clarify project coord/off compatibility/read-only observation; do not invent a new project-scoped off command. Harmless rejected-call directory creation is informational, not a reason for a large redesign. Keep STOP, short policy transactions/lease ordering, existing grants, other groups and zero child after refusal. No retries, paid fallback, auth changes or version-only gates. No real Codex calls; same production branch tested against executable fake.
+
+New edits limited to admission helper, installed-config propagation, its focused regression tests/registration and admission documentation. Another worker owns native transport/concurrency changes; do not modify its code or existing transport regression cases.
