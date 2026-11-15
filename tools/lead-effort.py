@@ -12,9 +12,12 @@ injected callable that represents one already authorized owned connection
 handed to the caller to send explicitly with `turn/start`.
 
 Enforced by this component:
-- a fixed known effort rank (low, medium, high, xhigh); the configurable
-  ceiling must be a known rank no higher than xhigh. Advertised values
-  outside the known rank (for example max or ultra) are refused for
+- a fixed known effort rank (low, medium, high, xhigh) validates advertised
+  sets, so legacy models that advertise medium/high stay compatible; the
+  first adaptive interface (contract 0532-ADAPTIVE-LEAD-EFFORT-V2) exposes
+  only low and xhigh plus auto: the configurable ceiling must be low or
+  xhigh, and manual or pending choices accept only low or xhigh. Advertised
+  values outside the known rank (for example max or ultra) are refused for
   selection; nothing is invented and there is no fallback effort;
 - the supported set is queried exactly once per policy instance; a second
   query returns the recorded set without another call. The ceiling and the
@@ -42,6 +45,7 @@ the registered lead exactly once. See docs/ADAPTIVE-LEAD-EFFORT.md.
 import re
 
 RANK = ('low', 'medium', 'high', 'xhigh')
+INTERFACE_EFFORTS = ('low', 'xhigh')
 KINDS = ('coordination', 'planning', 'review')
 DEFAULT_CEILING = 'xhigh'
 COORDINATION_EFFORT = 'low'
@@ -86,6 +90,9 @@ class AdaptiveEffortPolicy:
     def __init__(self, *, ceiling=DEFAULT_CEILING):
         if ceiling not in RANK or _rank(ceiling) > _rank('xhigh'):
             raise Refusal('ceiling must be a known effort no higher than xhigh')
+        if ceiling not in INTERFACE_EFFORTS:
+            raise Refusal('ceiling must be low or xhigh in this first '
+                          'adaptive interface: ' + ceiling)
         self._ceiling = ceiling
         self._supported = None
         self._queried = False
@@ -139,6 +146,11 @@ class AdaptiveEffortPolicy:
         if not self._selectable(effort):
             raise Refusal('unsupported ' + name + ': ' + str(effort))
 
+    def _require_interface(self, effort):
+        if effort not in INTERFACE_EFFORTS:
+            raise Refusal('only low and xhigh are exposed in this first '
+                          'adaptive interface: ' + str(effort))
+
     # -- controls -----------------------------------------------------------
 
     def select_for_kind(self, kind):
@@ -156,6 +168,7 @@ class AdaptiveEffortPolicy:
         """Manual owner override; suspends auto until auto is selected."""
         effort = _bounded_effort(effort)
         self._require_selectable(effort, 'manual effort')
+        self._require_interface(effort)
         self._manual = effort
         self._mode = 'manual'
         self._pending = None
@@ -172,6 +185,7 @@ class AdaptiveEffortPolicy:
         """Record an explicit pending effort for the next turn only."""
         effort = _bounded_effort(effort)
         self._require_selectable(effort, 'requested effort')
+        self._require_interface(effort)
         self._pending = {'effort': effort, 'reason': _bounded_reason(reason)}
         return self.status()
 
@@ -315,7 +329,7 @@ class AdaptiveEffortPolicy:
                     and TURN_ID.fullmatch(item['turn_id'])
                     and item['kind'] in KINDS
                     and isinstance(item['effort'], str)
-                    and item['effort'] in RANK
+                    and item['effort'] in INTERFACE_EFFORTS
                     and item['source'] in ('pending', 'manual', 'auto')
                     and (item['reason'] is None or isinstance(item['reason'], str))):
                 raise Refusal('invalid policy snapshot')

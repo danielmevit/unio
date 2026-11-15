@@ -56,19 +56,24 @@ def run_suite(base):
                    ('subprocess', 'socket', 'pty', 'Popen', 'system', 'fork'))
     assert pe.RANK == ('low', 'medium', 'high', 'xhigh')
     assert 'max' not in pe.RANK and 'ultra' not in pe.RANK
+    assert pe.INTERFACE_EFFORTS == ('low', 'xhigh')
     assert pe.KINDS == ('coordination', 'planning', 'review')
     print('ok module exposes no process/network launch surface', flush=True)
 
-    # 1. Ceiling must be a known rank no higher than xhigh.
+    # 1. Ceiling must be low or xhigh in this first adaptive interface.
     assert 'ceiling must be a known effort' in refuses(
         pe.AdaptiveEffortPolicy, ceiling='max')
     assert 'ceiling must be a known effort' in refuses(
         pe.AdaptiveEffortPolicy, ceiling='ultra')
     assert 'ceiling must be a known effort' in refuses(
         pe.AdaptiveEffortPolicy, ceiling='')
+    assert 'first adaptive interface' in refuses(
+        pe.AdaptiveEffortPolicy, ceiling='medium')
+    assert 'first adaptive interface' in refuses(
+        pe.AdaptiveEffortPolicy, ceiling='high')
     pe.AdaptiveEffortPolicy(ceiling='xhigh')
     pe.AdaptiveEffortPolicy(ceiling='low')
-    print('ok ceiling is a known rank no higher than xhigh', flush=True)
+    print('ok ceiling is low or xhigh in this first interface', flush=True)
 
     # 2. Supported efforts are queried exactly once; repeats never re-query.
     policy, query = policy_with(['low', 'medium', 'high', 'xhigh'])
@@ -116,7 +121,8 @@ def run_suite(base):
     print('ok auto selects low for coordination and ceiling for planning/review',
           flush=True)
 
-    # 6. Unsupported choices (max/ultra/unadvertised) refuse everywhere.
+    # 6. Unsupported choices (max/ultra/unadvertised) refuse everywhere;
+    #    medium/high are advertised but not exposed in this interface.
     policy, _ = policy_with(['low', 'medium', 'high', 'xhigh', 'max'])
     assert 'max' in policy.supported()  # advertised but never selectable
     assert 'unsupported manual effort' in refuses(policy.set_manual, 'max')
@@ -125,7 +131,14 @@ def run_suite(base):
     assert 'unsupported manual effort' in refuses(policy.set_manual, 'minimal')
     assert 'effort bound exceeded' in refuses(
         policy.request_next_turn, 'medium' * 30)
-    print('ok max/ultra/unadvertised efforts refuse with no fallback', flush=True)
+    assert 'first adaptive interface' in refuses(policy.set_manual, 'medium')
+    assert 'first adaptive interface' in refuses(policy.set_manual, 'high')
+    assert 'first adaptive interface' in refuses(
+        policy.request_next_turn, 'medium')
+    assert 'first adaptive interface' in refuses(
+        policy.request_next_turn, 'high')
+    print('ok max/ultra/unadvertised efforts and intermediate levels refuse '
+          'with no fallback', flush=True)
 
     # 7. decide_turn records immutable per-turn decisions.
     policy, _ = policy_with(['low', 'medium', 'high', 'xhigh'])
@@ -147,10 +160,10 @@ def run_suite(base):
 
     # 8. Manual override suspends auto until auto is selected again.
     policy, _ = policy_with(['low', 'medium', 'high', 'xhigh'])
-    policy.set_manual('high', 'owner wants high')
+    policy.set_manual('xhigh', 'owner wants xhigh')
     assert policy.status()['mode'] == 'manual'
     decision = policy.decide_turn('turn-0123456789abcdef', 'coordination')
-    assert decision['effort'] == 'high' and decision['source'] == 'manual'
+    assert decision['effort'] == 'xhigh' and decision['source'] == 'manual'
     policy.set_auto()
     decision = policy.decide_turn('turn-0123456789abcdee', 'coordination')
     assert decision['effort'] == 'low' and decision['source'] == 'auto'
@@ -158,16 +171,16 @@ def run_suite(base):
 
     # 9. Pending next-turn request applies once, then auto resumes.
     policy, _ = policy_with(['low', 'medium', 'high', 'xhigh'])
-    policy.request_next_turn('medium', 'owner request')
-    assert policy.status()['pending_next_turn']['effort'] == 'medium'
+    policy.request_next_turn('xhigh', 'owner request')
+    assert policy.status()['pending_next_turn']['effort'] == 'xhigh'
     decision = policy.decide_turn('turn-0123456789abcdef', 'coordination')
-    assert decision['effort'] == 'medium' and decision['source'] == 'pending'
+    assert decision['effort'] == 'xhigh' and decision['source'] == 'pending'
     assert policy.status()['pending_next_turn'] is None
     decision = policy.decide_turn('turn-0123456789abcdee', 'coordination')
     assert decision['effort'] == 'low' and decision['source'] == 'auto'
-    policy.request_next_turn('high')
-    policy.request_next_turn('medium')  # a newer explicit request replaces
-    assert policy.status()['pending_next_turn']['effort'] == 'medium'
+    policy.request_next_turn('low')
+    policy.request_next_turn('xhigh')  # a newer explicit request replaces
+    assert policy.status()['pending_next_turn']['effort'] == 'xhigh'
     policy.set_manual('low')  # manual clears any pending request
     assert policy.status()['pending_next_turn'] is None
     print('ok pending request applies exactly once at the next turn', flush=True)
@@ -191,9 +204,9 @@ def run_suite(base):
 
     # 11. Snapshot/load roundtrip and tamper refusal.
     policy, _ = policy_with(['low', 'medium', 'high', 'xhigh'])
-    policy.set_manual('high', 'hold')
+    policy.set_manual('xhigh', 'hold')
     policy.set_auto()
-    policy.request_next_turn('medium', 'next phase')
+    policy.request_next_turn('xhigh', 'next phase')
     policy.record_wakeup('worker-a')
     policy.decide_turn('turn-0123456789abcdef', 'review')
     restored = pe.AdaptiveEffortPolicy.load(policy.snapshot())
@@ -210,6 +223,15 @@ def run_suite(base):
     snapshot = policy.snapshot()
     snapshot['decisions'][0]['effort'] = 'ultra'
     assert 'invalid policy snapshot' in refuses(pe.AdaptiveEffortPolicy.load,
+                                                snapshot)
+    snapshot = policy.snapshot()
+    snapshot['decisions'][0]['effort'] = 'medium'
+    assert 'invalid policy snapshot' in refuses(pe.AdaptiveEffortPolicy.load,
+                                                snapshot)
+    snapshot = policy.snapshot()
+    snapshot['manual'] = 'high'
+    snapshot['mode'] = 'manual'
+    assert 'first adaptive interface' in refuses(pe.AdaptiveEffortPolicy.load,
                                                 snapshot)
     assert 'invalid policy snapshot' in refuses(pe.AdaptiveEffortPolicy.load, {})
     print('ok snapshot roundtrip refuses tampered persistence', flush=True)

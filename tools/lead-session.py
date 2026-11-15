@@ -30,7 +30,11 @@ Guarantees kept by this controller:
   of inventing recovery, and an uncertain (outcome_unknown) turn can
   never be handed over;
 - the effective provider effort stays Unknown; only requested efforts,
-  reasons and immutable per-turn decisions are recorded.
+  reasons and immutable per-turn decisions are recorded;
+- this first adaptive interface exposes only auto, low and xhigh (contract
+  0532-ADAPTIVE-LEAD-EFFORT-V2): medium and high are not choices in
+  adaptive mode, while advertised sets containing them and fixed legacy
+  worker/core settings stay compatible.
 
 Honest boundary of this slice: the real owned app-server connection
 (thread creation, notification routing, native account/lead reservation)
@@ -114,6 +118,8 @@ def _validate_state(doc):
                 'created_at', 'updated_at'):
         if not isinstance(doc.get(key), str) or not doc[key] or '\x00' in doc[key]:
             refuse()
+    if doc['baseline_effort'] not in pe.INTERFACE_EFFORTS:
+        refuse()
     if not ml.SESSION_ID.fullmatch(doc['session_id']):
         refuse()
     if doc['transport'] != 'fake':
@@ -543,11 +549,18 @@ def _cmd_start(root, args):
                           'session: ' + owner['session_id'])
     if args.ceiling not in pe.RANK:
         raise Refusal('ceiling must be a known effort no higher than xhigh')
+    if args.ceiling not in pe.INTERFACE_EFFORTS:
+        raise Refusal('ceiling must be low or xhigh in this first adaptive '
+                      'interface: ' + args.ceiling)
     efforts = [item.strip() for item in args.fake_efforts.split(',') if item.strip()]
     if not efforts:
         raise Refusal('no fake efforts advertised')
-    if args.effort != 'auto' and args.effort not in pe.RANK:
-        raise Refusal('unknown effort: ' + args.effort)
+    if args.effort != 'auto':
+        if args.effort not in pe.RANK:
+            raise Refusal('unknown effort: ' + args.effort)
+        if args.effort not in pe.INTERFACE_EFFORTS:
+            raise Refusal('only auto, low and xhigh are exposed in this '
+                          'first adaptive interface: ' + args.effort)
     baseline = args.ceiling if args.effort == 'auto' else args.effort
     policy = pe.AdaptiveEffortPolicy(ceiling=args.ceiling)
     wrapper = EffortTransport(None, policy, None, None)
@@ -789,11 +802,12 @@ def build_parser():
     start.add_argument('--workspace', default=None,
                        help='workspace label (default: project root)')
     start.add_argument('--ceiling', default=pe.DEFAULT_CEILING,
-                       help='supported planning/review ceiling (default: '
-                            'xhigh)')
+                       help='planning/review ceiling; this first interface '
+                            'exposes only low and xhigh (default: xhigh)')
     start.add_argument('--effort', default='auto',
-                       help='auto or an explicit supported effort '
-                            '(default: auto)')
+                       help='auto, low or xhigh (default: auto); this first '
+                            'adaptive interface exposes no intermediate '
+                            'levels')
     start.add_argument('--max-requests', type=int, default=ml.MAX_REQUESTS)
     start.add_argument('--max-mappings', type=int,
                        default=bx.OWNED_MAPPING_BOUND,
@@ -827,7 +841,8 @@ def build_parser():
             ('request', 'pending effort for the next turn only')):
         sub_parser = effort_sub.add_parser(name, help=help_text)
         if name in ('manual', 'request'):
-            sub_parser.add_argument('effort', help='supported effort')
+            sub_parser.add_argument('effort',
+                                    help='interface effort: low or xhigh')
         sub_parser.add_argument('--reason', default=None)
         sub_parser.add_argument('--session', default=None)
         sub_parser.add_argument('--json', action='store_true')

@@ -225,8 +225,8 @@ def run_suite(base):
     assert held['turn_completed'] is False
     assert ws.status()['state'] == 'running'
     before = len(ws.rpc_log())
-    pending = ws.effort('request', 'medium', '--reason', 'owner next phase')
-    assert pending['pending_next_turn']['effort'] == 'medium'
+    pending = ws.effort('request', 'xhigh', '--reason', 'owner next phase')
+    assert pending['pending_next_turn']['effort'] == 'xhigh'
     assert len(ws.rpc_log()) == before  # effort control: zero calls
     message = refuses(['--project', str(ws.root), 'run', '--file',
                        ws.input('too soon\n'), '--request-id', 'r2',
@@ -235,7 +235,7 @@ def run_suite(base):
     assert len(ws.rpc_log()) == before  # refused run: zero calls
     ws.set_behavior(behavior='ok', release_held=True)
     applied = ws.run('r2', 'next phase with the requested effort\n')
-    assert applied['effort'] == 'medium' and applied['source'] == 'pending'
+    assert applied['effort'] == 'xhigh' and applied['source'] == 'pending'
     assert applied['turn_completed'] is True
     back = ws.run('r3', 'routine coordination again\n')
     assert back['effort'] == 'low' and back['source'] == 'auto'
@@ -245,26 +245,31 @@ def run_suite(base):
     # 5. Manual override suspends auto; auto selection resumes it.
     ws = Workspace(base)
     ws.start()
-    ws.effort('manual', 'high', '--reason', 'owner override')
+    ws.effort('manual', 'xhigh', '--reason', 'owner override')
     assert ws.effort('show')['mode'] == 'manual'
     turn = ws.run('r1', 'coordination under manual override\n')
-    assert turn['effort'] == 'high' and turn['source'] == 'manual'
+    assert turn['effort'] == 'xhigh' and turn['source'] == 'manual'
     turn = ws.run('r2', 'planning under manual override\n', '--kind',
                   'planning')
-    assert turn['effort'] == 'high' and turn['source'] == 'manual'
+    assert turn['effort'] == 'xhigh' and turn['source'] == 'manual'
     ws.effort('auto')
     turn = ws.run('r3', 'planning after auto resumed\n', '--kind', 'planning')
     assert turn['effort'] == 'xhigh' and turn['source'] == 'auto'
     print('ok manual override suspends auto until auto is selected again',
           flush=True)
 
-    # 6. Unsupported efforts refuse; no fallback, no max/ultra.
+    # 6. Unsupported efforts refuse; no fallback, no max/ultra; the first
+    #    adaptive interface exposes only low and xhigh (V2 correction).
     ws = Workspace(base)
     ws.start()
     assert 'unsupported manual effort: ultra' in refuses(
         ['--project', str(ws.root), 'effort', 'manual', 'ultra', '--json'])
     assert 'unsupported requested effort: max' in refuses(
         ['--project', str(ws.root), 'effort', 'request', 'max', '--json'])
+    assert 'first adaptive interface' in refuses(
+        ['--project', str(ws.root), 'effort', 'manual', 'high', '--json'])
+    assert 'first adaptive interface' in refuses(
+        ['--project', str(ws.root), 'effort', 'request', 'medium', '--json'])
     try:
         cli.main(['--project', str(ws.root), 'run', '--file',
                   ws.input('x\n'), '--request-id', 'r1', '--kind', 'vibes',
@@ -279,7 +284,24 @@ def run_suite(base):
                        '--transport', 'fake', '--json',
                        '--fake-efforts', 'medium,high,xhigh'])
     assert 'unsupported coordination effort' in message
-    print('ok unsupported efforts and kinds refuse without fallback', flush=True)
+    strict = Workspace(base)
+    message = refuses(['--project', str(strict.root), 'start', '--goal',
+                       strict.input('goal\n'), '--model', MODEL,
+                       '--transport', 'fake', '--json',
+                       '--effort', 'medium'])
+    assert 'first adaptive interface' in message
+    message = refuses(['--project', str(strict.root), 'start', '--goal',
+                       strict.input('goal\n'), '--model', MODEL,
+                       '--transport', 'fake', '--json',
+                       '--ceiling', 'high'])
+    assert 'first adaptive interface' in message
+    low_ceiling = Workspace(base)
+    started = low_ceiling.start('--ceiling', 'low')
+    assert started['baseline_effort'] == 'low'
+    assert low_ceiling.run('r1', 'plan\n', '--kind', 'planning')[
+        'effort'] == 'low'
+    print('ok unsupported efforts, kinds and intermediate levels refuse '
+          'without fallback', flush=True)
 
     # 7. STOP blocks new turns without killing workers; never auto-resumes.
     ws = Workspace(base)
