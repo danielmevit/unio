@@ -39743,6 +39743,18 @@ Do not create another lead-provider workflow in low tier. Current owner
 instructions, spending limits, frozen checks and integration authority apply.
 ESCALATION_MD_EOF
   fi
+  # older custom MASTER.md files gain one marked pointer to the managed,
+  # always-refreshed review policy; their own text is never rewritten
+  if ! grep -q 'UNIO-LEAD-REVIEW-POLICY' "$main_dir/MASTER.md" 2>/dev/null; then
+    cat >> "$main_dir/MASTER.md" <<'REVIEW_POLICY_MD_EOF'
+
+## Review policy
+<!-- UNIO-LEAD-REVIEW-POLICY -->
+Before planning reviews or final acceptance, read the current installed
+${UNIO_CONF_DIR:-$HOME/.config/unio}/templates/LEAD-REVIEW-POLICY.md.
+Project and owner policy, and stricter approvals, prevail over it.
+REVIEW_POLICY_MD_EOF
+  fi
 
   echo "playbooks    : drop your operational .md files into $root/coord/docs/"
   echo "next         : unio agents"
@@ -48478,7 +48490,7 @@ for role_cards_dir in "$TPL_DIR"; do
     exit 1
   fi
 done
-for role_cards_file in "$TPL_DIR/WORKER-STARTUP-CARD.md" "$TPL_DIR/REVIEWER-STARTUP-CARD.md"; do
+for role_cards_file in "$TPL_DIR/WORKER-STARTUP-CARD.md" "$TPL_DIR/REVIEWER-STARTUP-CARD.md" "$TPL_DIR/LEAD-REVIEW-POLICY.md"; do
   if [ -L "$role_cards_file" ] || { [ -e "$role_cards_file" ] && { [ ! -f "$role_cards_file" ] || [ "$(stat -c '%h' -- "$role_cards_file")" != 1 ]; }; }; then
     echo "unio: refusing unsafe role card file: $role_cards_file" >&2
     exit 1
@@ -48595,6 +48607,81 @@ acceptance.
 Owner overrides are not invented here. Use the lead's frozen task and current
 applicable owner policy; this card is only a compact reading aid.
 UNIO_REVIEWER_STARTUP_CARD_MD
+cat > "$TPL_DIR/LEAD-REVIEW-POLICY.md" <<'UNIO_LEAD_REVIEW_POLICY_MD'
+# Lead review policy
+
+This is Unio's default review workflow for cooperating leads. The current
+project instructions, the owner's own policy and any stricter project, CI or
+human approval requirement prevail. Real account slots, owner holds, STOP and
+the spending already included in each subscription stay unchanged.
+
+## Default count and pairing
+- One independent current-code reviewer plus the existing lead's final
+  assessment: two reviewers in total. The lead already reviews; do not start
+  another worker to duplicate that role.
+- Prefer a reviewer from a different AI lab than the author and the lead.
+  Where both are available, OpenAI models review Claude/Opus work and
+  Claude/Opus reviews OpenAI work.
+- Add another external reviewer only for a concrete unresolved disagreement,
+  a coverage gap or an explicit owner request. Findings and reproductions
+  decide correctness, not vote counts.
+
+## When the lead's allowance is low
+- Delegate the substantial review to another available subscription and keep
+  the lead's final assessment concise: check the diff, tests and findings and
+  reproduce material issues.
+- Do not start a second workflow on the lead's shared account to relieve the
+  lead. It draws from the same allowance and counts against the same slot.
+- Allowance readings need a source and age. A manual observation is dated
+  evidence, not a native meter or a universal threshold. Unknown is neither
+  capacity nor exhaustion.
+
+## Same-model fallback
+When no different-lab reviewer is eligible, a fresh reviewer with an isolated
+context may use the author's strong model at a higher supported effort, for
+example a MEDIUM implementation followed by a fresh XHIGH review of the same
+model. Label it honestly as same-lab coverage: it is not cross-lab independence
+and does not satisfy a stricter project or CI requirement.
+
+## Waiting instead of weaker substitutes
+If the preferred reviewer is unavailable, preserve the work and wait. Do not
+automatically substitute an unrequested route, a weaker model or another lab
+just to keep calls running. Another-lab fallback needs an explicit owner or
+project choice. Never request unsupported effort, use paid API or overage
+fallback, invent account groups, or claim quota savings that were not measured.
+
+## Effort and state reporting
+- Report the current requested effort (for example LOW or XHIGH) first.
+  Adaptive or AUTO is secondary information about the selection policy.
+- Keep pending, idle, not started and Unknown distinct. A queued change
+  applies to the next turn, not the running one.
+- Requested route, model and effort are not proof of effective identity or
+  effort; keep effective values Unknown without evidence.
+- Judge route fit by recorded task outcomes and effort-specific evidence,
+  never by an invented universal score or ranking.
+
+## Review evidence
+Reviewers inspect the exact frozen revision and receive no peer conclusions.
+A failed call, empty report or bare acknowledgment is not a delivered review.
+An approval never transfers to changed code. Record each requested route,
+CLI version, model, effort, real exits, checks and acceptance separately.
+
+## What this policy is not
+Unio does not select reviewers, schedule models, rewrite reviewer commands or
+enforce this policy automatically. The lead chooses an explicit eligible route
+with a supported model and effort, then admits it through the native review
+commands under the existing admission rules.
+
+## Where it is installed
+The installer writes this file to `templates/LEAD-REVIEW-POLICY.md` in the Unio
+configuration directory and refreshes it on every installation. Keep local
+changes in project instructions or your own owner policy file, not in this
+managed copy. A fresh `MASTER.md` template points here. Installation never
+overwrites a customized `MASTER.md` template, owner policy or `agents.conf`;
+re-running `unio init` appends one marked reference to an older project
+`MASTER.md`, or you can add that line yourself. Running sessions pick up the
+policy only when they reread their instructions.
+UNIO_LEAD_REVIEW_POLICY_MD
 # END EMBEDDED ROLE CARDS
 if [ -L "$TPL_DIR/MASTER.md" ] || { [ -e "$TPL_DIR/MASTER.md" ] && { [ ! -f "$TPL_DIR/MASTER.md" ] || [ "$(stat -c '%h' -- "$TPL_DIR/MASTER.md")" != 1 ]; }; }; then
   echo "unio: refusing unsafe master template file: $TPL_DIR/MASTER.md" >&2
@@ -48624,6 +48711,10 @@ Coordination = ../coord.
    standard project tools (such as ripgrep) without repetitive loops.
 3. Plan first: present task breakdown, estimates, and risks to the owner;
    delegate within existing authorization and provide proactive progress updates.
+4. Review policy: before planning reviews or final acceptance, read the current
+   installed `${UNIO_CONF_DIR:-$HOME/.config/unio}/templates/LEAD-REVIEW-POLICY.md`.
+   <!-- UNIO-LEAD-REVIEW-POLICY -->
+   Project and owner policy, and stricter approvals, prevail over it.
 
 ## Dashboard at session start
 <!-- UNIO-DASHBOARD-STARTUP -->

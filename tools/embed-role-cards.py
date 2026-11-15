@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
-"""Embed canonical role startup cards byte-identically.
+"""Embed canonical role startup cards and the lead review policy byte-identically.
 
-The canonical copies live at docs/ai/WORKER-STARTUP-CARD.md and
-docs/ai/REVIEWER-STARTUP-CARD.md, and install as templates under
-$TPL_DIR ($CONF_DIR/templates). The installer copies the exact reviewed bytes:
+The canonical copies live at docs/ai/WORKER-STARTUP-CARD.md,
+docs/ai/REVIEWER-STARTUP-CARD.md and docs/ai/LEAD-REVIEW-POLICY.md, and install
+as managed templates under $TPL_DIR ($CONF_DIR/templates), refreshed on every
+installation. Custom MASTER/OWNER templates and agents.conf are separate files
+and are never written here. The installer copies the exact reviewed bytes:
 no external dependency is added and no model, provider or CLI is invoked.
 """
 from pathlib import Path
@@ -15,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FILES = (
     ('docs/ai', 'WORKER-STARTUP-CARD.md', 'UNIO_WORKER_STARTUP_CARD_MD'),
     ('docs/ai', 'REVIEWER-STARTUP-CARD.md', 'UNIO_REVIEWER_STARTUP_CARD_MD'),
+    ('docs/ai', 'LEAD-REVIEW-POLICY.md', 'UNIO_LEAD_REVIEW_POLICY_MD'),
 )
 BEGIN = '# BEGIN EMBEDDED ROLE CARDS\n'
 END = '# END EMBEDDED ROLE CARDS\n'
