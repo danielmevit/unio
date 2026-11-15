@@ -22,6 +22,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import stat
 import tempfile
 import time
 
@@ -193,7 +194,8 @@ def main():
         method = req.get('method')
         rid = req.get('id')
         params = req.get('params') or {}
-        log('request', method=method, id=rid)
+        log('request', method=method, id=rid, effort=params.get('effort'),
+            threadId=params.get('threadId'))
         if method == 'initialize':
             if behavior() == 'reject-init':
                 send({'id': rid, 'error': {'code': -32000,
@@ -589,15 +591,16 @@ def run_suite(base):
     print('ok surface: executable fake, owned connection module, embed parity',
           flush=True)
 
-    # 1. Start: one owned process initializes, verifies the account,
-    #    queries the paged model catalog and starts ONE new thread;
-    #    zero turn starts; the exact thread id is persisted.
+    # 1. Start: one owned process initializes, verifies the account and
+    #    queries the paged model catalog; it creates NO thread (a native
+    #    thread materializes only with its first turn) and zero turns.
     ws = Workspace(base)
     view = ws.start()
     sid = view['session_id']
     assert view['transport'] == 'owned'
     assert view['state'] == 'idle' and view['generation'] == 1
-    assert view['thread_id'].startswith('fake-thread-')
+    assert view['thread_id'] is None
+    assert view['thread_lifecycle'] == 'deferred'
     assert view['baseline_effort'] == 'xhigh'
     assert view['effort']['supported_efforts'] == ['low', 'medium', 'high',
                                                    'xhigh']
@@ -606,38 +609,58 @@ def run_suite(base):
     assert len(ws.requests('initialize')) == 1
     assert len(ws.requests('account/read')) == 1
     assert len(ws.requests('model/list')) == 2  # two catalog pages
-    assert len(ws.requests('thread/start')) == 1
-    assert ws.requests('thread/start')[0]['id'] == 5  # after init/account/pages
+    assert ws.requests('thread/start') == []
+    assert ws.requests('thread/resume') == []
     assert ws.turn_starts() == []
     assert (ws.root / 'coord' / 'lead-effort' / 'owner.json').exists()
-    print('ok owned start: init, account, paged model list, one new thread',
-          flush=True)
+    print('ok owned start: init, account, paged model list, no thread, '
+          'zero turns', flush=True)
 
-    # 2. Exact same-thread resume and LOW -> XHIGH -> LOW across one
-    #    owned process per command.
-    thread = view['thread_id']
+    # 2. First run creates the exact thread in its own process right
+    #    before its first turn/start (no resume, no bootstrap turn); later
+    #    runs resume that SAME durable thread; LOW -> XHIGH -> LOW.
     first = ws.run('r1', 'check worker status\n')
     assert first['status'] == 'accepted' and first['effort'] == 'low'
     assert first['kind'] == 'coordination' and first['source'] == 'auto'
-    assert first['turn_completed'] is True and first['thread_id'] == thread
+    assert first['turn_completed'] is True
+    thread = first['thread_id']
+    assert thread.startswith('fake-thread-')
+    created = ws.requests('thread/start')
+    assert len(created) == 1 and created[0]['id'] == 3  # after init/account
+    first_spawn = ws.spawns()[-1]['pid']
+    assert created[0]['pid'] == first_spawn
+    assert ws.turn_starts()[0]['pid'] == first_spawn  # same owned process
+    assert ws.turn_starts()[0]['id'] == 4  # turn/start right after create
+    assert ws.requests('thread/resume') == []  # never resumed when fresh
+    materialized = [rec for rec in ws.log_records()
+                    if rec['event'] == 'materialize']
+    assert [rec['threadId'] for rec in materialized] == [thread]
     second = ws.run('r2', 'plan the next phase\n', '--kind', 'planning')
     assert second['effort'] == 'xhigh' and second['kind'] == 'planning'
+    assert second['thread_id'] == thread
     third = ws.run('r3', 'summarize coordination\n')
     assert third['effort'] == 'low' and third['kind'] == 'coordination'
+    assert third['thread_id'] == thread
     starts = ws.turn_starts()
-    assert len(starts) == 3
-    assert all(rec['id'] == 4 for rec in starts)  # per-command rpc counter
+    assert len(starts) == 3  # exactly the three owner turns; zero bootstrap
+    assert [rec['id'] for rec in starts[1:]] == [4, 4]  # after resume
+    assert len(ws.requests('thread/start')) == 1  # one thread, ever
     resumes = ws.requests('thread/resume')
-    assert len(resumes) == 3
+    assert len(resumes) == 2
     assert all(rec['id'] == 3 for rec in resumes)
     assert len(ws.requests('thread/read')) == 0  # nothing to reconcile
     assert ws.status()['turns_completed'] == 3
     state = json.loads((ws.root / 'coord' / 'lead-effort'
                         / (sid + '.json')).read_text())
     assert state['thread_id'] == thread
+    assert state['thread_lifecycle'] == 'acknowledged'
     assert state['transport'] == 'owned'
     assert len(state['provider_turns']) == 3
-    print('ok exact same-thread resume with LOW -> XHIGH -> LOW', flush=True)
+    assert [rec['effort'] for rec in starts] == ['low', 'xhigh', 'low']
+    assert [rec['threadId'] for rec in starts] == [thread] * 3
+    assert [rec['threadId'] for rec in resumes] == [thread] * 2
+    print('ok first run creates the exact thread before its first turn; '
+          'same-thread resume with LOW -> XHIGH -> LOW', flush=True)
 
     # 3. Zero provider calls while waiting and on every read-only
     #    command; one review wakeup per worker terminal event.
@@ -670,12 +693,14 @@ def run_suite(base):
     #    SAME thread resolves it with zero turn starts or resends.
     ws = Workspace(base)
     view = ws.start()
-    thread = view['thread_id']
+    assert view['thread_id'] is None
     ws.set_behavior('hold', interrupt='silent')
     started = time.monotonic()
     held, held_code = ws.run_exit('r1', 'long substantive planning turn\n',
                                   '--kind', 'planning', '--turn-wait', '1',
                                   '--interrupt-drain', '1')
+    thread = held['thread_id']
+    assert thread.startswith('fake-thread-')
     assert time.monotonic() - started >= 1.0  # process kept for the wait
     assert held_code == 6
     assert held['status'] == 'accepted' and held['turn_completed'] is False
@@ -774,7 +799,7 @@ def run_suite(base):
     ws.set_behavior('ok', interrupt='ok')
     rec, rec_code = ws.recover('--interrupt')
     assert rec_code == 0 and rec['outcome'] == 'reconciled', rec
-    assert rec['thread_id'] == old_view['thread_id']
+    assert rec['thread_id'] == held['thread_id'] is not None
     new_view = ws.start()
     assert new_view['session_id'] != old_sid
     hist, _, hist_code = invoke(['--project', str(ws.root), 'status',
@@ -1453,9 +1478,227 @@ def run_suite(base):
           'inferring success', flush=True)
 
 
+def _state_file(ws, sid=None):
+    return ws.root / 'coord' / 'lead-effort' / ((sid or ws.sid) + '.json')
+
+
+def _write_private(path, doc):
+    fd = os.open(path, os.O_WRONLY | os.O_TRUNC)
+    with os.fdopen(fd, 'w') as stream:
+        json.dump(doc, stream)
+    os.chmod(path, 0o600)
+
+
+def _legacy_start(ws):
+    """Reproduce the pre-0532 owned start EXACTLY (production connection):
+    initialize, model catalog, thread/start, close; then write the old
+    state shape (no thread_lifecycle) with that closed process's thread."""
+    view = ws.start()
+    conn = cx.OwnedCodexConnection(str(ws.binary), cwd=str(ws.root))
+    try:
+        conn.initialize()
+        conn.query_model_efforts(MODEL)
+        thread_id = conn.start_thread(MODEL)
+    finally:
+        conn.close()
+    path = _state_file(ws, view['session_id'])
+    doc = json.loads(path.read_text())
+    del doc['thread_lifecycle']
+    doc['thread_id'] = thread_id
+    _write_private(path, doc)
+    return view, thread_id
+
+
+def run_first_turn_suite(base):
+    """Contract 0532-FIRST-TURN-PERSISTENCE regressions (offline only)."""
+    # F1. Old start (thread created by a process that then closed) reproduces
+    #     the confirmed live failure: exact native -32600 "no rollout found"
+    #     on the first resume, preserved verbatim; no fallback thread, no
+    #     turn/start, no state rewrite. Legacy state stays readable.
+    ws = Workspace(base)
+    view, old_thread = _legacy_start(ws)
+    path = _state_file(ws)
+    before = path.read_bytes()
+    assert ws.status()['thread_lifecycle'] == 'legacy'  # readable
+    assert ws.status()['thread_id'] == old_thread
+    created_before = len(ws.requests('thread/start'))
+    msg = refuses(['--project', str(ws.root), 'run', '--file',
+                   ws.input('first coordination\n'), '--request-id', 'c1',
+                   '--turn-wait', '5', '--json'])
+    assert ('owned app-server rejected thread/resume (code -32600): no '
+            'rollout found for thread id %s' % old_thread) in msg, msg
+    assert 'No replacement thread is created' in msg, msg
+    assert 'materializes a thread only with its first turn' in msg, msg
+    assert ws.turn_starts() == []
+    assert len(ws.requests('thread/start')) == created_before
+    assert path.read_bytes() == before  # no state rewrite, no new request
+    assert ws.status()['requests_recorded'] == 0
+    print('ok legacy start reproduces the native no-rollout failure; '
+          'refused verbatim with no fallback', flush=True)
+
+    # F2. Legacy state whose thread WAS materialized by a turn stays fully
+    #     usable: it resumes the exact same thread with no new thread.
+    ws = Workspace(base)
+    ws.start()
+    first = ws.run('r1', 'materialize\n')
+    thread = first['thread_id']
+    doc = json.loads(_state_file(ws).read_text())
+    assert doc['thread_lifecycle'] == 'acknowledged'
+    del doc['thread_lifecycle']
+    _write_private(_state_file(ws), doc)
+    assert ws.status()['thread_lifecycle'] == 'legacy'
+    again = ws.run('r2', 'plan the phase\n', '--kind', 'planning')
+    assert again['thread_id'] == thread and again['effort'] == 'xhigh'
+    assert len(ws.requests('thread/start')) == 1
+    assert [r['threadId'] for r in ws.requests('thread/resume')] == [thread]
+    assert json.loads(_state_file(ws).read_text())['thread_lifecycle'] == 'legacy'
+    print('ok legacy materialized state resumes the exact same thread',
+          flush=True)
+
+    # F3. Missing/foreign recorded thread: exact refusal, never a fallback.
+    doc = json.loads(_state_file(ws).read_text())
+    doc['thread_id'] = 'fake-thread-999'
+    _write_private(_state_file(ws), doc)
+    msg = refuses(['--project', str(ws.root), 'run', '--file',
+                   ws.input('foreign\n'), '--request-id', 'r3',
+                   '--turn-wait', '5', '--json'])
+    assert 'no rollout found for thread id fake-thread-999' in msg, msg
+    assert len(ws.requests('thread/start')) == 1
+    assert len(ws.turn_starts()) == 2
+    print('ok missing/foreign thread refuses without fallback', flush=True)
+
+    # F4. thread/start rejected on the first run: known non-delivery
+    #     (exit 2, zero turn/start), still deferred; the next run works.
+    ws = Workspace(base)
+    ws.start()
+    ws.set_behavior('reject-thread-start')
+    rej, rej_code = ws.run_exit('r1', 'first turn\n')
+    assert rej_code == 2 and rej['status'] == 'rejected', rej
+    assert rej['thread_id'] is None and rej['thread_lifecycle'] == 'deferred'
+    assert ('owned app-server rejected thread/start (code -32000): fake '
+            'thread/start rejection') in rej['not_sent_reason'], rej
+    assert ws.turn_starts() == []
+    ws.set_behavior('ok')
+    ok = ws.run('r2', 'first turn again\n')
+    assert ok['turn_completed'] is True and ok['thread_created'] is True
+    assert ok['thread_lifecycle'] == 'acknowledged'
+    assert len(ws.turn_starts()) == 1
+    # Repeat-id: the rejected r1 replays its recorded result, no send.
+    replay, replay_code = ws.run_exit('r1', 'first turn\n')
+    assert replay['status'] == 'rejected' and replay_code == 2
+    assert len(ws.turn_starts()) == 1
+    print('ok thread/start rejection is known non-delivery; next run '
+          'creates the thread', flush=True)
+
+    # F5. First turn/start typed-rejected: the thread created by THIS
+    #     command never carried a turn, so it returns to deferred (reported
+    #     as discarded); the next run creates its thread in its own process.
+    ws = Workspace(base)
+    ws.start()
+    ws.set_behavior('reject-turn')
+    rej, rej_code = ws.run_exit('r1', 'rejected first turn\n')
+    assert rej_code == 2 and rej['status'] == 'rejected'
+    discarded = rej['discarded_unused_thread_id']
+    assert discarded.startswith('fake-thread-')
+    assert rej['thread_id'] is None and rej['thread_lifecycle'] == 'deferred'
+    ws.set_behavior('ok')
+    ok = ws.run('r2', 'accepted first turn\n')
+    assert ok['turn_completed'] is True
+    assert ok['thread_id'] != discarded
+    assert ws.requests('thread/resume') == []  # discarded never resumed
+    third = ws.run('r3', 'next\n')
+    assert third['thread_id'] == ok['thread_id']
+    print('ok rejected first turn returns to deferred; no resume of the '
+          'unused thread', flush=True)
+
+    # F6. Uncertain first turn (malformed ack): the exact thread stays
+    #     recorded ('started'); its resume refuses natively, yet the exact
+    #     replay still returns its recorded uncertain result with no resend,
+    #     a new request refuses, and no replacement thread is ever created.
+    ws = Workspace(base)
+    ws.start()
+    ws.set_behavior('bad-ack')
+    unc, unc_code = ws.run_exit('r1', 'uncertain first turn\n')
+    assert unc_code == 3 and unc['status'] == 'uncertain'
+    thread = unc['thread_id']
+    assert thread.startswith('fake-thread-')
+    assert unc['thread_lifecycle'] == 'started'
+    ws.set_behavior('ok')
+    replay, replay_code = ws.run_exit('r1', 'uncertain first turn\n')
+    assert replay_code == 3 and replay['status'] == 'uncertain'
+    assert replay['thread_id'] == thread
+    assert 'no rollout found' in replay['thread_unavailable']
+    assert 'never acknowledged' in replay['thread_unavailable']
+    assert 'not open for a next turn' in refuses(
+        ['--project', str(ws.root), 'run', '--file', ws.input('new\n'),
+         '--request-id', 'r2', '--turn-wait', '5', '--json'])
+    assert len(ws.turn_starts()) == 1
+    assert len(ws.requests('thread/start')) == 1
+    assert json.loads(_state_file(ws).read_text())['thread_id'] == thread
+    print('ok uncertain first turn keeps its exact thread; replay without '
+          'resend or replacement', flush=True)
+
+    # F7. Creator refuses a second thread if another command recorded one
+    #     (checked under the control lock before returning the id).
+    ws = Workspace(base)
+    ws.start()
+    deferred = json.loads(_state_file(ws).read_text())
+    ws.run('r1', 'materialize\n')
+
+    class OneThread:
+        def start_thread(self, model):
+            return 'fake-thread-raced'
+
+    creator = cli._first_thread_creator(ws.root, dict(deferred), OneThread())
+    msg = None
+    try:
+        creator()
+    except REFUSALS as exc:
+        msg = str(exc)
+    assert msg and 'refusing a second thread' in msg, msg
+    assert json.loads(_state_file(ws).read_text())['thread_id'] != \
+        'fake-thread-raced'
+    print('ok concurrent creator refuses a second thread', flush=True)
+
+    # F8. Validation: inconsistent lifecycle/thread state refuses honestly.
+    for mutate in (lambda d: d.update(thread_lifecycle='deferred'),
+                   lambda d: d.update(thread_lifecycle='eager'),
+                   lambda d: d.update(thread_lifecycle='bogus'),
+                   lambda d: d.update(thread_id=None)):
+        doc = json.loads(_state_file(ws).read_text())
+        mutate(doc)
+        try:
+            cli._validate_state(doc)
+        except cli.Refusal:
+            continue
+        raise AssertionError('inconsistent state accepted: %r' % doc)
+    print('ok inconsistent thread lifecycle state is refused', flush=True)
+
+    # F9. Private state under common umasks: the first-run thread record
+    #     keeps 0700 directory / 0600 state file.
+    for mask in (0o000, 0o022, 0o077):
+        old = os.umask(mask)
+        try:
+            ws = Workspace(base)
+            ws.start()
+            ws.run('r1', 'first\n')
+        finally:
+            os.umask(old)
+        directory = ws.root / 'coord' / 'lead-effort'
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700, oct(mask)
+        for item in directory.iterdir():
+            if item.is_file():
+                mode = stat.S_IMODE(item.stat().st_mode)
+                assert mode & 0o077 == 0, (item.name, oct(mode), oct(mask))
+        assert stat.S_IMODE(_state_file(ws).stat().st_mode) == 0o600
+    print('ok private lead state permissions under umask 000/022/077',
+          flush=True)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='lead-owned-') as base:
         run_suite(base)
+        run_first_turn_suite(base)
     print('all owned lead-session transport checks passed')
 
 

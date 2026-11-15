@@ -26437,11 +26437,13 @@ class EffortTransport:
         self.last_decision = None
         self.attempted = False
         self.consumed = None
+        self.not_sent_reason = None
 
     def _not_sent(self, reason):
+        self.not_sent_reason = ('known non-delivery before any turn/start: '
+                                + str(reason))
         return {'status': 'rejected', 'rpc_sent': False,
-                'reason': 'known non-delivery before any turn/start: '
-                          + str(reason)}
+                'reason': self.not_sent_reason}
 
     def send_turn(self, facts):
         self.attempted = True
@@ -26638,7 +26640,8 @@ def _merge_policy_snapshot(base, disk, live, restore=False):
     return merged
 
 
-def _persist_run(root, base_state, policy, bridge, session, restore=False):
+def _persist_run(root, base_state, policy, bridge, session, restore=False,
+                 created_thread=None):
     """Locked merge-persist for one run command; returns the fresh state.
 
     The run's pre-turn in-memory snapshot is never written over the
@@ -26672,6 +26675,17 @@ def _persist_run(root, base_state, policy, bridge, session, restore=False):
         if disk['thread_lifecycle'] == 'started' and disk['provider_turns']:
             # A turn/start on the exact recorded thread was acknowledged.
             disk['thread_lifecycle'] = 'acknowledged'
+        elif (restore and created_thread is not None
+                and disk['thread_lifecycle'] == 'started'
+                and disk['thread_id'] == created_thread
+                and not disk['provider_turns'] and not recorded):
+            # THIS command created the thread and its only turn attempt was
+            # provably never delivered: the thread never carried a turn, so
+            # it was never materialized and nothing can resume it. Return to
+            # deferred so the next owner turn creates its thread in its own
+            # process. Never applied to a thread from an earlier command.
+            disk['thread_id'] = None
+            disk['thread_lifecycle'] = 'deferred'
         disk['policy'] = _merge_policy_snapshot(base_state['policy'],
                                                  disk['policy'],
                                                  policy.snapshot(),
@@ -27346,8 +27360,18 @@ def _first_thread_creator(root, state, conn):
             _save_state(root, disk)
         state['thread_id'] = thread_id
         state['thread_lifecycle'] = 'started'
+        create.created = thread_id
         return thread_id
+    create.created = None
     return create
+
+
+def _unavailable_thread(error):
+    """Bridge creator that refuses every new send BEFORE any turn/start."""
+    def refuse():
+        raise Refusal('exact owned thread unavailable: %s' % (error,))
+    refuse.created = None
+    return refuse
 
 
 def _cmd_run_owned(root, state, args, text):
@@ -27383,18 +27407,32 @@ def _cmd_run_owned(root, state, args, text):
         try:
             conn.initialize()
             creator = None
+            bridge_thread = state['thread_id']
+            unavailable = None
             if state['thread_lifecycle'] == 'deferred':
                 # First owned turn: the exact thread is created inside the
                 # send itself (see _first_thread_creator); nothing to
                 # resume or reconcile yet.
                 creator = _first_thread_creator(root, state, conn)
             else:
-                _resume_owned_thread(conn, state)
-                view = _reconcile_active(root, state, session, conn, view)
+                try:
+                    _resume_owned_thread(conn, state)
+                except Refusal as exc:
+                    if state['thread_lifecycle'] != 'started':
+                        raise
+                    # First turn/start never acknowledged: the exact thread
+                    # may never have materialized. Recorded replays still
+                    # answer from the core; any new send refuses before any
+                    # turn/start with this original error. No replacement.
+                    unavailable = str(exc)
+                    bridge_thread = None
+                    creator = _unavailable_thread(exc)
+                else:
+                    view = _reconcile_active(root, state, session, conn, view)
             probe = SendProbe(conn.rpc)
             try:
                 live = bx.CodexLeadTransport(
-                    probe, state['thread_id'], model=state['model'],
+                    probe, bridge_thread, model=state['model'],
                     effort=state['baseline_effort'],
                     supported_efforts=policy.supported(),
                     max_mappings=state['max_mappings'],
@@ -27406,8 +27444,9 @@ def _cmd_run_owned(root, state, args, text):
                 # Unproven handoff (for example an unacknowledged turn):
                 # inspection only. The core still returns recorded replay
                 # results; every new send refuses with zero turn starts.
+                creator = None
                 live = bx.CodexLeadTransport(
-                    probe, state['thread_id'], model=state['model'],
+                    probe, bridge_thread, model=state['model'],
                     effort=state['baseline_effort'],
                     supported_efforts=policy.supported(),
                     max_mappings=state['max_mappings'],
@@ -27428,9 +27467,13 @@ def _cmd_run_owned(root, state, args, text):
                 # turn was in flight survive; the lock is held only for this
                 # short transaction, never across the turn itself. Mappings
                 # are durable BEFORE the long wait, so recover stays possible.
+                created_now = getattr(creator, 'created', None)
                 state = _persist_run(root, state, policy, live, session,
-                                     restore=_restore_for(result, wrapper))
+                                     restore=_restore_for(result, wrapper),
+                                     created_thread=created_now)
             restore = _restore_for(result, wrapper)
+            discarded = (created_now if created_now is not None
+                         and state['thread_id'] != created_now else None)
             decision = wrapper.last_decision
             if decision is None:
                 for item in policy.decisions():
@@ -27479,6 +27522,11 @@ def _cmd_run_owned(root, state, args, text):
                 'note': _run_note(live_status, delivery, wait),
                 'provider_exited': provider_exited,
                 'thread_id': state['thread_id'],
+                'thread_lifecycle': state['thread_lifecycle'],
+                'thread_created': created_now is not None,
+                'discarded_unused_thread_id': discarded,
+                'thread_unavailable': unavailable,
+                'not_sent_reason': wrapper.not_sent_reason,
                 'bridge': live_status, 'effective': 'Unknown',
                 'caution': CAUTION,
             }
