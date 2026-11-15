@@ -125,6 +125,12 @@ class Refusal(Exception):
     """A controlled CLI refusal."""
 
 
+HOUSEKEEPING_WARNING = ('turn completed; post-completion waiting-flag '
+                        'housekeeping could not be persisted (control state '
+                        'busy or unavailable); the stored waiting flag is '
+                        'unchanged and its cleanup is uncertain')
+
+
 def _load_module(name, filename):
     spec = importlib.util.spec_from_file_location(name, HERE / filename)
     module = importlib.util.module_from_spec(spec)
@@ -899,12 +905,24 @@ def _clear_waiting_after_completion(root, session_id):
     Under the short control lock the fresh disk state is re-read, so a
     concurrent `worker register`/`wait` on a non-terminal worker (or a
     still-unconsumed review wakeup) keeps the lead waiting. Zero calls.
+
+    Best-effort housekeeping: it runs only AFTER terminal-completed evidence
+    was durably persisted, so a controlled refusal here (control lock busy,
+    unsafe/invalid control state) must not replace the observed completion
+    with a refusal exit. Only the controlled refusal classes are absorbed;
+    nothing is written on failure (the stored flag is left as is, and views
+    already compute truthful waiting via _waiting_on_workers). Returns None
+    on success or the fixed HOUSEKEEPING_WARNING.
     """
-    with _control_guard(root, session_id):
-        disk = _load_state(root, session_id)
-        if disk['waiting'] and not _waiting_on_workers(disk):
-            disk['waiting'] = False
-            _save_state(root, disk)
+    try:
+        with _control_guard(root, session_id):
+            disk = _load_state(root, session_id)
+            if disk['waiting'] and not _waiting_on_workers(disk):
+                disk['waiting'] = False
+                _save_state(root, disk)
+    except (Refusal, ml.Refusal):
+        return HOUSEKEEPING_WARNING
+    return None
 
 
 def _format_status_human(view, disp, state):
@@ -1483,8 +1501,10 @@ def _cmd_run_owned(root, state, args, text):
             completed = turn_status == 'completed'
             provider_exited = conn.exited
             delivery, code = _delivery_state(result.get('state'), turn_status)
+            housekeeping = None
             if delivery == 'completed':
-                _clear_waiting_after_completion(root, state['session_id'])
+                housekeeping = _clear_waiting_after_completion(
+                    root, state['session_id'])
             live_status = live.status()
             payload = {
                 'session_id': state['session_id'], 'request_id': args.request_id,
@@ -1506,12 +1526,15 @@ def _cmd_run_owned(root, state, args, text):
             }
             if provider_exited:
                 payload['stderr_tail'] = conn.stderr_tail()
+            if housekeeping:
+                payload['warning'] = housekeeping
             _emit(args, payload, 'turn %s: %s (effort %s, kind %s, source %s, '
-                                 'delivery %s, owned thread %s)%s'
+                                 'delivery %s, owned thread %s)%s%s'
                   % (result.get('turn_id'), result.get('state'),
                      payload['effort'], payload['kind'], payload['source'],
                      delivery, state['thread_id'],
-                     ('; ' + payload['note']) if payload['note'] else ''))
+                     ('; ' + payload['note']) if payload['note'] else '',
+                     ('; warning: ' + housekeeping) if housekeeping else ''))
             return code
         finally:
             conn.close()
@@ -1577,8 +1600,9 @@ def _cmd_run(root, args):
             turn_status = 'completed'
         completed = turn_status == 'completed'
     delivery, code = _delivery_state(result.get('state'), turn_status)
+    housekeeping = None
     if delivery == 'completed':
-        _clear_waiting_after_completion(root, state['session_id'])
+        housekeeping = _clear_waiting_after_completion(root, state['session_id'])
     bridge_status = bridge.status()
     payload = {
         'session_id': state['session_id'], 'request_id': args.request_id,
@@ -1594,10 +1618,13 @@ def _cmd_run(root, args):
         'effective': 'Unknown',
         'caution': CAUTION,
     }
+    if housekeeping:
+        payload['warning'] = housekeeping
     _emit(args, payload, 'turn %s: %s (effort %s, kind %s, source %s, '
-                         'delivery %s)'
+                         'delivery %s)%s'
           % (result.get('turn_id'), result.get('state'),
-             payload['effort'], payload['kind'], payload['source'], delivery))
+             payload['effort'], payload['kind'], payload['source'], delivery,
+             ('; warning: ' + housekeeping) if housekeeping else ''))
     return code
 
 

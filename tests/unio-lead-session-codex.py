@@ -1424,6 +1424,77 @@ def run_suite(base):
     print('ok child death in the wait loop stops promptly without '
           'inferring success', flush=True)
 
+    # 17. Post-completion housekeeping contention (next32 review low
+    #     finding 1): a SEPARATE process holds the exact per-session control
+    #     lock across the genuine terminal completion for longer than the
+    #     5s lock wait. The observed completion stays exit 0 + JSON
+    #     delivery=completed with a fixed housekeeping warning; the stored
+    #     waiting flag is left untouched (nothing written), the completed
+    #     core is preserved and a same-id replay sends no second turn/start.
+    ws = Workspace(base)
+    ws.start()
+    ws.worker('register', 'w1')
+    ws.worker('wait')
+    ws.worker('terminal', 'w1')
+    ws.set_behavior('slow-turn')
+    lead_dir = ws.root / 'coord' / 'lead-effort'
+    state_path = lead_dir / (ws.sid + '.json')
+    lock_path = lead_dir / (ws.sid + '.lock')
+    assert (lock_path.stat().st_mode & 0o777) == 0o600
+    proc = subprocess.Popen(
+        [sys.executable, str(SOURCE / 'tools' / 'lead-session.py'),
+         '--project', str(ws.root), 'run', '--file',
+         ws.input('review w1 under lock contention\n'), '--request-id', 'r1',
+         '--turn-wait', '20', '--json'],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    holder = None
+    try:
+        deadline = time.monotonic() + 10
+        while not json.loads(state_path.read_text())['provider_turns']:
+            assert proc.poll() is None, proc.communicate()
+            assert time.monotonic() < deadline, 'mapping never persisted'
+            time.sleep(0.02)
+        # The slow turn completes ~1.5s after turn/start; take the lock now
+        # from another process and hold it 8s (> the 5s control-lock wait).
+        holder = subprocess.Popen(
+            [sys.executable, '-c',
+             'import fcntl,os,sys,time\n'
+             'fd=os.open(sys.argv[1],os.O_RDWR|os.O_NOFOLLOW)\n'
+             'fcntl.flock(fd,fcntl.LOCK_EX)\n'
+             'print("locked",flush=True)\n'
+             'time.sleep(8)\n', str(lock_path)],
+            stdout=subprocess.PIPE, text=True)
+        assert holder.stdout.readline().strip() == 'locked'
+        assert ws.turn_starts() and proc.poll() is None
+        stdout, stderr = proc.communicate(timeout=60)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        if holder is not None:
+            holder.wait(timeout=30)
+    assert proc.returncode == 0, (proc.returncode, stdout, stderr)
+    held = json.loads(stdout[stdout.index('{'):])
+    assert held['delivery'] == 'completed' and held['turn_completed'] is True
+    assert held['turn_status'] == 'completed' and held['kind'] == 'review'
+    assert held['wait']['outcome'] == 'terminal'
+    assert held['warning'] == cli.HOUSEKEEPING_WARNING
+    assert 'housekeeping' in held['warning'] and 'uncertain' in held['warning']
+    assert len(ws.turn_starts()) == 1
+    stored = json.loads(state_path.read_text())
+    assert stored['waiting'] is True  # contention: nothing was written
+    view = ws.status()
+    assert view['waiting'] is False  # truthful dynamic view regardless
+    assert view['state'] != 'outcome_unknown'
+    assert [t['status'] for t in ws.fake_turns()] == ['completed']
+    replay, replay_code = ws.run_exit('r1', 'review w1 under lock contention\n')
+    assert replay_code == 0 and replay['delivery'] == 'completed'
+    assert replay['turn_id'] == held['turn_id']
+    assert 'warning' not in replay  # lock free: housekeeping now persisted
+    assert len(ws.turn_starts()) == 1  # idempotent: no second turn/start
+    assert json.loads(state_path.read_text())['waiting'] is False
+    print('ok genuine completion survives post-completion lock contention '
+          'with a housekeeping warning; replay stays idempotent', flush=True)
+
 
 def main():
     with tempfile.TemporaryDirectory(prefix='lead-owned-') as base:

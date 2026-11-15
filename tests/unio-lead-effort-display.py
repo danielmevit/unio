@@ -439,8 +439,13 @@ def test_waiting_truth():
         human = ws.status_human()
         assert 'waiting False' in human and 'effort no active turn' in human
         assert 'requested effort: no active turn' in ws.effort_human('show')
-        # A new real wait is shown again (concurrent waits are preserved).
+        # The completed review cleared the STORED flag too (review low
+        # finding 3): registering another worker WITHOUT `worker wait`
+        # must not resurrect waiting. A mutant that drops both
+        # _clear_waiting_after_completion calls fails here.
         ws.worker('register', 'w3')
+        assert ws.status()['waiting'] is False
+        # A new real wait is shown again (concurrent waits are preserved).
         ws.worker('wait')
         assert ws.status()['waiting'] is True
         print('ok waiting clears after all workers terminal and review '
