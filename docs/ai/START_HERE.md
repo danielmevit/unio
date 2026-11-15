@@ -10,14 +10,14 @@ AI calls outside that task.
 Starting from an empty folder with a new idea? Follow
 [Build a new project using Unio](NEW-PROJECT-PROMPT.md) for the launch
 commands and a paste-ready lead prompt. No existing repository is required.
-Choose its YOLO, Balanced or Thorough block. The selected work mode changes
+Choose its Fast, Balanced or Thorough block. The selected work mode changes
 validation and review planning; all three default to low subscription tier.
 They separately default to [Low reasoning](REASONING-PROFILES.md), with
 owner-selected Medium and Max options for future tasks. These three axes
 are interchangeable: changing one must preserve the other two. Every startup
-prompt has explicit effort/tier fields. In 0.5.13, Balanced and Thorough use
-`unio mode balanced` and `unio mode thorough`; older runners use the
-`medium`/`safe` aliases. Reasoning profiles are lead instructions; the
+prompt has explicit effort/tier fields. In current releases, Fast, Balanced and Thorough use
+`unio mode fast`, `unio mode balanced` and `unio mode thorough`; older runners use
+`yolo`, `medium` and `safe` aliases. Reasoning profiles are lead instructions; the
 [reasoning guide](REASONING-PROFILES.md#mix-and-change-the-settings-independently)
 explains changes during a project.
 

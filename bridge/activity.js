@@ -1697,8 +1697,10 @@
     const lead = document.getElementById("limits-lead");
     lead.replaceChildren();
     if (policy) {
+      const modeMap = { yolo: "fast", medium: "balanced", safe: "thorough" };
+      const modeLabel = policy.protocol || modeMap[policy.mode] || policy.mode;
       lead.append(text("strong", "Registered lead: " + (policy.lead_agent || "none") + (policy.lead_group ? " (group " + policy.lead_group + ")" : "")));
-      lead.append(document.createTextNode(" · mode " + policy.mode + " · tier " + policy.tier + " · up to "
+      lead.append(document.createTextNode(" · mode " + modeLabel + " · tier " + policy.tier + " · up to "
         + policy.workflow_limit_per_group + " workflow" + (policy.workflow_limit_per_group === 1 ? "" : "s")
         + " per shared budget, including the lead. A registered lead is a reservation, not an attached live conversation; your external lead CLI session is not captured here."));
     } else {

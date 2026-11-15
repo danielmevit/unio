@@ -200,8 +200,8 @@ unio stop                      # kill switch for the whole project
 ### Work modes and coordination budget
 
 Read the [work modes guide](WORK-MODES.md) and run `unio policy`
-before planning. `unio mode [yolo|medium|safe]` sets the pace (default
-`medium`); `unio tier [low|medium|high]` sets the coordination budget
+before planning. `unio mode [fast|balanced|thorough]` sets the pace (default
+`balanced`; `yolo`, `medium` and `safe` remain accepted aliases); `unio tier [low|medium|high]` sets the coordination budget
 (default `low`: one independent workflow per shared budget, lead
 included; `medium` 2, `high` 4). Register the lead with
 `unio lead <agent>` and group aliases sharing one budget with

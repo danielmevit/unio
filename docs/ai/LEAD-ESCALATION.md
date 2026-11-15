@@ -84,7 +84,7 @@ the existing lead.
   spawn another lead-provider CLI, worker or independent test agent. Keep
   the lead reservation; do not bypass budget admission by changing aliases.
 - Make an early coherent commit, run checks appropriate to the change and
-  maintain a handoff. Use the selected work mode: focused checks for YOLO,
+  maintain a handoff. Use the selected work mode: focused checks for Fast,
   with the full required gate at release. Test corrections must preserve
   their behavioral assertion; never make a failure pass by deleting coverage.
 - Identify lead-authored code and self-review honestly. It is not an

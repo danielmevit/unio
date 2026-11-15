@@ -29,12 +29,12 @@ Review protocol, concurrency and reasoning effort are separate choices; see
 
 | Protocol | Native work mode | Validation and review |
 | --- | --- | --- |
-| [YOLO](#yolo-prompt) | `unio mode yolo` | Focused behavior checks, relevant smoke check and lead review; extra review for concrete risk or project requirements. |
+| [Fast](#fast-prompt) | `unio mode fast` | Quick delivery with essential checks and accepted follow-up work; focused behavior checks, relevant smoke check and lead review; extra review for concrete risk or project requirements. |
 | [Balanced](#balanced-prompt) | `unio mode balanced` | Focused plus relevant integration checks; one independent review for substantive batches, a second for sensitive changes or unresolved disagreement. |
 | [Thorough](#thorough-prompt) | `unio mode thorough` | Upfront risk/design work, broader checks, two independent reviews from different known AI labs, then the lead's assessment and owner acceptance under existing authority. |
 
-The matching command names are part of the 0.5.13 update. On an older
-installed runner, use `medium` for Balanced and `safe` for Thorough after
+The matching command names are part of the update. On an older
+installed runner, use `yolo` for Fast, `medium` for Balanced and `safe` for Thorough after
 checking `unio version` and help; explain that compatibility mapping. The
 new runner keeps accepting those old names. A mode change guides the lead;
 it does not automatically launch reviewers or select tests. The runner
@@ -53,7 +53,7 @@ These are Unio planning profiles, not literal effort flags shared by all AIs.
 | **Max** | Use each route's highest permitted, verified supported effort for every new controllable task. Explain any unavailable setting or explicit cap. |
 
 Any reasoning profile can be combined with **any** review protocol or
-coordination tier: YOLO + Max, Balanced + Low and Thorough + Medium are all
+coordination tier: Fast + Max, Balanced + Low and Thorough + Medium are all
 valid. A change to one setting leaves the other two unchanged. Example:
 
 ```text
@@ -68,7 +68,8 @@ is a lead instruction in this release; there is no native `unio effort`
 command or automatic adjustment of an existing AI CLI. See the complete
 [reasoning guide](REASONING-PROFILES.md) for restrictions and switching examples.
 
-## YOLO prompt
+<a id="yolo-prompt"></a>
+## Fast prompt
 
 ```text
 You are the lead for a brand-new project. Use the installed Unio CLI to
@@ -87,10 +88,10 @@ Git if needed, make the first commit, and use unio init with explicitly
 chosen configured workers to create this project's own coord/ and wt/
 beside repo/. Do not import another project's tasks or milestone handoff.
 
-Set unio mode yolo and apply my selected coordination tier for this project.
+Set unio mode fast and apply my selected coordination tier for this project.
 
-Check unio version/help first. If balanced/thorough are not supported, use
-medium/safe respectively and explain the mapping. Do not invent commands.
+Check unio version/help first. If fast/balanced/thorough are not supported, use
+yolo/medium/safe respectively and explain the mapping. Do not invent commands.
 
 Register your configured lead alias and group aliases sharing an account.
 Confirm the result with unio policy --json. Apply the selected tier using
@@ -127,7 +128,7 @@ Use lead review by default. Add an independent review when a concrete risk,
 unresolved finding or the project rules require one. Run the full required
 project gate at release or earlier when demonstrated failures justify it.
 Reuse unchanged valid evidence instead of repeatedly running broad suites.
-YOLO means fast checked delivery; never claim unrun checks or skip failures.
+Fast means quick delivery with essential checks and accepted follow-up work; never claim unrun checks or skip failures.
 
 Start workers sharing your model or subscription at their lowest supported
 effort (Sol 6.1: low). Escalate gradually only when checked task results show

@@ -21,7 +21,7 @@ The text view shows project mode, tier, lead and STOP, then occupied slots per
 shared account and agent explanations:
 
 ```text
-Mode: yolo | Tier: low | Lead: codex
+Mode: fast | Tier: low | Lead: codex
 
 Group codex: occupied 1/1
   codex: blocked (shared budget group is full) | auth: unknown

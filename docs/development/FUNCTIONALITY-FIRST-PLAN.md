@@ -151,9 +151,9 @@ planner. Follow [parallel-work policy](PARALLEL-WORK.md) and current tiers:
 one independent workflow per shared account in low tier, including the lead.
 
 Priority5 improves a core Unio benefit already available through manual/native
-single reviews. It must respect [work modes](../WORK-MODES.md): YOLO uses focused
-checks and personal lead review; medium adds independent review when warranted;
-safe follows the project's broader review policy. Native parallel review support
+single reviews. It must respect [work modes](../WORK-MODES.md): Fast uses focused
+checks and personal lead review; Balanced adds independent review when warranted;
+Thorough follows the project's broader review policy. Native parallel review support
 does not force extra reviewers on every task or promise to find every defect.
 
 Priority6 learns passively from useful work. Start recording supported metadata
@@ -169,7 +169,7 @@ keeping every worker busy. Reuse the [model-experience design](MODEL-EXPERIENCE.
 - Use coherent feature batches. Independent funded accounts may work on disjoint
   ready slices; one unfinished worker should not block unrelated authorized work.
   Never manufacture chores merely to fill idle slots.
-- Keep this project's YOLO/low policy: focused checks for changed behavior,
+- Keep this project's Fast/low policy: focused checks for changed behavior,
   concise personal lead review, and one full required gate at the completed
   release boundary. Repeat or broaden checks for actual changes, failures or
   unresolved findings. Reuse unchanged evidence and keep failures intact.

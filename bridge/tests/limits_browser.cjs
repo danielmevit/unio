@@ -123,7 +123,7 @@ sys.stdout.buffer.write((data / name).read_bytes())
     assert.ok(await page.locator("#limits-title").isVisible());
     assert.ok(!sectionText.includes("TOPSECRET") && !sectionText.includes("secret.person"));
     const lead = await page.textContent("#limits-lead");
-    for (const part of ["Registered lead: codex (group codex)", "mode yolo", "tier low", "up to 1 workflow per shared budget",
+    for (const part of ["Registered lead: codex (group codex)", "mode fast", "tier low", "up to 1 workflow per shared budget",
       "a reservation, not an attached live conversation", "external lead CLI session is not captured"])
       assert.ok(lead.includes(part), lead);
     ok("visible section outside collapsed details; registered-lead/mode/tier reservation overview");
