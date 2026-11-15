@@ -93,17 +93,24 @@ unio lead-session output [--after N] [--limit N] [--json]
   workspace. A second `start` refuses while the recorded session is live;
   a stopped session may be replaced by an explicit new start. Unknown or
   mismatched ownership refuses every control operation.
-- Project STOP (`coord/STOP`), real installed/project off holds with expiry
-  semantics (`coord/off/<agent>`, `$UNIO_CONF_DIR/off/<agent>`), and initialized
-  project policy (`coord/work-policy.json`) are enforced before any owned child
-  process spawn or turn execution (per contract V4).
+- Project STOP (`coord/STOP`), real installed off holds with expiry semantics
+  (`$UNIO_CONF_DIR/off/<agent>`, `$HOME/.config/unio/off/<agent>`), read-only
+  compatibility observation of `coord/off/<agent>`, and initialized project policy
+  (`coord/work-policy.json`) are enforced before any owned child process spawn or
+  turn execution (per contracts V4 and V5). The production `unio lead-session`
+  entrypoint exports the resolved configuration to its helper, and direct helper
+  use defaults consistently to `~/.config/unio`.
 - The registered lead agent in project work-policy must match the expected lead
   (`codex`). Absent, mismatched or malformed policy rejects admission before
   child launch. Arbitrary `--budget-label` arguments or fabricated groups are
-  refused; the lead's group is resolved from real policy accounts.
+  refused; the lead's group is resolved from real policy accounts with strict
+  native label validation.
 - Under `tier: low` (limit 1), the lead reservation is counted exactly once
-  (`active_native + 1 <= cap`). If active native workflows occupy the group,
-  admission refuses with capacity limit without creating a duplicate slot.
+  (`active_native + 1 <= cap`). Active native workflows are counted with the full
+  native 4096-byte slot metadata bound and fail-closed validation for unreadable,
+  oversized or corrupted slot directories and files. If active native workflows
+  occupy the group, admission refuses with capacity limit without creating a
+  duplicate slot.
 - Short policy transaction and owned lease lock: admission acquires non-blocking
   `coord/.locks/lead-session.lock` first, then briefly acquires
   `coord/.locks/work-policy.lock` to check policy and slot counts. It releases
@@ -125,9 +132,11 @@ unio lead-session output [--after N] [--limit N] [--json]
 
 ## Honest boundary of this slice
 
-Native project policy admission, STOP, off-holds, tier slot counting, lock-backed
-owned lease and the owned app-server connection lifecycle are wired and verified
-via executable fake app-server and genuine offline policy fixtures (contract V4).
+Native project policy admission, STOP, off-holds, tier slot counting with 4096-byte
+metadata bound and fail-closed validation, strict label validation matching native
+policy, lock-backed owned lease and the owned app-server connection lifecycle are
+wired and verified via executable fake app-server and genuine offline policy
+fixtures (contracts V4 and V5).
 Real Codex model inference, external network calls, paid credits/billing, and
 cross-workspace/unmanaged visibility remain zero/Unknown during development and
 validation. No real model calls, billing, or credentials are used.
@@ -145,5 +154,5 @@ validation. No real model calls, billing, or credentials are used.
   pumps.
 - `tools/lead-session.py` — the `unio lead-session` CLI controller.
 - Tests: `tests/unio-lead-effort.py`, `tests/unio-lead-session.py`,
-  `tests/unio-lead-session-codex.py`, `tests/unio-managed-lead.py`,
-  `tests/unio-managed-lead-codex.py`.
+  `tests/unio-lead-session-codex.py`, `tests/unio-lead-session-policy.py`,
+  `tests/unio-managed-lead.py`, `tests/unio-managed-lead-codex.py`.
