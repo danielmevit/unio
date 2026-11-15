@@ -21,8 +21,10 @@ Both follow the same way of working:
 
 The prompts ask for the **adaptive managed lead** (AUTO effort: LOW for
 routine coordination, XHIGH for substantive planning and review, no model
-calls while waiting for workers). This is available for testing only; the
-current stable release, 0.5.30, does not include it. See
+calls while waiting for workers). This is experimental. Unio 0.5.30 predates these controls; check the
+version installed on your machine. The first managed backend uses Codex
+app-server; other CLIs retain fixed effort unless their route explicitly
+supports managed effort. See
 [adaptive lead effort](../ADAPTIVE-LEAD-EFFORT.md).
 
 A prompt cannot change the reasoning effort of an ordinary (unmanaged) CLI
@@ -58,10 +60,10 @@ temporary medium coordination tier only if needed; restore the previous tier
 when the worker is idle. This adds no extra allowance. Start the worker at
 its lowest supported effort and raise it only for real reasoning problems.
 
-Review the result yourself. Independent review from another AI lab is not
-available with one subscription; say so, and follow any stricter project
-approval rules. Report what ran, how it exited and what passed. Keep changes
-local for this first trial.
+Review the result yourself. If my subscription offers only one eligible AI
+lab, report that cross-lab review is unavailable. If it offers other labs,
+review sequentially within the same account budget. Follow stricter project
+approvals. Report what ran, how it exited and what passed. Keep changes local.
 ```
 
 Simpler alternative: skip the worker exception and run one workflow at a
@@ -91,8 +93,9 @@ when accounts allow. Give each worker a suitable supported effort, separate
 from your own; raise it for reasoning problems, not for network, login or
 quota failures.
 
-Check real code and test results. Get one independent review from a
-different AI lab than the author, then make your own final assessment. Do not
+Check real code and test results. Get one independent worker review from
+another AI lab than the lead where available, then make your own assessment.
+Honor stricter project rules about independence from the author. Do not
 add more reviewers unless a real disagreement or gap remains. Keep failures
 and partial work; follow any stricter project approval rules.
 
@@ -102,4 +105,5 @@ step. Keep changes local for this first trial.
 
 These examples do not lift holds in an existing project, and they do not
 prove login, model identity, remaining allowance or a successful result.
-Requested settings stay Unknown until there is evidence.
+Record requested model and effort explicitly. Effective model and effort
+remain Unknown unless there is evidence.
