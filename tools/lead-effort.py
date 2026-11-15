@@ -315,6 +315,7 @@ class AdaptiveEffortPolicy:
                     and TURN_ID.fullmatch(item['turn_id'])
                     and item['kind'] in KINDS
                     and isinstance(item['effort'], str)
+                    and item['effort'] in RANK
                     and item['source'] in ('pending', 'manual', 'auto')
                     and (item['reason'] is None or isinstance(item['reason'], str))):
                 raise Refusal('invalid policy snapshot')

@@ -23708,6 +23708,2995 @@ unreaped, then reaps the leader. Processes deliberately detached into another
 session are outside that group and are not signalled.
 UNIO_MANAGED_SESSIONS_MD
 # END EMBEDDED CODEX WORKER
+# BEGIN EMBEDDED MANAGED LEAD
+# Check every generated destination before replacing any managed lead file.
+for lead_dir in "$CONF_DIR/lib"; do
+  if [ -L "$lead_dir" ] || { [ -e "$lead_dir" ] && [ ! -d "$lead_dir" ]; }; then
+    echo "unio: refusing unsafe managed lead directory: $lead_dir" >&2
+    exit 1
+  fi
+done
+for lead_name in "managed-lead.py" "managed-lead-codex.py" "lead-effort.py" "lead-session.py" "ADAPTIVE-LEAD-EFFORT.md"; do
+  lead_file="$CONF_DIR/lib/$lead_name"
+  if [ -L "$lead_file" ] || { [ -e "$lead_file" ] && { [ ! -f "$lead_file" ] || [ "$(stat -c '%h' -- "$lead_file")" != 1 ]; }; }; then
+    echo "unio: refusing unsafe managed lead file: $lead_file" >&2
+    exit 1
+  fi
+done
+mkdir -p "$CONF_DIR/lib"
+cat > "$CONF_DIR/lib/managed-lead.py" <<'UNIO_MANAGED_LEAD_PY'
+#!/usr/bin/env python3
+# Unio — Copyright (C) 2026 Daniel Mitev
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
+"""Managed lead-session core: private multi-turn lead state controller.
+
+Importable backend component for persistent multi-turn lead sessions. It
+owns the session state record, idempotent owner request IDs and a bounded
+output journal under ``coord/sessions/``. It never launches a provider,
+never acquires or bypasses native account slots, and makes no model calls:
+the future native caller supplies the already-authorized lead reservation,
+the owned transport and the authority/ownership decisions through injected
+callables. This is a trusted-host, same-user component; it does not provide
+operating-system isolation.
+
+Enforced by this component:
+- stable opaque lead session identity and monotonic generation; the role is
+  explicitly ``lead`` and worker-role records are refused;
+- distinct ``idle``, ``pending``, ``running``, ``outcome_unknown`` and
+  ``terminal`` (history-only) states; ending one turn permits another
+  authorized owner turn and is not proof of task delivery, passing checks,
+  a successful process or human acceptance;
+- bounded next-turn input (<= 8192 UTF-8 bytes, nonempty, no NUL) accepted
+  only with the exact session/generation, a positive injected lead
+  authority and current ownership, all checked before any transport call;
+- idempotent owner request IDs: intent is reserved durably BEFORE the
+  transport call; an identical replay returns the recorded result without
+  another call, changed content refuses, and an ambiguous or crashed
+  submission stays ``outcome_unknown`` and is never replayed or resent;
+  request storage is bounded and refuses on exhaustion instead of evicting
+  recorded IDs;
+- provider observations (turn started, terminal, owner, output) are
+  accepted only for the matching recorded session/generation/turn;
+  reopening after a host crash never creates a provider turn and never
+  auto-resumes: pending work stays explicitly uncertain until an authorized
+  matching reconciliation observation arrives;
+- bounded append-only output journal with monotonic cursors and explicit
+  gap/truncation reporting; only selected text and lifecycle facts are
+  stored, never full provider envelopes, credentials or account IDs;
+- private state paths defended against traversal, symlinks, unsupported
+  file types, loose permissions and malformed or oversized content.
+
+The future native caller still owns: native admission and the lead
+reservation, real account mappings, owner grants, STOP semantics, slot
+release, process/platform backends, and counting the registered lead
+exactly once. See docs/development/MANAGED-LEAD-CORE.md.
+"""
+import contextlib
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import time
+import uuid
+
+MAX_INPUT_BYTES = 8192
+STATE_BOUND = 512 * 1024
+RECORD_BOUND = 64 * 1024
+ARCHIVE_BOUND = 1024 * 1024
+PAGE_BOUND = 256 * 1024
+DEFAULT_LIMIT = 100
+MAX_LIMIT = 500
+MAX_REQUESTS = 64
+HISTORY_BOUND = 32
+LOCK_WAIT = 5.0
+# Writers keep headroom for a complete closing marker; cursor is archive-bounded.
+MARKER_HEADROOM = 512
+INT_MIN, INT_MAX = -(2 ** 31), 2 ** 31 - 1
+STATE_KEYS = frozenset("session_id role generation state workspace budget_label route model "
+                       "effort effective turn last_turn history requests max_requests "
+                       "turns_completed turns_failed output_cursor archive_bytes "
+                       "archive_limited journal_error created_at updated_at".split())
+STATES = ('idle', 'pending', 'running', 'outcome_unknown', 'terminal')
+TURN_STATUS = ('completed', 'failed', 'interrupted', 'unknown')
+REQUEST_STATUS = ('pending', 'accepted', 'rejected', 'outcome_unknown')
+RESULT_STATUS = ('accepted', 'rejected', 'uncertain')
+OUTPUT_KINDS = ('agent_message', 'command_output', 'lifecycle')
+LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
+SESSION_ID = re.compile(r'lead-[0-9a-f]{24}')
+TURN_ID = re.compile(r'turn-[0-9a-f]{16}')
+SHA256 = re.compile(r'[0-9a-f]{64}')
+CAUTION = ('recorded state is not proof of task delivery, passing checks, '
+           'a successful process or human acceptance')
+
+
+class Refusal(Exception):
+    """A controlled refusal or persistence error; effects may already be committed."""
+
+
+def _now():
+    return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+
+
+def safe_path(path):
+    path = Path(path).absolute()
+    for part in [*reversed(path.parents), path]:
+        if part.is_symlink():
+            raise Refusal('unsafe path')
+    return path
+
+
+def _sessions_dir(root):
+    path = safe_path(Path(root) / 'coord' / 'sessions')
+    try:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path, 0o700)
+    except OSError as exc:
+        raise Refusal("session directory unavailable") from exc
+    return path
+
+
+def _read_owned_file(path, bound):
+    safe_path(path)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        raise Refusal('unsafe state file')
+    try:
+        st = os.fstat(fd)
+        if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
+                or st.st_uid != os.getuid() or st.st_mode & 0o077
+                or st.st_size > bound):
+            raise Refusal('unsafe state file')
+        with os.fdopen(fd, 'rb') as stream:
+            fd = None
+            data = stream.read(bound + 1)
+        if len(data) > bound:
+            raise Refusal('state bound exceeded')
+        return data
+    except OSError as exc:
+        raise Refusal("state read failed") from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def _atomic_write(path, data):
+    safe_path(path)
+    # Never open a predictable stale name, even with O_NOFOLLOW: hardlinks
+    # would still truncate another inode. Same-user hostile races are outside
+    # this trusted-host component's isolation guarantees.
+    if path.exists():
+        _read_owned_file(path, STATE_BOUND)
+    tmp = path.parent / ('.' + path.name + '.' + uuid.uuid4().hex + '.tmp')
+    fd = None
+    created = False
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                     | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        created = True
+        with os.fdopen(fd, 'wb') as stream:
+            fd = None
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+        dir_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError as exc:
+        raise Refusal('durable state write failed') from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
+        if created:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise Refusal('state temp cleanup failed') from exc
+
+
+def _append_owned(path, line):
+    safe_path(path)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        raise Refusal('unsafe output journal')
+    try:
+        st = os.fstat(fd)
+        if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
+                or st.st_uid != os.getuid() or st.st_mode & 0o077):
+            raise Refusal('unsafe output journal')
+        view = memoryview(line)
+        while view:
+            written = os.write(fd, view)
+            if not written:
+                raise OSError('short journal write')
+            view = view[written:]
+        os.fsync(fd)
+    except OSError as exc:
+        raise Refusal("output journal write failed") from exc
+    finally:
+        try:
+            os.close(fd)
+        except OSError as exc:
+            raise Refusal('output journal close failed') from exc
+
+
+def _acquire_lock(path):
+    try:
+        import fcntl
+    except ImportError:
+        raise Refusal('session locking unsupported on this platform')
+    safe_path(path)
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    except OSError:
+        raise Refusal('unsafe lock file')
+    try:
+        st = os.fstat(fd)
+        if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
+                or st.st_uid != os.getuid() or st.st_mode & 0o077):
+            raise Refusal('unsafe lock file')
+        deadline = time.monotonic() + LOCK_WAIT
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return fd
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise Refusal('session state busy')
+                time.sleep(0.02)
+    except OSError as exc:
+        os.close(fd)
+        raise Refusal("session lock failed") from exc
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _valid_int(value):
+    return type(value) is int and INT_MIN <= value <= INT_MAX
+
+
+def _validate_turn_record(record, statuses):
+    return (isinstance(record, dict)
+            and {'turn_id', 'generation', 'status', 'exit_code', 'ended_at'} <= record.keys()
+            and isinstance(record.get('turn_id'), str) and TURN_ID.fullmatch(record['turn_id'])
+            and type(record.get('generation')) is int and record['generation'] >= 1
+            and record.get('status') in statuses
+            and (record.get('exit_code') is None or _valid_int(record.get('exit_code')))
+            and isinstance(record.get('ended_at'), str))
+
+
+def _valid_unicode(value):
+    try:
+        if isinstance(value, str):
+            value.encode('utf-8')
+        elif isinstance(value, dict):
+            return all(_valid_unicode(k) and _valid_unicode(v)
+                       for k, v in value.items())
+        elif isinstance(value, list):
+            return all(_valid_unicode(v) for v in value)
+        return True
+    except (UnicodeError, RecursionError):
+        return False
+
+
+def _validate_state(doc):
+    def refuse():
+        raise Refusal('invalid session state')
+
+    if (not isinstance(doc, dict) or set(doc) != STATE_KEYS
+            or not _valid_unicode(doc)):
+        refuse()
+    if not isinstance(doc.get('session_id'), str) or not SESSION_ID.fullmatch(doc['session_id']):
+        refuse()
+    if doc.get('role') != 'lead':
+        refuse()
+    if type(doc.get('generation')) is not int or doc['generation'] < 1:
+        refuse()
+    if doc.get('state') not in STATES:
+        refuse()
+    for key in ('workspace', 'budget_label', 'route', 'model', 'effort'):
+        value = doc.get(key)
+        if not isinstance(value, str) or not value or '\x00' in value or len(value) > 4096:
+            refuse()
+    if doc.get('effective') != 'Unknown':
+        refuse()
+    if type(doc.get('max_requests')) is not int or not 1 <= doc['max_requests'] <= 256:
+        refuse()
+    turn = doc.get('turn')
+    if turn is not None and not (
+            isinstance(turn, dict)
+            and {'turn_id', 'generation', 'delivery'} <= turn.keys()
+            and isinstance(turn.get('turn_id'), str) and TURN_ID.fullmatch(turn['turn_id'])
+            and type(turn.get('generation')) is int and turn['generation'] >= 1
+            and turn.get('delivery') in ('unknown', 'accepted')):
+        refuse()
+    if doc.get('last_turn') is not None and not _validate_turn_record(doc['last_turn'], TURN_STATUS):
+        refuse()
+    history = doc.get('history')
+    if not isinstance(history, list) or len(history) > HISTORY_BOUND:
+        refuse()
+    for item in history:
+        if not _validate_turn_record(item, TURN_STATUS + ('rejected',)):
+            refuse()
+    requests = doc.get('requests')
+    if not isinstance(requests, dict) or len(requests) > doc['max_requests']:
+        refuse()
+    for key, value in requests.items():
+        if not isinstance(key, str) or not LABEL.fullmatch(key):
+            refuse()
+        if not (isinstance(value, dict)
+                and {'sha256', 'state', 'generation', 'turn_id', 'result'} <= value.keys()
+                and isinstance(value.get('sha256'), str) and SHA256.fullmatch(value['sha256'])
+                and value.get('state') in REQUEST_STATUS
+                and type(value.get('generation')) is int and value['generation'] >= 1
+                and isinstance(value.get('turn_id'), str) and TURN_ID.fullmatch(value['turn_id'])):
+            refuse()
+        result = value.get('result')
+        if result is not None and not (isinstance(result, dict)
+                                       and result.get('state') in RESULT_STATUS):
+            refuse()
+    active = doc['state'] in ('pending', 'running', 'outcome_unknown')
+    if active != (turn is not None):
+        refuse()
+    if turn is not None:
+        if turn['generation'] != doc['generation']:
+            refuse()
+        matches = [v for v in requests.values()
+                   if v['turn_id'] == turn['turn_id']
+                   and v['generation'] == turn['generation']]
+        if len(matches) != 1 or matches[0]['state'] == 'rejected':
+            refuse()
+    last_turn = doc.get('last_turn')
+    if ((last_turn is not None
+         and last_turn['generation'] != doc['generation'] - 1)
+            or (doc['state'] == 'terminal' and last_turn is None)):
+        refuse()
+    if turn is not None and turn['delivery'] != (
+            'accepted' if doc['state'] == 'running' else 'unknown'):
+        refuse()
+    seen = set()
+    for key, value in requests.items():
+        identity = value['turn_id']
+        if identity in seen or value['generation'] > doc['generation']:
+            refuse()
+        seen.add(identity)
+        result = value.get('result')
+        if (value['state'] == 'pending') != (result is None):
+            refuse()
+        if result is not None and (
+                result.get('session_id') != doc['session_id']
+                or result.get('request_id') != key
+                or type(result.get('generation')) is not int
+                or result['generation'] != value['generation']
+                or result.get('turn_id') != identity
+                or result['state'] != {'accepted': 'accepted', 'rejected': 'rejected',
+                                       'outcome_unknown': 'uncertain'}.get(value['state'])):
+            refuse()
+    for item in history + ([doc['last_turn']] if doc.get('last_turn') else []):
+        if (item['generation'] > doc['generation']
+                or (item['status'] != 'rejected'
+                    and item['generation'] >= doc['generation'])
+                or not any(v['turn_id'] == item['turn_id']
+                           and v['generation'] == item['generation']
+                           for v in requests.values())):
+            refuse()
+    for key in ('output_cursor', 'archive_bytes', 'turns_completed', 'turns_failed'):
+        if type(doc.get(key)) is not int or doc[key] < 0:
+            refuse()
+    if (doc['archive_bytes'] > ARCHIVE_BOUND
+            or doc['output_cursor'] > ARCHIVE_BOUND
+            or doc['journal_error'] not in (None, 'journal_disagreement', 'journal_write_failed')):
+        refuse()
+    if type(doc.get('archive_limited')) is not bool:
+        refuse()
+    for key in ('created_at', 'updated_at'):
+        if not isinstance(doc.get(key), str):
+            refuse()
+    return doc
+
+
+class LeadSession:
+    """Controller for one persistent lead session.
+
+    All effects flow through the injected ``transport`` (owned by the future
+    native caller), ``authority`` and ``ownership`` callables. The
+    constructor and every read make zero transport/model calls.
+    """
+
+    def __init__(self, root, session_id, *, transport, authority, ownership):
+        if not isinstance(session_id, str) or not SESSION_ID.fullmatch(session_id):
+            raise Refusal('invalid session id')
+        self.root = safe_path(Path(root))
+        self.session_id = session_id
+        directory = _sessions_dir(self.root)
+        self.meta_path = directory / (session_id + '.json')
+        self.journal_path = directory / (session_id + '.jsonl')
+        self.lock_path = directory / (session_id + '.lock')
+        self.transport = transport
+        self.authority = authority
+        self.ownership = ownership
+        self._lock_fd = None
+        self._state = None
+        self._output_activity = None  # retain local evidence even if its save fails
+        with self._guard():
+            pass  # load and validate only; zero transport/model calls
+
+    # -- internal helpers -------------------------------------------------
+
+    def _check_session(self, session_id):
+        if not isinstance(session_id, str) or not SESSION_ID.fullmatch(session_id):
+            raise Refusal('invalid session id')
+        if session_id != self.session_id:
+            raise Refusal('session mismatch')
+
+    @contextlib.contextmanager
+    def _guard(self):
+        if self._lock_fd is not None:
+            raise Refusal('reentrant session guard')
+        self._lock_fd = _acquire_lock(self.lock_path)
+        try:
+            self._load()
+            yield
+        finally:
+            fd, self._lock_fd = self._lock_fd, None
+            os.close(fd)
+
+    def _load(self):
+        if not self.meta_path.exists():
+            raise Refusal('unknown lead session')
+        data = _read_owned_file(self.meta_path, STATE_BOUND)
+        try:
+            doc = json.loads(data)
+        except (ValueError, UnicodeError, RecursionError):
+            raise Refusal('invalid session state')
+        self._state = _validate_state(doc)
+        if self._state['session_id'] != self.session_id:
+            raise Refusal('session identity mismatch')
+
+    def _save(self):
+        _validate_state(self._state)
+        if self._state['session_id'] != self.session_id:
+            raise Refusal('session identity mismatch')
+        try:
+            data = json.dumps(self._state, ensure_ascii=False).encode('utf-8')
+        except (ValueError, TypeError, UnicodeError, RecursionError) as exc:
+            raise Refusal('invalid session state') from exc
+        if len(data) > STATE_BOUND:
+            raise Refusal('state bound exceeded')
+        _atomic_write(self.meta_path, data)
+
+    def _require_authority(self, facts):
+        try:
+            reply = self.authority(dict(facts))
+        except Exception:
+            raise Refusal('lead authority unavailable')
+        if (not isinstance(reply, dict) or reply.get('role') != 'lead'
+                or reply.get('authorized') is not True):
+            raise Refusal('lead authority refused')
+
+    def _require_ownership(self, facts):
+        try:
+            current = self.ownership(dict(facts))
+        except Exception:
+            raise Refusal('ownership unavailable')
+        if current is not True:
+            raise Refusal('ownership refused')
+
+    def _transport_fn(self):
+        fn = getattr(self.transport, 'send_turn', None)
+        if fn is None:
+            fn = self.transport if callable(self.transport) else None
+        if fn is None:
+            raise Refusal('transport unavailable')
+        return fn
+
+    def _recorded_result(self, request_id, prev):
+        result = prev.get('result')
+        if result is None:
+            return {'session_id': self.session_id, 'request_id': request_id,
+                    'generation': prev['generation'], 'turn_id': prev['turn_id'],
+                    'state': 'uncertain',
+                    'note': 'intent reserved; transport outcome unknown'}
+        return dict(result)
+
+    def _view(self):
+        state = self._state
+        try:
+            journal_status = ('journal_disagreement' if self._read_journal(0, 1)['disagreement']
+                              else state['journal_error'] or (
+                                  'archive_limit' if state['archive_limited'] else 'ok'))
+        except Refusal:
+            journal_status = 'Unknown'
+        return {
+            'session_id': state['session_id'], 'role': 'lead',
+            'generation': state['generation'], 'state': state['state'],
+            'workspace': state['workspace'], 'budget_label': state['budget_label'],
+            'route': state['route'], 'model': state['model'],
+            'requested_effort': state['effort'], 'effective': 'Unknown',
+            'turn': dict(state['turn']) if state['turn'] else None,
+            'last_turn': dict(state['last_turn']) if state['last_turn'] else None,
+            'history': [dict(item) for item in state['history']],
+            'turns_completed': state['turns_completed'],
+            'turns_failed': state['turns_failed'],
+            'requests_recorded': len(state['requests']),
+            'max_requests': state['max_requests'],
+            'output_cursor': state['output_cursor'],
+            'archive_limited': state['archive_limited'],
+            'journal_status': journal_status, 'journal_error': state['journal_error'],
+            'created_at': state['created_at'], 'updated_at': state['updated_at'],
+            'caution': CAUTION,
+        }
+
+    def _write_journal(self, line):
+        if self._state['journal_error']:
+            raise Refusal('output ' + self._state['journal_error'])
+        page = self._read_journal(0, 1)
+        if page['gap']:
+            raise Refusal('output journal disagrees with state')
+        _append_owned(self.journal_path, line)
+
+    def _append_lifecycle(self, data):
+        """Append a lifecycle record; never lose a terminal fact to it."""
+        state = self._state
+        if state['archive_limited']:
+            return None
+        rec = {'cursor': state['output_cursor'] + 1, 'kind': 'lifecycle',
+               'data': data, 'timestamp': _now()}
+        line = (json.dumps(rec, ensure_ascii=False) + '\n').encode('utf-8')
+        limited = (len(line) > RECORD_BOUND or
+                   state['archive_bytes'] + len(line) + MARKER_HEADROOM > ARCHIVE_BOUND)
+        try:
+            if limited:
+                line = self._archive_marker()
+            self._write_journal(line)
+        except Refusal as exc:
+            state['journal_error'] = ('journal_disagreement' if 'disagree' in str(exc)
+                                      else 'journal_write_failed')
+            return None
+        state['output_cursor'] += 1
+        state['archive_bytes'] += len(line)
+        state['archive_limited'] = limited
+        return state['output_cursor']
+
+    def _archive_marker(self):
+        marker = {'cursor': self._state['output_cursor'] + 1, 'kind': 'archive_limit',
+                  'data': {'history': 'truncated; subsequent output Unknown'},
+                  'timestamp': _now()}
+        line = (json.dumps(marker) + '\n').encode('utf-8')
+        if (len(line) > MARKER_HEADROOM
+                or self._state['archive_bytes'] + len(line) > ARCHIVE_BOUND):
+            raise Refusal('no room for archive marker')
+        return line
+
+    def _sanitize_output(self, kind, data):
+        if not isinstance(data, dict) or not _valid_unicode(data):
+            raise Refusal('invalid output data')
+        if kind in ('agent_message', 'command_output'):
+            if set(data) != {'delta'} or not isinstance(data['delta'], str):
+                raise Refusal('invalid output delta')
+            return {'delta': data['delta']}
+        out = {}
+        for key in ('event', 'status', 'exit_code', 'detail'):
+            if key in data:
+                value = data[key]
+                if isinstance(value, bool) or value is not None and not isinstance(value, (str, int)):
+                    raise Refusal('invalid lifecycle fact')
+                if type(value) is int and not _valid_int(value):
+                    raise Refusal('invalid lifecycle fact')
+                if isinstance(value, str) and ('\x00' in value or len(value) > 1024):
+                    raise Refusal('invalid lifecycle fact')
+                out[key] = value
+        if not out:
+            raise Refusal('invalid lifecycle fact')
+        return out
+
+    # -- public interface -------------------------------------------------
+
+    def status(self, *, session_id):
+        """Read-only session view. Makes zero transport/model calls."""
+        self._check_session(session_id)
+        with self._guard():
+            return self._view()
+
+    def submit_next_turn(self, *, session_id, generation, request_id, text):
+        """Reserve and submit one bounded owner turn input.
+
+        Refuses (before any transport call) on invalid input, session or
+        generation mismatch, missing/worker-role authority, missing
+        ownership, an already active or uncertain turn, changed content for
+        a known request ID, or exhausted request history. Intent is reserved
+        durably before the transport call; the transport outcome is then
+        recorded exactly once and never replayed.
+        """
+        self._check_session(session_id)
+        if not isinstance(request_id, str) or not LABEL.fullmatch(request_id):
+            raise Refusal('invalid request id')
+        if type(generation) is not int or generation < 1:
+            raise Refusal('invalid generation')
+        if not isinstance(text, str) or not text or '\x00' in text:
+            raise Refusal('invalid turn input')
+        try:
+            encoded = text.encode('utf-8')
+        except UnicodeError:
+            raise Refusal('invalid turn input')
+        if len(encoded) > MAX_INPUT_BYTES:
+            raise Refusal('turn input bound exceeded')
+        content_sha = hashlib.sha256(encoded).hexdigest()
+        transport_fn = self._transport_fn()
+        with self._guard():
+            state = self._state
+            requests = state['requests']
+            if request_id in requests:
+                prev = requests[request_id]
+                if prev['sha256'] != content_sha:
+                    raise Refusal('changed content for request id')
+                return self._recorded_result(request_id, prev)
+            if state['state'] not in ('idle', 'terminal'):
+                raise Refusal('session is not open for a next turn')
+            if generation != state['generation']:
+                raise Refusal('stale generation')
+            facts = {'action': 'next_turn', 'session_id': self.session_id,
+                     'generation': generation, 'request_id': request_id}
+            self._require_authority(facts)
+            self._require_ownership(facts)
+            if len(requests) >= state['max_requests']:
+                raise Refusal('request history exhausted')
+            turn_id = 'turn-' + uuid.uuid4().hex[:16]
+            trial = dict(state)
+            trial['requests'] = {**requests, request_id: {
+                'sha256': content_sha, 'state': 'pending', 'generation': generation,
+                'turn_id': turn_id, 'result': None}}
+            if len(json.dumps(trial, ensure_ascii=False).encode('utf-8')) > STATE_BOUND:
+                raise Refusal('request history exhausted')
+            requests[request_id] = trial['requests'][request_id]
+            state['state'] = 'pending'
+            state['turn'] = {'turn_id': turn_id, 'generation': generation,
+                             'delivery': 'unknown'}
+            state['updated_at'] = _now()
+            self._save()  # durable intent reserved before the transport call
+        # The transport call happens outside the state lock. A crash here
+        # leaves the reserved intent pending: explicitly uncertain, never replayed.
+        try:
+            reply = transport_fn({'session_id': self.session_id,
+                                  'generation': generation,
+                                  'turn_id': turn_id, 'text': text})
+            status = reply.get('status') if isinstance(reply, dict) else None
+            if status not in ('accepted', 'rejected', 'uncertain'):
+                status = 'uncertain'
+        except Exception:
+            status = 'uncertain'
+        with self._guard():
+            state = self._state
+            prev = state['requests'].get(request_id)
+            if prev is None or prev['state'] != 'pending':
+                raise Refusal('session state changed during submission')
+            # Matching activity is enough to contradict rejection, without
+            # claiming that generic lifecycle output proves running inference.
+            turn = state.get('turn')
+            observed = (state['generation'] > generation
+                        or (turn and turn['turn_id'] == turn_id
+                            and (turn['delivery'] == 'accepted'
+                                 or state['state'] == 'outcome_unknown'
+                                 or self._output_activity == turn_id)))
+            if status == 'rejected' and observed:
+                status = 'uncertain'
+            result = {'session_id': self.session_id, 'request_id': request_id,
+                      'generation': generation, 'turn_id': turn_id,
+                      'state': {'accepted': 'accepted',
+                                'rejected': 'rejected'}.get(status, 'uncertain')}
+            prev['state'] = {'accepted': 'accepted',
+                             'rejected': 'rejected'}.get(status, 'outcome_unknown')
+            prev['result'] = result
+            turn = state.get('turn')
+            if (state['state'] in ('pending', 'outcome_unknown') and turn
+                    and turn['turn_id'] == turn_id):
+                if status == 'accepted':
+                    state['state'] = 'running'
+                    turn['delivery'] = 'accepted'
+                elif status == 'rejected':
+                    state['state'] = 'idle'
+                    state['turn'] = None
+                    state['history'].append({'turn_id': turn_id,
+                                             'generation': generation,
+                                             'status': 'rejected',
+                                             'exit_code': None,
+                                             'ended_at': _now()})
+                    del state['history'][:-HISTORY_BOUND]
+                else:
+                    state['state'] = 'outcome_unknown'
+            state['updated_at'] = _now()
+            self._save()
+            return dict(result)
+
+    def observe_turn_started(self, *, session_id, generation, turn_id):
+        """Accept a provider turn-started observation for the matching turn."""
+        self._check_session(session_id)
+        if type(generation) is not int or generation < 1:
+            raise Refusal('invalid generation')
+        with self._guard():
+            state = self._state
+            turn = state.get('turn')
+            if (not turn or turn['turn_id'] != turn_id
+                    or turn['generation'] != generation
+                    or state['state'] not in ('pending', 'outcome_unknown', 'running')):
+                raise Refusal('mismatched turn observation')
+            if state['state'] != 'running':
+                state['state'] = 'running'
+                turn['delivery'] = 'accepted'
+                state['updated_at'] = _now()
+                self._save()
+            return self._view()
+
+    def observe_terminal(self, *, session_id, generation, turn_id, status,
+                        exit_code=None):
+        """Accept a provider terminal observation for the matching turn.
+
+        A terminal record preserves failures and partial state, returns the
+        session to a history-only state and permits the next authorized
+        owner turn. It is not proof of task delivery or acceptance.
+        """
+        self._check_session(session_id)
+        if type(generation) is not int or generation < 1:
+            raise Refusal('invalid generation')
+        if status not in TURN_STATUS:
+            raise Refusal('invalid terminal status')
+        if exit_code is not None and not _valid_int(exit_code):
+            raise Refusal('invalid exit code')
+        with self._guard():
+            state = self._state
+            turn = state.get('turn')
+            if (not turn or turn['turn_id'] != turn_id
+                    or turn['generation'] != generation
+                    or state['state'] not in ('pending', 'running', 'outcome_unknown')):
+                raise Refusal('mismatched terminal event')
+            ended = _now()
+            record = {'turn_id': turn_id, 'generation': generation,
+                      'status': status, 'exit_code': exit_code, 'ended_at': ended}
+            state['state'] = 'terminal'
+            state['turn'] = None
+            state['last_turn'] = dict(record)
+            state['history'].append(dict(record))
+            del state['history'][:-HISTORY_BOUND]
+            if status == 'completed':
+                state['turns_completed'] += 1
+            elif status in ('failed', 'interrupted'):
+                state['turns_failed'] += 1
+            state['generation'] += 1
+            state['updated_at'] = ended
+            self._append_lifecycle({'event': 'turn_terminal', 'status': status,
+                                    'exit_code': exit_code})
+            self._save()
+            if state['journal_error']:
+                raise Refusal('terminal saved; output ' + state['journal_error'])
+            return self._view()
+
+    def observe_owner(self, *, session_id, generation, owner):
+        """Accept an ownership observation for the matching generation."""
+        self._check_session(session_id)
+        if type(generation) is not int or generation < 1:
+            raise Refusal('invalid generation')
+        if not isinstance(owner, str) or not LABEL.fullmatch(owner):
+            raise Refusal('invalid owner label')
+        with self._guard():
+            state = self._state
+            if generation != state['generation']:
+                raise Refusal('mismatched ownership observation')
+            self._append_lifecycle({'event': 'owner_observed', 'owner': owner})
+            state['updated_at'] = _now()
+            self._save()
+            if state['journal_error']:
+                raise Refusal('owner observation journal failed: ' + state['journal_error'])
+            return self._view()
+
+    def observe_output(self, *, session_id, generation, turn_id, kind, data):
+        """Append one bounded selected output observation for a matching turn."""
+        self._check_session(session_id)
+        if type(generation) is not int or generation < 1:
+            raise Refusal('invalid generation')
+        if kind not in OUTPUT_KINDS:
+            raise Refusal('unsupported output kind')
+        with self._guard():
+            state = self._state
+            active = state.get('turn') or {}
+            last = state.get('last_turn') or {}
+            if not ((active.get('turn_id') == turn_id
+                     and active.get('generation') == generation)
+                    or (last.get('turn_id') == turn_id
+                        and last.get('generation') == generation)):
+                raise Refusal('mismatched output observation')
+            data = self._sanitize_output(kind, data)
+            # Write uncertainty BEFORE retention checks or journaling. Even a failed/absent append
+            # must not let a later contradictory rejection release this turn.
+            if (active.get('turn_id') == turn_id
+                    and active.get('generation') == generation
+                    and state['state'] == 'pending'):
+                self._output_activity = turn_id
+                state['state'] = 'outcome_unknown'
+                state['updated_at'] = _now()
+                self._save()
+            if state['archive_limited']:
+                raise Refusal('output archive closed')
+            rec = {'cursor': state['output_cursor'] + 1, 'kind': kind,
+                   'data': data, 'generation': generation, 'turn_id': turn_id,
+                   'timestamp': _now()}
+            line = (json.dumps(rec, ensure_ascii=False) + '\n').encode('utf-8')
+            if len(line) > RECORD_BOUND:
+                raise Refusal('output record bound exceeded')
+            if state['archive_bytes'] + len(line) + MARKER_HEADROOM > ARCHIVE_BOUND:
+                mline = self._archive_marker()
+                self._write_journal(mline)
+                state['output_cursor'] += 1
+                state['archive_bytes'] += len(mline)
+                state['archive_limited'] = True
+                state['updated_at'] = _now()
+                self._save()
+                return {'cursor': state['output_cursor'], 'state': 'archive_limit'}
+            self._write_journal(line)
+            state['output_cursor'] += 1
+            state['archive_bytes'] += len(line)
+            state['updated_at'] = _now()
+            self._save()
+            return {'cursor': state['output_cursor']}
+
+    def read_output(self, *, session_id, after=0, limit=DEFAULT_LIMIT):
+        """Read bounded ordered journal records with explicit gap reporting."""
+        self._check_session(session_id)
+        if type(after) is not int or after < 0:
+            raise Refusal('invalid output bounds')
+        if type(limit) is not int or not 1 <= limit <= MAX_LIMIT:
+            raise Refusal('invalid output bounds')
+        with self._guard():
+            return self._read_journal(after, limit)
+
+    def _read_journal(self, after, limit):
+        safe_path(self.journal_path)
+        try:
+            fd = os.open(self.journal_path,
+                         os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except OSError:
+            raise Refusal('unsafe output journal')
+        identities = {(v['turn_id'], v['generation'])
+                      for v in self._state['requests'].values()}
+        records, last, size, page = [], 0, 0, 0
+        marker_seen = False
+        gap, truncated, page_full = False, False, False
+        try:
+            st = os.fstat(fd)
+            if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
+                    or st.st_uid != os.getuid() or st.st_mode & 0o077):
+                raise Refusal('unsafe output journal')
+            gap = st.st_size > ARCHIVE_BOUND
+            with os.fdopen(fd, 'rb') as stream:
+                fd = None
+                while size < ARCHIVE_BOUND:
+                    line = stream.readline(min(RECORD_BOUND + 1,
+                                               ARCHIVE_BOUND - size))
+                    if not line:
+                        break
+                    size += len(line)
+                    # Stop at the first unknown byte range. Never skip corruption.
+                    if len(line) > RECORD_BOUND or not line.endswith(b'\n'):
+                        gap = truncated = True
+                        break
+                    try:
+                        rec = json.loads(line)
+                        cur = rec.get('cursor') if isinstance(rec, dict) else None
+                        kind = rec.get('kind') if isinstance(rec, dict) else None
+                        ok = (type(cur) is int and cur == last + 1
+                              and not marker_seen
+                              and kind in ('agent_message', 'command_output',
+                                           'lifecycle', 'archive_limit')
+                              and isinstance(rec.get('data'), dict)
+                              and isinstance(rec.get('timestamp'), str))
+                        if ok and kind in ('agent_message', 'command_output'):
+                            ok = (isinstance(rec['data'].get('delta'), str)
+                                  and type(rec.get('generation')) is int
+                                  and rec['generation'] >= 1
+                                  and isinstance(rec.get('turn_id'), str)
+                                  and TURN_ID.fullmatch(rec['turn_id'])
+                                  and set(rec['data']) == {'delta'}
+                                  and (rec['turn_id'], rec['generation']) in identities)
+                        if ok and kind == 'lifecycle':
+                            facts = rec['data']
+                            ok = (bool(facts) and set(facts) <= {
+                                'event', 'status', 'exit_code', 'detail', 'owner'}
+                                and all(v is None or isinstance(v, str)
+                                        or _valid_int(v) for v in facts.values()))
+                        if ok and kind == 'archive_limit':
+                            ok = rec['data'] == {
+                                'history': 'truncated; subsequent output Unknown'}
+                        if not ok or not _valid_unicode(rec):
+                            raise ValueError('unsupported or unordered record')
+                    except (ValueError, UnicodeError, RecursionError):
+                        gap = truncated = True
+                        break
+                    last = cur
+                    if kind == 'archive_limit':
+                        marker_seen = True
+                    if cur > after:
+                        if (not page_full and len(records) < limit
+                                and page + len(line) <= PAGE_BOUND):
+                            records.append(rec)
+                            page += len(line)
+                        else:
+                            page_full = truncated = True
+            disagreement = (gap or last != self._state['output_cursor']
+                            or size != self._state['archive_bytes']
+                            or marker_seen != self._state['archive_limited'])
+            gap = disagreement or marker_seen or after > last
+            truncated |= gap
+            return {'session_id': self.session_id, 'records': records,
+                    'next_cursor': records[-1]['cursor'] if records else after,
+                    'output_cursor': last, 'truncated': truncated, 'gap': gap,
+                    'disagreement': disagreement}
+        except OSError as exc:
+            raise Refusal('output journal read failed') from exc
+        finally:
+            if fd is not None:
+                os.close(fd)
+
+
+def create_lead_session(root, *, transport, authority, ownership, workspace,
+                        budget_label, route, model, effort,
+                        max_requests=MAX_REQUESTS):
+    """Create one new private lead session record and return its controller.
+
+    Records the workspace, opaque shared-budget label, requested
+    route/model/effort and Unknown effective settings. No credentials or
+    account IDs are stored. Creation itself makes no transport call and
+    grants no provider turn; native admission and the lead reservation
+    remain the future caller's responsibility.
+    """
+    root_path = safe_path(Path(root))
+    for name, value, bound in (('workspace', workspace, 4096),
+                               ('budget_label', budget_label, 128),
+                               ('route', route, 128), ('model', model, 128),
+                               ('effort', effort, 128)):
+        if not isinstance(value, str) or not value or '\x00' in value or len(value) > bound or not _valid_unicode(value):
+            raise Refusal('invalid ' + name)
+    if type(max_requests) is not int or not 1 <= max_requests <= 256:
+        raise Refusal('invalid request bound')
+    session_id = 'lead-' + uuid.uuid4().hex[:24]
+    directory = _sessions_dir(root_path)
+    now = _now()
+    doc = {
+        'session_id': session_id, 'role': 'lead', 'generation': 1,
+        'state': 'idle', 'workspace': workspace, 'budget_label': budget_label,
+        'route': route, 'model': model, 'effort': effort, 'effective': 'Unknown',
+        'turn': None, 'last_turn': None, 'history': [], 'requests': {},
+        'max_requests': max_requests, 'turns_completed': 0, 'turns_failed': 0,
+        'output_cursor': 0, 'archive_bytes': 0, 'archive_limited': False,
+        'journal_error': None,
+        'created_at': now, 'updated_at': now,
+    }
+    data = json.dumps(doc, ensure_ascii=False).encode('utf-8')
+    if len(data) > STATE_BOUND:
+        raise Refusal('state bound exceeded')
+    _atomic_write(directory / (session_id + '.json'), data)
+    journal = directory / (session_id + '.jsonl')
+    try:
+        fd = os.open(journal, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                     0o600)
+    except OSError:
+        raise Refusal('unsafe output journal')
+    os.close(fd)
+    return LeadSession(root_path, session_id, transport=transport,
+                       authority=authority, ownership=ownership)
+UNIO_MANAGED_LEAD_PY
+cat > "$CONF_DIR/lib/managed-lead-codex.py" <<'UNIO_MANAGED_LEAD_CODEX_PY'
+#!/usr/bin/env python3
+# Unio — Copyright (C) 2026 Daniel Mitev
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
+"""Owned Codex app-server RPC bridge for the managed lead core.
+
+Importable transport component connecting the managed lead core's
+``send_turn(facts)`` seam to ONE already owned, already initialized Codex
+app-server RPC connection and thread. The caller injects the owned RPC
+callable (the conceptual ``Server.rpc`` seam of tools/codex-worker.py) and
+the explicit typed-rejection exception class. This bridge never launches a
+process, never initializes a connection, never starts/resumes/forks/adopts
+a thread and never claims the native registered lead; existing single-turn
+worker behavior is untouched.
+
+Frozen contract:
+- construction, bind, status and refused core authority/ownership make zero
+  RPC calls; the bridge infers no human authority from CLI or role and the
+  core's authority/ownership callbacks remain required;
+- exactly one core session and one known provider thread are bound with
+  bounded opaque ids; the pinned requested model/effort must match the
+  session record and both requested values are sent explicitly with every
+  turn/start (requested config is never treated as effective proof; the
+  effective model/effort remain Unknown);
+- a core-approved send_turn makes exactly one turn/start for the bound
+  thread and text: no retries, resends, automatic resume, extra RPCs or paid
+  fallback; a valid acknowledgement binds the returned provider turn id to
+  the exact local session/generation/turn from the facts;
+- wrong, malformed, foreign-thread or lost acknowledgements and untyped RPC
+  failures are uncertain, never rejection or success; an explicit typed RPC
+  rejection is rejected only when no matching activity contradicts it (the
+  core makes that reconciliation);
+- every supported lifecycle or output event must match the bound thread and
+  the exact provider turn validated by an acknowledgement; only bounded
+  selected delta text and lifecycle fields enter the core, never raw
+  envelopes, credentials, account ids or arbitrary event dictionaries;
+  completed/failed/interrupted map to terminal turn facts with
+  exit_code=None — a turn completing is not Source/adapter/process exit or
+  accepted delivery;
+- same-thread notifications arriving during the synchronous RPC before its
+  reply are held in a bounded event/byte buffer and replayed in order only
+  after a valid correlated acknowledgement; early events never prove which
+  local turn they belong to and the first observed provider id is never
+  adopted; stale, foreign, duplicate and unsupported events cannot
+  terminate another turn or impersonate complete history;
+- on buffer overflow or an oversized delta the bridge preserves an explicit
+  gap instead of inventing complete output: the core has no public gap
+  marker, so the bridge records one honest lifecycle fact
+  (``bridge_output_gap``) for the bound turn and reports the limitation in
+  its status; it never fakes an archive-limit marker of a different kind
+  and never silently claims complete history;
+- gap markers are tracked per local turn: an old turn's marker never
+  stands in for the current turn's gap proof;
+- while turn/start is unresolved, events for already mapped provider ids
+  are held too, because the acknowledgement may reuse one of them; they are
+  delivered to the old turn only once a distinct acknowledgement or an
+  activity-free typed rejection proves attribution. A reused id, and every
+  mapped id after an unresolved outcome, is quarantined: the mapping stays
+  as evidence, one ``bridge_identity_ambiguous`` lifecycle fact is recorded
+  for the old turn, and later events for that id are counted, never
+  dispatched to any turn;
+- identity memory is per bridge instance only. Binding a fresh bridge to an
+  idle/terminal session with prior turns is refused before any effect,
+  because the provider ids already used are unknown to it; binding a
+  pending/running/outcome_unknown session stays possible for inspection
+  only and send_turn refuses with zero RPC calls;
+- reopening or rebinding never recovers an unproven provider-turn mapping
+  and never resends pending work: after owner or connection loss,
+  reconciliation stays unsupported/Unknown until the future native owner
+  proves it. No persistent provider-id schema is added to the core.
+
+Opt-in adaptive effort (contract 0532-ADAPTIVE-LEAD-EFFORT-V1), legacy
+default preserved exactly: when ``supported_efforts`` is not given the
+bridge behaves byte-for-byte as before and rejects any per-turn effort in
+the facts. When the caller supplies the explicit supported set (queried
+once on the owned connection), the pinned effort must be in it and
+``send_turn`` accepts one optional ``facts['effort']``: it must be a
+member of the supported set (anything else — max, ultra, unadvertised —
+is refused before any RPC; there is no fallback) and is sent explicitly
+as the ``effort`` override of that one ``turn/start`` on the same owned
+thread. The app-server schema has no effort override on ``turn/steer``,
+so an effort change is only ever applied by the next turn/start; the
+effective provider effort remains Unknown.
+
+Opt-in explicit handoff (contract 0532-ADAPTIVE-LEAD-EFFORT-V1), legacy
+default preserved exactly: the native owner may durably record the
+provider turn ids its own acknowledgements validated (outside the core)
+and hand them to a fresh bridge through ``prior_mappings``. The handoff
+is proven only when the mapping covers exactly the session's recorded
+non-rejected turns (history, last and active) with matching generations;
+anything missing, extra or mismatched is refused as unproven — there is
+no id eviction, rebinding or invented recovery, and an unacknowledged
+(outcome_unknown) turn can never be handed over. ``max_mappings`` is an
+explicitly bounded owned-session option (1..64) replacing the legacy
+default of four only when the caller asks for it.
+
+
+
+The future native caller still owns: creating the connection and thread,
+routing notifications, native admission, the lead reservation and claiming
+the registered lead exactly once. See docs/development/MANAGED-LEAD-CODEX.md.
+"""
+import re
+
+MAX_TEXT_BYTES = 8192
+ID_BOUND = 128
+LABEL_BOUND = 128
+DELTA_BOUND = 16 * 1024
+DEFAULT_BUFFER_EVENTS = 64
+DEFAULT_BUFFER_BYTES = 256 * 1024
+MAX_MAPPINGS = 4
+OWNED_MAPPING_BOUND = 64
+START_METHOD = 'turn/start'
+SUPPORTED_METHODS = ('turn/started', 'item/agentMessage/delta',
+                     'item/commandExecution/outputDelta', 'turn/completed')
+TERMINAL_STATUS = ('completed', 'failed', 'interrupted')
+SESSION_ID = re.compile(r'lead-[0-9a-f]{24}')
+GAP_EVENT = 'bridge_output_gap'
+AMBIGUOUS_EVENT = 'bridge_identity_ambiguous'
+OPEN_STATES = ('idle', 'terminal')
+CAUTION = ('requested model/effort only; effective settings remain Unknown '
+           'and no native lead is claimed')
+
+
+class Refusal(Exception):
+    """A controlled bridge refusal before or around an owned RPC call."""
+
+
+class RPCRejected(Exception):
+    """Typed explicit provider rejection of an owned RPC call.
+
+    The caller may inject its own exception class (or tuple of classes);
+    every other raised exception is ambiguous and stays uncertain.
+    """
+
+
+def _bounded(value, bound, name):
+    if not isinstance(value, str) or not value or '\x00' in value:
+        raise Refusal('invalid ' + name)
+    try:
+        encoded = value.encode('utf-8')
+    except (UnicodeError, RecursionError):
+        raise Refusal('invalid ' + name)
+    if len(encoded) > bound:
+        raise Refusal(name + ' bound exceeded')
+    return value
+
+
+def _bounded_id(value):
+    return (isinstance(value, str) and value and '\x00' not in value
+            and len(value) <= ID_BOUND)
+
+
+class CodexLeadTransport:
+    """One owned RPC connection/thread bound to one core lead session.
+
+    All provider effects flow through the injected ``rpc`` callable; the
+    constructor, ``bind`` and ``status`` make zero RPC calls. The core's
+    authority/ownership callbacks remain the only admission path.
+    """
+
+    def __init__(self, rpc, thread_id, *, model, effort,
+                 rejection=RPCRejected,
+                 buffer_events=DEFAULT_BUFFER_EVENTS,
+                 buffer_bytes=DEFAULT_BUFFER_BYTES,
+                 supported_efforts=None, max_mappings=MAX_MAPPINGS,
+                 prior_mappings=None):
+        if not callable(rpc):
+            raise Refusal('owned rpc callable required')
+        self._rpc = rpc
+        self._thread = _bounded(thread_id, ID_BOUND, 'thread id')
+        self._model = _bounded(model, LABEL_BOUND, 'model')
+        self._effort = _bounded(effort, LABEL_BOUND, 'effort')
+        if supported_efforts is None:
+            self._supported_efforts = None
+        else:
+            if (not isinstance(supported_efforts, (list, tuple))
+                    or not supported_efforts):
+                raise Refusal('invalid supported effort set')
+            seen = []
+            for item in supported_efforts:
+                item = _bounded(item, LABEL_BOUND, 'supported effort')
+                if item not in seen:
+                    seen.append(item)
+            self._supported_efforts = tuple(seen)
+            if self._effort not in self._supported_efforts:
+                raise Refusal('pinned effort not in the supported set')
+        if type(max_mappings) is not int or not 1 <= max_mappings <= OWNED_MAPPING_BOUND:
+            raise Refusal('invalid mapping bound')
+        self._max_mappings = max_mappings
+        self._handoff = prior_mappings is not None
+        self._prior = {}
+        if prior_mappings is not None:
+            if not isinstance(prior_mappings, dict):
+                raise Refusal('invalid prior mappings')
+            seen_turns = set()
+            for provider_turn, local in prior_mappings.items():
+                if (not _bounded_id(provider_turn) or not isinstance(local, dict)
+                        or set(local) != {'turn_id', 'generation'}
+                        or not _bounded_id(local.get('turn_id'))
+                        or type(local.get('generation')) is not int
+                        or local['generation'] < 1):
+                    raise Refusal('invalid prior mappings')
+                if local['turn_id'] in seen_turns:
+                    raise Refusal('prior mappings rebind a local turn')
+                seen_turns.add(local['turn_id'])
+                self._prior[provider_turn] = dict(local)
+        if isinstance(rejection, tuple):
+            ok = bool(rejection) and all(
+                isinstance(item, type) and issubclass(item, BaseException)
+                for item in rejection)
+        else:
+            ok = isinstance(rejection, type) and issubclass(rejection, BaseException)
+        if not ok:
+            raise Refusal('typed rejection class required')
+        self._rejection = rejection
+        if type(buffer_events) is not int or not 1 <= buffer_events <= 4096:
+            raise Refusal('invalid event buffer bound')
+        if type(buffer_bytes) is not int or not 1024 <= buffer_bytes <= 4 * 1024 * 1024:
+            raise Refusal('invalid event byte bound')
+        self._buffer_events_bound = buffer_events
+        self._buffer_bytes_bound = buffer_bytes
+        self._session = None
+        self._session_id = None
+        self._inflight = None
+        self._buffer = []
+        self._buffer_bytes = 0
+        self._dropped = 0
+        self._gap = False
+        self._overflow = False
+        self._marks = set()   # (local turn id, marker event) recorded once
+        self._current = None  # local turn id of the latest submission
+        self._held_dropped = set()  # mapped provider ids dropped while held
+        self._quarantined = {}  # provider id -> reason; mapping kept as evidence
+        self._quarantined_events = 0
+        self._unrecorded = set()  # markers the frozen core could not record
+        self._inherited = False
+        self._local = {}      # validated provider turn id -> local turn facts
+        self._provider = {}   # local turn id -> validated provider turn id
+        self._activity = False  # potential new-turn activity, even if dropped
+        self._last_send = None
+
+    # -- binding and status (zero RPC calls) ------------------------------
+
+    def bind(self, session):
+        """Bind exactly one core lead session; never makes an RPC call."""
+        if self._session is not None:
+            raise Refusal('bridge already bound')
+        session_id = getattr(session, 'session_id', None)
+        if not isinstance(session_id, str) or not SESSION_ID.fullmatch(session_id):
+            raise Refusal('invalid lead session id')
+        view = session.status(session_id=session_id)
+        if view.get('role') != 'lead':
+            raise Refusal('not a lead session')
+        if (view.get('model') != self._model
+                or view.get('requested_effort') != self._effort):
+            raise Refusal('pinned model/effort do not match the session record')
+        prior = (view.get('generation') != 1 or view.get('history')
+                 or view.get('last_turn') or view.get('turn'))
+        if self._handoff:
+            # Explicit handoff: every recorded non-rejected turn must be
+            # proven by an acknowledged provider id; nothing else recovers.
+            recorded = {}
+            for item in view.get('history') or []:
+                if item.get('status') != 'rejected':
+                    recorded[item['turn_id']] = item['generation']
+            if view.get('last_turn'):
+                recorded[view['last_turn']['turn_id']] = \
+                    view['last_turn']['generation']
+            if view.get('turn'):
+                recorded[view['turn']['turn_id']] = view['turn']['generation']
+            mapped = {local['turn_id']: local['generation']
+                      for local in self._prior.values()}
+            if recorded != mapped:
+                raise Refusal('unproven provider mapping; explicit handoff '
+                              'incomplete or mismatched')
+            for provider_turn, local in self._prior.items():
+                self._bind_mapping(local['turn_id'], provider_turn,
+                                   local['generation'])
+        elif prior and view.get('state') in OPEN_STATES:
+            # Provider ids already used by this session are unknown here;
+            # continuing could accept a reused id as a fresh turn.
+            raise Refusal('session has prior provider history; explicit handoff required')
+        self._inherited = bool(prior) and not self._handoff
+        self._session = session
+        self._session_id = session_id
+        return self.status()
+
+    def status(self):
+        """Read-only bridge view; never makes an RPC call."""
+        return {
+            'bound': self._session is not None,
+            'session_id': self._session_id,
+            'thread_id': self._thread,
+            'model': self._model,
+            'effort': self._effort,
+            'effective': 'Unknown',
+            'adaptive_efforts': self._supported_efforts is not None,
+            'supported_efforts': (list(self._supported_efforts)
+                                  if self._supported_efforts is not None else None),
+            'inflight': self._inflight is not None,
+            'buffered_events': len(self._buffer),
+            'dropped_events': self._dropped,
+            'gap': self._gap,
+            'gap_recorded': (self._current, GAP_EVENT) in self._marks,
+            'gap_turns_recorded': sum(1 for _, ev in self._marks if ev == GAP_EVENT),
+            'turn_mappings': len(self._local),
+            'quarantined_ids': len(self._quarantined),
+            'quarantined_events': self._quarantined_events,
+            'unrecorded_markers': len(self._unrecorded),
+            'inherited_history': self._inherited,
+            'mapping_capacity': self._max_mappings,
+            'handoff_required': len(self._local) >= self._max_mappings,
+            'handed_over': self._handoff,
+            'mappings': {pid: dict(local) for pid, local in self._local.items()},
+            'unbound_activity': self._activity,
+            'supported_methods': list(SUPPORTED_METHODS),
+            'last_send': dict(self._last_send) if self._last_send else None,
+            'caution': CAUTION,
+        }
+
+    # -- owned turn submission --------------------------------------------
+
+    def send_turn(self, facts):
+        """One turn/start on the bound thread for one core-approved turn.
+
+        Returns ``{'status': 'accepted'|'rejected'|'uncertain'}`` for the
+        core plus bounded diagnostic facts. Exactly one RPC call is made on
+        the accepted path and at most one on every other path; there are no
+        retries, resends or extra RPCs.
+        """
+        if self._session is None:
+            raise Refusal('bridge not bound')
+        if self._inflight is not None:
+            raise Refusal('bridge already submitting')
+        if not isinstance(facts, dict):
+            raise Refusal('invalid turn facts')
+        if facts.get('session_id') != self._session_id:
+            raise Refusal('session mismatch')
+        generation = facts.get('generation')
+        if type(generation) is not int or generation < 1:
+            raise Refusal('invalid generation')
+        turn_id = _bounded(facts.get('turn_id'), ID_BOUND, 'turn id')
+        text = _bounded(facts.get('text'), MAX_TEXT_BYTES, 'turn input')
+        if turn_id in self._provider:
+            raise Refusal('turn already mapped')
+        if self._inherited:
+            raise Refusal('bound for inspection only; explicit handoff required')
+        if len(self._local) >= self._max_mappings:
+            self._last_send = {'status': 'uncertain',
+                               'reason': 'mapping capacity exhausted; explicit handoff required'}
+            return dict(self._last_send)
+        effort = self._effort
+        if 'effort' in facts:
+            if self._supported_efforts is None:
+                raise Refusal('per-turn effort not enabled on this bridge')
+            effort = facts['effort']
+            if not isinstance(effort, str) or effort not in self._supported_efforts:
+                raise Refusal('unsupported per-turn effort refused before any rpc')
+        params = {'threadId': self._thread, 'model': self._model, 'effort': effort,
+                  'input': [{'type': 'text', 'text': text}]}
+        self._inflight = {'turn_id': turn_id, 'generation': generation}
+        self._current = turn_id
+        self._buffer = []
+        self._buffer_bytes = 0
+        self._dropped = 0
+        self._gap = False
+        self._overflow = False
+        self._held_dropped = set()
+        self._activity = False
+        try:
+            reply = self._rpc(START_METHOD, params)
+        except self._rejection:
+            if self._activity:
+                # A new turn may exist under an unknown id, possibly a reused one.
+                self._quarantine_all('typed rejection with potential new-turn activity')
+            counts = self._settle(None)
+            self._last_send = {
+                'status': 'uncertain' if self._activity else 'rejected',
+                'reason': ('typed rejection with potential new-turn activity'
+                           if self._activity else 'typed rejection without new-turn activity'),
+                'dropped_events': self._dropped + counts['foreign_events'] + counts['quarantined_events'],
+                'gap': self._gap, 'unbound_activity': self._activity, **counts}
+            return dict(self._last_send)
+        except Exception:
+            self._quarantine_all('rpc failed without a typed rejection')
+            counts = self._settle(None)
+            self._last_send = {'status': 'uncertain',
+                               'reason': 'rpc failed without a typed rejection', **counts}
+            return dict(self._last_send)
+        provider_turn = self._validate_ack(reply)
+        if provider_turn is None:
+            self._quarantine_all('turn/start acknowledgement missing, malformed or foreign')
+            counts = self._settle(None)
+            self._last_send = {
+                'status': 'uncertain',
+                'reason': 'turn/start acknowledgement missing, malformed or foreign', **counts}
+            return dict(self._last_send)
+        if provider_turn in self._local:
+            # Never adopt or rebind: the mapping stays as evidence only.
+            self._quarantine(provider_turn, 'reused provider turn id')
+            counts = self._settle(None)
+            self._last_send = {
+                'status': 'uncertain', 'provider_turn_id': provider_turn,
+                'reason': 'reused provider turn id; original mapping retained; explicit handoff required',
+                **counts}
+            return dict(self._last_send)
+        self._bind_mapping(turn_id, provider_turn, generation)
+        if self._gap:
+            self._record_gap(turn_id, generation,
+                             'event buffer overflow; output history incomplete')
+        counts = self._settle(provider_turn)
+        self._last_send = {
+            'status': 'accepted', 'provider_turn_id': provider_turn,
+            'effort': effort,
+            'dropped_events': self._dropped, **counts,
+            'gap': self._gap, 'gap_recorded': (turn_id, GAP_EVENT) in self._marks}
+        return dict(self._last_send)
+
+    def _validate_ack(self, reply):
+        """A valid acknowledgement is a bounded turn id for this thread."""
+        if not isinstance(reply, dict):
+            return None
+        thread = reply.get('threadId')
+        if thread is not None and thread != self._thread:
+            return None
+        turn = reply.get('turn')
+        if not isinstance(turn, dict) or not _bounded_id(turn.get('id')):
+            return None
+        return turn['id']
+
+    def _bind_mapping(self, turn_id, provider_turn, generation):
+        self._provider[turn_id] = provider_turn
+        self._local[provider_turn] = {'turn_id': turn_id,
+                                      'generation': generation}
+
+    def _quarantine(self, provider_turn, reason):
+        """Stop trusting one mapped id; keep the mapping, record evidence."""
+        if provider_turn in self._quarantined:
+            return
+        self._quarantined[provider_turn] = reason
+        local = self._local[provider_turn]
+        self._record_mark(local['turn_id'], local['generation'], AMBIGUOUS_EVENT,
+                          reason + '; later events for this provider turn are quarantined')
+
+    def _quarantine_all(self, reason):
+        for provider_turn in list(self._local):
+            self._quarantine(provider_turn, reason)
+
+    def _settle(self, new_turn):
+        """Resolve held events once the submission outcome is known.
+
+        Events for ``new_turn`` (a fresh validated id) and for mapped,
+        non-quarantined ids are now proved and replayed in order; quarantined
+        ids are counted only; everything else stays foreign and unadopted.
+        """
+        replayed = foreign = refused = quarantined = 0
+        buffer, self._buffer = self._buffer, []
+        held_dropped, self._held_dropped = self._held_dropped, set()
+        self._buffer_bytes = 0
+        self._inflight = None
+        for event in buffer:
+            provider_turn = event['turn_id']
+            if provider_turn in self._quarantined:
+                quarantined += 1
+                self._quarantined_events += 1
+                continue
+            if provider_turn not in self._local:
+                foreign += 1
+                continue
+            if event.get('oversized'):
+                self._oversized(provider_turn)
+                refused += 1
+                continue
+            result = self._dispatch(event)
+            if result['action'] == 'refused':
+                refused += 1
+            else:
+                replayed += 1
+        for provider_turn in sorted(held_dropped):
+            if provider_turn in self._local and provider_turn not in self._quarantined:
+                local = self._local[provider_turn]
+                self._record_gap(local['turn_id'], local['generation'],
+                                 'event buffer overflow while attribution was unresolved; '
+                                 'output history incomplete')
+        return {'replayed_events': replayed, 'foreign_events': foreign,
+                'refused_events': refused, 'quarantined_events': quarantined}
+
+    def _oversized(self, provider_turn):
+        local = self._local[provider_turn]
+        if local['turn_id'] == self._current:
+            self._gap = True
+        self._record_gap(local['turn_id'], local['generation'],
+                         'delta bound exceeded; output history incomplete')
+
+    # -- provider notifications --------------------------------------------
+
+    def handle_notification(self, msg):
+        """Controlled observation of one provider notification; never raises."""
+        try:
+            return self._notify(msg)
+        except Exception as exc:
+            return {'action': 'refused',
+                    'reason': 'bridge error: %s: %s' % (type(exc).__name__, exc)}
+
+    def _notify(self, msg):
+        if not isinstance(msg, dict):
+            return {'action': 'ignored', 'reason': 'malformed notification'}
+        method = msg.get('method')
+        if method not in SUPPORTED_METHODS:
+            return {'action': 'ignored', 'reason': 'unsupported method'}
+        params = msg.get('params')
+        if not isinstance(params, dict):
+            return {'action': 'ignored', 'reason': 'malformed notification'}
+        if params.get('threadId') != self._thread:
+            return {'action': 'ignored', 'reason': 'foreign thread'}
+        event = self._extract(method, params)
+        if event is None:
+            return {'action': 'ignored', 'reason': 'malformed notification'}
+        if event['turn_id'] in self._quarantined:
+            # Ambiguous identity: never dispatched to the old or a new turn.
+            self._quarantined_events += 1
+            return {'action': 'quarantined', 'reason': 'ambiguous provider turn identity',
+                    'gap': True}
+        attributed = event['turn_id'] in self._local
+        inflight = self._inflight is not None
+        if not attributed and not inflight:
+            # Unknown mapping (for example after reopen) stays unknown; the
+            # first observed provider id is never adopted.
+            return {'action': 'ignored', 'reason': 'unbound provider turn'}
+        oversized = 'delta' in event and event['bytes'] > DELTA_BOUND
+        if inflight and attributed:
+            # The pending acknowledgement may reuse this id: hold, don't write.
+            if oversized:
+                event = {'method': event['method'], 'turn_id': event['turn_id'],
+                         'bytes': 0, 'oversized': True}
+            return self._buffer_event(event)
+        if inflight:
+            self._activity = True
+        if oversized:
+            if attributed:
+                self._oversized(event['turn_id'])
+                return {'action': 'refused', 'reason': 'delta bound exceeded',
+                        'gap': True}
+            self._gap = True
+            self._dropped += 1
+            return {'action': 'dropped', 'reason': 'delta bound exceeded',
+                    'gap': True}
+        if attributed:
+            return self._dispatch(event)
+        return self._buffer_event(event)
+
+    def _extract(self, method, params):
+        """Select only bounded lifecycle/delta fields; never raw envelopes."""
+        if method == 'turn/started':
+            turn = params.get('turn')
+            if not isinstance(turn, dict):
+                return None
+            return self._event(method, turn.get('id'))
+        if method == 'turn/completed':
+            turn = params.get('turn')
+            if (not isinstance(turn, dict)
+                    or turn.get('status') not in TERMINAL_STATUS):
+                return None
+            event = self._event(method, turn.get('id'))
+            if event is None:
+                return None
+            event['status'] = turn['status']
+            return event
+        event = self._event(method, params.get('turnId'))
+        delta = params.get('delta')
+        if event is None or not isinstance(delta, str):
+            return None
+        try:
+            size = len(delta.encode('utf-8'))
+        except (UnicodeError, RecursionError):
+            return None
+        event['delta'] = delta
+        event['bytes'] = size
+        return event
+
+    @staticmethod
+    def _event(method, turn_id):
+        if not _bounded_id(turn_id):
+            return None
+        return {'method': method, 'turn_id': turn_id, 'bytes': 0}
+
+    def _buffer_event(self, event):
+        if self._overflow:
+            self._held(event)
+            self._dropped += 1
+            return {'action': 'dropped', 'reason': 'event buffer overflow',
+                    'gap': True}
+        if (len(self._buffer) >= self._buffer_events_bound
+                or self._buffer_bytes + event['bytes'] > self._buffer_bytes_bound):
+            self._overflow = True
+            self._gap = True
+            self._held(event)
+            self._dropped += 1
+            return {'action': 'dropped', 'reason': 'event buffer overflow',
+                    'gap': True}
+        self._buffer.append(event)
+        self._buffer_bytes += event['bytes']
+        return {'action': 'buffered'}
+
+    def _held(self, event):
+        if event['turn_id'] in self._local:
+            self._held_dropped.add(event['turn_id'])
+
+    def _dispatch(self, event):
+        """Deliver one fully attributed event to the bound core session."""
+        local = self._local[event['turn_id']]
+        session_id = self._session_id
+        generation = local['generation']
+        turn_id = local['turn_id']
+        method = event['method']
+        try:
+            if method == 'turn/started':
+                self._session.observe_turn_started(
+                    session_id=session_id, generation=generation, turn_id=turn_id)
+                return {'action': 'observed', 'core': 'turn_started'}
+            if method == 'turn/completed':
+                # A turn completing is not Source/adapter/process exit.
+                self._session.observe_terminal(
+                    session_id=session_id, generation=generation, turn_id=turn_id,
+                    status=event['status'], exit_code=None)
+                return {'action': 'observed', 'core': 'terminal',
+                        'status': event['status'], 'exit_code': None}
+            kind = ('agent_message' if method == 'item/agentMessage/delta'
+                    else 'command_output')
+            self._session.observe_output(
+                session_id=session_id, generation=generation, turn_id=turn_id,
+                kind=kind, data={'delta': event['delta']})
+            return {'action': 'observed', 'core': kind}
+        except Exception as exc:
+            # The core's Refusal distinction (for example a saved terminal
+            # fact plus a journal-write error) is retained verbatim and is
+            # never converted into proof of process exit or delivery.
+            return {'action': 'refused',
+                    'reason': '%s: %s' % (type(exc).__name__, exc)}
+
+    def _record_gap(self, turn_id, generation, detail):
+        """Record one honest gap fact per local turn; never fake completeness."""
+        self._record_mark(turn_id, generation, GAP_EVENT, detail)
+
+    def _record_mark(self, turn_id, generation, event, detail):
+        """One bounded lifecycle marker per (local turn, kind)."""
+        if self._session is None or (turn_id, event) in self._marks:
+            return
+        try:
+            self._session.observe_output(
+                session_id=self._session_id, generation=generation,
+                turn_id=turn_id, kind='lifecycle',
+                data={'event': event, 'detail': detail})
+            self._marks.add((turn_id, event))
+            self._unrecorded.discard((turn_id, event))
+        except Exception:
+            # The core cannot record the marker (a closed archive, or a turn
+            # older than its last_turn): the limitation stays explicit in
+            # status; history is never claimed complete and no marker of
+            # another kind is faked.
+            self._unrecorded.add((turn_id, event))
+UNIO_MANAGED_LEAD_CODEX_PY
+cat > "$CONF_DIR/lib/lead-effort.py" <<'UNIO_LEAD_EFFORT_PY'
+#!/usr/bin/env python3
+# Unio — Copyright (C) 2026 Daniel Mitev
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
+"""Adaptive lead effort policy — importable decision component.
+
+Owned policy backend for the experimental `unio lead-session` vertical
+slice (contract 0532-ADAPTIVE-LEAD-EFFORT-V1). It decides which explicit
+reasoning effort to request per lead turn and never talks to a provider
+itself: the supported model efforts are queried exactly once through an
+injected callable that represents one already authorized owned connection
+(the `model/list` seam of the Codex app-server), and every decision is
+handed to the caller to send explicitly with `turn/start`.
+
+Enforced by this component:
+- a fixed known effort rank (low, medium, high, xhigh); the configurable
+  ceiling must be a known rank no higher than xhigh. Advertised values
+  outside the known rank (for example max or ultra) are refused for
+  selection; nothing is invented and there is no fallback effort;
+- the supported set is queried exactly once per policy instance; a second
+  query returns the recorded set without another call. The ceiling and the
+  coordination effort (low) must both be advertised and selectable, or the
+  policy refuses rather than substituting;
+- automatic mode selects low for routine coordination and the ceiling for
+  substantive planning/review; the work kind comes only from the explicit
+  caller request or a recorded worker-terminal wakeup event, never from
+  arbitrary prose;
+- a manual owner override suspends automatic selection until auto is
+  selected again; an explicit next-turn request is recorded as pending and
+  consumed by the next decided turn only (the active turn is never steered;
+  the app-server schema has no effort override on turn/steer);
+- every decided turn gets one immutable decision record (turn id, kind,
+  effort, source, reason); records are append-only and bounded;
+- worker terminal events queue at most one review wakeup each; a wakeup is
+  consumed exactly once and heartbeats or status polling cannot create one;
+- the effective provider-side effort remains Unknown everywhere; only the
+  requested effort is recorded.
+
+The caller still owns: the owned connection, sending turn/start on the
+owned thread, authority/ownership admission, STOP semantics and counting
+the registered lead exactly once. See docs/ADAPTIVE-LEAD-EFFORT.md.
+"""
+import re
+
+RANK = ('low', 'medium', 'high', 'xhigh')
+KINDS = ('coordination', 'planning', 'review')
+DEFAULT_CEILING = 'xhigh'
+COORDINATION_EFFORT = 'low'
+MAX_DECISIONS = 64
+MAX_WAKEUPS = 8
+REASON_BOUND = 256
+EFFORT_BOUND = 32
+TURN_ID = re.compile(r'turn-[0-9a-f]{16}')
+LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
+CAUTION = ('requested effort only; the effective provider effort remains Unknown')
+
+
+class Refusal(Exception):
+    """A controlled policy refusal; no effect was applied."""
+
+
+def _rank(effort):
+    return RANK.index(effort)
+
+
+def _bounded_effort(value):
+    if not isinstance(value, str) or not value or '\x00' in value:
+        raise Refusal('invalid effort')
+    if len(value.encode('utf-8', 'replace')) > EFFORT_BOUND:
+        raise Refusal('effort bound exceeded')
+    return value
+
+
+def _bounded_reason(value):
+    if value is None:
+        return ''
+    if not isinstance(value, str) or '\x00' in value:
+        raise Refusal('invalid reason')
+    if len(value.encode('utf-8', 'replace')) > REASON_BOUND:
+        raise Refusal('reason bound exceeded')
+    return value
+
+
+class AdaptiveEffortPolicy:
+    """Per-session adaptive effort decisions; zero provider calls."""
+
+    def __init__(self, *, ceiling=DEFAULT_CEILING):
+        if ceiling not in RANK or _rank(ceiling) > _rank('xhigh'):
+            raise Refusal('ceiling must be a known effort no higher than xhigh')
+        self._ceiling = ceiling
+        self._supported = None
+        self._queried = False
+        self._mode = 'auto'
+        self._manual = None
+        self._pending = None
+        self._wakeups = []
+        self._wakeups_consumed = 0
+        self._decisions = []
+
+    # -- supported effort query (once) ------------------------------------
+
+    def query_supported(self, query):
+        """Query the advertised efforts once through the owned connection.
+
+        ``query`` is an injected callable returning the advertised effort
+        strings for the pinned model. The first call records the set; every
+        later call returns the recorded set without invoking ``query``.
+        """
+        if self._queried:
+            return tuple(self._supported)
+        try:
+            advertised = query()
+        except Exception as exc:
+            raise Refusal('supported effort query failed') from exc
+        if not isinstance(advertised, (list, tuple)) or not advertised:
+            raise Refusal('no advertised efforts')
+        seen = []
+        for item in advertised:
+            item = _bounded_effort(item)
+            if item not in seen:
+                seen.append(item)
+        self._supported = tuple(seen)
+        self._queried = True
+        # Both automatic choices must be genuinely selectable; no fallback.
+        self._require_selectable(COORDINATION_EFFORT, 'coordination effort')
+        self._require_selectable(self._ceiling, 'ceiling effort')
+        return tuple(self._supported)
+
+    def supported(self):
+        if not self._queried:
+            raise Refusal('supported efforts not queried')
+        return tuple(self._supported)
+
+    def _selectable(self, effort):
+        return (self._queried and effort in RANK
+                and effort in self._supported
+                and _rank(effort) <= _rank(self._ceiling))
+
+    def _require_selectable(self, effort, name):
+        if not self._selectable(effort):
+            raise Refusal('unsupported ' + name + ': ' + str(effort))
+
+    # -- controls -----------------------------------------------------------
+
+    def select_for_kind(self, kind):
+        """Automatic choice for one explicit work kind."""
+        if kind not in KINDS:
+            raise Refusal('unknown work kind')
+        if kind == 'coordination':
+            effort = COORDINATION_EFFORT
+        else:
+            effort = self._ceiling
+        self._require_selectable(effort, 'effort for ' + kind)
+        return effort
+
+    def set_manual(self, effort, reason=None):
+        """Manual owner override; suspends auto until auto is selected."""
+        effort = _bounded_effort(effort)
+        self._require_selectable(effort, 'manual effort')
+        self._manual = effort
+        self._mode = 'manual'
+        self._pending = None
+        return self.status()
+
+    def set_auto(self, reason=None):
+        """Re-enable automatic selection."""
+        self._mode = 'auto'
+        self._manual = None
+        self._pending = None
+        return self.status()
+
+    def request_next_turn(self, effort, reason=None):
+        """Record an explicit pending effort for the next turn only."""
+        effort = _bounded_effort(effort)
+        self._require_selectable(effort, 'requested effort')
+        self._pending = {'effort': effort, 'reason': _bounded_reason(reason)}
+        return self.status()
+
+    # -- worker wakeups -----------------------------------------------------
+
+    def record_wakeup(self, worker_id, reason=None):
+        """One registered worker terminal event wakes the lead once."""
+        if not isinstance(worker_id, str) or not LABEL.fullmatch(worker_id):
+            raise Refusal('invalid worker id')
+        if len(self._wakeups) >= MAX_WAKEUPS:
+            raise Refusal('wakeup queue exhausted')
+        self._wakeups.append({'worker': worker_id,
+                              'reason': _bounded_reason(reason)})
+        return self.status()
+
+    def consume_wakeup(self):
+        """Consume one pending wakeup exactly once; None when none pending."""
+        if not self._wakeups:
+            return None
+        wakeup = self._wakeups.pop(0)
+        self._wakeups_consumed += 1
+        return dict(wakeup)
+
+    def pending_wakeups(self):
+        return len(self._wakeups)
+
+    # -- per-turn decision ---------------------------------------------------
+
+    def decide_turn(self, turn_id, kind, reason=None):
+        """Decide the explicit effort for one new turn; immutable record.
+
+        Priority: pending explicit request, then manual override, then the
+        automatic choice for the work kind. The decision is recorded once
+        and can never be rewritten.
+        """
+        if not isinstance(turn_id, str) or not TURN_ID.fullmatch(turn_id):
+            raise Refusal('invalid turn id')
+        if kind not in KINDS:
+            raise Refusal('unknown work kind')
+        if self._pending is not None:
+            effort = self._pending['effort']
+            source = 'pending'
+            why = self._pending['reason'] or ('pending owner request')
+            self._require_selectable(effort, 'pending effort')
+            self._pending = None
+        elif self._mode == 'manual':
+            effort = self._manual
+            source = 'manual'
+            why = 'manual owner override'
+            self._require_selectable(effort, 'manual effort')
+        else:
+            effort = self.select_for_kind(kind)
+            source = 'auto'
+            why = 'automatic ' + kind + ' effort'
+        decision = {'turn_id': turn_id, 'kind': kind, 'effort': effort,
+                    'source': source, 'reason': _bounded_reason(reason) or why}
+        self._decisions.append(decision)
+        del self._decisions[:-MAX_DECISIONS]
+        return dict(decision)
+
+    def decisions(self):
+        """Bounded immutable per-turn decision records (copies)."""
+        return tuple(dict(item) for item in self._decisions)
+
+    # -- views and persistence ------------------------------------------------
+
+    def status(self):
+        return {
+            'mode': self._mode,
+            'ceiling': self._ceiling,
+            'supported_efforts': list(self._supported) if self._queried else None,
+            'queried': self._queried,
+            'requested': (self._pending['effort'] if self._pending
+                         else self._manual if self._mode == 'manual'
+                         else None),
+            'pending_next_turn': dict(self._pending) if self._pending else None,
+            'manual_effort': self._manual,
+            'pending_wakeups': len(self._wakeups),
+            'wakeups_consumed': self._wakeups_consumed,
+            'decisions': len(self._decisions),
+            'effective': 'Unknown',
+            'caution': CAUTION,
+        }
+
+    def snapshot(self):
+        return {
+            'ceiling': self._ceiling,
+            'supported': list(self._supported) if self._queried else None,
+            'queried': self._queried,
+            'mode': self._mode,
+            'manual': self._manual,
+            'pending': dict(self._pending) if self._pending else None,
+            'wakeups': [dict(item) for item in self._wakeups],
+            'wakeups_consumed': self._wakeups_consumed,
+            'decisions': [dict(item) for item in self._decisions],
+        }
+
+    @classmethod
+    def load(cls, doc):
+        """Restore a policy from a persisted snapshot; refuses tampering."""
+        if not isinstance(doc, dict) or set(doc) != {
+                'ceiling', 'supported', 'queried', 'mode', 'manual',
+                'pending', 'wakeups', 'wakeups_consumed', 'decisions'}:
+            raise Refusal('invalid policy snapshot')
+        policy = cls(ceiling=doc['ceiling'])
+        if doc['queried']:
+            if (not isinstance(doc['supported'], list) or not doc['supported']):
+                raise Refusal('invalid policy snapshot')
+            policy.query_supported(lambda: list(doc['supported']))
+        else:
+            if doc['supported'] is not None:
+                raise Refusal('invalid policy snapshot')
+        if doc['mode'] not in ('auto', 'manual'):
+            raise Refusal('invalid policy snapshot')
+        if doc['mode'] == 'manual':
+            if not isinstance(doc['manual'], str):
+                raise Refusal('invalid policy snapshot')
+            policy.set_manual(doc['manual'])
+        elif doc['manual'] is not None:
+            raise Refusal('invalid policy snapshot')
+        if doc['pending'] is not None:
+            if not isinstance(doc['pending'], dict):
+                raise Refusal('invalid policy snapshot')
+            policy.request_next_turn(doc['pending'].get('effort'),
+                                     doc['pending'].get('reason'))
+        if not isinstance(doc['wakeups'], list) or len(doc['wakeups']) > MAX_WAKEUPS:
+            raise Refusal('invalid policy snapshot')
+        for item in doc['wakeups']:
+            if not isinstance(item, dict):
+                raise Refusal('invalid policy snapshot')
+            policy.record_wakeup(item.get('worker'), item.get('reason'))
+        if type(doc['wakeups_consumed']) is not int or doc['wakeups_consumed'] < 0:
+            raise Refusal('invalid policy snapshot')
+        policy._wakeups_consumed = doc['wakeups_consumed']
+        if not isinstance(doc['decisions'], list) or len(doc['decisions']) > MAX_DECISIONS:
+            raise Refusal('invalid policy snapshot')
+        for item in doc['decisions']:
+            if not (isinstance(item, dict)
+                    and set(item) == {'turn_id', 'kind', 'effort', 'source', 'reason'}
+                    and isinstance(item['turn_id'], str)
+                    and TURN_ID.fullmatch(item['turn_id'])
+                    and item['kind'] in KINDS
+                    and isinstance(item['effort'], str)
+                    and item['effort'] in RANK
+                    and item['source'] in ('pending', 'manual', 'auto')
+                    and (item['reason'] is None or isinstance(item['reason'], str))):
+                raise Refusal('invalid policy snapshot')
+            policy._decisions.append(dict(item))
+        return policy
+UNIO_LEAD_EFFORT_PY
+cat > "$CONF_DIR/lib/lead-session.py" <<'UNIO_LEAD_SESSION_PY'
+#!/usr/bin/env python3
+# Unio — Copyright (C) 2026 Daniel Mitev
+# SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
+"""Native `unio lead-session` CLI — adaptive-effort owned lead controller.
+
+Experimental vertical slice for contract 0532-ADAPTIVE-LEAD-EFFORT-V1.
+It wires the managed lead core (`tools/managed-lead.py`), the owned Codex
+app-server bridge (`tools/managed-lead-codex.py`) and the adaptive effort
+policy (`tools/lead-effort.py`) into one explicit owner-controlled lead
+session per workspace. It is NOT a replacement dashboard and it never
+adopts an unmanaged TUI or connection.
+
+Guarantees kept by this controller:
+- explicit owner start with a goal file and model; one managed owner per
+  workspace recorded under `coord/lead-effort/owner.json`; conflicting or
+  unknown ownership refuses;
+- every turn is one explicit `run` with bounded owner input; the decided
+  effort is sent explicitly with `turn/start` on the same owned thread;
+  nothing is ever sent automatically, so zero model calls happen while
+  the lead waits for workers, and status/effort/worker/stop/output make
+  no provider calls at all;
+- STOP blocks new turns (both here and in the injected authority) without
+  killing workers, and nothing resumes it automatically: no command in
+  this slice clears a STOP, a stopped session stays stopped;
+- worker terminal events are explicit controlled events; each queues at
+  most one review wakeup consumed by exactly one later turn;
+- the provider-id mappings its own acknowledgements validated are
+  recorded durably (outside the core) and handed explicitly to the next
+  bridge; an unproven, incomplete or mismatched handoff refuses instead
+  of inventing recovery, and an uncertain (outcome_unknown) turn can
+  never be handed over;
+- the effective provider effort stays Unknown; only requested efforts,
+  reasons and immutable per-turn decisions are recorded.
+
+Honest boundary of this slice: the real owned app-server connection
+(thread creation, notification routing, native account/lead reservation)
+is NOT wired here. `--transport fake` selects a deterministic fake
+connection for tests and demos; the default refuses with an explicit
+message instead of fabricating authority. See docs/ADAPTIVE-LEAD-EFFORT.md.
+"""
+import argparse
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+
+HERE = Path(__file__).resolve().parent
+MAX_INPUT_BYTES = 8192
+MAX_WORKERS = 32
+FAKE_BEHAVIOR_BOUND = 4096
+FAKE_LOG_BOUND = 256 * 1024
+THREAD_FAKE = 'fake-owned-thread-1'
+ROUTE_DEFAULT = 'codex-app-server'
+BUDGET_DEFAULT = 'codex-shared'
+STATE_KEYS = frozenset(
+    'session_id workspace route budget_label model thread_id baseline_effort '
+    'transport fake_efforts goal_sha256 max_requests max_mappings '
+    'provider_turns policy stopped waiting workers created_at updated_at'.split())
+WORKER_STATES = ('registered', 'terminal')
+CAUTION = ('requested effort only; the effective provider effort remains Unknown; '
+           'no native lead is claimed by this slice')
+
+
+class Refusal(Exception):
+    """A controlled CLI refusal."""
+
+
+def _load_module(name, filename):
+    spec = importlib.util.spec_from_file_location(name, HERE / filename)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+ml = _load_module('unio_managed_lead', 'managed-lead.py')
+bx = _load_module('unio_managed_lead_codex', 'managed-lead-codex.py')
+pe = _load_module('unio_lead_effort', 'lead-effort.py')
+
+
+def _now():
+    import time
+    return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+
+
+def _state_dir(root):
+    path = ml.safe_path(Path(root) / 'coord' / 'lead-effort')
+    try:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path, 0o700)
+    except OSError as exc:
+        raise Refusal('lead effort state directory unavailable') from exc
+    return path
+
+
+def _state_path(root, session_id):
+    return _state_dir(root) / (session_id + '.json')
+
+
+def _owner_path(root):
+    return _state_dir(root) / 'owner.json'
+
+
+def _validate_state(doc):
+    def refuse():
+        raise Refusal('invalid lead session control state')
+
+    if not isinstance(doc, dict) or set(doc) != STATE_KEYS:
+        refuse()
+    for key in ('session_id', 'workspace', 'route', 'budget_label', 'model',
+                'thread_id', 'baseline_effort', 'transport', 'goal_sha256',
+                'created_at', 'updated_at'):
+        if not isinstance(doc.get(key), str) or not doc[key] or '\x00' in doc[key]:
+            refuse()
+    if not ml.SESSION_ID.fullmatch(doc['session_id']):
+        refuse()
+    if doc['transport'] != 'fake':
+        refuse()
+    efforts = doc.get('fake_efforts')
+    if not isinstance(efforts, list) or not efforts:
+        refuse()
+    for item in efforts:
+        if not isinstance(item, str) or not item or '\x00' in item:
+            refuse()
+    for key in ('max_requests', 'max_mappings'):
+        if type(doc.get(key)) is not int or not 1 <= doc[key] <= 256:
+            refuse()
+    if doc['max_mappings'] > bx.OWNED_MAPPING_BOUND:
+        refuse()
+    turns = doc.get('provider_turns')
+    if not isinstance(turns, dict) or len(turns) > doc['max_mappings']:
+        refuse()
+    seen = set()
+    for provider_turn, local in turns.items():
+        if (not isinstance(provider_turn, str) or not provider_turn
+                or not isinstance(local, dict)
+                or set(local) != {'turn_id', 'generation'}
+                or not isinstance(local.get('turn_id'), str)
+                or not ml.TURN_ID.fullmatch(local['turn_id'])
+                or type(local.get('generation')) is not int
+                or local['generation'] < 1):
+            refuse()
+        if local['turn_id'] in seen:
+            refuse()
+        seen.add(local['turn_id'])
+    if type(doc.get('stopped')) is not bool or type(doc.get('waiting')) is not bool:
+        refuse()
+    workers = doc.get('workers')
+    if not isinstance(workers, dict) or len(workers) > MAX_WORKERS:
+        refuse()
+    for worker_id, worker in workers.items():
+        if (not isinstance(worker_id, str) or not ml.LABEL.fullmatch(worker_id)
+                or not isinstance(worker, dict)
+                or set(worker) != {'state', 'updated_at'}
+                or worker['state'] not in WORKER_STATES
+                or not isinstance(worker['updated_at'], str)):
+            refuse()
+    if not isinstance(doc.get('policy'), dict):
+        refuse()
+    return doc
+
+
+def _load_state(root, session_id):
+    path = _state_path(root, session_id)
+    if not path.exists():
+        raise Refusal('unknown lead session control state')
+    data = ml._read_owned_file(path, ml.STATE_BOUND)
+    try:
+        doc = json.loads(data)
+    except (ValueError, UnicodeError, RecursionError):
+        raise Refusal('invalid lead session control state')
+    _validate_state(doc)
+    if doc['session_id'] != session_id:
+        raise Refusal('lead session identity mismatch')
+    return doc
+
+
+def _save_state(root, doc):
+    _validate_state(doc)
+    doc['updated_at'] = _now()
+    data = json.dumps(doc, ensure_ascii=False).encode('utf-8')
+    if len(data) > ml.STATE_BOUND:
+        raise Refusal('lead session control state bound exceeded')
+    ml._atomic_write(_state_path(root, doc['session_id']), data)
+
+
+def _load_owner(root):
+    path = _owner_path(root)
+    if not path.exists():
+        return None
+    data = ml._read_owned_file(path, 4096)
+    try:
+        doc = json.loads(data)
+    except (ValueError, UnicodeError, RecursionError):
+        raise Refusal('invalid workspace owner record')
+    if (not isinstance(doc, dict) or set(doc) != {'session_id'}
+            or not isinstance(doc['session_id'], str)
+            or not ml.SESSION_ID.fullmatch(doc['session_id'])):
+        raise Refusal('invalid workspace owner record')
+    return doc
+
+
+def _save_owner(root, session_id):
+    ml._atomic_write(_owner_path(root),
+                     json.dumps({'session_id': session_id}).encode('utf-8'))
+
+
+def _read_input(path, bound):
+    """Read one bounded private regular file as UTF-8 text."""
+    path = ml.safe_path(path)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        raise Refusal('unsafe input file')
+    try:
+        st = os.fstat(fd)
+        if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
+                or st.st_uid != os.getuid()):
+            raise Refusal('unsafe input file')
+        if st.st_size > bound:
+            raise Refusal('input bound exceeded')
+        with os.fdopen(fd, 'rb') as stream:
+            fd = None
+            data = stream.read(bound + 1)
+    except OSError as exc:
+        raise Refusal('input read failed') from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
+    if len(data) > bound:
+        raise Refusal('input bound exceeded')
+    try:
+        text = data.decode('utf-8')
+    except UnicodeError:
+        raise Refusal('input must be UTF-8 text')
+    if not text or '\x00' in text:
+        raise Refusal('invalid input')
+    return text
+
+
+class FakeLeadRPC:
+    """Deterministic fake owned app-server connection (test transport).
+
+    Records every rpc call to a bounded JSONL log so tests can prove call
+    counts. Implements only `model/list` and `turn/start`; lifecycle
+    notifications are delivered through the bound bridge exactly like the
+    real notification loop would. The behavior sidecar selects ok, reject,
+    raise or hold per call; `release_held` lets a held turn complete later
+    as a pure lifecycle event (zero model calls).
+    """
+
+    def __init__(self, log_path, thread, model, efforts, behavior_path):
+        self._log_path = log_path
+        self._thread = thread
+        self._model = model
+        self._efforts = tuple(efforts)
+        self._behavior_path = behavior_path
+        self.bridge = None
+        self.last_provider_turn = None
+
+    def _behavior(self):
+        if not self._behavior_path.exists():
+            return {'behavior': 'ok'}
+        data = ml._read_owned_file(self._behavior_path, FAKE_BEHAVIOR_BOUND)
+        try:
+            doc = json.loads(data)
+        except (ValueError, UnicodeError, RecursionError):
+            raise Refusal('invalid fake behavior record')
+        if not isinstance(doc, dict) or doc.get('behavior') not in (
+                None, 'ok', 'reject', 'raise', 'hold'):
+            raise Refusal('invalid fake behavior record')
+        if 'release_held' in doc and type(doc['release_held']) is not bool:
+            raise Refusal('invalid fake behavior record')
+        return doc
+
+    def _log(self, method, params):
+        line = (json.dumps({'method': method, 'params': params},
+                           ensure_ascii=False) + '\n').encode('utf-8')
+        if not self._log_path.exists():
+            try:
+                fd = os.open(self._log_path, os.O_WRONLY | os.O_CREAT
+                             | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            except OSError:
+                raise Refusal('unsafe fake rpc log')
+            os.close(fd)
+        else:
+            try:
+                size = os.stat(self._log_path).st_size
+            except OSError:
+                raise Refusal('fake rpc log unavailable')
+            if size + len(line) > FAKE_LOG_BOUND:
+                raise Refusal('fake rpc log bound exceeded')
+        ml._append_owned(self._log_path, line)
+
+    def _count_turn_starts(self):
+        if not self._log_path.exists():
+            return 0
+        data = ml._read_owned_file(self._log_path, FAKE_LOG_BOUND)
+        count = 0
+        for line in data.splitlines():
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                raise Refusal('fake rpc log corrupt')
+            if rec.get('method') == bx.START_METHOD:
+                count += 1
+        return count
+
+    def _notify(self, method, params):
+        if self.bridge is None:
+            raise Refusal('fake transport bridge not bound')
+        return self.bridge.handle_notification({'method': method,
+                                                 'params': params})
+
+    def _emit_started(self, provider_turn):
+        self._notify('turn/started', {'threadId': self._thread,
+                                       'turn': {'id': provider_turn,
+                                                'status': 'inProgress'}})
+
+    def __call__(self, method, params):
+        self._log(method, params)
+        if method == 'model/list':
+            return {'data': [{'id': self._model,
+                              'supportedReasoningEfforts': [
+                                  {'reasoningEffort': effort,
+                                   'description': 'fake effort ' + effort}
+                                  for effort in self._efforts]}]}
+        if method == bx.START_METHOD:
+            behavior = self._behavior().get('behavior') or 'ok'
+            if behavior == 'reject':
+                raise bx.RPCRejected('fake provider rejected turn/start')
+            if behavior == 'raise':
+                raise RuntimeError('fake owned connection failed')
+            provider_turn = 'provider-turn-%d' % (self._count_turn_starts())
+            self._emit_started(provider_turn)
+            self._notify('item/agentMessage/delta',
+                         {'threadId': self._thread, 'turnId': provider_turn,
+                          'itemId': 'item-1', 'delta': 'fake turn output'})
+            self.last_provider_turn = provider_turn
+            return {'turn': {'id': provider_turn, 'status': 'inProgress'}}
+        raise Refusal('fake transport method unsupported: ' + str(method))
+
+    def behavior(self):
+        """Read the fake behavior sidecar (a test fixture, never a secret)."""
+        return self._behavior()
+
+    def notify_terminal(self, provider_turn, status='completed'):
+        """Deliver one terminal lifecycle notification (zero rpc calls)."""
+        return self._notify('turn/completed',
+                            {'threadId': self._thread,
+                             'turn': {'id': provider_turn,
+                                      'status': status}})
+
+    def complete_last(self):
+        """Deliver the held fake turn's terminal lifecycle event."""
+        if self.last_provider_turn is None:
+            return False
+        if (self._behavior().get('behavior') or 'ok') != 'ok':
+            return False
+        self._notify('turn/completed',
+                     {'threadId': self._thread,
+                      'turn': {'id': self.last_provider_turn,
+                               'status': 'completed'}})
+        return True
+
+
+class EffortTransport:
+    """Core transport seam deciding the explicit effort at send time."""
+
+    def __init__(self, bridge, policy, kind, reason):
+        self.bridge = bridge
+        self.policy = policy
+        self.kind = kind
+        self.reason = reason
+        self.last_decision = None
+
+    def send_turn(self, facts):
+        if self.bridge is None:
+            raise ml.Refusal('owned transport unavailable')
+        if self.kind is not None:
+            kind, reason = self.kind, self.reason
+        else:
+            wakeup = self.policy.consume_wakeup()
+            if wakeup is not None:
+                kind = 'review'
+                reason = 'worker terminal wakeup: ' + wakeup['worker']
+            else:
+                kind = 'coordination'
+                reason = None
+        decision = self.policy.decide_turn(facts['turn_id'], kind, reason)
+        self.last_decision = dict(decision)
+        out = dict(facts)
+        out['effort'] = decision['effort']
+        return self.bridge.send_turn(out)
+
+
+def _authority(root, session_id):
+    def authority(facts):
+        state = _load_state(root, session_id)
+        owner = _load_owner(root)
+        if not isinstance(owner, dict) or owner.get('session_id') != session_id:
+            raise Refusal('workspace owner mismatch')
+        if facts.get('action') == 'next_turn' and state['stopped']:
+            raise Refusal('lead session stopped: new turns are blocked')
+        return {'role': 'lead', 'authorized': True}
+    return authority
+
+
+def _ownership(root, session_id):
+    def ownership(facts):
+        state = _load_state(root, session_id)
+        if state['workspace'] != str(ml.safe_path(Path(root))):
+            raise Refusal('workspace mismatch')
+        return True
+    return ownership
+
+
+def _open(root, state):
+    """Rebuild the session, bridge and policy from durable state.
+
+    The proven provider mappings are handed over explicitly. A session
+    with an unacknowledged (outcome_unknown) turn cannot be handed over;
+    it reopens for inspection only, so an identical request replay can
+    still return its recorded result while every new turn refuses.
+    """
+    policy = pe.AdaptiveEffortPolicy.load(state['policy'])
+    if state['transport'] != 'fake':
+        raise Refusal('only the fake test transport is wired in this slice; '
+                      'the real owned app-server connection seam is not '
+                      'implemented (see docs/ADAPTIVE-LEAD-EFFORT.md)')
+    directory = _state_dir(root)
+    rpc = FakeLeadRPC(directory / (state['session_id'] + '.rpclog.jsonl'),
+                      state['thread_id'], state['model'],
+                      state['fake_efforts'],
+                      directory / (state['session_id'] + '.fake.json'))
+    wrapper = EffortTransport(None, policy, None, None)
+    session = ml.LeadSession(ml.safe_path(Path(root)), state['session_id'],
+                             transport=wrapper,
+                             authority=_authority(root, state['session_id']),
+                             ownership=_ownership(root, state['session_id']))
+    try:
+        bridge = bx.CodexLeadTransport(
+            rpc, state['thread_id'], model=state['model'],
+            effort=state['baseline_effort'],
+            supported_efforts=policy.supported(),
+            max_mappings=state['max_mappings'],
+            prior_mappings=state['provider_turns'])
+        rpc.bridge = bridge
+        bridge.bind(session)
+    except (bx.Refusal, ml.Refusal):
+        # Inspection-only reopen: no sending is possible from this bind
+        # (the core refuses new turns on non-open states and the bridge
+        # refuses sends), but recorded replay results stay readable.
+        bridge = bx.CodexLeadTransport(
+            rpc, state['thread_id'], model=state['model'],
+            effort=state['baseline_effort'],
+            supported_efforts=policy.supported(),
+            max_mappings=state['max_mappings'])
+        rpc.bridge = bridge
+        bridge.bind(session)
+    wrapper.bridge = bridge
+    return session, bridge, rpc, policy, wrapper
+
+
+def _persist(root, state, policy, bridge, session):
+    """Persist policy and exactly the proven mappings for recorded turns."""
+    view = session.status(session_id=state['session_id'])
+    recorded = set()
+    for item in view['history']:
+        if item['status'] != 'rejected':
+            recorded.add(item['turn_id'])
+    if view['last_turn']:
+        recorded.add(view['last_turn']['turn_id'])
+    if view['turn']:
+        recorded.add(view['turn']['turn_id'])
+    merged = dict(state['provider_turns'])
+    for provider_turn, local in bridge.status()['mappings'].items():
+        merged[provider_turn] = local
+    state['provider_turns'] = {
+        provider_turn: local for provider_turn, local in merged.items()
+        if local['turn_id'] in recorded}
+    if len(state['provider_turns']) > state['max_mappings']:
+        raise Refusal('provider turn mapping bound exceeded')
+    state['policy'] = policy.snapshot()
+    _save_state(root, state)
+
+
+def _session_view(root, state, session, bridge, policy):
+    view = session.status(session_id=state['session_id'])
+    return {
+        'session_id': state['session_id'],
+        'workspace': state['workspace'],
+        'route': state['route'], 'budget_label': state['budget_label'],
+        'model': state['model'], 'thread_id': state['thread_id'],
+        'transport': state['transport'],
+        'baseline_effort': state['baseline_effort'],
+        'generation': view['generation'], 'state': view['state'],
+        'turn': view['turn'], 'last_turn': view['last_turn'],
+        'turns_completed': view['turns_completed'],
+        'turns_failed': view['turns_failed'],
+        'requests_recorded': view['requests_recorded'],
+        'max_requests': view['max_requests'],
+        'max_mappings': state['max_mappings'],
+        'provider_turns_recorded': len(state['provider_turns']),
+        'stopped': state['stopped'], 'waiting': state['waiting'],
+        'workers': {wid: dict(worker) for wid, worker in
+                    state['workers'].items()},
+        'effort': policy.status(),
+        'decisions': [dict(item) for item in policy.decisions()],
+        'goal_sha256': state['goal_sha256'],
+        'created_at': state['created_at'], 'updated_at': state['updated_at'],
+        'effective': 'Unknown',
+        'caution': CAUTION,
+    }
+
+
+def _emit(args, payload, human):
+    if getattr(args, 'json', False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(human)
+
+
+def _cmd_start(root, args):
+    if args.transport != 'fake':
+        raise Refusal(
+            'the real owned app-server connection seam (native thread '
+            'creation, notification routing, account/lead reservation) is '
+            'not implemented in this slice; only --transport fake is '
+            'available for tests and demos')
+    goal = _read_input(args.goal, MAX_INPUT_BYTES)
+    goal_sha = hashlib.sha256(goal.encode('utf-8')).hexdigest()
+    owner = _load_owner(root)
+    if isinstance(owner, dict) and owner['session_id']:
+        try:
+            existing = _load_state(root, owner['session_id'])
+        except Refusal:
+            existing = None
+        if existing is not None and not existing['stopped']:
+            raise Refusal('workspace already has an active managed lead '
+                          'session: ' + owner['session_id'])
+    if args.ceiling not in pe.RANK:
+        raise Refusal('ceiling must be a known effort no higher than xhigh')
+    efforts = [item.strip() for item in args.fake_efforts.split(',') if item.strip()]
+    if not efforts:
+        raise Refusal('no fake efforts advertised')
+    if args.effort != 'auto' and args.effort not in pe.RANK:
+        raise Refusal('unknown effort: ' + args.effort)
+    baseline = args.ceiling if args.effort == 'auto' else args.effort
+    policy = pe.AdaptiveEffortPolicy(ceiling=args.ceiling)
+    wrapper = EffortTransport(None, policy, None, None)
+    session = ml.create_lead_session(
+        ml.safe_path(Path(root)), transport=wrapper,
+        authority=_authority(root, 'pending'),
+        ownership=_ownership(root, 'pending'),
+        workspace=args.workspace, budget_label=args.budget_label,
+        route=args.route, model=args.model, effort=baseline,
+        max_requests=args.max_requests)
+    sid = session.session_id
+    directory = _state_dir(root)
+    rpc = FakeLeadRPC(directory / (sid + '.rpclog.jsonl'),
+                      THREAD_FAKE, args.model, efforts,
+                      directory / (sid + '.fake.json'))
+
+    def query():
+        reply = rpc('model/list', {'modelProvider': None, 'includeHidden': False})
+        data = reply.get('data') if isinstance(reply, dict) else None
+        if not isinstance(data, list):
+            raise Refusal('model/list returned no models')
+        for entry in data:
+            if isinstance(entry, dict) and entry.get('id') == args.model:
+                options = entry.get('supportedReasoningEfforts') or []
+                return [opt.get('reasoningEffort') for opt in options
+                        if isinstance(opt, dict)]
+        raise Refusal('owned model not advertised: ' + args.model)
+
+    policy.query_supported(query)
+    if args.effort != 'auto':
+        policy.set_manual(args.effort, 'explicit owner start effort')
+    bridge = bx.CodexLeadTransport(
+        rpc, THREAD_FAKE, model=args.model, effort=baseline,
+        supported_efforts=policy.supported(),
+        max_mappings=args.max_mappings, prior_mappings={})
+    rpc.bridge = bridge
+    bridge.bind(session)
+    wrapper.bridge = bridge
+    now = _now()
+    state = {
+        'session_id': sid, 'workspace': args.workspace, 'route': args.route,
+        'budget_label': args.budget_label, 'model': args.model,
+        'thread_id': THREAD_FAKE, 'baseline_effort': baseline,
+        'transport': 'fake', 'fake_efforts': efforts, 'goal_sha256': goal_sha,
+        'max_requests': args.max_requests, 'max_mappings': args.max_mappings,
+        'provider_turns': {}, 'policy': policy.snapshot(), 'stopped': False,
+        'waiting': False, 'workers': {}, 'created_at': now, 'updated_at': now,
+    }
+    _save_state(root, state)
+    _save_owner(root, sid)
+    view = _session_view(root, state, session, bridge, policy)
+    _emit(args, view, 'lead session started: %s (model %s, ceiling %s, '
+                      'baseline effort %s)'
+          % (sid, args.model, args.ceiling, baseline))
+    return 0
+
+
+def _cmd_run(root, args):
+    state = _load_state(root, args.session)
+    if state['stopped']:
+        raise Refusal('lead session stopped: new turns are blocked')
+    text = _read_input(args.file, MAX_INPUT_BYTES)
+    if args.kind is not None and args.kind not in pe.KINDS:
+        raise Refusal('unknown work kind: ' + args.kind)
+    session, bridge, rpc, policy, wrapper = _open(root, state)
+    wrapper.kind = args.kind
+    wrapper.reason = args.reason
+    view = session.status(session_id=state['session_id'])
+    if (view['state'] == 'running' and view['turn'] is not None
+            and rpc.behavior().get('release_held')):
+        # Fake-only lifecycle release of a held turn: a pure terminal
+        # notification for an already proven provider turn; zero rpc calls.
+        active = view['turn']['turn_id']
+        provider_turn = None
+        for pid, local in bridge.status()['mappings'].items():
+            if local['turn_id'] == active:
+                provider_turn = pid
+        if provider_turn is None:
+            raise Refusal('held turn has no proven provider mapping; '
+                          'refusing to invent a release')
+        rpc.notify_terminal(provider_turn)
+        view = session.status(session_id=state['session_id'])
+    generation = view['generation']
+    try:
+        result = session.submit_next_turn(
+            session_id=state['session_id'], generation=generation,
+            request_id=args.request_id, text=text)
+    finally:
+        _persist(root, state, policy, bridge, session)
+    decision = wrapper.last_decision
+    if decision is None:
+        for item in policy.decisions():
+            if item['turn_id'] == result.get('turn_id'):
+                decision = item
+    completed = False
+    if result.get('state') == 'accepted' and rpc.complete_last():
+        completed = True
+    payload = {
+        'session_id': state['session_id'], 'request_id': args.request_id,
+        'generation': result.get('generation'),
+        'turn_id': result.get('turn_id'), 'status': result.get('state'),
+        'effort': decision['effort'] if decision else None,
+        'kind': decision['kind'] if decision else None,
+        'source': decision['source'] if decision else None,
+        'turn_completed': completed, 'effective': 'Unknown',
+        'caution': CAUTION,
+    }
+    _emit(args, payload, 'turn %s: %s (effort %s, kind %s, source %s)'
+          % (result.get('turn_id'), result.get('state'),
+             payload['effort'], payload['kind'], payload['source']))
+    return 0
+
+
+def _cmd_status(root, args):
+    state = _load_state(root, args.session)
+    session, bridge, rpc, policy, wrapper = _open(root, state)
+    view = _session_view(root, state, session, bridge, policy)
+    _emit(args, view, 'lead session %s: state %s, generation %d, effort mode '
+                      '%s, stopped %s, waiting %s'
+          % (state['session_id'], view['state'], view['generation'],
+             view['effort']['mode'], view['stopped'], view['waiting']))
+    return 0
+
+
+def _cmd_effort(root, args):
+    state = _load_state(root, args.session)
+    session, bridge, rpc, policy, wrapper = _open(root, state)
+    if args.control == 'show':
+        view = _session_view(root, state, session, bridge, policy)
+        _emit(args, view['effort'], 'effort mode %s, ceiling %s, requested %s'
+              % (view['effort']['mode'], view['effort']['ceiling'],
+                 view['effort']['requested']))
+        return 0
+    if args.control == 'auto':
+        policy.set_auto(args.reason)
+        human = 'automatic effort selection resumed'
+    elif args.control == 'manual':
+        policy.set_manual(args.effort, args.reason)
+        human = 'manual effort override: %s (auto suspended)' % args.effort
+    else:
+        policy.request_next_turn(args.effort, args.reason)
+        human = ('pending next-turn effort request: %s (applied only after '
+                 'the active turn ends)' % args.effort)
+    _persist(root, state, policy, bridge, session)
+    status = policy.status()
+    status['session_id'] = state['session_id']
+    status['stopped'] = state['stopped']
+    _emit(args, status, human)
+    return 0
+
+
+def _cmd_worker(root, args):
+    state = _load_state(root, args.session)
+    session, bridge, rpc, policy, wrapper = _open(root, state)
+    if args.control == 'register':
+        if not ml.LABEL.fullmatch(args.worker):
+            raise Refusal('invalid worker id')
+        if args.worker in state['workers']:
+            raise Refusal('worker already registered: ' + args.worker)
+        if len(state['workers']) >= MAX_WORKERS:
+            raise Refusal('worker registry bound exceeded')
+        state['workers'][args.worker] = {'state': 'registered',
+                                        'updated_at': _now()}
+        human = 'worker registered: ' + args.worker
+    elif args.control == 'wait':
+        if not state['workers']:
+            raise Refusal('no registered workers to wait on')
+        state['waiting'] = True
+        human = ('lead waiting on %d registered worker(s); no model calls '
+                 'happen while waiting' % len(state['workers']))
+    else:
+        worker = state['workers'].get(args.worker)
+        if worker is None:
+            raise Refusal('unknown worker: ' + args.worker)
+        if worker['state'] == 'terminal':
+            raise Refusal('worker terminal event already recorded: '
+                          + args.worker)
+        worker['state'] = 'terminal'
+        worker['updated_at'] = _now()
+        policy.record_wakeup(args.worker, 'worker terminal event')
+        human = ('worker terminal event recorded: %s (one review wakeup '
+                 'queued)' % args.worker)
+    _persist(root, state, policy, bridge, session)
+    payload = {
+        'session_id': state['session_id'], 'control': args.control,
+        'worker': getattr(args, 'worker', None),
+        'workers': {wid: dict(w) for wid, w in
+                    state['workers'].items()},
+        'waiting': state['waiting'],
+        'pending_wakeups': policy.pending_wakeups(),
+        'stopped': state['stopped'], 'effective': 'Unknown',
+    }
+    _emit(args, payload, human)
+    return 0
+
+
+def _cmd_stop(root, args):
+    state = _load_state(root, args.session)
+    session, bridge, rpc, policy, wrapper = _open(root, state)
+    state['stopped'] = True
+    _persist(root, state, policy, bridge, session)
+    payload = {
+        'session_id': state['session_id'], 'stopped': True,
+        'workers': {wid: dict(w) for wid, w in state['workers'].items()},
+        'note': ('STOP blocks new turns; workers are not killed and nothing '
+                 'resumes automatically; no command in this slice clears '
+                 'a STOP'),
+    }
+    _emit(args, payload, 'lead session stopped: new turns are blocked; '
+                          'workers keep running; no automatic resume')
+    return 0
+
+
+def _cmd_output(root, args):
+    state = _load_state(root, args.session)
+    session, bridge, rpc, policy, wrapper = _open(root, state)
+    page = session.read_output(session_id=state['session_id'],
+                               after=args.after, limit=args.limit)
+    _emit(args, page, '%d journal record(s) after cursor %d'
+          % (len(page['records']), args.after))
+    return 0
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog='unio lead-session',
+        description='Adaptive-effort managed lead session controller '
+                    '(experimental; see docs/ADAPTIVE-LEAD-EFFORT.md)')
+    parser.add_argument('--project', required=True,
+                        help='native workspace root')
+    sub = parser.add_subparsers(dest='command', required=True)
+
+    start = sub.add_parser('start', help='explicit owner start with a goal '
+                                         'file, model and adaptive effort')
+    start.add_argument('--goal', required=True, help='owner goal file')
+    start.add_argument('--model', required=True, help='owned model id')
+    start.add_argument('--route', default=ROUTE_DEFAULT)
+    start.add_argument('--budget-label', default=BUDGET_DEFAULT)
+    start.add_argument('--workspace', default=None,
+                       help='workspace label (default: project root)')
+    start.add_argument('--ceiling', default=pe.DEFAULT_CEILING,
+                       help='supported planning/review ceiling (default: '
+                            'xhigh)')
+    start.add_argument('--effort', default='auto',
+                       help='auto or an explicit supported effort '
+                            '(default: auto)')
+    start.add_argument('--max-requests', type=int, default=ml.MAX_REQUESTS)
+    start.add_argument('--max-mappings', type=int,
+                       default=bx.OWNED_MAPPING_BOUND,
+                       help='explicit provider-turn mapping bound (1..64)')
+    start.add_argument('--transport', default='owned', choices=('owned', 'fake'))
+    start.add_argument('--fake-efforts', default='low,medium,high,xhigh',
+                       help='comma-separated efforts advertised by the fake '
+                            'owned connection')
+    start.add_argument('--json', action='store_true')
+
+    run = sub.add_parser('run', help='submit one explicit owner turn')
+    run.add_argument('--file', required=True, help='bounded turn input file')
+    run.add_argument('--request-id', required=True)
+    run.add_argument('--kind', choices=pe.KINDS, default=None,
+                     help='explicit work kind (default: review when a '
+                          'worker wakeup is pending, else coordination)')
+    run.add_argument('--reason', default=None)
+    run.add_argument('--session', default=None)
+    run.add_argument('--json', action='store_true')
+
+    status = sub.add_parser('status', help='read-only session view')
+    status.add_argument('--session', default=None)
+    status.add_argument('--json', action='store_true')
+
+    effort = sub.add_parser('effort', help='effort controls')
+    effort_sub = effort.add_subparsers(dest='control', required=True)
+    for name, help_text in (
+            ('show', 'show the effort policy state'),
+            ('auto', 'resume automatic selection'),
+            ('manual', 'manual override (suspends auto)'),
+            ('request', 'pending effort for the next turn only')):
+        sub_parser = effort_sub.add_parser(name, help=help_text)
+        if name in ('manual', 'request'):
+            sub_parser.add_argument('effort', help='supported effort')
+        sub_parser.add_argument('--reason', default=None)
+        sub_parser.add_argument('--session', default=None)
+        sub_parser.add_argument('--json', action='store_true')
+
+    worker = sub.add_parser('worker', help='worker registration and waiting')
+    worker_sub = worker.add_subparsers(dest='control', required=True)
+    for name, help_text in (
+            ('register', 'register one worker'),
+            ('wait', 'mark the lead as waiting (zero model calls)'),
+            ('terminal', 'record one worker terminal event (one wakeup)')):
+        sub_parser = worker_sub.add_parser(name, help=help_text)
+        if name in ('register', 'terminal'):
+            sub_parser.add_argument('worker', help='worker id')
+        sub_parser.add_argument('--session', default=None)
+        sub_parser.add_argument('--json', action='store_true')
+
+    stop = sub.add_parser('stop', help='STOP: block new turns without '
+                                      'killing workers; never auto-resumes')
+    stop.add_argument('--session', default=None)
+    stop.add_argument('--json', action='store_true')
+
+    output = sub.add_parser('output', help='read the bounded output journal')
+    output.add_argument('--after', type=int, default=0)
+    output.add_argument('--limit', type=int, default=ml.DEFAULT_LIMIT)
+    output.add_argument('--session', default=None)
+    output.add_argument('--json', action='store_true')
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    root = ml.safe_path(Path(args.project))
+    if getattr(args, 'workspace', None) is None:
+        args.workspace = str(root)
+    if hasattr(args, 'session') and args.session is None:
+        owner = _load_owner(root)
+        if owner is None:
+            raise Refusal('no managed lead session in this workspace; '
+                          'start one first')
+        args.session = owner['session_id']
+    if args.command == 'start':
+        return _cmd_start(root, args)
+    if args.command == 'run':
+        return _cmd_run(root, args)
+    if args.command == 'status':
+        return _cmd_status(root, args)
+    if args.command == 'effort':
+        return _cmd_effort(root, args)
+    if args.command == 'worker':
+        return _cmd_worker(root, args)
+    if args.command == 'stop':
+        return _cmd_stop(root, args)
+    if args.command == 'output':
+        return _cmd_output(root, args)
+    raise Refusal('unknown command: ' + str(args.command))
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (Refusal, ml.Refusal, pe.Refusal, bx.Refusal) as exc:
+        print('unio lead-session: ' + str(exc), file=sys.stderr)
+        sys.exit(1)
+UNIO_LEAD_SESSION_PY
+cat > "$CONF_DIR/lib/ADAPTIVE-LEAD-EFFORT.md" <<'UNIO_ADAPTIVE_LEAD_EFFORT_MD'
+# Adaptive lead effort (experimental)
+
+Status: experimental vertical slice for contract
+`docs/development/contracts/0532-ADAPTIVE-LEAD-EFFORT-V1.md` (0.5.x series,
+unreleased). `unio lead-session` is an opt-in managed lead session with
+adaptive requested effort. It is not a replacement dashboard, it never adopts
+an unmanaged TUI or connection, and `unio lead` keeps its existing
+budget-reservation meaning.
+
+## What it does
+
+- One managed lead session per workspace, started explicitly by the owner
+  with a goal file and model. The session records the workspace, an opaque
+  shared-budget label, route, model, baseline effort and Unknown effective
+  settings. No credentials or account ids are stored.
+- Automatic effort selection: routine coordination turns request `low`;
+  substantive planning and review turns request the configurable ceiling
+  (default `xhigh`, never higher than `xhigh`). The supported model efforts
+  are queried exactly once per session on an explicitly authorized owned
+  connection (the `model/list` seam); anything not advertised — or outside
+  the known rank `low`, `medium`, `high`, `xhigh` (for example `max` or
+  `ultra`) — is refused. There is no fallback effort.
+- Every turn is one explicit `run` command. The decided effort is sent
+  explicitly as the `effort` override of that one `turn/start` on the same
+  owned thread. The app-server schema has no effort override on `turn/steer`,
+  so an effort change is only ever applied by the next turn start; the
+  effective provider-side effort remains Unknown everywhere.
+- Zero model calls while waiting: nothing is ever sent automatically. Status,
+  effort, worker, stop and output commands make no provider calls at all.
+- Worker terminal events are explicit controlled events. Each queues at most
+  one review wakeup; the next turn without an explicit work kind consumes
+  exactly one wakeup and is classified as review. Heartbeat or status
+  polling can never create a wakeup or trigger inference.
+- Manual override suspends automatic selection until `effort auto` is
+  selected again. `effort request` records a pending effort that is applied
+  only by the next turn, never mid-turn.
+- STOP blocks new turns without killing workers, and nothing resumes it
+  automatically. No command in this slice clears a STOP; a stopped session
+  stays stopped and a new session must be started explicitly.
+- Per-turn decisions (turn id, kind, effort, source, reason) are immutable and
+  visible in `status`, together with all limits.
+
+## CLI
+
+```sh
+unio lead-session start --goal FILE --model MODEL [--ceiling xhigh]
+                        [--effort auto|low|medium|high|xhigh]
+                        [--max-requests N] [--max-mappings N]
+                        [--transport fake] [--fake-efforts low,medium,high,xhigh]
+                        [--json]
+unio lead-session run --file FILE --request-id ID
+                      [--kind coordination|planning|review] [--json]
+unio lead-session status [--json]
+unio lead-session effort show|auto|manual EFFORT|request EFFORT [--reason R]
+unio lead-session worker register ID|wait|terminal ID [--json]
+unio lead-session stop [--json]
+unio lead-session output [--after N] [--limit N] [--json]
+```
+
+- `start` requires an explicit owner goal file (bounded, private, regular,
+  UTF-8, at most 8 KiB) and model. `--ceiling` bounds planning/review; it
+  must be a known rank no higher than `xhigh`. `--effort auto` records the
+  ceiling as the baseline requested effort; an explicit effort starts in
+  manual mode. `--max-mappings` is the explicit provider-turn mapping bound
+  (1..64; the legacy bridge default of four is unchanged for non-lead use).
+- `run` submits one bounded owner turn (at most 8 KiB). Without `--kind`,
+  the turn is review when a wakeup is pending, else coordination. Request
+  ids are idempotent: an identical replay returns the recorded result with
+  zero new provider calls; changed content refuses.
+- `effort manual` suspends auto; `effort auto` resumes it; `effort request`
+  is pending for the next turn only (a newer request replaces an older
+  pending one; manual clears it).
+- `worker register` records a worker; `worker wait` marks the lead as
+  waiting; `worker terminal` records one terminal event and queues one
+  review wakeup. Duplicate terminal events for the same worker refuse.
+- `stop` sets STOP. Workers keep running; new turns refuse; there is no
+  automatic or manual resume in this slice.
+- `output` reads the bounded ordered journal with explicit gap and
+  truncation flags (same limits as managed sessions).
+
+## Ownership, authority and recovery
+
+- `coord/lead-effort/owner.json` records the one managed lead session per
+  workspace. A second `start` refuses while the recorded session is live;
+  a stopped session may be replaced by an explicit new start. Unknown or
+  mismatched ownership refuses every control operation.
+- The controller injects the authority and ownership callbacks required by
+  the managed lead core; STOP is enforced both by the controller and by the
+  injected authority, before any transport call.
+- Provider turn ids validated by acknowledgements are recorded durably
+  outside the core and handed explicitly to the next bridge instance. A
+  handoff is proven only when it covers exactly the session's recorded
+  non-rejected turns with matching generations; anything missing, extra or
+  mismatched refuses. An unacknowledged (outcome_unknown) turn can never be
+  handed over: the session reopens for inspection only, an identical replay
+  still returns its recorded result, and every new turn refuses. There is
+  no id eviction, rebinding, automatic resend or new thread.
+
+## Honest boundary of this slice
+
+The real owned app-server connection — native thread creation, notification
+routing, and the native account/lead reservation that counts the registered
+lead exactly once — is not wired in this slice. The default transport refuses
+with an explicit message; `--transport fake` selects a deterministic fake
+owned connection for tests and demos that implements only `model/list` and
+`turn/start` and records every call to a bounded log. No real Codex
+invocation, thread, turn or worker happens during development or validation.
+Native cross-workspace and unmanaged visibility remain Unknown.
+
+## Components
+
+- `tools/lead-effort.py` — importable adaptive effort policy (query once,
+  rank and ceiling, manual/pending controls, wakeups, immutable decisions).
+- `tools/managed-lead.py` — managed lead session core (unchanged).
+- `tools/managed-lead-codex.py` — owned Codex bridge with opt-in per-turn
+  effort and explicit handoff; legacy defaults preserved exactly.
+- `tools/lead-session.py` — the `unio lead-session` CLI controller.
+- Tests: `tests/unio-lead-effort.py`, `tests/unio-lead-session.py`,
+  `tests/unio-managed-lead.py`, `tests/unio-managed-lead-codex.py`.
+UNIO_ADAPTIVE_LEAD_EFFORT_MD
+# END EMBEDDED MANAGED LEAD
 # BEGIN EMBEDDED MODEL EXPERIENCE
 # Check every generated destination before replacing any experience file.
 for experience_dir in "$CONF_DIR/lib"; do
@@ -38946,6 +41935,13 @@ switches
   unio session status WORKER [--json]
   unio session output WORKER [--after N] [--limit N] [--json]
   unio session send WORKER --file PATH --request-id ID [--json]
+  unio lead-session start --goal FILE --model MODEL [--ceiling xhigh]
+                                     [--effort auto|low|medium|high|xhigh]
+                                     [--transport fake] [--json]
+                                     experimental adaptive-effort managed lead
+                                     session; explicit owner start, per-turn
+                                     requested effort, worker wakeups, STOP;
+                                     effective effort stays Unknown
   unio fleet [--project PATH] [--json] [--timeout seconds]
                                      local read-only snapshot: agent admission,
                                      occupied shared groups, STOP, cached auth
@@ -39091,6 +42087,10 @@ case "${1:-help}" in
     shift
     root=$(find_root) || die "session requires a native workspace"
     exec python3 -I -S -B "$CONF_DIR/lib/codex-worker.py" session --project "$root" "$@";;
+  lead-session)
+    shift
+    root=$(find_root) || die "lead-session requires a native workspace"
+    exec python3 -I -S -B "$CONF_DIR/lib/lead-session.py" --project "$root" "$@";;
   experience) shift; cmd_experience "$@";;
   dispatch) shift; cmd_dispatch "$@";;
   schedule) shift; cmd_schedule "$@";;
@@ -45183,6 +48183,13 @@ _unio() {
             output) COMPREPLY=( $(compgen -W "--after --limit --json" -- "$cur") );;
             send) COMPREPLY=( $(compgen -W "--file --request-id --json" -- "$cur") );;
           esac;;
+      esac;;
+    lead-session)
+      case "$COMP_CWORD:${COMP_WORDS[2]}" in
+        2:*) COMPREPLY=( $(compgen -W "start run status effort worker stop output" -- "$cur") );;
+        3:effort) COMPREPLY=( $(compgen -W "show auto manual request" -- "$cur") );;
+        3:worker) COMPREPLY=( $(compgen -W "register wait terminal" -- "$cur") );;
+        4:manual|4:request) COMPREPLY=( $(compgen -W "low medium high xhigh" -- "$cur") );;
       esac;;
     policy) COMPREPLY=( $(compgen -W "--json" -- "$cur") );;
     save)
