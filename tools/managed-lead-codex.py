@@ -91,7 +91,9 @@ anything missing, extra or mismatched is refused as unproven — there is
 no id eviction, rebinding or invented recovery, and an unacknowledged
 (outcome_unknown) turn can never be handed over. ``max_mappings`` is an
 explicitly bounded owned-session option (1..64) replacing the legacy
-default of four only when the caller asks for it.
+default of four only when the caller asks for it. Reaching the bound is
+checked before any RPC and reported as ``rejected`` (known non-delivery,
+``rpc_sent: False``), never as uncertain.
 
 
 
@@ -346,8 +348,12 @@ class CodexLeadTransport:
         if self._inherited:
             raise Refusal('bound for inspection only; explicit handoff required')
         if len(self._local) >= self._max_mappings:
-            self._last_send = {'status': 'uncertain',
-                               'reason': 'mapping capacity exhausted; explicit handoff required'}
+            # Local bound reached before any RPC: known non-delivery (zero
+            # turn/start), never uncertain, so it cannot poison the session.
+            self._last_send = {'status': 'rejected', 'rpc_sent': False,
+                               'reason': 'mapping capacity exhausted before any '
+                                         'rpc; known non-delivery; explicit '
+                                         'handoff or a new session required'}
             return dict(self._last_send)
         effort = self._effort
         if 'effort' in facts:

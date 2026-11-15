@@ -429,21 +429,32 @@ def run_suite(base):
         reuse.rpc.before = [started(THREAD, 'remember-0'),
                             completed(THREAD, 'remember-0')]
         uncertain = reuse.submit('reuse')
-        assert uncertain['state'] == 'uncertain'
+        full = count >= br.MAX_MAPPINGS
+        # At capacity no rpc is made: known non-delivery (rejected), never
+        # uncertain; below capacity the reused id stays uncertain.
+        assert uncertain['state'] == ('rejected' if full else 'uncertain')
         assert reuse.bridge._local['remember-0'] == original
         assert reuse.bridge.status()['turn_mappings'] == count
         assert len(reuse.rpc.calls) == count + (count < br.MAX_MAPPINGS)
-        assert reuse.view()['state'] == 'outcome_unknown'
+        expected_state = 'terminal' if full else 'outcome_unknown'
+        assert reuse.view()['state'] in ((expected_state, 'idle') if full
+                                         else (expected_state,))
         assert reuse.view()['generation'] == count + 1
         before = reuse.output()['records']
         reuse.notify(completed(THREAD, 'remember-0'))
-        assert reuse.view()['state'] == 'outcome_unknown'
+        if not full:
+            assert reuse.view()['state'] == 'outcome_unknown'
         assert reuse.view()['generation'] == count + 1
         assert reuse.output()['records'] == before
-        assert reuse.submit('reuse')['state'] == 'uncertain'
-        assert 'not open' in refuses(reuse.submit, 'reuse-new')
+        assert reuse.submit('reuse')['state'] == ('rejected' if full
+                                                  else 'uncertain')
+        if full:
+            assert reuse.bridge.status()['last_send']['rpc_sent'] is False
+            assert reuse.view()['state'] != 'outcome_unknown'
+        else:
+            assert 'not open' in refuses(reuse.submit, 'reuse-new')
         assert len(reuse.rpc.calls) == count + (count < br.MAX_MAPPINGS)
-        assert 'handoff required' in reuse.bridge.status()['last_send']['reason']
+        assert 'handoff' in reuse.bridge.status()['last_send']['reason']
         only_turn_start(reuse.rpc)
     # Old known identities alone do not contradict an explicit rejection.
     stale = Harness(base)
@@ -704,10 +715,13 @@ def optin_suite(base):
     assert h.bridge.status()['handoff_required'] is True
     h.rpc.behavior = ('reply', ack('m2'))
     result = h.submit('m2')
-    assert result['state'] == 'uncertain'
+    # Known local non-delivery before any rpc: rejected, never uncertain.
+    assert result['state'] == 'rejected'
     assert 'mapping capacity exhausted' in \
         h.bridge.status()['last_send']['reason']
+    assert h.bridge.status()['last_send']['rpc_sent'] is False
     assert len(h.rpc.calls) == 2
+    assert h.session.status(session_id=h.sid)['state'] != 'outcome_unknown'
     print('ok opt-in per-turn effort, explicit handoff and mapping bound',
           flush=True)
 
