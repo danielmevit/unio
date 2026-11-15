@@ -24895,9 +24895,12 @@ Frozen contract:
   proves it. No persistent provider-id schema is added to the core.
 
 Opt-in adaptive effort (contract 0532-ADAPTIVE-LEAD-EFFORT-V1), legacy
-default preserved exactly: when ``supported_efforts`` is not given the
-bridge behaves byte-for-byte as before and rejects any per-turn effort in
-the facts. When the caller supplies the explicit supported set (queried
+default preserved with ONE intentional exception: when
+``supported_efforts`` is not given the bridge behaves as before and rejects
+any per-turn effort in the facts, except that local mapping-capacity
+exhaustion now returns ``rejected`` (``rpc_sent: false``, known
+non-delivery) instead of ``uncertain`` (contract
+0531-ADAPTIVE-REVIEW-CORRECTIONS-V7; see docs/development/MANAGED-LEAD-CODEX.md). When the caller supplies the explicit supported set (queried
 once on the owned connection), the pinned effort must be in it and
 ``send_turn`` accepts one optional ``facts['effort']``: it must be a
 member of the supported set (anything else — max, ultra, unadvertised —
@@ -29065,7 +29068,9 @@ validation. No real model calls, billing, or credentials are used.
   tier slot counting, lock-backed lease and setter guards.
 - `tools/managed-lead.py` — managed lead session core (unchanged).
 - `tools/managed-lead-codex.py` — owned Codex bridge with opt-in per-turn
-  effort and explicit handoff; legacy defaults preserved exactly.
+  effort and explicit handoff; legacy defaults preserved, except the
+  intentional V7 change that local mapping-capacity exhaustion returns
+  `rejected` (known non-delivery) instead of `uncertain`.
 - `tools/lead-session-codex.py` — owned Codex connection lifecycle and notification
   pumps.
 - `tools/lead-session.py` — the `unio lead-session` CLI controller.
@@ -51166,9 +51171,12 @@ _unio() {
       esac;;
     lead-session)
       case "$COMP_CWORD:${COMP_WORDS[2]}" in
-        2:*) COMPREPLY=( $(compgen -W "start run status effort worker stop output" -- "$cur") );;
-        3:start) COMPREPLY=( $(compgen -W "--goal --model --ceiling --effort --transport --codex-binary --max-requests --max-mappings --json" -- "$cur") );;
-        3:run) COMPREPLY=( $(compgen -W "--file --request-id --kind --reason --turn-wait --json" -- "$cur") );;
+        2:*) COMPREPLY=( $(compgen -W "start run recover status effort worker stop output" -- "$cur") );;
+        3:start) COMPREPLY=( $(compgen -W "--goal --model --route --budget-label --workspace --ceiling --effort --transport --codex-binary --max-requests --max-mappings --json" -- "$cur") );;
+        3:run) COMPREPLY=( $(compgen -W "--file --request-id --kind --reason --turn-wait --interrupt-drain --session --json" -- "$cur") );;
+        3:recover) COMPREPLY=( $(compgen -W "--interrupt --drain --session --json" -- "$cur") );;
+        3:status|3:stop) COMPREPLY=( $(compgen -W "--session --json" -- "$cur") );;
+        3:output) COMPREPLY=( $(compgen -W "--after --limit --session --json" -- "$cur") );;
         3:effort) COMPREPLY=( $(compgen -W "show auto manual request" -- "$cur") );;
         3:worker) COMPREPLY=( $(compgen -W "register wait terminal" -- "$cur") );;
         4:manual|4:request) COMPREPLY=( $(compgen -W "low xhigh" -- "$cur") );;

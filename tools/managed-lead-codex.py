@@ -69,9 +69,12 @@ Frozen contract:
   proves it. No persistent provider-id schema is added to the core.
 
 Opt-in adaptive effort (contract 0532-ADAPTIVE-LEAD-EFFORT-V1), legacy
-default preserved exactly: when ``supported_efforts`` is not given the
-bridge behaves byte-for-byte as before and rejects any per-turn effort in
-the facts. When the caller supplies the explicit supported set (queried
+default preserved with ONE intentional exception: when
+``supported_efforts`` is not given the bridge behaves as before and rejects
+any per-turn effort in the facts, except that local mapping-capacity
+exhaustion now returns ``rejected`` (``rpc_sent: false``, known
+non-delivery) instead of ``uncertain`` (contract
+0531-ADAPTIVE-REVIEW-CORRECTIONS-V7; see docs/development/MANAGED-LEAD-CODEX.md). When the caller supplies the explicit supported set (queried
 once on the owned connection), the pinned effort must be in it and
 ``send_turn`` accepts one optional ``facts['effort']``: it must be a
 member of the supported set (anything else — max, ultra, unadvertised —

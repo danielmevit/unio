@@ -257,6 +257,13 @@ complete_words "$entry" update clis ''
 want '--check --json antigravity vibe grok copilot opencode claude codex' 'update clis options'
 complete_words "$entry" update clis --ch;     want '--check' 'update clis --ch'
 complete_words "$entry" update clis antigrav; want 'antigravity' 'update clis antigrav'
+# lead-session offers the documented recovery path and its current flags.
+complete_words "$entry" lead-session ''
+want 'start run recover status effort worker stop output' 'lead-session subcommands'
+complete_words "$entry" lead-session recover ''
+want '--interrupt --drain --session --json' 'lead-session recover options'
+complete_words "$entry" lead-session run --interrupt-
+want '--interrupt-drain' 'lead-session run --interrupt-'
 cd "$2"
 for command in verify result handoff review; do
   complete_words "$entry" "$command" '';    want 'w1' "$command worker"

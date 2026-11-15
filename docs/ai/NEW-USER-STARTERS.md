@@ -138,7 +138,7 @@ Requirements:
 Commands, from the project folder:
 
 ```sh
-# 1. Start: one owned thread, AUTO effort (LOW coordination, XHIGH ceiling)
+# 1. Start: one owned thread; effort not started (policy adaptive: LOW coordination, XHIGH planning/review)
 unio lead-session start --goal goal.txt --model <codex-model>
 
 # 2. One lead turn per command. You write each turn's input to a file.

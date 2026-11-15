@@ -305,7 +305,9 @@ validation. No real model calls, billing, or credentials are used.
   tier slot counting, lock-backed lease and setter guards.
 - `tools/managed-lead.py` — managed lead session core (unchanged).
 - `tools/managed-lead-codex.py` — owned Codex bridge with opt-in per-turn
-  effort and explicit handoff; legacy defaults preserved exactly.
+  effort and explicit handoff; legacy defaults preserved, except the
+  intentional V7 change that local mapping-capacity exhaustion returns
+  `rejected` (known non-delivery) instead of `uncertain`.
 - `tools/lead-session-codex.py` — owned Codex connection lifecycle and notification
   pumps.
 - `tools/lead-session.py` — the `unio lead-session` CLI controller.
