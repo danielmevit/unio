@@ -514,8 +514,33 @@ def test_owned_lease_and_setter_guard(base_dir):
     print('ok owned lease lock mutual exclusion and setter guard', flush=True)
 
 
+def test_policy_byte_bound_native_parity(base_dir):
+    # Native work-policy MAX_STATE is 65536 bytes: a valid document up to
+    # that size is read; one byte more still fails closed.
+    assert lp.MAX_POLICY_BYTES == 65536
+    root = Path(base_dir) / 'policy-bound'
+    coord = root / 'coord'
+    coord.mkdir(parents=True)
+    doc = {'schema_version': 1, 'mode': 'yolo', 'tier': 'low',  # stored legacy value for Fast
+           'lead_agent': 'codex', 'accounts': {'codex': 'codex-shared'},
+           'updated_at': '2026-11-15T12:00:00Z'}
+    base_text = json.dumps(doc)
+    pad = 65536 - len(base_text.encode())
+    text = base_text[:-1] + ' ' * pad + '}'
+    assert len(text.encode()) == 65536
+    (coord / 'work-policy.json').write_text(text, encoding='utf-8')
+    assert lp.read_project_policy(root)['lead_agent'] == 'codex'
+    (coord / 'work-policy.json').write_text(text[:-1] + ' }', encoding='utf-8')
+    assert 'oversized' in refuses(lp.read_project_policy, root)
+    (coord / 'work-policy.json').write_text('{"schema_version": 1,', encoding='utf-8')
+    assert 'malformed' in refuses(lp.read_project_policy, root)
+    print('ok policy byte bound matches native 65536; oversize and malformed '
+          'fail closed', flush=True)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='lead-session-policy-') as base:
+        test_policy_byte_bound_native_parity(base)
         test_default_installed_off_hold(base)
         test_explicit_conf_off_holds(base)
         test_project_off_hold_observation(base)

@@ -49,6 +49,7 @@ FAKE_TEMPLATE = '''#!/usr/bin/env python3
 """Generated fake Codex app-server for offline owned lead-session tests."""
 import json
 import os
+import select
 import sys
 import time
 from pathlib import Path
@@ -81,15 +82,32 @@ def save_state(doc):
     os.replace(tmp, STATE_PATH)
 
 
-def behavior():
+def sidecar(key, default):
     if BEHAVIOR_PATH.exists():
         try:
             doc = json.loads(BEHAVIOR_PATH.read_text())
         except ValueError:
-            return 'ok'
-        if isinstance(doc, dict) and isinstance(doc.get('behavior'), str):
-            return doc['behavior']
-    return 'ok'
+            return default
+        if isinstance(doc, dict) and isinstance(doc.get(key), str):
+            return doc[key]
+    return default
+
+
+def behavior():
+    return sidecar('behavior', 'ok')
+
+
+def interrupt_behavior():
+    # ok: ack {} then a real terminal 'interrupted' event; silent: ack {}
+    # only (acknowledgement is not terminal proof); reject: typed error.
+    return sidecar('interrupt', 'ok')
+
+
+def read_behavior():
+    # 'abandoned-interrupted': the provider's own thread state reports a
+    # turn whose app-server was killed as interrupted. Default: a killed
+    # turn stays inProgress forever (nothing keeps computing it).
+    return sidecar('read', 'stale')
 
 
 def main():
@@ -104,7 +122,47 @@ def main():
     def notify(method, params):
         send({'method': method, 'params': params})
 
-    for line in sys.stdin:
+    # A turn computes ONLY while this process lives: 'slow-turn' finishes
+    # after a delay inside this process; 'hold' never finishes here. When
+    # this process is killed its in-flight turn stays inProgress in the
+    # durable state; no later process ever completes it on its own.
+    running = {}
+
+    def set_status(tid, uid, status):
+        for turn in doc['threads'][tid]['turns']:
+            if turn['id'] == uid:
+                turn['status'] = status
+        save_state(doc)
+
+    def finish(tid, uid, final):
+        running.pop(uid, None)
+        set_status(tid, uid, final)
+        notify('turn/completed', {'threadId': tid,
+                                  'turn': {'id': uid, 'status': final}})
+
+    pending_lines = []
+    raw = b''
+    stdin_fd = sys.stdin.fileno()
+    while True:
+        if not pending_lines:
+            due = [at for at, _ in running.values() if at is not None]
+            timeout = max(0.0, min(due) - time.monotonic()) if due else None
+            ready, _, _ = select.select([stdin_fd], [], [], timeout)
+            if not ready:
+                now = time.monotonic()
+                for uid, (at, tid) in list(running.items()):
+                    if at is not None and at <= now:
+                        finish(tid, uid, 'completed')
+                continue
+            chunk = os.read(stdin_fd, 65536)
+            if not chunk:
+                return
+            raw += chunk
+            while bytes([10]) in raw:
+                one, raw = raw.split(bytes([10]), 1)
+                pending_lines.append(one.decode())
+            continue
+        line = pending_lines.pop(0)
         if not line.strip():
             continue
         try:
@@ -157,10 +215,11 @@ def main():
                 send({'id': rid, 'error': {'code': -32000,
                                             'message': 'unknown thread'}})
             else:
-                if behavior() == 'release-held':
+                if read_behavior() == 'abandoned-interrupted':
                     for turn in thread['turns']:
-                        if turn['status'] == 'inProgress':
-                            turn['status'] = 'completed'
+                        if (turn['status'] == 'inProgress'
+                                and turn['id'] not in running):
+                            turn['status'] = 'interrupted'
                     save_state(doc)
                 send({'id': rid, 'result': {'thread': {
                     'id': tid,
@@ -173,7 +232,10 @@ def main():
                                             'message': 'unknown thread'}})
                 continue
             mode = behavior()
-            if mode == 'reject-turn':
+            if mode in ('reject-turn', 'slow-reject'):
+                if mode == 'slow-reject':
+                    log('slow-reject')
+                    time.sleep(2.0)
                 send({'id': rid, 'error': {'code': -32000,
                                            'message': 'fake typed rejection'}})
                 continue
@@ -221,14 +283,18 @@ def main():
             save_state(doc)
             send({'id': rid, 'result': {'turn': {'id': uid,
                                                 'status': 'inProgress'}}})
-            if mode == 'hold':
-                continue
             notify('turn/started', {'threadId': tid,
                                     'turn': {'id': uid,
                                              'status': 'inProgress'}})
             notify('item/agentMessage/delta',
                    {'threadId': tid, 'turnId': uid, 'itemId': 'item-1',
                     'delta': 'fake owned turn output'})
+            if mode == 'hold':
+                running[uid] = (None, tid)
+                continue
+            if mode == 'slow-turn':
+                running[uid] = (time.monotonic() + 1.5, tid)
+                continue
             final = 'failed' if mode == 'fail-turn' else 'completed'
             for turn in thread['turns']:
                 if turn['id'] == uid:
@@ -236,6 +302,26 @@ def main():
             save_state(doc)
             notify('turn/completed', {'threadId': tid,
                                       'turn': {'id': uid, 'status': final}})
+        elif method == 'turn/interrupt':
+            tid = params.get('threadId')
+            uid = params.get('turnId')
+            log('interrupt', threadId=tid, turnId=uid)
+            thread = doc['threads'].get(tid)
+            known = thread is not None and any(
+                turn['id'] == uid for turn in thread['turns'])
+            mode = interrupt_behavior()
+            if not known or not isinstance(uid, str):
+                send({'id': rid, 'error': {'code': -32602,
+                                            'message': 'unknown turn'}})
+            elif mode == 'reject':
+                send({'id': rid, 'error': {'code': -32000,
+                                            'message': 'fake interrupt rejection'}})
+            else:
+                send({'id': rid, 'result': {}})
+                status = [turn['status'] for turn in thread['turns']
+                          if turn['id'] == uid][0]
+                if mode == 'ok' and status == 'inProgress':
+                    finish(tid, uid, 'interrupted')
         elif rid is not None:
             send({'id': rid, 'error': {'code': -32601,
                                         'message': 'unsupported method'}})
@@ -373,11 +459,22 @@ class Workspace:
         path.write_text(text, encoding='utf-8')
         return str(path)
 
-    def set_behavior(self, behavior):
+    def set_behavior(self, behavior, interrupt='ok', read='stale'):
         fd = os.open(self.behavior_path,
                      os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, 'w') as stream:
-            json.dump({'behavior': behavior}, stream)
+            json.dump({'behavior': behavior, 'interrupt': interrupt,
+                       'read': read}, stream)
+
+    def recover(self, *extra):
+        payload, _, code = invoke(['--project', str(self.root), 'recover',
+                                   '--drain', '2', '--json'] + list(extra))
+        return payload, code
+
+    def fake_turns(self):
+        doc = json.loads(self.state_path.read_text())
+        return [turn for thread in doc['threads'].values()
+                for turn in thread['turns']]
 
     def start(self, *extra):
         goal = self.input('owner goal: deliver the owned transport\n')
@@ -536,20 +633,40 @@ def run_suite(base):
     print('ok zero calls while waiting and reading; one wakeup per terminal',
           flush=True)
 
-    # 4. Active-turn pending change: a held turn stays running with zero
-    #    sends; the pending effort applies only after the provider's own
-    #    thread state proves the turn ended (thread/read reconciliation).
-    #    An incomplete turn exits nonzero with an explicit pending
-    #    delivery state (never 'accepted'/exit-0 ambiguity).
+    # 4. Controller deadline on a long turn: the run keeps its owned
+    #    process until the deadline, then requests turn/interrupt for the
+    #    EXACT proven thread/turn. A bare {} acknowledgement is not
+    #    terminal proof: the turn stays active/Unknown (exit 6), the killed
+    #    fake process does NOT keep computing (durable inProgress stays),
+    #    a pending effort waits, and explicit `recover --interrupt` on the
+    #    SAME thread resolves it with zero turn starts or resends.
     ws = Workspace(base)
-    ws.start()
-    ws.set_behavior('hold')
+    view = ws.start()
+    thread = view['thread_id']
+    ws.set_behavior('hold', interrupt='silent')
+    started = time.monotonic()
     held, held_code = ws.run_exit('r1', 'long substantive planning turn\n',
-                                  '--kind', 'planning')
-    assert held['turn_completed'] is False
-    assert held['delivery'] == 'pending' and held['turn_status'] is None
+                                  '--kind', 'planning', '--turn-wait', '1',
+                                  '--interrupt-drain', '1')
+    assert time.monotonic() - started >= 1.0  # process kept for the wait
     assert held_code == 6
+    assert held['status'] == 'accepted' and held['turn_completed'] is False
+    assert held['delivery'] == 'unknown' and held['turn_status'] is None
+    assert held['wait'] == {'seconds': 1, 'outcome': 'deadline'}
+    interrupt = held['interrupt']
+    assert interrupt['acknowledged'] is True and interrupt['error'] is None
+    assert interrupt['terminal_observed'] is False
+    assert interrupt['provider_status'] == 'inProgress'
+    assert interrupt['thread_id'] == thread
+    assert 'recover' in held['note'] and 'Unknown' in held['note']
+    sent = ws.requests('turn/interrupt')
+    assert len(sent) == 1
+    interrupts = [rec for rec in ws.log_records() if rec['event'] == 'interrupt']
+    assert interrupts[0]['threadId'] == thread
+    assert interrupts[0]['turnId'] == interrupt['provider_turn_id']
     assert ws.status()['state'] == 'running'
+    time.sleep(0.3)
+    assert [t['status'] for t in ws.fake_turns()] == ['inProgress']
     before_spawns = len(ws.spawns())
     pending = ws.effort('request', 'xhigh', '--reason', 'owner next phase')
     assert pending['pending_next_turn']['effort'] == 'xhigh'
@@ -558,15 +675,116 @@ def run_suite(base):
                        ws.input('too soon\n'), '--request-id', 'r2',
                        '--turn-wait', '5', '--json'])
     assert 'not open for a next turn' in blocked  # provider truth: inProgress
-    ws.set_behavior('release-held')
+    # Replay of the accepted request never waits, interrupts or resends.
+    before_interrupts = len(ws.requests('turn/interrupt'))
+    replay, replay_code = ws.run_exit('r1', 'long substantive planning turn\n')
+    assert replay['status'] == 'accepted' and replay_code == 6
+    assert replay['wait']['outcome'] == 'replay_not_waited'
+    assert len(ws.requests('turn/interrupt')) == before_interrupts
+    # recover without --interrupt: provider still reports inProgress.
+    rec, rec_code = ws.recover()
+    assert rec_code == 6 and rec['outcome'] == 'still_in_progress'
+    assert rec['provider_status_before'] == 'inProgress'
+    assert rec['interrupt'] is None and rec['turn_starts'] == 0
+    # recover --interrupt with an acknowledgement but no terminal event.
+    rec, rec_code = ws.recover('--interrupt')
+    assert rec_code == 6 and rec['outcome'] == 'interrupt_unconfirmed'
+    assert rec['interrupt']['acknowledged'] is True
+    assert rec['interrupt']['terminal_observed'] is False
+    # recover --interrupt with a typed interrupt rejection.
+    ws.set_behavior('ok', interrupt='reject')
+    rec, rec_code = ws.recover('--interrupt')
+    assert rec_code == 6 and rec['outcome'] == 'interrupt_unconfirmed'
+    assert rec['interrupt']['error'].startswith('rejected:')
+    assert 'fake interrupt rejection' in rec['interrupt']['error']
+    assert ws.status()['state'] == 'running'
+    # recover --interrupt with a real terminal interrupted event.
+    ws.set_behavior('ok', interrupt='ok')
+    rec, rec_code = ws.recover('--interrupt')
+    assert rec_code == 0 and rec['outcome'] == 'reconciled'
+    assert rec['turn_status'] == 'interrupted'
+    assert rec['interrupt']['terminal_observed'] is True
+    view = ws.status()
+    assert view['state'] == 'terminal'
+    assert view['last_turn']['status'] == 'interrupted'
+    assert view['thread_id'] == thread  # same thread, no context reset
+    assert len(ws.turn_starts()) == 1  # recover never started a turn
+    assert 'no active turn to recover' in refuses(
+        ['--project', str(ws.root), 'recover', '--json'])
     applied = ws.run('r2', 'next phase with the requested effort\n')
     assert applied['effort'] == 'xhigh' and applied['source'] == 'pending'
     assert applied['turn_completed'] is True
-    assert len(ws.requests('thread/read')) == 2  # blocked probe + reconcile
     back = ws.run('r3', 'routine coordination again\n')
     assert back['effort'] == 'low' and back['source'] == 'auto'
-    print('ok pending change during an active turn applies only after it '
-          'ends', flush=True)
+    print('ok deadline interrupt keeps Unknown without a terminal; explicit '
+          'same-thread recover', flush=True)
+
+    # 4b. Deadline interrupt WITH a terminal event inside the run itself:
+    #     interrupted (exit 5), session usable; a typed interrupt rejection
+    #     keeps Unknown (exit 6).
+    ws = Workspace(base)
+    ws.start()
+    ws.set_behavior('hold', interrupt='ok')
+    done, done_code = ws.run_exit('r1', 'turn interrupted at deadline\n',
+                                  '--turn-wait', '1')
+    assert done_code == 5 and done['delivery'] == 'interrupted'
+    assert done['interrupt']['acknowledged'] is True
+    assert done['interrupt']['terminal_observed'] is True
+    assert done['interrupt']['drain_outcome'] == 'terminal'
+    assert ws.status()['last_turn']['status'] == 'interrupted'
+    ws.set_behavior('hold', interrupt='reject')
+    bad, bad_code = ws.run_exit('r2', 'interrupt rejected at deadline\n',
+                                '--turn-wait', '1', '--interrupt-drain', '1')
+    assert bad_code == 6 and bad['delivery'] == 'unknown'
+    assert bad['interrupt']['acknowledged'] is False
+    assert 'fake interrupt rejection' in bad['interrupt']['error']
+    assert bad['interrupt']['provider_status'] == 'inProgress'
+    assert ws.status()['state'] == 'running'
+    # The provider's own thread state may later report the abandoned turn
+    # as terminal: recover records it with no interrupt and no turn start.
+    ws.set_behavior('ok', read='abandoned-interrupted')
+    before_interrupts = len(ws.requests('turn/interrupt'))
+    rec, rec_code = ws.recover()
+    assert rec_code == 0 and rec['outcome'] == 'reconciled'
+    assert rec['turn_status'] == 'interrupted'
+    assert len(ws.requests('turn/interrupt')) == before_interrupts
+    assert len(ws.turn_starts()) == 2
+    print('ok deadline interrupt with terminal, rejection and provider-read '
+          'recovery', flush=True)
+
+    # 4c. A long turn completes inside the wait because the process is
+    #     kept alive (no premature kill); --turn-wait 0 refuses before any
+    #     owned process or intent exists.
+    ws = Workspace(base)
+    ws.start()
+    ws.set_behavior('slow-turn')
+    started = time.monotonic()
+    slow, slow_code = ws.run_exit('r1', 'slow but healthy turn\n')
+    assert time.monotonic() - started >= 1.4
+    assert slow_code == 0 and slow['delivery'] == 'completed'
+    assert slow['wait']['outcome'] == 'terminal' and slow['interrupt'] is None
+    assert ws.requests('turn/interrupt') == []
+    before_spawns = len(ws.spawns())
+    before_requests = ws.status()['requests_recorded']
+    message = refuses(['--project', str(ws.root), 'run', '--file',
+                       ws.input('async please\n'), '--request-id', 'r2',
+                       '--turn-wait', '0', '--json'])
+    assert '--turn-wait 0 is refused before launch' in message
+    assert len(ws.spawns()) == before_spawns
+    assert ws.status()['requests_recorded'] == before_requests
+    print('ok long turn kept alive to completion; zero wait refused before '
+          'launch', flush=True)
+
+    # 4d. recover refuses an unacknowledged turn (no proven provider id).
+    ws = Workspace(base)
+    ws.start()
+    ws.set_behavior('bad-ack')
+    ws.run_exit('r1', 'unacknowledged turn\n')
+    before_spawns = len(ws.spawns())
+    assert 'no proven provider turn id' in refuses(
+        ['--project', str(ws.root), 'recover', '--interrupt', '--json'])
+    assert len(ws.spawns()) == before_spawns
+    print('ok recover refuses an unproven turn before any process', flush=True)
 
     # 5. STOP, owner holds and reservation contention refuse BEFORE any
     #    owned process is spawned.
@@ -846,6 +1064,100 @@ def run_suite(base):
     assert ws.status()['last_turn']['status'] == 'completed'
     print('ok typed rejection preserved; session continues correctly', flush=True)
 
+    # 9b. A provably rejected turn restores ONLY its own consumption: the
+    #     review wakeup and pending XHIGH survive; the attempted decision
+    #     stays as evidence with its rejected outcome.
+    ws = Workspace(base)
+    ws.start()
+    ws.worker('register', 'w1')
+    ws.worker('terminal', 'w1')
+    ws.effort('request', 'xhigh', '--reason', 'owner review')
+    ws.set_behavior('reject-turn')
+    rejected, rejected_code = ws.run_exit('r1', 'review rejected\n')
+    assert rejected_code == 2 and rejected['delivery'] == 'rejected'
+    assert rejected['kind'] == 'review' and rejected['effort'] == 'xhigh'
+    assert rejected['source'] == 'pending'
+    assert rejected['restored']['wakeup'] == 'w1'
+    assert rejected['restored']['pending'] == {'effort': 'xhigh',
+                                               'reason': 'owner review'}
+    state = json.loads((ws.root / 'coord' / 'lead-effort'
+                        / (ws.sid + '.json')).read_text())
+    assert state['policy']['pending'] == {'effort': 'xhigh',
+                                          'reason': 'owner review'}
+    assert [w['worker'] for w in state['policy']['wakeups']] == ['w1']
+    assert state['policy']['wakeups_consumed'] == 0
+    view = ws.status()
+    assert [(d['turn_id'], d['outcome']) for d in view['decisions']] == [
+        (rejected['turn_id'], 'rejected')]
+    ws.set_behavior('ok')
+    review = ws.run('r2', 'review again after rejection\n')
+    assert review['kind'] == 'review' and review['effort'] == 'xhigh'
+    assert review['source'] == 'pending' and review['restored'] is None
+    routine = ws.run('r3', 'routine coordination\n')
+    assert routine['kind'] == 'coordination' and routine['effort'] == 'low'
+    print('ok rejected turn restores its own wakeup and pending effort',
+          flush=True)
+
+    # 9c. Newer concurrent controls written during a slow rejected turn
+    #     are kept (not overwritten by the restored consumption).
+    ws = Workspace(base)
+    ws.start()
+    ws.worker('register', 'w-pre')
+    ws.worker('terminal', 'w-pre')
+    ws.effort('request', 'xhigh', '--reason', 'before')
+    ws.set_behavior('slow-reject')
+    run_argv = [sys.executable, str(SOURCE / 'tools' / 'lead-session.py'),
+                '--project', str(ws.root), 'run', '--file',
+                ws.input('slow rejection\n'), '--request-id', 'r1',
+                '--turn-wait', '5', '--json']
+    proc = subprocess.Popen(run_argv, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True)
+    deadline = time.monotonic() + 10
+    while not ws.turn_starts():
+        assert time.monotonic() < deadline, 'fake never received turn/start'
+        time.sleep(0.05)
+    ws.effort('request', 'low', '--reason', 'newer')
+    ws.worker('register', 'w-during')
+    ws.worker('terminal', 'w-during')
+    stdout, stderr = proc.communicate(timeout=60)
+    assert proc.returncode == 2, (stdout, stderr)
+    payload = json.loads(stdout[stdout.index('{'):])
+    assert payload['delivery'] == 'rejected' and payload['restored']
+    state = json.loads((ws.root / 'coord' / 'lead-effort'
+                        / (ws.sid + '.json')).read_text())
+    assert state['policy']['pending'] == {'effort': 'low', 'reason': 'newer'}
+    assert [w['worker'] for w in state['policy']['wakeups']] == [
+        'w-pre', 'w-during']
+    assert state['policy']['wakeups_consumed'] == 0
+    print('ok newer concurrent controls survive a restored rejection',
+          flush=True)
+
+    # 9d. Local mapping-bound exhaustion is known non-delivery: rejected
+    #     (never uncertain), zero turn starts, consumption restored, the
+    #     session is not poisoned and the limit is explained.
+    ws = Workspace(base)
+    ws.start('--max-mappings', '1')
+    first = ws.run('r1', 'only mapped turn\n')
+    assert first['delivery'] == 'completed'
+    ws.effort('request', 'xhigh', '--reason', 'next')
+    before_starts = len(ws.turn_starts())
+    full, full_code = ws.run_exit('r2', 'beyond the mapping bound\n')
+    assert full_code == 2 and full['status'] == 'rejected'
+    assert full['delivery'] == 'rejected'
+    assert 'mapping bound reached' in full['note']
+    assert 'start a new one' in full['note']
+    assert full['restored']['pending']['effort'] == 'xhigh'
+    assert len(ws.turn_starts()) == before_starts
+    view = ws.status()
+    assert view['state'] != 'outcome_unknown'
+    assert view['effort']['pending_next_turn']['effort'] == 'xhigh'
+    replay = ws.run('r1', 'only mapped turn\n')
+    assert replay['status'] == 'accepted'
+    again, again_code = ws.run_exit('r3', 'still beyond the bound\n')
+    assert again_code == 2 and again['status'] == 'rejected'
+    print('ok mapping exhaustion is a controlled non-delivery, not uncertain',
+          flush=True)
+
     # 10. Owned process crash mid-send: untyped failure stays uncertain;
     #     replay returns the recorded result; new turns refuse with zero
     #     turn starts. The native exit is reported explicitly with a
@@ -1037,7 +1349,9 @@ def run_suite(base):
     died, died_code = ws.run_exit('r1', 'turn whose process dies waiting\n')
     elapsed = time.monotonic() - started
     assert died['status'] == 'accepted'
-    assert died['delivery'] == 'pending' and died['turn_status'] is None
+    assert died['delivery'] == 'unknown' and died['turn_status'] is None
+    assert died['wait']['outcome'] == 'provider_exited'
+    assert died['interrupt'] is None
     assert died['provider_exited'] is True
     assert 'fake owned wait death diagnostic' in died['stderr_tail']
     assert died_code == 6

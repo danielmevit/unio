@@ -22,7 +22,7 @@ from pathlib import Path
 import stat
 import time
 
-MAX_POLICY_BYTES = 16384
+MAX_POLICY_BYTES = 65536  # native work-policy MAX_STATE parity; oversize still fails closed
 MAX_SLOT_META = 4096
 LIMITS = {'low': 1, 'medium': 2, 'high': 4}
 TIERS = frozenset(LIMITS)

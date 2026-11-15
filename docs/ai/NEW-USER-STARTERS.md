@@ -17,24 +17,20 @@ Both follow the same way of working:
   checks, and ends with a clear handoff.
 - Only subscriptions you already have; no paid API fallback.
 
-## Before you start: lead effort
+## Lead effort in these prompts
 
-The prompts ask for the **adaptive managed lead** (AUTO effort: LOW for
-routine coordination, XHIGH for substantive planning and review, no model
-calls while waiting for workers). This is experimental. Unio 0.5.30 predates these controls; check the
-version installed on your machine. The first managed backend uses Codex
-app-server; other CLIs retain fixed effort unless their route explicitly
-supports managed effort. See
-[adaptive lead effort](../ADAPTIVE-LEAD-EFFORT.md).
+These prompts run your AI CLI as an ordinary lead at its normal, fixed
+reasoning effort. A prompt cannot change the effort of the CLI session it
+is pasted into. That is fine: the prompts work without any adaptive
+controls.
 
-A prompt cannot change the reasoning effort of an ordinary (unmanaged) CLI
-session. If the controls are missing, the lead should say so and keep its
-normal effort. To try the managed lead:
-
-1. Use a separate project and session, not a lead that is already working.
-2. Retire or close any unmanaged lead for that project yourself first.
-3. Start the managed lead explicitly with its supported commands.
-4. Manual LOW or XHIGH works only where the route has been verified.
+The prompts tell the AI **not** to start `unio lead-session` itself. A
+managed lead started from inside an AI CLI would be a second lead on the
+same subscription while the pasted-into session keeps running, and its
+budget would not be counted correctly. If you want to try adaptive effort,
+use the separate, optional
+[managed lead trial](#optional-adaptive-managed-lead-trial) below, driven
+by you from a terminal.
 
 Coordination tier (how many workflows may run per account) and reasoning
 effort (how hard a model thinks) are separate settings.
@@ -47,9 +43,8 @@ Goal: [SMALL FEATURE OR FIX].
 My only AI subscription: [SUBSCRIPTION / CLI].
 
 Check the installed Unio version, its supported commands and this project's
-instructions. Use the managed lead with AUTO effort (LOW for routine
-coordination, XHIGH for planning and review, no calls while waiting) only if
-those controls actually work here; otherwise tell me and continue normally.
+instructions. You are an ordinary lead at your normal effort. Do not start
+`unio lead-session` or any other lead session yourself.
 
 Scope a small task, give me a time estimate, then delegate it through Unio to
 a worker in its own worktree with meaningful checks and a clear handoff.
@@ -83,9 +78,8 @@ instructions and the available routes. Use low coordination tier: one
 workflow per real shared account, including you. Keep actual account
 mappings, holds and STOP.
 
-Use the managed lead with AUTO effort (LOW for routine coordination, XHIGH
-for planning and review, no calls while waiting) only if those controls
-actually work here; otherwise tell me and continue normally.
+You are an ordinary lead at your normal effort. Do not start
+`unio lead-session` or any other lead session yourself.
 
 Split the goal into focused tasks and give me a time estimate. Delegate
 through Unio, one worktree per worker, running independent tasks in parallel
@@ -107,3 +101,79 @@ These examples do not lift holds in an existing project, and they do not
 prove login, model identity, remaining allowance or a successful result.
 Record requested model and effort explicitly. Effective model and effort
 remain Unknown unless there is evidence.
+
+## Optional: adaptive managed lead trial
+
+This is experimental and **unreleased** (Unio 0.5.30 predates it; check
+`unio version` and `unio lead-session --help` on your machine). It is a
+separate trial that you drive from a terminal. It is not something to paste
+into an AI CLI.
+
+What it is: `unio lead-session` owns its own Codex app-server connection
+and sends one lead turn each time you run a command. It requests LOW
+effort for routine coordination and XHIGH for planning and review. While it
+waits for workers, nothing is sent and no inference happens. Status and
+control commands make no provider calls. `run` and `recover` make control
+calls (connection setup, thread resume or read, interrupt). Control calls
+are not inference.
+
+What it is not: it does not recognize planning from your text, it does not
+watch workers and it does not schedule phases. You choose `--kind` and you
+record worker events. Requested effort is recorded. Effective model and
+effort stay Unknown.
+
+Requirements:
+
+- Codex CLI with a ChatGPT subscription login. API keys are refused.
+  Other CLIs keep their fixed effort.
+- A Unio project whose registered lead is `codex`, with the real account
+  group (`unio lead codex`, `unio account codex <group>`).
+- **Close your existing AI CLI lead session for this project first.** Only
+  then start the managed lead from a separate terminal, so only one lead
+  uses that subscription.
+- The usual project grants, holds, STOP and stricter review rules still
+  apply. The trial adds no allowance.
+
+Commands, from the project folder:
+
+```sh
+# 1. Start: one owned thread, AUTO effort (LOW coordination, XHIGH ceiling)
+unio lead-session start --goal goal.txt --model <codex-model>
+
+# 2. One lead turn per command. You write each turn's input to a file.
+unio lead-session run --file turn-1.txt --request-id t1                  # LOW
+unio lead-session run --file plan.txt --request-id t2 --kind planning    # XHIGH
+
+# 3. When the lead delegates a worker, record it; when it finishes, say so
+unio lead-session worker register w1
+unio lead-session worker terminal w1
+unio lead-session run --file review.txt --request-id t3   # review, XHIGH
+
+# 4. Effort controls (LOW or XHIGH only)
+unio lead-session effort request xhigh   # pending: next turn only
+unio lead-session effort manual low      # manual: suspends AUTO
+unio lead-session effort auto            # back to AUTO
+
+# 5. Inspect, recover, stop
+unio lead-session status
+unio lead-session output
+unio lead-session recover [--interrupt]  # a turn whose end was not seen
+unio lead-session stop                   # blocks new turns; workers keep running
+```
+
+What to expect:
+
+- `run` waits for the turn to finish, up to `--turn-wait` (default 3600
+  seconds). At the limit it asks Codex to interrupt that exact turn. If no
+  end is confirmed, the result is `unknown` (exit 6) and nothing is resent.
+  Use `recover` later on the same thread. `--turn-wait 0` is refused.
+- Rerunning the same `--request-id` with the same file returns the
+  recorded result and starts no new turn.
+- A rejected turn keeps your pending effort request and the review wakeup.
+- One session allows up to 64 request ids. To continue past a limit, stop
+  it and start a new one; the new thread does not carry the old context.
+- Lead turns cannot approve commands or file changes. The turn uses your
+  own Codex sandbox and approval settings, and any approval request is
+  declined. Unio does not widen them.
+
+Details: [adaptive lead effort](../ADAPTIVE-LEAD-EFFORT.md).

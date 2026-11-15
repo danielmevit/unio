@@ -52,9 +52,21 @@ Enforced by this component:
   ever inferred from the process exit;
 - ``close()`` terminates the owned process group (TERM, brief wait,
   KILL) and never raises; the caller invokes it in a ``finally`` so no
-  owned process outlives its command. If the host process is killed
-  outright the session leader child can survive; the next command's
-  thread/resume reconciliation discovers the turn's real status.
+  owned process outlives its command. Closing kills any in-flight turn's
+  local app-server, so the caller keeps the process until a terminal
+  event or its bounded deadline, then requests an exact
+  ``turn/interrupt`` and drains terminal events before closing. What the
+  provider later reports for a turn whose app-server was killed is
+  Unknown (no live evidence); the caller never assumes it kept running
+  or finished. If the host process is killed outright the session
+  leader child can survive;
+- ``turn/interrupt`` is sent only for one exact proven thread/turn pair;
+  its ``{}`` reply acknowledges the request, never the turn's end;
+- every provider server-to-client request (command/file/permission
+  approvals, user-input or tool requests) is answered with ``-32601``:
+  nothing is auto-approved and no sandbox or approval policy is set on
+  ``thread/start``, so the user's own Codex configuration decides what a
+  turn may do without approval.
 
 The caller (``tools/lead-session.py``) still owns: admission (STOP,
 owner holds, contention) before spawning this connection, the effort
@@ -396,6 +408,25 @@ class OwnedCodexConnection:
                     and isinstance(turn.get('status'), str)):
                 turns[turn['id']] = turn['status']
         return turns
+
+    def interrupt_turn(self, thread_id, turn_id):
+        """Request ``turn/interrupt`` for ONE exact proven provider turn.
+
+        Local schema ``TurnInterruptParams`` requires ``threadId`` and
+        ``turnId``; the response ``{}`` only acknowledges the request. The
+        acknowledgement is NEVER terminal proof: the caller must observe a
+        terminal ``turn/completed`` event (or the provider's own
+        ``thread/read`` status) before recording any outcome. A typed
+        provider error raises ``ProviderRejected``; a timeout or exit raises
+        ``Refusal``. This is a control RPC, not a new turn or inference.
+        """
+        _bounded(thread_id, ID_BOUND, 'thread id')
+        _bounded(turn_id, ID_BOUND, 'provider turn id')
+        reply = self.rpc('turn/interrupt', {'threadId': thread_id,
+                                            'turnId': turn_id})
+        if not isinstance(reply, dict):
+            raise Refusal('turn/interrupt acknowledgement malformed')
+        return True
 
     # -- teardown -----------------------------------------------------------
 

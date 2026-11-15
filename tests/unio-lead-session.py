@@ -251,15 +251,17 @@ def run_suite(base):
           flush=True)
 
     # 4. Pending effort change during an active turn applies next turn;
-    #    an incomplete turn exits nonzero with an explicit pending
-    #    delivery state (never 'accepted'/exit-0 ambiguity).
+    #    an incomplete turn exits nonzero with an explicit unknown
+    #    delivery state (never 'accepted'/exit-0 ambiguity). This is the
+    #    in-process fake seam; killed-turn semantics are covered by the
+    #    owned suite against the executable fake app-server.
     ws = Workspace(base)
     ws.start()
     ws.set_behavior(behavior='hold')
     held, held_code = ws.run_exit('r1', 'long substantive planning turn\n',
                                   '--kind', 'planning')
     assert held['turn_completed'] is False
-    assert held['delivery'] == 'pending' and held['turn_status'] is None
+    assert held['delivery'] == 'unknown' and held['turn_status'] is None
     assert held_code == 6
     assert ws.status()['state'] == 'running'
     before = len(ws.rpc_log())
@@ -279,6 +281,43 @@ def run_suite(base):
     assert back['effort'] == 'low' and back['source'] == 'auto'
     print('ok pending change during an active turn applies only after it ends',
           flush=True)
+
+    # 4b. Reviewer probe: a typed provider rejection must not consume the
+    #     review wakeup or the pending XHIGH; the next turn is still the
+    #     review at XHIGH, never a silent coordination/LOW downgrade.
+    ws = Workspace(base)
+    ws.start()
+    ws.worker('register', 'w1')
+    ws.worker('terminal', 'w1')
+    ws.effort('request', 'xhigh')
+    ws.set_behavior(behavior='reject')
+    rejected, rejected_code = ws.run_exit('r1', 'review the worker\n')
+    assert rejected_code == 2 and rejected['delivery'] == 'rejected'
+    assert (rejected['effort'], rejected['kind'], rejected['source']) == (
+        'xhigh', 'review', 'pending')
+    assert rejected['restored']['wakeup'] == 'w1'
+    effort = ws.effort('show')
+    assert effort['pending_next_turn']['effort'] == 'xhigh'
+    assert effort['pending_wakeups'] == 1 and effort['wakeups_consumed'] == 0
+    ws.set_behavior(behavior='ok')
+    review = ws.run('r2', 'review the worker again\n')
+    assert (review['effort'], review['kind'], review['source']) == (
+        'xhigh', 'review', 'pending')
+    routine = ws.run('r3', 'routine\n')
+    assert (routine['effort'], routine['kind'], routine['source']) == (
+        'low', 'coordination', 'auto')
+    # An untyped failure stays uncertain and is never restored.
+    ws = Workspace(base)
+    ws.start()
+    ws.worker('register', 'w2')
+    ws.worker('terminal', 'w2')
+    ws.set_behavior(behavior='raise')
+    failed, failed_code = ws.run_exit('r1', 'uncertain review\n')
+    assert failed_code == 3 and failed['delivery'] == 'uncertain'
+    assert failed['restored'] is None
+    assert ws.effort('show')['pending_wakeups'] == 0
+    print('ok rejected turns restore their own wakeup and pending effort; '
+          'uncertain turns do not', flush=True)
 
     # 5. Manual override suspends auto; auto selection resumes it.
     ws = Workspace(base)

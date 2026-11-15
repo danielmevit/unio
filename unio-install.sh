@@ -23827,7 +23827,10 @@ adaptive requested effort (only auto plus low and xhigh in this first
 interface) on one owned thread, and never steers a turn mid-flight. Both
 share the same honesty rules: no provider calls for observation, Unknown
 effective settings, idempotent request ids with no replay or resend, and
-STOP that blocks new turns without killing workers.
+STOP that blocks new turns without killing workers. A lead `run` keeps its
+owned process alive until the turn ends or a bounded deadline, then
+requests an exact `turn/interrupt`; an unconfirmed end stays Unknown and is
+handled later by `unio lead-session recover` on the same thread.
 UNIO_MANAGED_SESSIONS_MD
 # END EMBEDDED CODEX WORKER
 # BEGIN EMBEDDED MANAGED LEAD
@@ -24908,7 +24911,9 @@ anything missing, extra or mismatched is refused as unproven — there is
 no id eviction, rebinding or invented recovery, and an unacknowledged
 (outcome_unknown) turn can never be handed over. ``max_mappings`` is an
 explicitly bounded owned-session option (1..64) replacing the legacy
-default of four only when the caller asks for it.
+default of four only when the caller asks for it. Reaching the bound is
+checked before any RPC and reported as ``rejected`` (known non-delivery,
+``rpc_sent: False``), never as uncertain.
 
 
 
@@ -25163,8 +25168,12 @@ class CodexLeadTransport:
         if self._inherited:
             raise Refusal('bound for inspection only; explicit handoff required')
         if len(self._local) >= self._max_mappings:
-            self._last_send = {'status': 'uncertain',
-                               'reason': 'mapping capacity exhausted; explicit handoff required'}
+            # Local bound reached before any RPC: known non-delivery (zero
+            # turn/start), never uncertain, so it cannot poison the session.
+            self._last_send = {'status': 'rejected', 'rpc_sent': False,
+                               'reason': 'mapping capacity exhausted before any '
+                                         'rpc; known non-delivery; explicit '
+                                         'handoff or a new session required'}
             return dict(self._last_send)
         effort = self._effort
         if 'effort' in facts:
@@ -25850,6 +25859,20 @@ Guarantees kept by this controller:
   nothing is ever sent automatically, so zero model calls happen while
   the lead waits for workers, and status/effort/worker/stop/output open
   no owned connection at all;
+- a `run` keeps its owned app-server alive until the turn's terminal
+  event or a bounded `--turn-wait` deadline (default 3600s; 0 refuses
+  before launch because the process cannot outlive the command). At the
+  deadline it requests `turn/interrupt` for the exact proven thread/turn,
+  drains terminal events for `--interrupt-drain` seconds and reads the
+  provider's own thread state; the interrupt acknowledgement is never
+  terminal proof, so without a terminal the turn stays active/Unknown
+  (exit 6) and `recover [--interrupt]` handles it later on the SAME
+  thread without resending or resetting context;
+- a provably never-delivered attempt (typed rejection without
+  contradicting activity, a local mapping-bound or policy refusal before
+  any turn/start) does not persist its pending-effort or review-wakeup
+  consumption; newer concurrent controls are kept and the attempted
+  decision stays as evidence;
 - a proven active turn is reconciled only inside an explicit `run` from
   the provider's own thread state (`thread/read`), for the exact
   acknowledged provider turn id; an unacknowledged turn is never
@@ -25874,10 +25897,9 @@ Guarantees kept by this controller:
   the actual turn outcome (``turn_status``, ``delivery``) and the
   observed native exit (``provider_exited`` plus a bounded private
   stderr tail); exit codes are truthful — 0 only for an observed
-  completed turn (or an explicit ``--turn-wait 0`` asynchronous
-  acknowledgement labelled ``pending``), nonzero for rejected,
-  uncertain, failed, interrupted or timed-out work, and a process exit
-  is never inferred as model success;
+  completed turn, nonzero for rejected (2), uncertain (3), failed (4),
+  interrupted (5) or unknown (6: accepted but no terminal observed)
+  work, and a process exit is never inferred as model success;
 - the provider-id mappings its own acknowledgements validated are
   recorded durably (outside the core) and handed explicitly to the next
   bridge; an unproven, incomplete or mismatched handoff refuses instead
@@ -25912,6 +25934,8 @@ HERE = Path(__file__).resolve().parent
 MAX_INPUT_BYTES = 8192
 MAX_WORKERS = 32
 FAKE_BEHAVIOR_BOUND = 4096
+TURN_WAIT_DEFAULT = 3600
+INTERRUPT_DRAIN_DEFAULT = 30
 FAKE_LOG_BOUND = 256 * 1024
 THREAD_FAKE = 'fake-owned-thread-1'
 ROUTE_DEFAULT = 'codex-app-server'
@@ -26299,34 +26323,83 @@ class FakeLeadRPC:
         return True
 
 
+class SendProbe:
+    """Counting wrapper around one owned rpc callable.
+
+    Counts ``turn/start`` calls so the effort transport can prove that a
+    refusal raised by the bridge happened before any turn was sent (known
+    non-delivery) instead of trusting code inspection alone.
+    """
+
+    def __init__(self, rpc):
+        self._rpc = rpc
+        self.turn_starts = 0
+
+    def __call__(self, method, params):
+        if method == bx.START_METHOD:
+            self.turn_starts += 1
+        return self._rpc(method, params)
+
+
 class EffortTransport:
-    """Core transport seam deciding the explicit effort at send time."""
+    """Core transport seam deciding the explicit effort at send time.
+
+    Records exactly what this attempt consumed (at most one review wakeup
+    and at most one pending effort request) so a provably never-delivered
+    attempt can restore only its own consumption at persist time. A policy
+    or bridge refusal raised before any ``turn/start`` is returned as a
+    known non-delivery (``rejected``, ``rpc_sent: False``); the core still
+    upgrades it to uncertain on contradicting activity.
+    """
 
     def __init__(self, bridge, policy, kind, reason):
         self.bridge = bridge
         self.policy = policy
         self.kind = kind
         self.reason = reason
+        self.probe = None
         self.last_decision = None
+        self.attempted = False
+        self.consumed = None
+
+    def _not_sent(self, reason):
+        return {'status': 'rejected', 'rpc_sent': False,
+                'reason': 'known non-delivery before any turn/start: '
+                          + str(reason)}
 
     def send_turn(self, facts):
+        self.attempted = True
+        self.consumed = {'wakeup': None, 'pending': None}
         if self.bridge is None:
-            raise ml.Refusal('owned transport unavailable')
-        if self.kind is not None:
-            kind, reason = self.kind, self.reason
-        else:
-            wakeup = self.policy.consume_wakeup()
-            if wakeup is not None:
-                kind = 'review'
-                reason = 'worker terminal wakeup: ' + wakeup['worker']
+            return self._not_sent('owned transport unavailable')
+        try:
+            if self.kind is not None:
+                kind, reason = self.kind, self.reason
             else:
-                kind = 'coordination'
-                reason = None
-        decision = self.policy.decide_turn(facts['turn_id'], kind, reason)
+                wakeup = self.policy.consume_wakeup()
+                if wakeup is not None:
+                    self.consumed['wakeup'] = dict(wakeup)
+                    kind = 'review'
+                    reason = 'worker terminal wakeup: ' + wakeup['worker']
+                else:
+                    kind = 'coordination'
+                    reason = None
+            pending = self.policy.status()['pending_next_turn']
+            decision = self.policy.decide_turn(facts['turn_id'], kind, reason)
+        except pe.Refusal as exc:
+            return self._not_sent(exc)
+        if decision['source'] == 'pending':
+            self.consumed['pending'] = pending
         self.last_decision = dict(decision)
         out = dict(facts)
         out['effort'] = decision['effort']
-        return self.bridge.send_turn(out)
+        before = self.probe.turn_starts if self.probe is not None else None
+        try:
+            return self.bridge.send_turn(out)
+        except bx.Refusal as exc:
+            if before is None or self.probe.turn_starts != before:
+                raise  # a turn/start may exist: stays uncertain in the core
+            return self._not_sent(exc)
 
 
 def _authority(root, session_id):
@@ -26378,9 +26451,11 @@ def _open(root, state):
                           directory / (state['session_id'] + '.fake.json'))
     else:
         rpc = None
+    probe = SendProbe(rpc if rpc is not None else _closed_rpc)
+    wrapper.probe = probe
     try:
         bridge = bx.CodexLeadTransport(
-            rpc if rpc is not None else _closed_rpc,
+            probe,
             state['thread_id'], model=state['model'],
             effort=state['baseline_effort'],
             supported_efforts=policy.supported(),
@@ -26394,7 +26469,7 @@ def _open(root, state):
         # (the core refuses new turns on non-open states and the bridge
         # refuses sends), but recorded replay results stay readable.
         bridge = bx.CodexLeadTransport(
-            rpc if rpc is not None else _closed_rpc,
+            probe,
             state['thread_id'], model=state['model'],
             effort=state['baseline_effort'],
             supported_efforts=policy.supported(),
@@ -26433,7 +26508,7 @@ def _persist(root, state, policy, bridge, session):
     _save_state(root, state)
 
 
-def _merge_policy_snapshot(base, disk, live):
+def _merge_policy_snapshot(base, disk, live, restore=False):
     """Merge one run's own policy effects into the concurrent disk state.
 
     ``base`` is the snapshot the run loaded when it started, ``disk`` the
@@ -26445,7 +26520,23 @@ def _merge_policy_snapshot(base, disk, live):
     pending request, at most one wakeup) and its immutable decisions are
     applied on top. A pending effort arriving after the current turn's
     decision therefore survives persistence and applies only next turn.
+
+    With ``restore`` (this attempt was provably never delivered: a typed
+    rejection without contradicting activity, or a known local refusal
+    before any turn/start) none of this attempt's consumption is applied:
+    its wakeup and pending request stay exactly as they are on disk (the
+    run never wrote them away), newer concurrent pending/mode/wakeup
+    changes are kept, and only its decision record is appended as attempt
+    evidence. Uncertain or accepted attempts are never restored.
     """
+    if restore:
+        merged = dict(disk)
+        disk_ids = {item['turn_id'] for item in disk['decisions']}
+        merged['decisions'] = (disk['decisions']
+                               + [item for item in live['decisions']
+                                  if item['turn_id'] not in disk_ids])
+        merged['decisions'] = merged['decisions'][-pe.MAX_DECISIONS:]
+        return merged
     merged = dict(live)
     if disk['mode'] != base['mode'] or disk['manual'] != base['manual']:
         merged['mode'] = disk['mode']
@@ -26471,7 +26562,7 @@ def _merge_policy_snapshot(base, disk, live):
     return merged
 
 
-def _persist_run(root, base_state, policy, bridge, session):
+def _persist_run(root, base_state, policy, bridge, session, restore=False):
     """Locked merge-persist for one run command; returns the fresh state.
 
     The run's pre-turn in-memory snapshot is never written over the
@@ -26504,7 +26595,8 @@ def _persist_run(root, base_state, policy, bridge, session):
             raise Refusal('provider turn mapping bound exceeded')
         disk['policy'] = _merge_policy_snapshot(base_state['policy'],
                                                  disk['policy'],
-                                                 policy.snapshot())
+                                                 policy.snapshot(),
+                                                 restore=restore)
         _save_state(root, disk)
     return disk
 
@@ -26530,7 +26622,8 @@ def _session_view(root, state, session, bridge, policy):
         'workers': {wid: dict(worker) for wid, worker in
                     state['workers'].items()},
         'effort': policy.status(),
-        'decisions': [dict(item) for item in policy.decisions()],
+        'decisions': [dict(item, outcome=_turn_terminal_status(
+            view, item['turn_id'])) for item in policy.decisions()],
         'goal_sha256': state['goal_sha256'],
         'created_at': state['created_at'], 'updated_at': state['updated_at'],
         'historical': _historical(root, state['session_id']),
@@ -26700,7 +26793,7 @@ def _cmd_start_owned(root, args, goal_sha, baseline):
     return 0
 
 
-def _reconcile_active(root, state, session, conn, view):
+def _reconcile_active(root, state, session, conn, view, turns=None):
     """Reconcile one proven active turn from the provider's own thread state.
 
     Only the exact provider turn id validated by a previous acknowledgement
@@ -26720,7 +26813,8 @@ def _reconcile_active(root, state, session, conn, view):
             provider_turn = provider_id
     if provider_turn is None:
         return view
-    turns = conn.read_thread_turns(state['thread_id'])
+    if turns is None:
+        turns = conn.read_thread_turns(state['thread_id'])
     status = cx.reconcile_status(turns.get(provider_turn))
     if status is None:
         return view
@@ -26750,18 +26844,16 @@ def _turn_terminal_status(view, turn_id):
     return None
 
 
-def _delivery_state(ack, turn_status, turn_wait):
+def _delivery_state(ack, turn_status):
     """Explicit delivery state and truthful exit code for one run.
 
     Submission acknowledgement, actual turn outcome and completion stay
     distinct: ``status`` keeps the provider's acknowledgement while
     ``delivery`` states what actually happened to the turn. Exit code 0
-    means the turn was observed completed — or, with ``--turn-wait 0``,
-    that the owner explicitly chose an asynchronous acknowledgement
-    (delivery stays ``pending``; the owned process is terminated at
-    command end, so no background execution is promised). Failed,
-    rejected, interrupted, uncertain and timed-out work all exit
-    nonzero. A process exit is never inferred as model success.
+    means the turn was observed completed. Rejected (2), uncertain (3),
+    failed (4), interrupted (5) and an accepted turn without an observed
+    terminal event (``unknown``, 6) all exit nonzero. A process exit or an
+    interrupt acknowledgement is never inferred as a terminal outcome.
     """
     if ack == 'rejected':
         return 'rejected', 2
@@ -26773,9 +26865,105 @@ def _delivery_state(ack, turn_status, turn_wait):
         return 'failed', 4
     if turn_status == 'interrupted':
         return 'interrupted', 5
-    if turn_wait > 0:
-        return 'pending', 6
-    return 'pending', 0
+    return 'unknown', 6
+
+
+def _active_turn_id(session, session_id):
+    view = session.status(session_id=session_id)
+    return view['turn']['turn_id'] if view['turn'] else None
+
+
+def _await_terminal(session, session_id, turn_id, conn, seconds):
+    """Keep the owned process and route events until the turn ends.
+
+    Returns ``terminal`` once the core no longer has ``turn_id`` active,
+    ``provider_exited`` when the owned app-server exits (no outcome is
+    inferred) or ``deadline`` after ``seconds``.
+    """
+    deadline = time.monotonic() + seconds
+    while True:
+        if _active_turn_id(session, session_id) != turn_id:
+            return 'terminal'
+        if conn.exited:
+            return 'provider_exited'
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return 'deadline'
+        conn.pump(min(0.2, remaining))
+
+
+def _provider_turn_for(state, turn_id):
+    for provider_turn, local in state['provider_turns'].items():
+        if local['turn_id'] == turn_id:
+            return provider_turn
+    return None
+
+
+def _interrupt_and_drain(root, state, session, conn, turn_id, provider_turn,
+                         drain):
+    """Exact ``turn/interrupt``, bounded terminal drain, provider read.
+
+    The ``{}`` acknowledgement only acknowledges the request: success is
+    recorded only from a terminal ``turn/completed`` event for this exact
+    turn or the provider's own ``thread/read`` status. Without either the
+    turn stays active (Unknown) in the core; nothing is resent and no
+    terminal is fabricated.
+    """
+    info = {'requested': True, 'thread_id': state['thread_id'],
+            'provider_turn_id': provider_turn, 'acknowledged': False,
+            'error': None, 'drain_seconds': drain, 'drain_outcome': None,
+            'provider_status': None, 'terminal_observed': False,
+            'note': ('an interrupt acknowledgement is not terminal proof')}
+    try:
+        conn.interrupt_turn(state['thread_id'], provider_turn)
+        info['acknowledged'] = True
+    except cx.ProviderRejected as exc:
+        info['error'] = 'rejected: ' + str(exc)
+    except cx.Refusal as exc:
+        info['error'] = 'uncertain: ' + str(exc)
+    info['drain_outcome'] = _await_terminal(session, state['session_id'],
+                                            turn_id, conn, drain)
+    if info['drain_outcome'] != 'terminal' and not conn.exited:
+        try:
+            turns = conn.read_thread_turns(state['thread_id'])
+            info['provider_status'] = turns.get(provider_turn)
+            view = session.status(session_id=state['session_id'])
+            _reconcile_active(root, state, session, conn, view, turns=turns)
+        except (cx.Refusal, ml.Refusal) as exc:
+            info['error'] = ((info['error'] + '; ') if info['error'] else '') \
+                + 'thread/read: ' + str(exc)
+    info['terminal_observed'] = (
+        _active_turn_id(session, state['session_id']) != turn_id)
+    return info
+
+
+def _restore_for(result, wrapper):
+    """True only for an attempt of THIS command provably never delivered."""
+    return (wrapper.attempted and isinstance(result, dict)
+            and result.get('state') == 'rejected')
+
+
+def _restored_view(restore, wrapper):
+    if not restore or not wrapper.consumed:
+        return None
+    return {'wakeup': (wrapper.consumed['wakeup'] or {}).get('worker'),
+            'pending': wrapper.consumed['pending'],
+            'note': ('attempt provably not delivered: its consumption was not '
+                     'persisted; newer concurrent controls were kept')}
+
+
+def _run_note(bridge_status, delivery, wait):
+    last = (bridge_status or {}).get('last_send') or {}
+    if 'mapping capacity exhausted' in str(last.get('reason', '')):
+        return ('provider turn mapping bound reached: no turn was sent; stop '
+                'this session and start a new one (new thread, no carried '
+                'context) to continue')
+    if delivery == 'unknown':
+        return ('no terminal event observed (%s); the provider turn state is '
+                'Unknown and the session keeps it active; run `unio '
+                'lead-session recover` (optionally --interrupt) on the same '
+                'thread; nothing was resent' % (wait or 'not waited'))
+    return None
 
 
 def _cmd_run_owned(root, state, args, text):
@@ -26784,18 +26972,18 @@ def _cmd_run_owned(root, state, args, text):
     Admission (STOP, owner holds, policy, capacity) is checked before the
     owned process is spawned. The command then owns ONE app-server process:
     initialize, account, exact thread/resume, optional reconciliation of a
-    proven active turn, one turn/start with the decided effort, and bounded
-    waiting for the turn's terminal notification. The core's idempotent
-    request check and its open-state check decide replays and uncertain
-    sessions; nothing is ever resent, and an unacknowledged turn is
-    never reconciled. The connection is closed in a finally so no owned
-    process outlives the command. The payload separates the submission
-    acknowledgement (``status``) from the actual turn outcome
-    (``turn_status``, ``delivery``) and the observed native exit
-    (``provider_exited``); the exit code is truthful: 0 only for an
-    observed completed turn (or an explicit ``--turn-wait 0``
-    asynchronous acknowledgement), nonzero for rejected, uncertain,
-    failed, interrupted and timed-out work.
+    proven active turn, one turn/start with the decided effort, and waiting
+    for the turn's terminal notification while KEEPING the process alive
+    (``--turn-wait``, default 3600s). At the deadline it requests an exact
+    ``turn/interrupt`` for the proven thread/turn, drains terminal events
+    for ``--interrupt-drain`` seconds and reads the provider's own thread
+    state before teardown; an acknowledgement alone is never terminal
+    proof. The core's idempotent request check and its open-state check
+    decide replays and uncertain sessions; nothing is ever resent, a
+    replay never waits or interrupts, and an unacknowledged turn is never
+    reconciled. The connection is closed in a finally. A provably
+    rejected/never-sent attempt does not persist its effort/wakeup
+    consumption. Exit codes are truthful (see ``_delivery_state``).
     """
     policy_doc, lead_group, lease = lp.admit_lead(
         root, expected_agent='codex', budget_label=state['budget_label'])
@@ -26812,9 +27000,10 @@ def _cmd_run_owned(root, state, args, text):
             conn.initialize()
             conn.resume_thread(state['thread_id'])
             view = _reconcile_active(root, state, session, conn, view)
+            probe = SendProbe(conn.rpc)
             try:
                 live = bx.CodexLeadTransport(
-                    conn.rpc, state['thread_id'], model=state['model'],
+                    probe, state['thread_id'], model=state['model'],
                     effort=state['baseline_effort'],
                     supported_efforts=policy.supported(),
                     max_mappings=state['max_mappings'],
@@ -26826,7 +27015,7 @@ def _cmd_run_owned(root, state, args, text):
                 # inspection only. The core still returns recorded replay
                 # results; every new send refuses with zero turn starts.
                 live = bx.CodexLeadTransport(
-                    conn.rpc, state['thread_id'], model=state['model'],
+                    probe, state['thread_id'], model=state['model'],
                     effort=state['baseline_effort'],
                     supported_efforts=policy.supported(),
                     max_mappings=state['max_mappings'],
@@ -26834,7 +27023,9 @@ def _cmd_run_owned(root, state, args, text):
                 live.bind(session)
             conn.on_notification = live.handle_notification
             wrapper.bridge = live
+            wrapper.probe = probe
             generation = view['generation']
+            result = None
             try:
                 result = session.submit_next_turn(
                     session_id=state['session_id'], generation=generation,
@@ -26843,41 +27034,42 @@ def _cmd_run_owned(root, state, args, text):
                 # Locked merge-persist: concurrent pending effort requests,
                 # worker terminal wakeups and STOP flags written while this
                 # turn was in flight survive; the lock is held only for this
-                # short transaction, never across the turn itself.
-                state = _persist_run(root, state, policy, live, session)
+                # short transaction, never across the turn itself. Mappings
+                # are durable BEFORE the long wait, so recover stays possible.
+                state = _persist_run(root, state, policy, live, session,
+                                     restore=_restore_for(result, wrapper))
+            restore = _restore_for(result, wrapper)
             decision = wrapper.last_decision
             if decision is None:
                 for item in policy.decisions():
                     if item['turn_id'] == result.get('turn_id'):
                         decision = item
-            completed = False
             turn_status = None
+            wait = None
+            interrupt = None
             if result.get('state') == 'accepted':
                 turn_id = result['turn_id']
                 view = session.status(session_id=state['session_id'])
                 turn_status = _turn_terminal_status(view, turn_id)
-                if turn_status is None and args.turn_wait > 0:
-                    deadline = time.monotonic() + args.turn_wait
-                    while True:
-                        view = session.status(session_id=state['session_id'])
-                        if view['turn'] is None:
-                            turn_status = _turn_terminal_status(view,
-                                                                turn_id)
-                            break
-                        remaining = deadline - time.monotonic()
-                        if remaining <= 0:
-                            break
-                        conn.pump(min(0.2, remaining))
-                        if conn.exited:
-                            # Child death: stop waiting promptly (no tight
-                            # polling, no inferred success); the actual
-                            # process outcome, partial output and Unknown
-                            # model completion stay honest.
-                            break
-                completed = turn_status == 'completed'
+                sent_now = wrapper.attempted and probe.turn_starts > 0
+                if (turn_status is None and sent_now
+                        and _active_turn_id(session,
+                                            state['session_id']) == turn_id):
+                    wait = _await_terminal(session, state['session_id'],
+                                           turn_id, conn, args.turn_wait)
+                    provider_turn = _provider_turn_for(state, turn_id)
+                    if wait == 'deadline' and provider_turn is not None:
+                        interrupt = _interrupt_and_drain(
+                            root, state, session, conn, turn_id,
+                            provider_turn, args.interrupt_drain)
+                    view = session.status(session_id=state['session_id'])
+                    turn_status = _turn_terminal_status(view, turn_id)
+                elif turn_status is None:
+                    wait = 'replay_not_waited'
+            completed = turn_status == 'completed'
             provider_exited = conn.exited
-            delivery, code = _delivery_state(result.get('state'),
-                                              turn_status, args.turn_wait)
+            delivery, code = _delivery_state(result.get('state'), turn_status)
+            live_status = live.status()
             payload = {
                 'session_id': state['session_id'], 'request_id': args.request_id,
                 'generation': result.get('generation'),
@@ -26887,18 +27079,23 @@ def _cmd_run_owned(root, state, args, text):
                 'source': decision['source'] if decision else None,
                 'turn_completed': completed, 'turn_status': turn_status,
                 'delivery': delivery,
+                'wait': {'seconds': args.turn_wait, 'outcome': wait},
+                'interrupt': interrupt,
+                'restored': _restored_view(restore, wrapper),
+                'note': _run_note(live_status, delivery, wait),
                 'provider_exited': provider_exited,
                 'thread_id': state['thread_id'],
-                'bridge': live.status(), 'effective': 'Unknown',
+                'bridge': live_status, 'effective': 'Unknown',
                 'caution': CAUTION,
             }
             if provider_exited:
                 payload['stderr_tail'] = conn.stderr_tail()
             _emit(args, payload, 'turn %s: %s (effort %s, kind %s, source %s, '
-                                 'delivery %s, owned thread %s)'
+                                 'delivery %s, owned thread %s)%s'
                   % (result.get('turn_id'), result.get('state'),
                      payload['effort'], payload['kind'], payload['source'],
-                     delivery, state['thread_id']))
+                     delivery, state['thread_id'],
+                     ('; ' + payload['note']) if payload['note'] else ''))
             return code
         finally:
             conn.close()
@@ -26924,8 +27121,10 @@ def _cmd_run(root, args):
     view = session.status(session_id=state['session_id'])
     if (view['state'] == 'running' and view['turn'] is not None
             and rpc.behavior().get('release_held')):
-        # Fake-only lifecycle release of a held turn: a pure terminal
-        # notification for an already proven provider turn; zero rpc calls.
+        # In-process fake seam only (no process exists to kill): a pure
+        # terminal notification for an already proven provider turn; zero
+        # rpc calls. Killed-turn semantics are exercised through the owned
+        # path against the executable fake app-server instead.
         active = view['turn']['turn_id']
         provider_turn = None
         for pid, local in bridge.status()['mappings'].items():
@@ -26937,6 +27136,7 @@ def _cmd_run(root, args):
         rpc.notify_terminal(provider_turn)
         view = session.status(session_id=state['session_id'])
     generation = view['generation']
+    result = None
     try:
         result = session.submit_next_turn(
             session_id=state['session_id'], generation=generation,
@@ -26944,7 +27144,9 @@ def _cmd_run(root, args):
     finally:
         # Same locked merge-persist as the owned path: concurrent control
         # state written during this turn is never overwritten.
-        state = _persist_run(root, state, policy, bridge, session)
+        state = _persist_run(root, state, policy, bridge, session,
+                             restore=_restore_for(result, wrapper))
+    restore = _restore_for(result, wrapper)
     decision = wrapper.last_decision
     if decision is None:
         for item in policy.decisions():
@@ -26958,8 +27160,8 @@ def _cmd_run(root, args):
         if turn_status is None and rpc.complete_last():
             turn_status = 'completed'
         completed = turn_status == 'completed'
-    delivery, code = _delivery_state(result.get('state'), turn_status,
-                                     args.turn_wait)
+    delivery, code = _delivery_state(result.get('state'), turn_status)
+    bridge_status = bridge.status()
     payload = {
         'session_id': state['session_id'], 'request_id': args.request_id,
         'generation': result.get('generation'),
@@ -26969,6 +27171,8 @@ def _cmd_run(root, args):
         'source': decision['source'] if decision else None,
         'turn_completed': completed, 'turn_status': turn_status,
         'delivery': delivery, 'provider_exited': False,
+        'restored': _restored_view(restore, wrapper),
+        'note': _run_note(bridge_status, delivery, None),
         'effective': 'Unknown',
         'caution': CAUTION,
     }
@@ -26977,6 +27181,98 @@ def _cmd_run(root, args):
           % (result.get('turn_id'), result.get('state'),
              payload['effort'], payload['kind'], payload['source'], delivery))
     return code
+
+
+def _cmd_recover(root, args):
+    """Explicit owner recovery of ONE proven active turn on the SAME thread.
+
+    For a turn whose provider id was proven by an acknowledgement but whose
+    terminal event was never observed (for example a controller deadline
+    or an app-server exit). Admission runs first; then one owned process:
+    initialize, exact thread/resume and the provider's own ``thread/read``.
+    A terminal provider status is recorded; with ``--interrupt`` a still
+    in-progress turn gets one exact ``turn/interrupt`` plus a bounded
+    terminal drain and a second ``thread/read``. Nothing is ever resent,
+    no ``turn/start`` is made, no terminal is fabricated and the thread is
+    never replaced or reset. An unacknowledged (unproven) turn refuses.
+    Exit 0 only when a provider terminal for the exact turn was recorded;
+    6 when it stays Unknown/in progress.
+    """
+    state = _load_state(root, args.session)
+    _require_owner(root, args.session)
+    if state['transport'] != 'owned':
+        raise Refusal('recover is supported only on the owned transport')
+    policy_doc, lead_group, lease = lp.admit_lead(
+        root, expected_agent='codex', budget_label=state['budget_label'])
+    try:
+        session, bridge, _rpc, policy, wrapper = _open(root, state)
+        view = session.status(session_id=state['session_id'])
+        if (view['state'] not in ('pending', 'running', 'outcome_unknown')
+                or view['turn'] is None):
+            raise Refusal('no active turn to recover (session state %s)'
+                          % view['state'])
+        turn_id = view['turn']['turn_id']
+        provider_turn = _provider_turn_for(state, turn_id)
+        if provider_turn is None:
+            raise Refusal('active turn has no proven provider turn id '
+                          '(unacknowledged): it can never be reconciled, '
+                          'interrupted or resent; stop this session and '
+                          'start a new one')
+        conn = cx.OwnedCodexConnection(state['codex_binary'], cwd=str(root))
+        try:
+            conn.initialize()
+            conn.resume_thread(state['thread_id'])
+            live = bx.CodexLeadTransport(
+                SendProbe(conn.rpc), state['thread_id'], model=state['model'],
+                effort=state['baseline_effort'],
+                supported_efforts=policy.supported(),
+                max_mappings=state['max_mappings'],
+                prior_mappings=dict(state['provider_turns']),
+                rejection=cx.ProviderRejected)
+            live.bind(session)
+            conn.on_notification = live.handle_notification
+            turns = conn.read_thread_turns(state['thread_id'])
+            before = turns.get(provider_turn)
+            _reconcile_active(root, state, session, conn, view, turns=turns)
+            interrupt = None
+            if (_active_turn_id(session, state['session_id']) == turn_id
+                    and before is not None and args.interrupt):
+                interrupt = _interrupt_and_drain(
+                    root, state, session, conn, turn_id, provider_turn,
+                    args.drain)
+            view = session.status(session_id=state['session_id'])
+            turn_status = _turn_terminal_status(view, turn_id)
+            if turn_status is not None:
+                outcome, code = 'reconciled', 0
+            elif before is None:
+                outcome, code = 'provider_does_not_report_turn', 6
+            elif interrupt is None:
+                outcome, code = 'still_in_progress', 6
+            else:
+                outcome, code = 'interrupt_unconfirmed', 6
+            payload = {
+                'session_id': state['session_id'], 'turn_id': turn_id,
+                'provider_turn_id': provider_turn,
+                'thread_id': state['thread_id'],
+                'provider_status_before': before, 'turn_status': turn_status,
+                'outcome': outcome, 'interrupt': interrupt,
+                'turn_starts': 0, 'provider_exited': conn.exited,
+                'note': ('no turn was started or resent; an unresolved turn '
+                         'stays active (Unknown); rerun with --interrupt to '
+                         'request turn/interrupt for this exact turn'
+                         if code else 'provider terminal recorded'),
+                'effective': 'Unknown', 'caution': CAUTION,
+            }
+            if conn.exited:
+                payload['stderr_tail'] = conn.stderr_tail()
+            _emit(args, payload, 'recover %s: %s (provider status before %s, '
+                                 'turn status %s)'
+                  % (turn_id, outcome, before, turn_status))
+            return code
+        finally:
+            conn.close()
+    finally:
+        lease.release()
 
 
 def _cmd_status(root, args):
@@ -27153,12 +27449,35 @@ def build_parser():
                      help='explicit work kind (default: review when a '
                           'worker wakeup is pending, else coordination)')
     run.add_argument('--reason', default=None)
-    run.add_argument('--turn-wait', type=int, default=600,
-                     help='owned transport: seconds to wait for the turn '
-                          'terminal notification (0 returns right after '
-                          'the acknowledgement; default 600)')
+    run.add_argument('--turn-wait', type=int, default=TURN_WAIT_DEFAULT,
+                     help='owned transport: seconds the command keeps the '
+                          'owned app-server alive waiting for the turn '
+                          'terminal event (1..86400, default %d); at the '
+                          'deadline it requests turn/interrupt for the exact '
+                          'turn. 0 is refused: the owned process cannot '
+                          'outlive the command' % TURN_WAIT_DEFAULT)
+    run.add_argument('--interrupt-drain', type=int,
+                     default=INTERRUPT_DRAIN_DEFAULT,
+                     help='seconds to drain terminal events after a deadline '
+                          'turn/interrupt (1..600, default %d)'
+                          % INTERRUPT_DRAIN_DEFAULT)
     run.add_argument('--session', default=None)
     run.add_argument('--json', action='store_true')
+
+    recover = sub.add_parser(
+        'recover', help='owned transport: reconcile (and with --interrupt, '
+                        'request turn/interrupt for) the proven active turn '
+                        'on the SAME thread; never starts or resends a turn')
+    recover.add_argument('--interrupt', action='store_true',
+                         help='request turn/interrupt for the exact proven '
+                              'turn when the provider still reports it in '
+                              'progress')
+    recover.add_argument('--drain', type=int, default=INTERRUPT_DRAIN_DEFAULT,
+                         help='seconds to drain terminal events after the '
+                              'interrupt request (1..600, default %d)'
+                              % INTERRUPT_DRAIN_DEFAULT)
+    recover.add_argument('--session', default=None)
+    recover.add_argument('--json', action='store_true')
 
     status = sub.add_parser('status', help='read-only session view')
     status.add_argument('--session', default=None)
@@ -27216,12 +27535,24 @@ def main(argv=None):
                           'start one first')
         args.session = owner['session_id']
     if getattr(args, 'turn_wait', None) is not None:
-        if not 0 <= args.turn_wait <= 86400:
-            raise Refusal('turn wait must be 0..86400 seconds')
+        if args.turn_wait == 0:
+            raise Refusal('--turn-wait 0 is refused before launch: the owned '
+                          'app-server cannot outlive this command, so an '
+                          'asynchronous acknowledgement would be killed; use '
+                          'a bounded wait (default %d seconds)'
+                          % TURN_WAIT_DEFAULT)
+        if not 1 <= args.turn_wait <= 86400:
+            raise Refusal('turn wait must be 1..86400 seconds')
+    for name in ('interrupt_drain', 'drain'):
+        value = getattr(args, name, None)
+        if value is not None and not 1 <= value <= 600:
+            raise Refusal('interrupt drain must be 1..600 seconds')
     if args.command == 'start':
         return _cmd_start(root, args)
     if args.command == 'run':
         return _cmd_run(root, args)
+    if args.command == 'recover':
+        return _cmd_recover(root, args)
     if args.command == 'status':
         return _cmd_status(root, args)
     if args.command == 'effort':
@@ -27297,9 +27628,21 @@ Enforced by this component:
   ever inferred from the process exit;
 - ``close()`` terminates the owned process group (TERM, brief wait,
   KILL) and never raises; the caller invokes it in a ``finally`` so no
-  owned process outlives its command. If the host process is killed
-  outright the session leader child can survive; the next command's
-  thread/resume reconciliation discovers the turn's real status.
+  owned process outlives its command. Closing kills any in-flight turn's
+  local app-server, so the caller keeps the process until a terminal
+  event or its bounded deadline, then requests an exact
+  ``turn/interrupt`` and drains terminal events before closing. What the
+  provider later reports for a turn whose app-server was killed is
+  Unknown (no live evidence); the caller never assumes it kept running
+  or finished. If the host process is killed outright the session
+  leader child can survive;
+- ``turn/interrupt`` is sent only for one exact proven thread/turn pair;
+  its ``{}`` reply acknowledges the request, never the turn's end;
+- every provider server-to-client request (command/file/permission
+  approvals, user-input or tool requests) is answered with ``-32601``:
+  nothing is auto-approved and no sandbox or approval policy is set on
+  ``thread/start``, so the user's own Codex configuration decides what a
+  turn may do without approval.
 
 The caller (``tools/lead-session.py``) still owns: admission (STOP,
 owner holds, contention) before spawning this connection, the effort
@@ -27642,6 +27985,25 @@ class OwnedCodexConnection:
                 turns[turn['id']] = turn['status']
         return turns
 
+    def interrupt_turn(self, thread_id, turn_id):
+        """Request ``turn/interrupt`` for ONE exact proven provider turn.
+
+        Local schema ``TurnInterruptParams`` requires ``threadId`` and
+        ``turnId``; the response ``{}`` only acknowledges the request. The
+        acknowledgement is NEVER terminal proof: the caller must observe a
+        terminal ``turn/completed`` event (or the provider's own
+        ``thread/read`` status) before recording any outcome. A typed
+        provider error raises ``ProviderRejected``; a timeout or exit raises
+        ``Refusal``. This is a control RPC, not a new turn or inference.
+        """
+        _bounded(thread_id, ID_BOUND, 'thread id')
+        _bounded(turn_id, ID_BOUND, 'provider turn id')
+        reply = self.rpc('turn/interrupt', {'threadId': thread_id,
+                                            'turnId': turn_id})
+        if not isinstance(reply, dict):
+            raise Refusal('turn/interrupt acknowledgement malformed')
+        return True
+
     # -- teardown -----------------------------------------------------------
 
     def close(self):
@@ -27703,7 +28065,7 @@ from pathlib import Path
 import stat
 import time
 
-MAX_POLICY_BYTES = 16384
+MAX_POLICY_BYTES = 65536  # native work-policy MAX_STATE parity; oversize still fails closed
 MAX_SLOT_META = 4096
 LIMITS = {'low': 1, 'medium': 2, 'high': 4}
 TIERS = frozenset(LIMITS)
@@ -28145,7 +28507,8 @@ cat > "$CONF_DIR/lib/ADAPTIVE-LEAD-EFFORT.md" <<'UNIO_ADAPTIVE_LEAD_EFFORT_MD'
 
 Status: experimental vertical slice for contracts
 `docs/development/contracts/0532-ADAPTIVE-LEAD-EFFORT-V1.md` and the
-owner correction `...-V2.md` (0.5.x series, unreleased). `unio
+owner correction `...-V2.md`, with the final review corrections of
+`0531-ADAPTIVE-REVIEW-CORRECTIONS-V7.md` (0.5.x series, unreleased). `unio
 lead-session` is an opt-in managed lead session with adaptive requested
 effort. It is not a replacement dashboard, it never adopts an unmanaged
 TUI or connection, and `unio lead` keeps its existing budget-reservation
@@ -28174,12 +28537,21 @@ worker/core settings remain compatible.
   owned thread. The app-server schema has no effort override on `turn/steer`,
   so an effort change is only ever applied by the next turn start; the
   effective provider-side effort remains Unknown everywhere.
-- Zero model calls while waiting: nothing is ever sent automatically. Status,
-  effort, worker, stop and output commands make no provider calls at all.
-- Worker terminal events are explicit controlled events. Each queues at most
-  one review wakeup; the next turn without an explicit work kind consumes
-  exactly one wakeup and is classified as review. Heartbeat or status
-  polling can never create a wakeup or trigger inference.
+- No inference while waiting: nothing is ever sent automatically. Status,
+  effort, worker, stop and output commands open no provider connection at
+  all. `run` and `recover` make control RPCs (initialize, account check,
+  thread resume/read, and `turn/interrupt` when requested); control RPCs
+  are not inference. Only `turn/start` starts a model turn.
+- Work kind is never recognized from prose. A turn is `planning` or
+  `review` only when the owner passes `--kind`, or `review` when a recorded
+  worker terminal wakeup is pending; everything else is `coordination`.
+  Worker events are recorded by the owner (`worker register`, `worker
+  terminal`); nothing watches workers, and there is no continuous or
+  autonomous phase scheduler.
+- Each worker terminal event queues at most one review wakeup; the next
+  turn without an explicit work kind consumes exactly one wakeup.
+  Heartbeat or status polling can never create a wakeup or trigger
+  inference.
 - Manual override suspends automatic selection until `effort auto` is
   selected again. `effort request` records a pending effort that is applied
   only by the next turn, never mid-turn.
@@ -28198,7 +28570,9 @@ unio lead-session start --goal FILE --model MODEL [--ceiling low|xhigh]
                         [--transport fake] [--fake-efforts low,medium,high,xhigh]
                         [--json]
 unio lead-session run --file FILE --request-id ID
-                      [--kind coordination|planning|review] [--json]
+                      [--kind coordination|planning|review] [--reason R]
+                      [--turn-wait SECONDS] [--interrupt-drain SECONDS] [--json]
+unio lead-session recover [--interrupt] [--drain SECONDS] [--json]
 unio lead-session status [--json]
 unio lead-session effort show|auto|manual low|xhigh|request low|xhigh [--reason R]
 unio lead-session worker register ID|wait|terminal ID [--json]
@@ -28216,21 +28590,95 @@ unio lead-session output [--after N] [--limit N] [--json]
   default of four is unchanged for non-lead use).
 - `run` submits one bounded owner turn (at most 8 KiB). Without `--kind`,
   the turn is review when a wakeup is pending, else coordination. Request
-  ids are idempotent: an identical replay returns the recorded result with
-  zero new provider calls; changed content refuses. The JSON payload
-  separates the submission acknowledgement (`status`: accepted/rejected/
-  uncertain), the actual turn outcome (`turn_status`: completed/failed/
-  interrupted, or null while pending; `turn_completed`) and the observed
-  native exit (`provider_exited`, plus a bounded private `stderr_tail`
-  when the owned process died). `delivery` states the combined result:
+  ids are idempotent: an identical replay returns the recorded result and
+  starts no new turn (no `turn/start`, no inference). On the owned
+  transport a replay still passes admission (STOP, holds, capacity) and
+  makes control RPCs (initialize, account, thread resume, possibly thread
+  read); it never waits for or interrupts the recorded turn. Changed
+  content refuses.
+- The JSON payload separates the submission acknowledgement (`status`:
+  accepted/rejected/uncertain), the actual turn outcome (`turn_status`:
+  completed/failed/interrupted, or null when no terminal was observed;
+  `turn_completed`), the wait (`wait.seconds`, `wait.outcome`: `terminal`,
+  `deadline`, `provider_exited` or `replay_not_waited`), any deadline
+  interrupt (`interrupt`), restored consumption (`restored`) and the
+  observed native exit (`provider_exited`, plus a bounded private
+  `stderr_tail` when the owned process died). `delivery` is one of
   `completed`, `failed`, `interrupted`, `rejected`, `uncertain` or
-  `pending`. Exit codes are truthful: 0 only for an observed completed
-  turn (or an explicit `--turn-wait 0` asynchronous acknowledgement,
-  which stays `pending` — the owned process is terminated at command
-  end, so no background execution is promised); 1 for controlled
-  refusals; 2 rejected; 3 uncertain; 4 failed; 5 interrupted; 6 accepted
-  but not observed terminal before the wait ended (timeout or provider
-  exit). A process exit is never inferred as model success.
+  `unknown`. Exit codes: 0 only for an observed completed turn; 1
+  controlled refusal; 2 rejected; 3 uncertain; 4 failed; 5 interrupted;
+  6 unknown (accepted, no terminal observed). A process exit or an
+  interrupt acknowledgement is never inferred as a turn outcome.
+
+### Waiting, deadline and interrupt (owned transport)
+
+- The owned app-server process belongs to the `run` command and is
+  terminated when the command ends; terminating it ends that local
+  app-server, so the command keeps it alive while the turn runs.
+  `--turn-wait` (default 3600 seconds, 1..86400) bounds that wait.
+  `--turn-wait 0` is refused before launch: an asynchronous
+  acknowledgement would be killed by the same command.
+- At the deadline, `run` sends one `turn/interrupt` with the exact proven
+  `threadId` and provider `turnId` (the local schema requires both; the
+  `{}` response only acknowledges the request). It then drains terminal
+  events for `--interrupt-drain` seconds (default 30, 1..600) and reads
+  the provider's own thread state once. An observed `turn/completed` or
+  terminal thread status is recorded (usually `interrupted`, exit 5).
+  Without one, the turn stays active in the session and the outcome is
+  `unknown` (exit 6) — an acknowledgement is not terminal proof. Partial
+  output, the original request, the thread and the provider-turn mapping
+  are kept; nothing is resent.
+- What Codex reports later for a turn whose app-server was killed is
+  Unknown (no live evidence in this slice). The run never assumes it kept
+  computing or finished.
+
+### Recovering a stale turn
+
+`unio lead-session recover` handles a turn that was acknowledged (its
+provider id is proven) but whose end was never observed, on the SAME
+thread:
+
+1. It passes normal admission (project STOP refuses), then opens one owned
+   process, resumes the exact thread and reads the provider's own turn
+   status.
+2. A terminal provider status is recorded (exit 0).
+3. If the provider still reports the turn in progress, plain `recover`
+   changes nothing (exit 6). `recover --interrupt` sends one
+   `turn/interrupt` for that exact turn, drains terminal events for
+   `--drain` seconds and reads the thread again; it records a terminal
+   only from that evidence (exit 0), otherwise it stays Unknown (exit 6).
+4. It never sends `turn/start`, never resends the request, never fabricates
+   a terminal and never replaces or resets the thread. An unacknowledged
+   (`outcome_unknown`, unproven) turn refuses before any process starts.
+
+Session STOP does not block `recover` (it starts no turn); project STOP
+does.
+
+### Rejected and never-sent turns
+
+A turn that was provably never delivered — a typed `turn/start` rejection
+with no contradicting provider activity, or a local refusal before any
+`turn/start` (for example the provider-turn mapping bound) — does not use
+up the pending effort request or the review wakeup it would have consumed.
+The attempted decision stays visible in `status` with outcome `rejected`,
+and the `run` payload reports what was kept under `restored`. Newer
+pending, manual/auto or wakeup changes written while the attempt ran are
+kept. An uncertain attempt (malformed acknowledgement, lost connection,
+contradicting activity) is never restored.
+
+### Session lifetime limits
+
+- A session records at most `--max-requests` request ids (default 64),
+  including rejected and replayed attempts; then `run` refuses with
+  `request history exhausted`.
+- The provider-turn mapping bound (`--max-mappings`, default and maximum
+  64) and the core history of 32 recorded turns bound how many turns one
+  session can hand over. Reaching the mapping bound returns `rejected`
+  (no turn sent) with a note, never `uncertain`.
+- To continue past a limit, `stop` the session and `start` a new one. The
+  new session starts a new thread; the earlier conversation context is
+  not carried over.
+
 - `effort manual` suspends auto; `effort auto` resumes it; `effort request`
   is pending for the next turn only (a newer request replaces an older
   pending one; manual clears it). Both accept only `low` or `xhigh` in
@@ -28240,6 +28688,8 @@ unio lead-session output [--after N] [--limit N] [--json]
   review wakeup. Duplicate terminal events for the same worker refuse.
 - `stop` sets STOP. Workers keep running; new turns refuse; there is no
   automatic or manual resume in this slice.
+- `recover` reconciles, and with `--interrupt` interrupts, one proven
+  stale turn on the same thread (see below).
 - `output` reads the bounded ordered journal with explicit gap and
   truncation flags (same limits as managed sessions).
 
@@ -28313,8 +28763,29 @@ unio lead-session output [--after N] [--limit N] [--json]
 - If the owned process dies mid-turn, the wait stops promptly (no busy
   loop until the deadline), the final buffered terminal events and a
   bounded private stderr tail are drained, the outcome stays
-  `pending`/Unknown with `provider_exited: true`, and no terminal status
-  is ever inferred from the process exit.
+  `unknown` with `provider_exited: true` (exit 6), and no terminal status
+  is ever inferred from the process exit. Use `recover` afterwards.
+
+## Permissions, approvals and owner setup
+
+- The owned connection answers every provider server-to-client request
+  (command, file-change and permission approvals, user-input and tool
+  requests) with an error (`-32601`). Nothing is auto-approved.
+- `thread/start` sets no sandbox or approval policy, so the turn inherits
+  the user's own Codex configuration. Whether a managed lead turn can run
+  a command such as `unio run ...` without an approval prompt depends on
+  that configuration; a turn that needs an approval will see it rejected.
+  Unio does not widen permissions, and this slice does not change Codex
+  settings.
+- Owner setup: a ChatGPT-subscription Codex login (`account/read` must
+  report `chatgpt`; `OPENAI_API_KEY`/`CODEX_API_KEY` in the environment
+  refuse), an initialized project policy whose registered lead is `codex`
+  with a real account group, and no other Codex lead session open on that
+  account. Close any existing AI CLI lead session before a separate
+  terminal-driven managed trial.
+- Live limitations: no real Codex turn has been run through this slice.
+  Live `turn/interrupt`, approval handling, stale-turn reporting after a
+  killed app-server and the effective model/effort are Unknown.
 
 ## Honest boundary of this slice
 
@@ -28323,6 +28794,10 @@ metadata bound and fail-closed validation, strict label validation matching nati
 policy, lock-backed owned lease and the owned app-server connection lifecycle are
 wired and verified via executable fake app-server and genuine offline policy
 fixtures (contracts V4 and V5).
+Deadline interrupt, recovery and rejected-attempt restoration are exercised the
+same way: the executable fake app-server only progresses a turn while its own
+process lives, so a killed turn stays in progress unless an explicit interrupt
+or the provider's own thread state ends it.
 Real Codex model inference, external network calls, paid credits/billing, and
 cross-workspace/unmanaged visibility remain zero/Unknown during development and
 validation. No real model calls, billing, or credentials are used.
@@ -48494,7 +48969,7 @@ the existing lead.
   spawn another lead-provider CLI, worker or independent test agent. Keep
   the lead reservation; do not bypass budget admission by changing aliases.
 - Make an early coherent commit, run checks appropriate to the change and
-  maintain a handoff. Use the selected work mode: focused checks for YOLO,
+  maintain a handoff. Use the selected work mode: focused checks for Fast,
   with the full required gate at release. Test corrections must preserve
   their behavioral assertion; never make a failure pass by deleting coverage.
 - Identify lead-authored code and self-review honestly. It is not an
