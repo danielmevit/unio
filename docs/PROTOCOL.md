@@ -246,6 +246,11 @@ unio verify <w> <task>    machine gate assist: diff vs the task's
                                empty diff, tampered task), 2 INCOMPLETE (no
                                scope or no Validate lines) or unsupported
                                worktree state
+unio verify <w> <task> --preview [--json]
+                               opt-in observation of current scope before
+                               a Source; Validate commands are NOT run;
+                               no admission, delivery or acceptance;
+                               never a verify PASS (docs/TASK-PREVIEW.md)
 unio diff <w> [--stat]    changes on agent/<w> vs base: committed and
                                uncommitted, separately
 unio review <w> <task> [agent]  cross-vendor review: a DIFFERENT agent
