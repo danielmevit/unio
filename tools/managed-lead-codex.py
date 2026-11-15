@@ -81,6 +81,20 @@ thread. The app-server schema has no effort override on ``turn/steer``,
 so an effort change is only ever applied by the next turn/start; the
 effective provider effort remains Unknown.
 
+Opt-in explicit handoff (contract 0532-ADAPTIVE-LEAD-EFFORT-V1), legacy
+default preserved exactly: the native owner may durably record the
+provider turn ids its own acknowledgements validated (outside the core)
+and hand them to a fresh bridge through ``prior_mappings``. The handoff
+is proven only when the mapping covers exactly the session's recorded
+non-rejected turns (history, last and active) with matching generations;
+anything missing, extra or mismatched is refused as unproven — there is
+no id eviction, rebinding or invented recovery, and an unacknowledged
+(outcome_unknown) turn can never be handed over. ``max_mappings`` is an
+explicitly bounded owned-session option (1..64) replacing the legacy
+default of four only when the caller asks for it.
+
+
+
 The future native caller still owns: creating the connection and thread,
 routing notifications, native admission, the lead reservation and claiming
 the registered lead exactly once. See docs/development/MANAGED-LEAD-CODEX.md.
@@ -94,6 +108,7 @@ DELTA_BOUND = 16 * 1024
 DEFAULT_BUFFER_EVENTS = 64
 DEFAULT_BUFFER_BYTES = 256 * 1024
 MAX_MAPPINGS = 4
+OWNED_MAPPING_BOUND = 64
 START_METHOD = 'turn/start'
 SUPPORTED_METHODS = ('turn/started', 'item/agentMessage/delta',
                      'item/commandExecution/outputDelta', 'turn/completed')
@@ -147,7 +162,8 @@ class CodexLeadTransport:
                  rejection=RPCRejected,
                  buffer_events=DEFAULT_BUFFER_EVENTS,
                  buffer_bytes=DEFAULT_BUFFER_BYTES,
-                 supported_efforts=None):
+                 supported_efforts=None, max_mappings=MAX_MAPPINGS,
+                 prior_mappings=None):
         if not callable(rpc):
             raise Refusal('owned rpc callable required')
         self._rpc = rpc
@@ -168,6 +184,26 @@ class CodexLeadTransport:
             self._supported_efforts = tuple(seen)
             if self._effort not in self._supported_efforts:
                 raise Refusal('pinned effort not in the supported set')
+        if type(max_mappings) is not int or not 1 <= max_mappings <= OWNED_MAPPING_BOUND:
+            raise Refusal('invalid mapping bound')
+        self._max_mappings = max_mappings
+        self._handoff = prior_mappings is not None
+        self._prior = {}
+        if prior_mappings is not None:
+            if not isinstance(prior_mappings, dict):
+                raise Refusal('invalid prior mappings')
+            seen_turns = set()
+            for provider_turn, local in prior_mappings.items():
+                if (not _bounded_id(provider_turn) or not isinstance(local, dict)
+                        or set(local) != {'turn_id', 'generation'}
+                        or not _bounded_id(local.get('turn_id'))
+                        or type(local.get('generation')) is not int
+                        or local['generation'] < 1):
+                    raise Refusal('invalid prior mappings')
+                if local['turn_id'] in seen_turns:
+                    raise Refusal('prior mappings rebind a local turn')
+                seen_turns.add(local['turn_id'])
+                self._prior[provider_turn] = dict(local)
         if isinstance(rejection, tuple):
             ok = bool(rejection) and all(
                 isinstance(item, type) and issubclass(item, BaseException)
@@ -220,11 +256,31 @@ class CodexLeadTransport:
             raise Refusal('pinned model/effort do not match the session record')
         prior = (view.get('generation') != 1 or view.get('history')
                  or view.get('last_turn') or view.get('turn'))
-        if prior and view.get('state') in OPEN_STATES:
+        if self._handoff:
+            # Explicit handoff: every recorded non-rejected turn must be
+            # proven by an acknowledged provider id; nothing else recovers.
+            recorded = {}
+            for item in view.get('history') or []:
+                if item.get('status') != 'rejected':
+                    recorded[item['turn_id']] = item['generation']
+            if view.get('last_turn'):
+                recorded[view['last_turn']['turn_id']] = \
+                    view['last_turn']['generation']
+            if view.get('turn'):
+                recorded[view['turn']['turn_id']] = view['turn']['generation']
+            mapped = {local['turn_id']: local['generation']
+                      for local in self._prior.values()}
+            if recorded != mapped:
+                raise Refusal('unproven provider mapping; explicit handoff '
+                              'incomplete or mismatched')
+            for provider_turn, local in self._prior.items():
+                self._bind_mapping(local['turn_id'], provider_turn,
+                                   local['generation'])
+        elif prior and view.get('state') in OPEN_STATES:
             # Provider ids already used by this session are unknown here;
             # continuing could accept a reused id as a fresh turn.
             raise Refusal('session has prior provider history; explicit handoff required')
-        self._inherited = bool(prior)
+        self._inherited = bool(prior) and not self._handoff
         self._session = session
         self._session_id = session_id
         return self.status()
@@ -252,8 +308,10 @@ class CodexLeadTransport:
             'quarantined_events': self._quarantined_events,
             'unrecorded_markers': len(self._unrecorded),
             'inherited_history': self._inherited,
-            'mapping_capacity': MAX_MAPPINGS,
-            'handoff_required': len(self._local) >= MAX_MAPPINGS,
+            'mapping_capacity': self._max_mappings,
+            'handoff_required': len(self._local) >= self._max_mappings,
+            'handed_over': self._handoff,
+            'mappings': {pid: dict(local) for pid, local in self._local.items()},
             'unbound_activity': self._activity,
             'supported_methods': list(SUPPORTED_METHODS),
             'last_send': dict(self._last_send) if self._last_send else None,
@@ -287,7 +345,7 @@ class CodexLeadTransport:
             raise Refusal('turn already mapped')
         if self._inherited:
             raise Refusal('bound for inspection only; explicit handoff required')
-        if len(self._local) >= MAX_MAPPINGS:
+        if len(self._local) >= self._max_mappings:
             self._last_send = {'status': 'uncertain',
                                'reason': 'mapping capacity exhausted; explicit handoff required'}
             return dict(self._last_send)

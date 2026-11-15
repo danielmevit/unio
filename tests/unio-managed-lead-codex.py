@@ -577,6 +577,140 @@ def run_suite(base):
     for case in IDENTITY_CASES:
         case(base)
 
+    # 16. Opt-in adaptive effort and explicit handoff (0532 contract).
+    optin_suite(base)
+
+
+
+def optin_suite(base):
+    """Opt-in adaptive effort and explicit handoff (0532 contract)."""
+    supported = ('low', 'high', 'xhigh')
+
+    # Legacy default: per-turn effort is refused, nothing changed.
+    h = Harness(base)
+    assert 'per-turn effort not enabled' in refuses(
+        h.bridge.send_turn, {'session_id': h.sid, 'generation': 1,
+                             'turn_id': 'turn-0123456789abcdef',
+                             'text': 'x', 'effort': 'low'})
+    assert h.rpc.calls == []
+    assert h.bridge.status()['adaptive_efforts'] is False
+    assert h.bridge.status()['mapping_capacity'] == br.MAX_MAPPINGS == 4
+
+    # Opt-in constructor validation.
+    assert 'pinned effort not in the supported set' in refuses(
+        br.CodexLeadTransport, FakeRPC(), THREAD, model=MODEL, effort='medium',
+        supported_efforts=supported)
+    assert 'invalid supported effort set' in refuses(
+        br.CodexLeadTransport, FakeRPC(), THREAD, model=MODEL, effort='high',
+        supported_efforts=[])
+    assert 'invalid mapping bound' in refuses(
+        br.CodexLeadTransport, FakeRPC(), THREAD, model=MODEL, effort='high',
+        supported_efforts=supported, max_mappings=0)
+    assert 'invalid mapping bound' in refuses(
+        br.CodexLeadTransport, FakeRPC(), THREAD, model=MODEL, effort='high',
+        supported_efforts=supported, max_mappings=br.OWNED_MAPPING_BOUND + 1)
+
+    # Per-turn effort: explicit, supported-only, same thread, no fallback.
+    h = Harness(base, supported_efforts=supported)
+    h.rpc.behavior = ('reply', ack('provider-turn-1'))
+    # the core never sends effort; call the bridge seam directly
+    reply = h.bridge.send_turn({'session_id': h.sid, 'generation': 1,
+                                'turn_id': 'turn-0123456789abcdef',
+                                'text': 'x', 'effort': 'xhigh'})
+    assert reply['status'] == 'accepted' and reply['effort'] == 'xhigh'
+    assert h.rpc.calls[0][1]['effort'] == 'xhigh'
+    assert h.rpc.calls[0][1]['threadId'] == THREAD
+    assert 'unsupported per-turn effort refused before any rpc' in refuses(
+        h.bridge.send_turn, {'session_id': h.sid, 'generation': 1,
+                              'turn_id': 'turn-0123456789abcdee',
+                              'text': 'y', 'effort': 'max'})
+    assert 'unsupported per-turn effort refused before any rpc' in refuses(
+        h.bridge.send_turn, {'session_id': h.sid, 'generation': 1,
+                              'turn_id': 'turn-0123456789abcddf',
+                              'text': 'y', 'effort': 'medium'})
+    assert len(h.rpc.calls) == 1
+    status = h.bridge.status()
+    assert status['adaptive_efforts'] is True
+    assert status['supported_efforts'] == ['low', 'high', 'xhigh']
+
+    # Explicit handoff: proven mappings reopen a session with history.
+    h = Harness(base, supported_efforts=supported)
+    for index in range(2):
+        provider = 'old-%d' % index
+        h.rpc.behavior = ('reply', ack(provider))
+        h.submit('h%d' % index)
+        assert h.notify(completed(THREAD, provider))['action'] == 'observed'
+    mappings = h.bridge.status()['mappings']
+    assert len(mappings) == 2
+    rpc = FakeRPC()
+    bridge = br.CodexLeadTransport(rpc, THREAD, model=MODEL, effort=EFFORT,
+                                   supported_efforts=supported,
+                                   prior_mappings=mappings)
+    session = ml.LeadSession(h.root, h.sid, transport=bridge,
+                              authority=authority_ok, ownership=ownership_ok)
+    rpc.bridge = bridge
+    view = bridge.bind(session)
+    assert view['handed_over'] is True and view['inherited_history'] is False
+    rpc.behavior = ('reply', ack('provider-turn-9'))
+    result = session.submit_next_turn(session_id=h.sid, generation=3,
+                                      request_id='h2', text='after handoff')
+    assert result['state'] == 'accepted'
+    assert len(rpc.calls) == 1
+
+    # Incomplete, extra or mismatched handoff refuses; no invented recovery.
+    for broken in ({}, dict(list(mappings.items())[:1]),
+                   {**mappings, 'ghost': {'turn_id': 'turn-0123456789abcdff',
+                                          'generation': 1}},
+                   {'old-0': {'turn_id': mappings['old-0']['turn_id'],
+                              'generation': 9}}):
+        rpc2 = FakeRPC()
+        bridge2 = br.CodexLeadTransport(rpc2, THREAD, model=MODEL,
+                                        effort=EFFORT,
+                                        supported_efforts=supported,
+                                        prior_mappings=broken)
+        session2 = ml.LeadSession(h.root, h.sid, transport=bridge2,
+                                  authority=authority_ok,
+                                  ownership=ownership_ok)
+        rpc2.bridge = bridge2
+        message = refuses(bridge2.bind, session2)
+        assert 'unproven provider mapping' in message or \
+            'prior provider history' in message, message
+        assert rpc2.calls == []
+
+    # An empty explicit handoff is proven for a rejected-only history.
+    h = Harness(base, supported_efforts=supported)
+    h.rpc.behavior = ('reject', None)
+    assert h.submit('rejected')['state'] == 'rejected'
+    rpc3 = FakeRPC()
+    bridge3 = br.CodexLeadTransport(rpc3, THREAD, model=MODEL, effort=EFFORT,
+                                    supported_efforts=supported,
+                                    prior_mappings={})
+    session3 = ml.LeadSession(h.root, h.sid, transport=bridge3,
+                              authority=authority_ok, ownership=ownership_ok)
+    rpc3.bridge = bridge3
+    assert bridge3.bind(session3)['handed_over'] is True
+    rpc3.behavior = ('reply', ack('provider-turn-1'))
+    result = session3.submit_next_turn(session_id=h.sid, generation=1,
+                                       request_id='after-reject', text='ok')
+    assert result['state'] == 'accepted'
+
+    # Explicit larger mapping bound is enforced without eviction.
+    h = Harness(base, supported_efforts=supported, max_mappings=2)
+    for index in range(2):
+        h.rpc.behavior = ('reply', ack('m%d' % index))
+        h.submit('m%d' % index)
+        assert h.notify(completed(THREAD, 'm%d' % index))['action'] == 'observed'
+    assert h.bridge.status()['mapping_capacity'] == 2
+    assert h.bridge.status()['handoff_required'] is True
+    h.rpc.behavior = ('reply', ack('m2'))
+    result = h.submit('m2')
+    assert result['state'] == 'uncertain'
+    assert 'mapping capacity exhausted' in \
+        h.bridge.status()['last_send']['reason']
+    assert len(h.rpc.calls) == 2
+    print('ok opt-in per-turn effort, explicit handoff and mapping bound',
+          flush=True)
+
 
 def records_for(out, turn_id):
     return [rec for rec in out['records'] if rec.get('turn_id') == turn_id]
