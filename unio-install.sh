@@ -23706,6 +23706,19 @@ These are trusted-host, same-user controls, not OS isolation. Cleanup signals
 only the newly created app-server process group while its leader remains
 unreaped, then reaps the leader. Processes deliberately detached into another
 session are outside that group and are not signalled.
+
+## Relationship to managed lead sessions
+
+`unio lead-session` (see `docs/ADAPTIVE-LEAD-EFFORT.md`) is a separate
+experimental opt-in controller for one owned lead per workspace; it is not
+part of the worker `unio session` surface above. Worker sessions keep
+their fixed requested effort and single-turn steering model; the lead
+session instead sends one explicit `turn/start` per owner turn with an
+adaptive requested effort (only auto plus low and xhigh in this first
+interface) on one owned thread, and never steers a turn mid-flight. Both
+share the same honesty rules: no provider calls for observation, Unknown
+effective settings, idempotent request ids with no replay or resend, and
+STOP that blocks new turns without killing workers.
 UNIO_MANAGED_SESSIONS_MD
 # END EMBEDDED CODEX WORKER
 # BEGIN EMBEDDED MANAGED LEAD
@@ -25370,9 +25383,12 @@ injected callable that represents one already authorized owned connection
 handed to the caller to send explicitly with `turn/start`.
 
 Enforced by this component:
-- a fixed known effort rank (low, medium, high, xhigh); the configurable
-  ceiling must be a known rank no higher than xhigh. Advertised values
-  outside the known rank (for example max or ultra) are refused for
+- a fixed known effort rank (low, medium, high, xhigh) validates advertised
+  sets, so legacy models that advertise medium/high stay compatible; the
+  first adaptive interface (contract 0532-ADAPTIVE-LEAD-EFFORT-V2) exposes
+  only low and xhigh plus auto: the configurable ceiling must be low or
+  xhigh, and manual or pending choices accept only low or xhigh. Advertised
+  values outside the known rank (for example max or ultra) are refused for
   selection; nothing is invented and there is no fallback effort;
 - the supported set is queried exactly once per policy instance; a second
   query returns the recorded set without another call. The ceiling and the
@@ -25400,6 +25416,7 @@ the registered lead exactly once. See docs/ADAPTIVE-LEAD-EFFORT.md.
 import re
 
 RANK = ('low', 'medium', 'high', 'xhigh')
+INTERFACE_EFFORTS = ('low', 'xhigh')
 KINDS = ('coordination', 'planning', 'review')
 DEFAULT_CEILING = 'xhigh'
 COORDINATION_EFFORT = 'low'
@@ -25444,6 +25461,9 @@ class AdaptiveEffortPolicy:
     def __init__(self, *, ceiling=DEFAULT_CEILING):
         if ceiling not in RANK or _rank(ceiling) > _rank('xhigh'):
             raise Refusal('ceiling must be a known effort no higher than xhigh')
+        if ceiling not in INTERFACE_EFFORTS:
+            raise Refusal('ceiling must be low or xhigh in this first '
+                          'adaptive interface: ' + ceiling)
         self._ceiling = ceiling
         self._supported = None
         self._queried = False
@@ -25497,6 +25517,11 @@ class AdaptiveEffortPolicy:
         if not self._selectable(effort):
             raise Refusal('unsupported ' + name + ': ' + str(effort))
 
+    def _require_interface(self, effort):
+        if effort not in INTERFACE_EFFORTS:
+            raise Refusal('only low and xhigh are exposed in this first '
+                          'adaptive interface: ' + str(effort))
+
     # -- controls -----------------------------------------------------------
 
     def select_for_kind(self, kind):
@@ -25514,6 +25539,7 @@ class AdaptiveEffortPolicy:
         """Manual owner override; suspends auto until auto is selected."""
         effort = _bounded_effort(effort)
         self._require_selectable(effort, 'manual effort')
+        self._require_interface(effort)
         self._manual = effort
         self._mode = 'manual'
         self._pending = None
@@ -25530,6 +25556,7 @@ class AdaptiveEffortPolicy:
         """Record an explicit pending effort for the next turn only."""
         effort = _bounded_effort(effort)
         self._require_selectable(effort, 'requested effort')
+        self._require_interface(effort)
         self._pending = {'effort': effort, 'reason': _bounded_reason(reason)}
         return self.status()
 
@@ -25673,7 +25700,7 @@ class AdaptiveEffortPolicy:
                     and TURN_ID.fullmatch(item['turn_id'])
                     and item['kind'] in KINDS
                     and isinstance(item['effort'], str)
-                    and item['effort'] in RANK
+                    and item['effort'] in INTERFACE_EFFORTS
                     and item['source'] in ('pending', 'manual', 'auto')
                     and (item['reason'] is None or isinstance(item['reason'], str))):
                 raise Refusal('invalid policy snapshot')
@@ -25713,7 +25740,11 @@ Guarantees kept by this controller:
   of inventing recovery, and an uncertain (outcome_unknown) turn can
   never be handed over;
 - the effective provider effort stays Unknown; only requested efforts,
-  reasons and immutable per-turn decisions are recorded.
+  reasons and immutable per-turn decisions are recorded;
+- this first adaptive interface exposes only auto, low and xhigh (contract
+  0532-ADAPTIVE-LEAD-EFFORT-V2): medium and high are not choices in
+  adaptive mode, while advertised sets containing them and fixed legacy
+  worker/core settings stay compatible.
 
 Honest boundary of this slice: the real owned app-server connection
 (thread creation, notification routing, native account/lead reservation)
@@ -25797,6 +25828,8 @@ def _validate_state(doc):
                 'created_at', 'updated_at'):
         if not isinstance(doc.get(key), str) or not doc[key] or '\x00' in doc[key]:
             refuse()
+    if doc['baseline_effort'] not in pe.INTERFACE_EFFORTS:
+        refuse()
     if not ml.SESSION_ID.fullmatch(doc['session_id']):
         refuse()
     if doc['transport'] != 'fake':
@@ -26226,11 +26259,18 @@ def _cmd_start(root, args):
                           'session: ' + owner['session_id'])
     if args.ceiling not in pe.RANK:
         raise Refusal('ceiling must be a known effort no higher than xhigh')
+    if args.ceiling not in pe.INTERFACE_EFFORTS:
+        raise Refusal('ceiling must be low or xhigh in this first adaptive '
+                      'interface: ' + args.ceiling)
     efforts = [item.strip() for item in args.fake_efforts.split(',') if item.strip()]
     if not efforts:
         raise Refusal('no fake efforts advertised')
-    if args.effort != 'auto' and args.effort not in pe.RANK:
-        raise Refusal('unknown effort: ' + args.effort)
+    if args.effort != 'auto':
+        if args.effort not in pe.RANK:
+            raise Refusal('unknown effort: ' + args.effort)
+        if args.effort not in pe.INTERFACE_EFFORTS:
+            raise Refusal('only auto, low and xhigh are exposed in this '
+                          'first adaptive interface: ' + args.effort)
     baseline = args.ceiling if args.effort == 'auto' else args.effort
     policy = pe.AdaptiveEffortPolicy(ceiling=args.ceiling)
     wrapper = EffortTransport(None, policy, None, None)
@@ -26472,11 +26512,12 @@ def build_parser():
     start.add_argument('--workspace', default=None,
                        help='workspace label (default: project root)')
     start.add_argument('--ceiling', default=pe.DEFAULT_CEILING,
-                       help='supported planning/review ceiling (default: '
-                            'xhigh)')
+                       help='planning/review ceiling; this first interface '
+                            'exposes only low and xhigh (default: xhigh)')
     start.add_argument('--effort', default='auto',
-                       help='auto or an explicit supported effort '
-                            '(default: auto)')
+                       help='auto, low or xhigh (default: auto); this first '
+                            'adaptive interface exposes no intermediate '
+                            'levels')
     start.add_argument('--max-requests', type=int, default=ml.MAX_REQUESTS)
     start.add_argument('--max-mappings', type=int,
                        default=bx.OWNED_MAPPING_BOUND,
@@ -26510,7 +26551,8 @@ def build_parser():
             ('request', 'pending effort for the next turn only')):
         sub_parser = effort_sub.add_parser(name, help=help_text)
         if name in ('manual', 'request'):
-            sub_parser.add_argument('effort', help='supported effort')
+            sub_parser.add_argument('effort',
+                                    help='interface effort: low or xhigh')
         sub_parser.add_argument('--reason', default=None)
         sub_parser.add_argument('--session', default=None)
         sub_parser.add_argument('--json', action='store_true')
@@ -26578,12 +26620,16 @@ UNIO_LEAD_SESSION_PY
 cat > "$CONF_DIR/lib/ADAPTIVE-LEAD-EFFORT.md" <<'UNIO_ADAPTIVE_LEAD_EFFORT_MD'
 # Adaptive lead effort (experimental)
 
-Status: experimental vertical slice for contract
-`docs/development/contracts/0532-ADAPTIVE-LEAD-EFFORT-V1.md` (0.5.x series,
-unreleased). `unio lead-session` is an opt-in managed lead session with
-adaptive requested effort. It is not a replacement dashboard, it never adopts
-an unmanaged TUI or connection, and `unio lead` keeps its existing
-budget-reservation meaning.
+Status: experimental vertical slice for contracts
+`docs/development/contracts/0532-ADAPTIVE-LEAD-EFFORT-V1.md` and the
+owner correction `...-V2.md` (0.5.x series, unreleased). `unio
+lead-session` is an opt-in managed lead session with adaptive requested
+effort. It is not a replacement dashboard, it never adopts an unmanaged
+TUI or connection, and `unio lead` keeps its existing budget-reservation
+meaning. Per V2, this first adaptive interface exposes only AUTO plus
+LOW and XHIGH: no intermediate effort levels are choices in adaptive
+mode, while advertised sets containing medium/high and fixed legacy
+worker/core settings remain compatible.
 
 ## What it does
 
@@ -26592,12 +26638,14 @@ budget-reservation meaning.
   shared-budget label, route, model, baseline effort and Unknown effective
   settings. No credentials or account ids are stored.
 - Automatic effort selection: routine coordination turns request `low`;
-  substantive planning and review turns request the configurable ceiling
-  (default `xhigh`, never higher than `xhigh`). The supported model efforts
-  are queried exactly once per session on an explicitly authorized owned
-  connection (the `model/list` seam); anything not advertised — or outside
-  the known rank `low`, `medium`, `high`, `xhigh` (for example `max` or
-  `ultra`) — is refused. There is no fallback effort.
+  substantive planning and review turns request the ceiling (default and
+  maximum `xhigh`; `low` is the only other allowed ceiling). The supported
+  model efforts are queried exactly once per session on an explicitly
+  authorized owned connection (the `model/list` seam); anything not
+  advertised — or outside the known rank `low`, `medium`, `high`, `xhigh`
+  (for example `max` or `ultra`) — is refused. There is no fallback
+  effort. Medium and high may be advertised (legacy models list them)
+  but are not selectable in this interface.
 - Every turn is one explicit `run` command. The decided effort is sent
   explicitly as the `effort` override of that one `turn/start` on the same
   owned thread. The app-server schema has no effort override on `turn/steer`,
@@ -26621,33 +26669,36 @@ budget-reservation meaning.
 ## CLI
 
 ```sh
-unio lead-session start --goal FILE --model MODEL [--ceiling xhigh]
-                        [--effort auto|low|medium|high|xhigh]
+unio lead-session start --goal FILE --model MODEL [--ceiling low|xhigh]
+                        [--effort auto|low|xhigh]
                         [--max-requests N] [--max-mappings N]
                         [--transport fake] [--fake-efforts low,medium,high,xhigh]
                         [--json]
 unio lead-session run --file FILE --request-id ID
                       [--kind coordination|planning|review] [--json]
 unio lead-session status [--json]
-unio lead-session effort show|auto|manual EFFORT|request EFFORT [--reason R]
+unio lead-session effort show|auto|manual low|xhigh|request low|xhigh [--reason R]
 unio lead-session worker register ID|wait|terminal ID [--json]
 unio lead-session stop [--json]
 unio lead-session output [--after N] [--limit N] [--json]
 ```
 
 - `start` requires an explicit owner goal file (bounded, private, regular,
-  UTF-8, at most 8 KiB) and model. `--ceiling` bounds planning/review; it
-  must be a known rank no higher than `xhigh`. `--effort auto` records the
-  ceiling as the baseline requested effort; an explicit effort starts in
-  manual mode. `--max-mappings` is the explicit provider-turn mapping bound
-  (1..64; the legacy bridge default of four is unchanged for non-lead use).
+  UTF-8, at most 8 KiB) and model. `--ceiling` bounds planning/review; in
+  this first interface it accepts only `low` or `xhigh` (default `xhigh`).
+  `--effort auto` records the ceiling as the baseline requested effort;
+  an explicit `low` or `xhigh` starts in manual mode; `medium` and `high`
+  refuse as not exposed in this first adaptive interface. `--max-mappings`
+  is the explicit provider-turn mapping bound (1..64; the legacy bridge
+  default of four is unchanged for non-lead use).
 - `run` submits one bounded owner turn (at most 8 KiB). Without `--kind`,
   the turn is review when a wakeup is pending, else coordination. Request
   ids are idempotent: an identical replay returns the recorded result with
   zero new provider calls; changed content refuses.
 - `effort manual` suspends auto; `effort auto` resumes it; `effort request`
   is pending for the next turn only (a newer request replaces an older
-  pending one; manual clears it).
+  pending one; manual clears it). Both accept only `low` or `xhigh` in
+  this first interface; `medium` and `high` refuse.
 - `worker register` records a worker; `worker wait` marks the lead as
   waiting; `worker terminal` records one terminal event and queues one
   review wakeup. Duplicate terminal events for the same worker refuse.
@@ -41935,8 +41986,8 @@ switches
   unio session status WORKER [--json]
   unio session output WORKER [--after N] [--limit N] [--json]
   unio session send WORKER --file PATH --request-id ID [--json]
-  unio lead-session start --goal FILE --model MODEL [--ceiling xhigh]
-                                     [--effort auto|low|medium|high|xhigh]
+  unio lead-session start --goal FILE --model MODEL [--ceiling low|xhigh]
+                                     [--effort auto|low|xhigh]
                                      [--transport fake] [--json]
                                      experimental adaptive-effort managed lead
                                      session; explicit owner start, per-turn
@@ -48189,7 +48240,7 @@ _unio() {
         2:*) COMPREPLY=( $(compgen -W "start run status effort worker stop output" -- "$cur") );;
         3:effort) COMPREPLY=( $(compgen -W "show auto manual request" -- "$cur") );;
         3:worker) COMPREPLY=( $(compgen -W "register wait terminal" -- "$cur") );;
-        4:manual|4:request) COMPREPLY=( $(compgen -W "low medium high xhigh" -- "$cur") );;
+        4:manual|4:request) COMPREPLY=( $(compgen -W "low xhigh" -- "$cur") );;
       esac;;
     policy) COMPREPLY=( $(compgen -W "--json" -- "$cur") );;
     save)

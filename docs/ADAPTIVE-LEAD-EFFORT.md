@@ -1,11 +1,15 @@
 # Adaptive lead effort (experimental)
 
-Status: experimental vertical slice for contract
-`docs/development/contracts/0532-ADAPTIVE-LEAD-EFFORT-V1.md` (0.5.x series,
-unreleased). `unio lead-session` is an opt-in managed lead session with
-adaptive requested effort. It is not a replacement dashboard, it never adopts
-an unmanaged TUI or connection, and `unio lead` keeps its existing
-budget-reservation meaning.
+Status: experimental vertical slice for contracts
+`docs/development/contracts/0532-ADAPTIVE-LEAD-EFFORT-V1.md` and the
+owner correction `...-V2.md` (0.5.x series, unreleased). `unio
+lead-session` is an opt-in managed lead session with adaptive requested
+effort. It is not a replacement dashboard, it never adopts an unmanaged
+TUI or connection, and `unio lead` keeps its existing budget-reservation
+meaning. Per V2, this first adaptive interface exposes only AUTO plus
+LOW and XHIGH: no intermediate effort levels are choices in adaptive
+mode, while advertised sets containing medium/high and fixed legacy
+worker/core settings remain compatible.
 
 ## What it does
 
@@ -14,12 +18,14 @@ budget-reservation meaning.
   shared-budget label, route, model, baseline effort and Unknown effective
   settings. No credentials or account ids are stored.
 - Automatic effort selection: routine coordination turns request `low`;
-  substantive planning and review turns request the configurable ceiling
-  (default `xhigh`, never higher than `xhigh`). The supported model efforts
-  are queried exactly once per session on an explicitly authorized owned
-  connection (the `model/list` seam); anything not advertised — or outside
-  the known rank `low`, `medium`, `high`, `xhigh` (for example `max` or
-  `ultra`) — is refused. There is no fallback effort.
+  substantive planning and review turns request the ceiling (default and
+  maximum `xhigh`; `low` is the only other allowed ceiling). The supported
+  model efforts are queried exactly once per session on an explicitly
+  authorized owned connection (the `model/list` seam); anything not
+  advertised — or outside the known rank `low`, `medium`, `high`, `xhigh`
+  (for example `max` or `ultra`) — is refused. There is no fallback
+  effort. Medium and high may be advertised (legacy models list them)
+  but are not selectable in this interface.
 - Every turn is one explicit `run` command. The decided effort is sent
   explicitly as the `effort` override of that one `turn/start` on the same
   owned thread. The app-server schema has no effort override on `turn/steer`,
@@ -43,33 +49,36 @@ budget-reservation meaning.
 ## CLI
 
 ```sh
-unio lead-session start --goal FILE --model MODEL [--ceiling xhigh]
-                        [--effort auto|low|medium|high|xhigh]
+unio lead-session start --goal FILE --model MODEL [--ceiling low|xhigh]
+                        [--effort auto|low|xhigh]
                         [--max-requests N] [--max-mappings N]
                         [--transport fake] [--fake-efforts low,medium,high,xhigh]
                         [--json]
 unio lead-session run --file FILE --request-id ID
                       [--kind coordination|planning|review] [--json]
 unio lead-session status [--json]
-unio lead-session effort show|auto|manual EFFORT|request EFFORT [--reason R]
+unio lead-session effort show|auto|manual low|xhigh|request low|xhigh [--reason R]
 unio lead-session worker register ID|wait|terminal ID [--json]
 unio lead-session stop [--json]
 unio lead-session output [--after N] [--limit N] [--json]
 ```
 
 - `start` requires an explicit owner goal file (bounded, private, regular,
-  UTF-8, at most 8 KiB) and model. `--ceiling` bounds planning/review; it
-  must be a known rank no higher than `xhigh`. `--effort auto` records the
-  ceiling as the baseline requested effort; an explicit effort starts in
-  manual mode. `--max-mappings` is the explicit provider-turn mapping bound
-  (1..64; the legacy bridge default of four is unchanged for non-lead use).
+  UTF-8, at most 8 KiB) and model. `--ceiling` bounds planning/review; in
+  this first interface it accepts only `low` or `xhigh` (default `xhigh`).
+  `--effort auto` records the ceiling as the baseline requested effort;
+  an explicit `low` or `xhigh` starts in manual mode; `medium` and `high`
+  refuse as not exposed in this first adaptive interface. `--max-mappings`
+  is the explicit provider-turn mapping bound (1..64; the legacy bridge
+  default of four is unchanged for non-lead use).
 - `run` submits one bounded owner turn (at most 8 KiB). Without `--kind`,
   the turn is review when a wakeup is pending, else coordination. Request
   ids are idempotent: an identical replay returns the recorded result with
   zero new provider calls; changed content refuses.
 - `effort manual` suspends auto; `effort auto` resumes it; `effort request`
   is pending for the next turn only (a newer request replaces an older
-  pending one; manual clears it).
+  pending one; manual clears it). Both accept only `low` or `xhigh` in
+  this first interface; `medium` and `high` refuse.
 - `worker register` records a worker; `worker wait` marks the lead as
   waiting; `worker terminal` records one terminal event and queues one
   review wakeup. Duplicate terminal events for the same worker refuse.
