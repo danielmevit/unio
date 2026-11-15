@@ -4,16 +4,16 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.31 — task-scope preview, current CLI policy and experimental adaptive lead (unreleased)
+## 0.5.31 — clearer lead controls and durable review defaults — 2026-11-15
 
-- Inspect an implementation task's current paths, scope, declared checks and Git revision with `unio verify WORKER TASK --preview [--json]`. Preview runs no validation or provider, preserves results and recovery state, works during STOP and refuses busy or changing observations.
-- Keep task hashes and parsed scope tied to one bounded observation; preserve exact filenames and return Unknown/incomplete exit 2 for unsupported inputs. Offer JSON completion only after preview is selected; ordinary verification stays unchanged.
-- Support Antigravity CLI 1.5.9 alongside the retained 1.3.5 route, and Vibe 3.1.2. Adapters record the observed CLI version as provenance (`Unknown` when the query fails) instead of refusing by version number. 1.3.5 keeps its legacy arguments; other Antigravity versions pass the selected effort explicitly. Real model, effort, protocol and terminal-error failures still fail.
-- Rename the work mode YOLO to Fast; `yolo` remains an accepted alias and the stored value.
-- Ship the default lead review policy as a managed, always-refreshed installed template (`templates/LEAD-REVIEW-POLICY.md`) referenced by fresh `MASTER.md` and `unio init`; customized `MASTER.md`, owner policy and `agents.conf` are preserved and reviewer selection stays manual.
-- Add the experimental `unio lead-session` managed Codex lead with AUTO LOW/XHIGH effort, owner-recorded worker wakeups, bounded turn waits with exact interrupt and `recover`, and native admission. Experimental, offline-tested only; no live Codex turn has been run through it.
+- Inspect implementation-task scope before spending a worker run with `unio verify WORKER TASK --preview [--json]`. It runs no declared checks or provider and does not establish admission, delivery, verification PASS or acceptance.
+- Use the experimental, opt-in `unio lead-session` Codex backend for explicit turns with requested LOW or XHIGH effort. The current requested level is primary; adaptive/manual policy and queued next-turn changes are separate. Waiting and uncertain delivery are labelled honestly. This does not adopt an existing AI CLI or provide a complete autonomous scheduler.
+- Keep owned turns alive until completion or a configured deadline. Exact-thread interruption and recovery preserve partial work and distinguish acknowledgement, process exit and observed terminal state. Rejected requests retain pending effort and review wakeups; unknown ownership fails closed.
+- Use Fast, Balanced and Thorough as public work-pace names. Legacy `yolo` input and stored schema-1 values remain compatible; pace does not grant permissions.
+- Carry review and budget guidance into new projects through the managed `LEAD-REVIEW-POLICY.md`, fresh lead templates and an idempotent project-startup pointer. Prefer OpenAI↔Claude/Opus review, delegate substantial work when the lead has little allowance, and label a fresh same-model/higher-effort fallback honestly as same-lab. Preserve stronger project approvals and existing custom configuration. These are cooperating-lead defaults, not an automatic reviewer selector.
+- Record installed Vibe and Antigravity CLI versions as provenance rather than rejecting an unlisted version. Actual model, argument, effort and protocol failures still fail. Starter guides distinguish ordinary fixed-effort sessions from an explicit managed-lead trial.
 
-Focused native checks ran for each part. The final adaptive corrections still need their independent current-code review and lead assessment. The combined release gate, installation and publication have not happened. See [scope and limits](docs/RELEASE-0.5.31.md).
+Fresh current-code correction review, the lead assessment, the full combined quality gate and six isolated installation checks passed. Managed-lead controls remain experimental and live-provider behavior is unverified. See [scope, evidence and limits](docs/RELEASE-0.5.31.md).
 
 ## 0.5.30 — review evidence and bounded archive maintenance — 2026-11-14
 

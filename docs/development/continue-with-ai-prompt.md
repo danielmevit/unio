@@ -1,84 +1,27 @@
 # Continue Unio development
 
-Read AGENTS.md, the newest enclosing coord/AGENT-LOG.md when available and the
-current personal OWNER-WORKFLOW.md before planning or final acceptance. Check
-actual local and remote Git state, installed version, active native runs, owner
-holds and current capacity observations. This file and a version string do not
-prove official publication, global installation or available provider capacity.
+Read AGENTS.md, the newest enclosing coord/AGENT-LOG.md when available, and the current personal OWNER-WORKFLOW.md before planning. Check actual local/remote Git state, installed version, active runs, account mappings, owner holds and current capacity observations. A version string or this handoff never proves publication, installation or remaining allowance.
 
-## Current release scope
+## Delivered scope
 
-Official 0.5.30 is published and installed in the current workspace; verify actual local/remote state when this handoff ages. The separate 0.5.31 candidate adds opt-in task-scope preview and exact Antigravity 1.5.9 compatibility. Final author native gates and independent scoped current-code review plus lead assessment passed; its own combined release gate and installation are pending. See [0.5.31 scope and evidence](../RELEASE-0.5.31.md). Keep the reviewed implementation worktree frozen; later literal version/documentation preparation has its own fidelity proof. Existing review opinions are not imported as fresh canonical approvals after base changes.
+The 0.5.31 release combines task-scope preview, current Vibe/Antigravity CLI operation policy, Fast/Balanced/Thorough public names, explicit managed Codex LOW/XHIGH turn controls, effort-first status, safer turn recovery and durable review defaults. See [release evidence and limits](../RELEASE-0.5.31.md). Official release assets include source and validation provenance. Verify the latest actually published stable release before a new assignment; do not infer it from an old note.
 
+The managed lead is an opt-in, explicit per-turn controller. It neither adopts the current unmanaged TUI nor provides a full automatic project scheduler. Current requested effort, next-turn requests, selection policy, coordination tier, actual delivery and effective Unknowns stay separate.
 
-0.5.30 adds observational report-review packets and report links, a configurable
-explicit archive-apply deadline, login-confirmation guidance and a reusable
-lead-to-Fable product-assessment prompt. See [release evidence and limits](../RELEASE-0.5.30.md)
-and [report-review guide](../REVIEW-REPORTS.md). These links never establish native
-readiness, whole-task coverage or owner acceptance. Failed, stale or incomplete
-reviewer Sources remain ineligible; old reports do not become fresh by attachment.
+## How to continue
 
-Independent scoped current-code reviews, the existing lead assessment, the full
-combined quality gate and a private installation with six offline checks passed.
-The initial gate failure and its reviewed test-only completion correction remain
-separate evidence. Final release Markdown changes preserve every gated runtime,
-installer and test byte. Read official tag/assets and current installation receipts
-before describing publication or this machine's installation as completed.
+Use the shipped [review defaults](../ai/LEAD-REVIEW-POLICY.md), [lead routing](LEAD-ROUTING.md), model effort and experience guides, plus applicable project/owner overrides. Delegate focused changes through Unio in isolated worker worktrees, preserve original attempts and required artifacts, and record route/subscription, CLI/version, requested model/effort, real exits, checks and acceptance. Model/task/effort evidence guides selection; it is not a universal ranking. Keep real shared-account mappings and lead reservations, STOP and owner holds. Reasoning effort and coordination tier are different settings. Do not use paid fallback or change authentication/billing.
 
-The preceding 0.5.29 launch recipes compile one tested Vibe3.1.1/GLM5.3 agents.conf
-entry for deliberate manual use; they do not automatically dispatch or establish
-effective identity, account availability or allowance. Existing custom owner
-templates remain authoritative and are preserved on install.
+If the repository has no .codegraph directory, use normal project search; do not index automatically. Keep source and scratch in the enclosing workspace, quote paths, use host date timestamps, update coordination records and preserve checkpoints. Answer status questions with the overall feature goal and current concrete work, then continue authorized work. A completed version is a checkpoint when further milestones are already authorized.
 
-## Next coherent batch
+## Next functional work
 
-1. Complete the separate 0.5.31 release gate and delivery for `verify --preview`. Its implementation binds task and
-   Git observations across parsing; preserve exact paths, native locks, exit2 for
-   Unknown, STOP readability and the authoritative normal verify gate. Keep test
-   injection exclusively in disposable fixtures, never a shipped command hook.
-2. Deliver the independently reviewed exact Antigravity 1.5.9 compatibility alongside the
-   retained 1.3.5 route. Record the observed version and supported explicit effort;
-   do not broaden model availability or erase process0/terminalERROR failures.
-3. Use the new packet-before-dispatch report-link workflow on useful assignments,
-   retaining exact material, currentness, bounded typed artifacts and the existing
-   lead's independent acceptance. Additions must not widen canonical approvals.
-4. Measure protected checkpoint capacity and archive latency using read-only plans
-   first. Explicit maintenance may set `UNIO_SAVE_ARCHIVE_TIMEOUT` (1..900 seconds, default 60);
-   preserve newest/pinned/corrupt evidence, original failures and partial Unknowns.
-   No automatic deletion, purge, blind retry or benchmark-evidence cleanup.
-5. Separate remaining personal policy from neutral defaults without weakening
-   owner rules or the existing work-policy schema. Then perform one byte-equivalent
-   module extraction, simplify help/scheduling and arrange a real onboarding trial.
+1. Fix the documented post-completion busy-reporting edge, add the missing stored-wait regression and design explicit evidence-preserving retirement of an unrecoverable managed session. Keep same-request idempotency and unknown exits honest.
+2. Finish current-code review and integration of the separate read-only onboarding planner: tools/subscriptions, lead, goal and preferred pace. It must preserve existing settings, show a plan before changes, distinguish account budgets from AI labs, and show no invented active effort or capability. Do not claim this command shipped in 0.5.31.
+3. Address pending-effort generation/ABA handling and measured operating costs. Build ownership/dashboard control, native Windows and later macOS/phone access after the functional reliability priorities. Preserve the current version plan and private research boundaries.
 
-The preview and adapter changes are separate work, not implied shipped by0.5.30.
-Inspect their actual branches, Sources, corrections and current reviews; inherited
-old gates or successful process exits do not accept a new composition. Do not add
-later work to an already frozen release gate.
+Keep original failed gates, stale reviews and operational failures separate. Passing checks or a process exit alone do not establish delivery or human acceptance. Run the required release gate once on the final reviewed code, then private installation checks, configuration-safe local installation and official delivery within the owner's actual authorization. Do not replay unchanged broad checks for release-prose-only changes; prove the runtime/installer/test bytes stayed identical.
 
-Managed-lead ownership in the existing dashboard follows operational reliability,
-then session-scoped phone pairing, native Windows/Store/private trial/localization,
-then macOS. Reuse current foundations. Fable's saved product and architecture
-assessment is advisory and only partly implemented; it is not a release certificate,
-measured token-saving benchmark or a reason to repeat the whole audit.
+## Validation checkpoint
 
-## Operating continuity
-
-Delegate code changes using current owner routing, one focused task and isolated
-worktree per change. Preserve partial work, failed attempts, real shared-account
-groups, lead reservations, holds and STOP. Requested model/startup effort,
-coordination tier and effective Unknown are separate facts. Refresh observations
-before admission. Check supported CLI updates only while idle and freeze the exact
-version for each assignment; never update beneath Source or native verification.
-
-One eligible independent current-code external reviewer plus the existing lead is
-the current personal default unless a stricter project/CI rule applies. Consult
-OWNER-WORKFLOW for current model holds; historical copied permission does not
-override them. No blind retries, paid fallback or auth/billing changes. A status
-message alone does not justify asking the owner to log in again: compare the exact
-route/context, owner confirmation and actual invocation evidence first.
-
-Answer status with the feature's purpose and concrete current state, give estimates
-and proactive updates, then continue already-authorized work in the same turn.
-Completed versions are checkpoints. Before an actual access, capacity, authority
-or runtime block, preserve receipts, active controllers and the exact next step.
-Do not imply the lead keeps working after its turn ends.
+The full combined `bash tools/quality-check.sh` gate passed on frozen code `3cac0d87903b4f919d3e29d8728f8dd2f570751c` (recorded 4219.748 seconds; source unchanged). A private installation and all six offline smoke checks passed. The release package records exact source and validation provenance. Full gate finished 2026-11-15T22:11:35+01:00. Later release preparation changes only this handoff, the changelog and release notes; runtime, installer and tests stay byte-identical. Official assets remain the authority for publication and source identity.
