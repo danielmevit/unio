@@ -12,7 +12,8 @@ Both follow the same way of working:
 - Each worker gets one focused task in its own worktree (isolated copy).
 - Workers run meaningful checks; the lead looks at real code and test results.
 - Review: one independent reviewer from another AI lab where available,
-  plus the lead's own assessment.
+  plus the lead's own assessment, as in the default
+  [lead review policy](LEAD-REVIEW-POLICY.md).
 - Every task records the route, model, requested effort, actual exit and
   checks, and ends with a clear handoff.
 - Only subscriptions you already have; no paid API fallback.

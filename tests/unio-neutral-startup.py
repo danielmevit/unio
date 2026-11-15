@@ -235,6 +235,15 @@ def test_project_init_preserves_custom_roles_and_routers():
               'Owner-specific instructions.' in repo_master)
         check('policy reference appended to custom MASTER.md',
               'UNIO-WORK-POLICY' in repo_master)
+        check('review policy pointer appended once to custom MASTER.md',
+              repo_master.count('<!-- UNIO-LEAD-REVIEW-POLICY -->') == 1
+              and 'templates/LEAD-REVIEW-POLICY.md' in repo_master)
+        reinit = run([unio_bin, 'init', 'mock'], env=env, cwd=repo_dir)
+        repo_master_again = (repo_dir / 'MASTER.md').read_text(encoding='utf-8')
+        check('repeat unio init keeps one review policy pointer',
+              reinit.returncode == 0
+              and repo_master_again.count('<!-- UNIO-LEAD-REVIEW-POLICY -->') == 1
+              and repo_master_again.startswith(custom_master))
 
         # Custom project router AGENTS.md must NOT be replaced with symlink
         agents_path = repo_dir / 'AGENTS.md'
@@ -249,11 +258,85 @@ def test_project_init_preserves_custom_roles_and_routers():
               claude_path.is_symlink() and os.readlink(claude_path) == 'MASTER.md')
 
 
+PROVIDER_CLIS = ('claude', 'codex', 'agy', 'opencode', 'grok', 'vibe', 'copilot', 'gemini')
+
+
+def test_review_policy_managed_refresh_preserves_custom_files():
+    """Install twice offline: managed review policy refreshes, owner files stay byte-identical."""
+    with tempfile.TemporaryDirectory(prefix='neutral-review-policy-') as tmp:
+        base = Path(tmp)
+        conf_dir = base / 'conf'
+        scratch_dir = base / 'tmp'
+        scratch_dir.mkdir(parents=True, exist_ok=True)
+        stubs = base / 'stubs'
+        stubs.mkdir()
+        sentinel = base / 'provider-called'
+        for name in PROVIDER_CLIS:
+            stub = stubs / name
+            stub.write_text('#!/bin/sh\necho "$0" >> "%s"\nexit 97\n' % sentinel, encoding='utf-8')
+            stub.chmod(0o755)
+        env = dict(
+            os.environ,
+            PATH=str(stubs) + os.pathsep + os.environ.get('PATH', ''),
+            UNIO_BIN_DIR=str(base / 'bin'),
+            UNIO_CONF_DIR=str(conf_dir),
+            UNIO_COMPLETION_DIR=str(base / 'comp'),
+            TMPDIR=str(scratch_dir),
+            UNIO_TEST_SCRATCH=str(scratch_dir),
+            UNIO_AUTO_VERIFY='0',
+            UNIO_AUTO_SYNC='0',
+            UNIO_AUTO_OFF='0',
+        )
+        tpl = conf_dir / 'templates'
+        canonical_policy = (ROOT / 'docs' / 'ai' / 'LEAD-REVIEW-POLICY.md').read_bytes()
+        canonical_card = (ROOT / 'docs' / 'ai' / 'REVIEWER-STARTUP-CARD.md').read_bytes()
+
+        res = run(['bash', str(INSTALLER)], env=env)
+        check('review policy: fresh install succeeds', res.returncode == 0)
+        check('review policy: installed policy byte-identical to canonical',
+              (tpl / 'LEAD-REVIEW-POLICY.md').read_bytes() == canonical_policy)
+        check('review policy: installed reviewer card byte-identical to canonical',
+              (tpl / 'REVIEWER-STARTUP-CARD.md').read_bytes() == canonical_card)
+        fresh_master = (tpl / 'MASTER.md').read_text(encoding='utf-8')
+        check('review policy: fresh MASTER reading ritual points to installed policy',
+              fresh_master.count('<!-- UNIO-LEAD-REVIEW-POLICY -->') == 1
+              and '/templates/LEAD-REVIEW-POLICY.md' in fresh_master)
+
+        custom = {
+            tpl / 'MASTER.md': b'# Custom lead card\nKeep my review rules.\n',
+            conf_dir / 'OWNER-WORKFLOW.md': b'# Owner workflow\nTwo external reviews for my team.\n',
+            conf_dir / 'agents.conf': b'# owner routes\nmine=true < "$TASKFILE"\n',
+        }
+        for path, data in custom.items():
+            path.write_bytes(data)
+        (tpl / 'LEAD-REVIEW-POLICY.md').write_bytes(b'stale managed policy\n')
+
+        res_again = run(['bash', str(INSTALLER)], env=env)
+        check('review policy: repeat install succeeds', res_again.returncode == 0)
+        for path, data in custom.items():
+            check('review policy: repeat install keeps custom ' + path.name,
+                  path.read_bytes() == data)
+        check('review policy: repeat install refreshes managed policy',
+              (tpl / 'LEAD-REVIEW-POLICY.md').read_bytes() == canonical_policy)
+        check('review policy: installs made no provider CLI call', not sentinel.exists())
+
+        # A symlinked managed policy target is refused rather than followed.
+        outside = base / 'outside.md'
+        outside.write_bytes(b'outside\n')
+        (tpl / 'LEAD-REVIEW-POLICY.md').unlink()
+        (tpl / 'LEAD-REVIEW-POLICY.md').symlink_to(outside)
+        res_sym = run(['bash', str(INSTALLER)], env=env)
+        check('review policy: symlinked managed policy refused, target untouched',
+              res_sym.returncode != 0 and 'refusing unsafe role card file' in res_sym.stderr
+              and outside.read_bytes() == b'outside\n')
+
+
 def main():
     test_neutral_fresh_install_and_tiers()
     test_unsafe_target_refusal()
     test_repeat_install_preserves_custom_master()
     test_project_init_preserves_custom_roles_and_routers()
+    test_review_policy_managed_refresh_preserves_custom_files()
     print('ok %d neutral startup assertions passed' % passed[0])
 
 

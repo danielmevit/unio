@@ -49,4 +49,7 @@ corrections. Review artifacts and handoffs are not automatic backups or
 acceptance.
 
 Owner overrides are not invented here. Use the lead's frozen task and current
-applicable owner policy; this card is only a compact reading aid.
+applicable owner policy; this card is only a compact reading aid. The default
+pairing, same-model fallback labelling and evidence rules are in the installed
+`templates/LEAD-REVIEW-POLICY.md` ([source](LEAD-REVIEW-POLICY.md)). If you are
+a same-lab fallback reviewer, say so in your report; it is not cross-lab review.

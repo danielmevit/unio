@@ -1,9 +1,11 @@
 # Additional review opinions
 
-The default for this owner's Unio projects remains one independent external
-reviewer plus the existing lead's assessment. Additional reviewers are useful
-for a concrete unresolved gap or an explicit owner request. They are not an
-automatic third-review requirement for every task.
+The product default is the [lead review policy](LEAD-REVIEW-POLICY.md): one
+independent external reviewer plus the existing lead's assessment, with the
+low-allowance delegation and honestly labelled same-model fallback described
+there. Additional reviewers are useful for a concrete unresolved gap or an
+explicit owner request. They are not an automatic third-review requirement
+for every task. The dated owner request below is an example of such a request.
 
 ## Owner request for the next round
 
@@ -29,7 +31,9 @@ original failures. No paid API fallback, max/ultra, billing changes or blind ret
 Astra via Codex shares the actual Codex budget with the lead. Preserve the lead
 reservation and one focused companion, with narrow task-bound consent, temporary
 native medium tier only when authorized, STOP around unrelated admissions and
-restoration afterward. Reasoning XHIGH and coordination medium are separate.
+restoration afterward. Reasoning XHIGH and coordination medium are separate. This applies only to an
+explicitly requested extra opinion: never add a Codex workflow to relieve a
+low-allowance Codex lead, because it draws on the same allowance.
 This explicit review request does not change Sol 6.1 LOW code-fix defaults.
 
 If Astra shares the implementation's AI lab, retain an eligible different-lab
