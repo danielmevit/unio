@@ -26601,8 +26601,172 @@ def _persist_run(root, base_state, policy, bridge, session, restore=False):
     return disk
 
 
+def _compute_effort_display(view, policy, state):
+    pol_status = policy.status()
+    decisions = policy.decisions()
+    active_turn = view.get('turn')
+    is_active = (active_turn is not None
+                 and view.get('state') in ('pending', 'running', 'outcome_unknown'))
+
+    active_decision = None
+    if is_active:
+        tid = active_turn['turn_id']
+        for d in decisions:
+            if d.get('turn_id') == tid:
+                active_decision = d
+                break
+
+    is_not_started = (
+        not is_active
+        and view.get('requests_recorded', 0) == 0
+        and view.get('turns_completed', 0) == 0
+        and view.get('turns_failed', 0) == 0
+        and not view.get('history')
+        and not decisions
+    )
+
+    last_attempt = None
+    if decisions:
+        last_d = decisions[-1]
+        outcome = _turn_terminal_status(view, last_d.get('turn_id'))
+        last_attempt = {
+            'turn_id': last_d.get('turn_id'),
+            'effort': last_d.get('effort'),
+            'kind': last_d.get('kind'),
+            'source': last_d.get('source'),
+            'status': outcome or 'unknown',
+        }
+    elif view.get('last_turn'):
+        lt = view['last_turn']
+        last_attempt = {
+            'turn_id': lt.get('turn_id'),
+            'effort': 'Unknown',
+            'kind': None,
+            'source': None,
+            'status': lt.get('status', 'unknown'),
+        }
+
+    pending_next = pol_status.get('pending_next_turn')
+    mode = pol_status.get('mode', 'auto')
+    policy_mode = 'adaptive' if mode == 'auto' else 'manual'
+
+    if is_active:
+        active_effort = active_decision['effort'] if active_decision else 'Unknown'
+        active_kind = active_decision.get('kind') if active_decision else None
+        active_source = active_decision.get('source') if active_decision else None
+        active_status = view.get('state')
+    elif is_not_started:
+        active_effort = None
+        active_kind = None
+        active_source = None
+        active_status = 'not started'
+    else:
+        active_effort = None
+        active_kind = None
+        active_source = None
+        active_status = 'idle' if not state.get('waiting') else 'waiting'
+
+    current_request = {
+        'active': is_active,
+        'state': active_status,
+        'effort': active_effort,
+        'kind': active_kind,
+        'source': active_source,
+        'turn_id': active_turn['turn_id'] if is_active else None,
+        'pending_next_turn': dict(pending_next) if pending_next else None,
+    }
+
+    return {
+        'active_effort': active_effort,
+        'active_status': active_status,
+        'current_request': current_request,
+        'policy_mode': policy_mode,
+        'mode': mode,
+        'ceiling': pol_status.get('ceiling'),
+        'manual_effort': pol_status.get('manual_effort'),
+        'pending_next_turn': dict(pending_next) if pending_next else None,
+        'last_attempt': last_attempt,
+        'effective': 'Unknown',
+        'caution': CAUTION,
+    }
+
+
+def _format_status_human(view, disp, state):
+    hist_str = (' (historical: not the current workspace owner)'
+                if view.get('historical') else '')
+    pending = disp.get('pending_next_turn')
+    pending_str = (', pending next: %s' % pending['effort']) if pending else ''
+    mode = disp['policy_mode']
+    if mode == 'manual' and disp.get('manual_effort'):
+        policy_label = 'manual (%s)' % disp['manual_effort']
+    else:
+        policy_label = mode
+
+    last_str = ''
+    if disp.get('last_attempt'):
+        la = disp['last_attempt']
+        eff = la['effort']
+        st = la['status']
+        if st == 'rejected':
+            last_str = '; last attempt: %s (rejected, not delivered)' % eff
+        else:
+            last_str = '; last requested: %s (%s)' % (eff, st)
+
+    if disp['current_request']['active']:
+        effort_part = 'effort %s (policy %s%s)' % (
+            disp['active_effort'], policy_label, pending_str)
+    elif disp['active_status'] == 'not started':
+        effort_part = 'effort not started (policy %s%s)' % (
+            policy_label, pending_str)
+    else:
+        effort_part = 'effort no active turn (policy %s%s%s)' % (
+            policy_label, pending_str, last_str)
+
+    return ('lead session %s: state %s, generation %d, %s, stopped %s, '
+            'waiting %s%s'
+            % (state['session_id'], view['state'], view['generation'],
+               effort_part, view['stopped'], view['waiting'], hist_str))
+
+
+def _format_effort_show(disp, status):
+    hist_str = (' (historical: not the current workspace owner)'
+                if status.get('historical') else '')
+    pending = disp.get('pending_next_turn')
+    pending_str = (', pending next: %s' % pending['effort']) if pending else ''
+    mode = disp['policy_mode']
+    ceiling = disp.get('ceiling')
+    if mode == 'manual' and disp.get('manual_effort'):
+        policy_label = 'manual (%s)' % disp['manual_effort']
+    else:
+        policy_label = mode
+
+    last_str = ''
+    if disp.get('last_attempt'):
+        la = disp['last_attempt']
+        eff = la['effort']
+        st = la['status']
+        if st == 'rejected':
+            last_str = '; last attempt: %s (rejected, not delivered)' % eff
+        else:
+            last_str = '; last requested: %s (%s)' % (eff, st)
+
+    if disp['current_request']['active']:
+        req = disp['current_request']
+        return ('requested effort: %s (active turn %s, kind %s; '
+                'policy %s, ceiling %s%s)%s'
+                % (disp['active_effort'], req.get('turn_id'), req.get('kind'),
+                   policy_label, ceiling, pending_str, hist_str))
+    elif disp['active_status'] == 'not started':
+        return ('requested effort: not started (policy %s, ceiling %s%s)%s'
+                % (policy_label, ceiling, pending_str, hist_str))
+    else:
+        return ('requested effort: no active turn (policy %s, ceiling %s%s%s)%s'
+                % (policy_label, ceiling, pending_str, last_str, hist_str))
+
+
 def _session_view(root, state, session, bridge, policy):
     view = session.status(session_id=state['session_id'])
+    effort_disp = _compute_effort_display(view, policy, state)
     return {
         'session_id': state['session_id'],
         'workspace': state['workspace'],
@@ -26622,6 +26786,8 @@ def _session_view(root, state, session, bridge, policy):
         'workers': {wid: dict(worker) for wid, worker in
                     state['workers'].items()},
         'effort': policy.status(),
+        'effort_display': effort_disp,
+        'current_request': effort_disp['current_request'],
         'decisions': [dict(item, outcome=_turn_terminal_status(
             view, item['turn_id'])) for item in policy.decisions()],
         'goal_sha256': state['goal_sha256'],
@@ -26720,9 +26886,10 @@ def _cmd_start(root, args):
     _save_state(root, state)
     _save_owner(root, sid)
     view = _session_view(root, state, session, bridge, policy)
-    _emit(args, view, 'lead session started: %s (model %s, ceiling %s, '
-                      'baseline effort %s)'
-          % (sid, args.model, args.ceiling, baseline))
+    pol_mode = 'adaptive' if args.effort == 'auto' else ('manual (%s)' % args.effort)
+    _emit(args, view, 'lead session started: %s (model %s, effort not started, '
+                      'policy %s, ceiling %s)'
+          % (sid, args.model, pol_mode, args.ceiling))
     return 0
 
 
@@ -26787,9 +26954,10 @@ def _cmd_start_owned(root, args, goal_sha, baseline):
         lease.release()
     session, bridge, rpc, policy, wrapper = _open(root, state)
     view = _session_view(root, state, session, bridge, policy)
-    _emit(args, view, 'lead session started: %s (model %s, ceiling %s, '
-                      'baseline effort %s, owned thread %s)'
-          % (sid, args.model, args.ceiling, baseline, thread_id))
+    pol_mode = 'adaptive' if args.effort == 'auto' else ('manual (%s)' % args.effort)
+    _emit(args, view, 'lead session started: %s (model %s, effort not started, '
+                      'policy %s, ceiling %s, owned thread %s)'
+          % (sid, args.model, pol_mode, args.ceiling, thread_id))
     return 0
 
 
@@ -27279,12 +27447,8 @@ def _cmd_status(root, args):
     state = _load_state(root, args.session)
     session, bridge, rpc, policy, wrapper = _open(root, state)
     view = _session_view(root, state, session, bridge, policy)
-    _emit(args, view, 'lead session %s: state %s, generation %d, effort mode '
-                      '%s, stopped %s, waiting %s%s'
-          % (state['session_id'], view['state'], view['generation'],
-             view['effort']['mode'], view['stopped'], view['waiting'],
-             '' if not view['historical'] else ' (historical: not the '
-             'current workspace owner)'))
+    disp = view['effort_display']
+    _emit(args, view, _format_status_human(view, disp, state))
     return 0
 
 
@@ -27297,8 +27461,11 @@ def _cmd_effort(root, args):
         status['session_id'] = state['session_id']
         status['stopped'] = state['stopped']
         status['historical'] = _historical(root, state['session_id'])
-        _emit(args, status, 'effort mode %s, ceiling %s, requested %s'
-              % (status['mode'], status['ceiling'], status['requested']))
+        view = session.status(session_id=state['session_id'])
+        disp = _compute_effort_display(view, policy, state)
+        status['effort_display'] = disp
+        status['current_request'] = disp['current_request']
+        _emit(args, status, _format_effort_show(disp, status))
         return 0
     with _control_guard(root, args.session):
         _require_owner(root, args.session)
@@ -27306,18 +27473,22 @@ def _cmd_effort(root, args):
         session, bridge, rpc, policy, wrapper = _open(root, state)
         if args.control == 'auto':
             policy.set_auto(args.reason)
-            human = 'automatic effort selection resumed'
+            human = 'effort policy: adaptive (automatic selection resumed; next turn selected by kind)'
         elif args.control == 'manual':
             policy.set_manual(args.effort, args.reason)
-            human = 'manual effort override: %s (auto suspended)' % args.effort
+            human = 'requested effort override: %s (policy manual; auto suspended)' % args.effort
         else:
             policy.request_next_turn(args.effort, args.reason)
-            human = ('pending next-turn effort request: %s (applied only '
-                     'after the active turn ends)' % args.effort)
+            human = ('requested next-turn effort: %s (pending next turn only; '
+                     'applied after active turn ends)' % args.effort)
         _persist(root, state, policy, bridge, session)
         status = policy.status()
         status['session_id'] = state['session_id']
         status['stopped'] = state['stopped']
+        view = session.status(session_id=state['session_id'])
+        disp = _compute_effort_display(view, policy, state)
+        status['effort_display'] = disp
+        status['current_request'] = disp['current_request']
         _emit(args, status, human)
     return 0
 

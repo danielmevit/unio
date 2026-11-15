@@ -103,6 +103,7 @@ python3 -B tests/unio-lead-effort.py
 python3 -B tests/unio-lead-session.py
 python3 -B tests/unio-lead-session-codex.py
 python3 -B tests/unio-lead-session-policy.py
+python3 -B tests/unio-lead-effort-display.py
 python3 -B tests/unio-task-plan.py
 python3 -B tests/unio-worktree-cache.py
 python3 -B tests/unio-task-dispatch.py
