@@ -61,6 +61,18 @@ def call(argv):
     return None, text
 
 
+def invoke(argv):
+    """Run one CLI command; return (payload, human text, exit code)."""
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = cli.main(argv)
+    text = buffer.getvalue()
+    if '--json' in argv:
+        start = text.index('{')
+        return json.loads(text[start:]), text, code
+    return None, text, code
+
+
 class Workspace:
     counter = 0
 
@@ -94,6 +106,14 @@ class Workspace:
         path = self.input(text)
         return call(['--project', str(self.root), 'run', '--file', path,
                      '--request-id', request_id, '--json'] + list(extra))[0]
+
+    def run_exit(self, request_id, text, *extra):
+        """Run one turn; return (payload, exit code) without asserting 0."""
+        path = self.input(text)
+        payload, _, code = invoke(['--project', str(self.root), 'run',
+                                   '--file', path, '--request-id', request_id,
+                                   '--json'] + list(extra))
+        return payload, code
 
     def effort(self, *args):
         return call(['--project', str(self.root), 'effort']
@@ -230,12 +250,17 @@ def run_suite(base):
     print('ok zero calls while waiting; one review wakeup per terminal event',
           flush=True)
 
-    # 4. Pending effort change during an active turn applies next turn.
+    # 4. Pending effort change during an active turn applies next turn;
+    #    an incomplete turn exits nonzero with an explicit pending
+    #    delivery state (never 'accepted'/exit-0 ambiguity).
     ws = Workspace(base)
     ws.start()
     ws.set_behavior(behavior='hold')
-    held = ws.run('r1', 'long substantive planning turn\n', '--kind', 'planning')
+    held, held_code = ws.run_exit('r1', 'long substantive planning turn\n',
+                                  '--kind', 'planning')
     assert held['turn_completed'] is False
+    assert held['delivery'] == 'pending' and held['turn_status'] is None
+    assert held_code == 6
     assert ws.status()['state'] == 'running'
     before = len(ws.rpc_log())
     pending = ws.effort('request', 'xhigh', '--reason', 'owner next phase')
@@ -321,7 +346,8 @@ def run_suite(base):
     ws.start()
     ws.worker('register', 'w9')
     ws.set_behavior(behavior='hold')
-    ws.run('r1', 'active turn when stop arrives\n')
+    held, held_code = ws.run_exit('r1', 'active turn when stop arrives\n')
+    assert held_code == 6  # incomplete turn: truthful nonzero exit
     stopped = ws.stop()
     assert stopped['stopped'] is True
     assert stopped['workers'] == {'w9': {'state': 'registered',
@@ -366,16 +392,20 @@ def run_suite(base):
           flush=True)
 
     # 9. Uncertain send stays Unknown: replay returns the recorded result
-    #    with zero new calls; changed content and new turns refuse.
+    #    with zero new calls; changed content and new turns refuse; the
+    #    exit code is truthful (nonzero for uncertain work).
     ws = Workspace(base)
     ws.start()
     ws.set_behavior(behavior='raise')
-    uncertain = ws.run('r1', 'turn that crashes in flight\n')
+    uncertain, uncertain_code = ws.run_exit('r1', 'turn that crashes in flight\n')
     assert uncertain['status'] == 'uncertain'
+    assert uncertain['delivery'] == 'uncertain'
+    assert uncertain_code == 3
     assert ws.status()['state'] == 'outcome_unknown'
     before = len(ws.rpc_log())
-    replay = ws.run('r1', 'turn that crashes in flight\n')
+    replay, replay_code = ws.run_exit('r1', 'turn that crashes in flight\n')
     assert replay['status'] == 'uncertain'
+    assert replay_code == 3
     assert len(ws.rpc_log()) == before  # no resend, no new thread
     message = refuses(['--project', str(ws.root), 'run', '--file',
                        ws.input('changed content\n'), '--request-id', 'r1',
@@ -388,12 +418,15 @@ def run_suite(base):
     assert len(ws.rpc_log()) == before
     print('ok uncertain send stays Unknown with no replay or resend', flush=True)
 
-    # 10. Typed provider rejection is preserved and not contradicted.
+    # 10. Typed provider rejection is preserved and not contradicted;
+    #     rejected work exits nonzero with an explicit delivery state.
     ws = Workspace(base)
     ws.start()
     ws.set_behavior(behavior='reject')
-    rejected = ws.run('r1', 'turn the provider rejects\n')
+    rejected, rejected_code = ws.run_exit('r1', 'turn the provider rejects\n')
     assert rejected['status'] == 'rejected'
+    assert rejected['delivery'] == 'rejected'
+    assert rejected_code == 2
     assert ws.status()['state'] == 'idle'
     ws.set_behavior(behavior='ok')
     accepted = ws.run('r2', 'a later turn after rejection\n')
@@ -454,6 +487,39 @@ def run_suite(base):
                        str(linked), '--request-id', 'r1', '--json'])
     assert 'unsafe' in message
     print('ok input bounds and unsafe input files refuse', flush=True)
+
+    # 14. Mutating controls require the current workspace owner even with
+    #     an explicit --session; historical read-only views stay labelled.
+    ws = Workspace(base)
+    old_sid = ws.start()['session_id']
+    ws.stop()
+    new_sid = ws.start()['session_id']
+    assert new_sid != old_sid
+    for argv in (['effort', 'request', 'xhigh', '--session', old_sid],
+                 ['effort', 'manual', 'low', '--session', old_sid],
+                 ['worker', 'register', 'w-old', '--session', old_sid],
+                 ['worker', 'wait', '--session', old_sid],
+                 ['stop', '--session', old_sid]):
+        message = refuses(['--project', str(ws.root)] + argv + ['--json'])
+        assert 'workspace owner mismatch' in message, argv
+    message = refuses(['--project', str(ws.root), 'run', '--file',
+                       ws.input('stale session turn\n'), '--request-id', 'r1',
+                       '--session', old_sid, '--json'])
+    assert 'workspace owner mismatch' in message
+    stale_view = call(['--project', str(ws.root), 'status', '--session',
+                       old_sid, '--json'])[0]
+    assert stale_view['historical'] is True
+    stale_page = call(['--project', str(ws.root), 'output', '--session',
+                       old_sid, '--json'])[0]
+    assert stale_page['historical'] is True
+    stale_show = call(['--project', str(ws.root), 'effort', 'show',
+                       '--session', old_sid, '--json'])[0]
+    assert stale_show['historical'] is True
+    assert call(['--project', str(ws.root), 'status', '--json'])[0][
+        'historical'] is False
+    assert ws.status()['session_id'] == new_sid
+    print('ok mutating controls need the current owner; stale views are '
+          'labelled historical', flush=True)
 
 
 def main():

@@ -32,12 +32,24 @@ Enforced by this component:
   reconciliation of an already acknowledged provider turn; it never
   invents a status for an unknown turn;
 - every RPC is id-correlated; a provider error reply raises the typed
-  ``ProviderRejected`` (injected into the bridge as its rejection class);
+  ``ProviderRejected`` (injected into the bridge as its rejection class),
+  which subclasses ``Refusal`` and preserves the method, code and bounded
+  reason: a rejection on initialize/account/model/thread operations
+  surfaces as one controlled CLI refusal, never a raw traceback, while
+  the bridge still catches it first for ``turn/start`` so typed turn
+  rejection stays distinct from missing/uncertain acknowledgements;
   timeouts, exits and malformed wire data raise ``Refusal`` and stay
   untyped/uncertain — the bridge decides how they settle;
+- the child's stderr is captured (never discarded) into a bounded
+  private most-recent tail so startup and crash diagnostics stay
+  actionable without printing unbounded output;
 - notifications arriving while an RPC waits are routed in arrival order
   to the bound handler (the bridge holds and replays them itself); the
   connection adds no buffering of its own beyond one line;
+- a child exit during a turn wait is flagged promptly (``exited``): the
+  final buffered terminal events and stderr diagnostics are drained, the
+  caller stops waiting without a tight polling loop, and no success is
+  ever inferred from the process exit;
 - ``close()`` terminates the owned process group (TERM, brief wait,
   KILL) and never raises; the caller invokes it in a ``finally`` so no
   owned process outlives its command. If the host process is killed
@@ -65,6 +77,10 @@ ID_BOUND = 128
 LABEL_BOUND = 128
 BINARY_BOUND = 1024
 MODEL_PAGES = 16
+STDERR_CAPTURE_BOUND = 8 * 1024
+STDERR_TAIL_BOUND = 512
+STDERR_DRAIN_GRACE = 0.05
+ERROR_MESSAGE_BOUND = 256
 TERMINAL_TURN_STATUS = ('completed', 'failed', 'interrupted')
 CAUTION = ('owned connection metadata only; effective model/effort remain '
            'Unknown and no unmanaged TUI is adopted')
@@ -74,8 +90,15 @@ class Refusal(Exception):
     """A controlled owned-connection failure; the original error is kept."""
 
 
-class ProviderRejected(Exception):
-    """Typed explicit provider rejection of one owned RPC call."""
+class ProviderRejected(Refusal):
+    """Typed explicit provider rejection of one owned RPC call.
+
+    Subclasses ``Refusal`` so a rejection on initialize/account/model/
+    thread operations exits as one controlled CLI refusal instead of a
+    raw traceback. The bridge still catches it first as its injected
+    typed-rejection class, keeping typed ``turn/start`` rejection
+    distinct from missing or uncertain acknowledgements.
+    """
 
 
 def _bounded(value, bound, name):
@@ -107,11 +130,14 @@ class OwnedCodexConnection:
         self._buffer = b''
         self._counter = 0
         self._closed = False
+        self._eof = False
+        self._stderr_tail = b''
+        self._stderr_eof = False
         try:
             self._child = subprocess.Popen(
                 [binary, 'app-server', '--listen', 'stdio://'],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL, start_new_session=True)
+                stderr=subprocess.PIPE, start_new_session=True)
         except OSError as exc:
             raise Refusal('owned app-server connection failed: '
                           '%s: %s' % (type(exc).__name__, exc)) from exc
@@ -125,17 +151,76 @@ class OwnedCodexConnection:
         except (OSError, ValueError) as exc:
             raise Refusal('owned app-server write failed: %s' % exc) from exc
 
+    def _watch(self):
+        """Fds worth selecting: stdout plus stderr while it is open."""
+        watch = [self._child.stdout]
+        if not self._stderr_eof:
+            watch.append(self._child.stderr)
+        return watch
+
+    def _pump_stderr(self, timeout):
+        """Drain pending child stderr into the bounded most-recent tail.
+
+        Only the first select may block for ``timeout`` seconds; the
+        capture is bounded so diagnostics stay actionable without
+        unbounded memory or output.
+        """
+        if self._stderr_eof:
+            return
+        while True:
+            try:
+                ready, _, _ = select.select([self._child.stderr], [], [],
+                                            timeout)
+            except OSError:
+                return
+            if not ready:
+                return
+            try:
+                data = os.read(self._child.stderr.fileno(), READ_CHUNK)
+            except OSError:
+                return
+            if not data:
+                self._stderr_eof = True
+                return
+            self._stderr_tail = (self._stderr_tail
+                                 + data)[-STDERR_CAPTURE_BOUND:]
+            timeout = 0.0
+
+    def _stderr_note(self):
+        """Bounded actionable stderr tail for a refusal message, or ''."""
+        if not self._stderr_tail:
+            return ''
+        tail = self._stderr_tail[-STDERR_TAIL_BOUND:]
+        return '; stderr: ' + tail.decode('utf-8', 'replace')
+
+    def stderr_tail(self, bound=STDERR_TAIL_BOUND):
+        """The bounded private most-recent stderr diagnostics (or '')."""
+        if not isinstance(bound, int) or not 1 <= bound <= STDERR_CAPTURE_BOUND:
+            raise Refusal('invalid stderr tail bound')
+        return self._stderr_tail[-bound:].decode('utf-8', 'replace')
+
+    @property
+    def exited(self):
+        """True once the owned process's stdout reached EOF."""
+        return self._eof
+
     def _message(self, deadline):
         while b'\n' not in self._buffer:
             if time.monotonic() >= deadline:
                 raise Refusal('owned rpc timeout')
-            ready, _, _ = select.select([self._child.stdout], [], [],
+            ready, _, _ = select.select(self._watch(), [], [],
                                        min(.2, max(0.0, deadline - time.monotonic())))
             if not ready:
                 continue
+            if self._child.stderr in ready:
+                self._pump_stderr(0.0)
+            if self._child.stdout not in ready:
+                continue
             data = os.read(self._child.stdout.fileno(), READ_CHUNK)
             if not data:
-                raise Refusal('owned app-server exited')
+                self._eof = True
+                self._pump_stderr(STDERR_DRAIN_GRACE)
+                raise Refusal('owned app-server exited' + self._stderr_note())
             self._buffer += data
             if len(self._buffer) > WIRE_BOUND:
                 raise Refusal('owned message bound exceeded')
@@ -173,17 +258,34 @@ class OwnedCodexConnection:
             msg = self._message(deadline)
             if msg.get('id') == request_id and 'method' not in msg:
                 if 'error' in msg:
-                    raise ProviderRejected('owned app-server rejected '
-                                           + str(method))
+                    raise self._rejection_error(method, msg['error'])
                 return msg.get('result', {})
             self._route(msg)
+
+    @staticmethod
+    def _rejection_error(method, error):
+        """Typed rejection preserving the provider's method, code, reason."""
+        code = None
+        message = ''
+        if isinstance(error, dict):
+            if isinstance(error.get('code'), int):
+                code = error['code']
+            if isinstance(error.get('message'), str):
+                message = error['message'].replace('\x00', '')
+        if len(message) > ERROR_MESSAGE_BOUND:
+            message = message[:ERROR_MESSAGE_BOUND]
+        return ProviderRejected('owned app-server rejected %s (code %s): %s'
+                                % (method, code, message))
 
     def pump(self, timeout):
         """Route pending notifications until the timeout elapses.
 
         Returns after routing whatever arrived; never raises for a quiet
-        connection. A provider exit or malformed wire line raises Refusal
-        with the original reason.
+        connection. A provider exit is flagged (``exited``) after the
+        final buffered terminal events and stderr diagnostics are
+        drained, so the caller stops waiting promptly without a tight
+        polling loop and without inferring any outcome. A malformed wire
+        line raises Refusal with the original reason.
         """
         deadline = time.monotonic() + max(0.0, timeout)
         while True:
@@ -196,16 +298,27 @@ class OwnedCodexConnection:
                 if not isinstance(msg, dict):
                     raise Refusal('invalid owned message')
                 self._route(msg)
+            if self._eof:
+                return
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return
-            ready, _, _ = select.select([self._child.stdout], [], [],
+            ready, _, _ = select.select(self._watch(), [], [],
                                        min(.2, remaining))
             if not ready:
                 continue
+            if self._child.stderr in ready:
+                self._pump_stderr(0.0)
+            if self._child.stdout not in ready:
+                continue
             data = os.read(self._child.stdout.fileno(), READ_CHUNK)
             if not data:
-                return  # provider exited; the caller's status stays honest
+                # Provider exited: drain the final buffered terminal
+                # events and last stderr diagnostics, then flag the exit
+                # so the caller stops waiting promptly.
+                self._eof = True
+                self._pump_stderr(STDERR_DRAIN_GRACE)
+                continue
             self._buffer += data
             if len(self._buffer) > WIRE_BOUND:
                 raise Refusal('owned message bound exceeded')
@@ -307,7 +420,7 @@ class OwnedCodexConnection:
                 child.wait()
             except OSError:
                 pass
-        for stream in (child.stdin, child.stdout):
+        for stream in (child.stdin, child.stdout, child.stderr):
             try:
                 stream.close()
             except (OSError, ValueError):

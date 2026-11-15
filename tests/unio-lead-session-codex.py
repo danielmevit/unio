@@ -20,6 +20,8 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import time
 
@@ -48,6 +50,7 @@ FAKE_TEMPLATE = '''#!/usr/bin/env python3
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 STATE_PATH = Path(__STATE__)
@@ -115,7 +118,11 @@ def main():
         params = req.get('params') or {}
         log('request', method=method, id=rid)
         if method == 'initialize':
-            send({'id': rid, 'result': {}})
+            if behavior() == 'reject-init':
+                send({'id': rid, 'error': {'code': -32000,
+                                            'message': 'fake initialize rejection'}})
+            else:
+                send({'id': rid, 'result': {}})
         elif method == 'account/read':
             send({'id': rid, 'result': {'account': {'type': 'chatgpt',
                                                     'id': 'fake-account'}}})
@@ -177,9 +184,31 @@ def main():
                 send({'id': rid, 'result': {'threadId': 'other-thread',
                                              'turn': {'id': 'foreign-turn'}}})
                 continue
+            if mode == 'slow-ack':
+                # Delay the turn/start reply so a real overlapping CLI run
+                # process is mid-RPC (past its decision, before persist).
+                log('slow-ack')
+                time.sleep(2.0)
             if mode == 'crash':
                 log('crash')
                 out.flush()
+                sys.stderr.write('fake owned crash diagnostic' + chr(10))
+                sys.stderr.flush()
+                os.close(1)
+                os._exit(9)
+            if mode == 'die-waiting':
+                # Acknowledge the turn, then die without any terminal
+                # notification: the run's wait loop must stop promptly.
+                doc['turns'] += 1
+                uid = 'fake-turn-%d' % doc['turns']
+                thread['turns'].append({'id': uid, 'status': 'inProgress'})
+                save_state(doc)
+                send({'id': rid, 'result': {'turn': {'id': uid,
+                                                    'status': 'inProgress'}}})
+                log('die-waiting')
+                out.flush()
+                sys.stderr.write('fake owned wait death diagnostic' + chr(10))
+                sys.stderr.flush()
                 os.close(1)
                 os._exit(9)
             if mode == 'foreign-event':
@@ -234,6 +263,18 @@ def call(argv):
         start = text.index('{')
         return json.loads(text[start:]), text
     return None, text
+
+
+def invoke(argv):
+    """Run one CLI command; return (payload, human text, exit code)."""
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = cli.main(argv)
+    text = buffer.getvalue()
+    if '--json' in argv:
+        start = text.index('{')
+        return json.loads(text[start:]), text, code
+    return None, text, code
 
 
 class Workspace:
@@ -352,6 +393,15 @@ class Workspace:
         return call(['--project', str(self.root), 'run', '--file', path,
                      '--request-id', request_id, '--turn-wait', '5',
                      '--json'] + list(extra))[0]
+
+    def run_exit(self, request_id, text, *extra):
+        """Run one turn; return (payload, exit code) without asserting 0."""
+        path = self.input(text)
+        payload, _, code = invoke(['--project', str(self.root), 'run',
+                                   '--file', path, '--request-id', request_id,
+                                   '--turn-wait', '5',
+                                   '--json'] + list(extra))
+        return payload, code
 
     def effort(self, *args):
         return call(['--project', str(self.root), 'effort']
@@ -489,12 +539,16 @@ def run_suite(base):
     # 4. Active-turn pending change: a held turn stays running with zero
     #    sends; the pending effort applies only after the provider's own
     #    thread state proves the turn ended (thread/read reconciliation).
+    #    An incomplete turn exits nonzero with an explicit pending
+    #    delivery state (never 'accepted'/exit-0 ambiguity).
     ws = Workspace(base)
     ws.start()
     ws.set_behavior('hold')
-    held = ws.run('r1', 'long substantive planning turn\n', '--kind',
-                  'planning')
+    held, held_code = ws.run_exit('r1', 'long substantive planning turn\n',
+                                  '--kind', 'planning')
     assert held['turn_completed'] is False
+    assert held['delivery'] == 'pending' and held['turn_status'] is None
+    assert held_code == 6
     assert ws.status()['state'] == 'running'
     before_spawns = len(ws.spawns())
     pending = ws.effort('request', 'xhigh', '--reason', 'owner next phase')
@@ -752,16 +806,22 @@ def run_suite(base):
     print('ok foreign-thread events are ignored; output stays exact', flush=True)
 
     # 8. Malformed acknowledgement: uncertain, no replay, no resend, no
-    #    new thread; a new turn refuses at the core with zero turn starts.
+    #    new thread; a new turn refuses at the core with zero turn starts;
+    #    uncertain work exits nonzero.
     ws = Workspace(base)
     ws.start()
     ws.set_behavior('bad-ack')
-    uncertain = ws.run('r1', 'turn with a malformed acknowledgement\n')
+    uncertain, uncertain_code = ws.run_exit(
+        'r1', 'turn with a malformed acknowledgement\n')
     assert uncertain['status'] == 'uncertain'
+    assert uncertain['delivery'] == 'uncertain'
+    assert uncertain_code == 3
     assert ws.status()['state'] == 'outcome_unknown'
     before_starts = len(ws.turn_starts())
-    replay = ws.run('r1', 'turn with a malformed acknowledgement\n')
+    replay, replay_code = ws.run_exit(
+        'r1', 'turn with a malformed acknowledgement\n')
     assert replay['status'] == 'uncertain'
+    assert replay_code == 3
     assert len(ws.turn_starts()) == before_starts  # no resend
     message = refuses(['--project', str(ws.root), 'run', '--file',
                        ws.input('a fresh turn\n'), '--request-id', 'r2',
@@ -770,12 +830,15 @@ def run_suite(base):
     assert len(ws.turn_starts()) == before_starts
     print('ok malformed ack stays uncertain with no replay or resend', flush=True)
 
-    # 9. Typed provider rejection is preserved; the session continues.
+    # 9. Typed provider rejection is preserved; the session continues;
+    #    rejected work exits nonzero with an explicit delivery state.
     ws = Workspace(base)
     ws.start()
     ws.set_behavior('reject-turn')
-    rejected = ws.run('r1', 'turn the provider rejects\n')
+    rejected, rejected_code = ws.run_exit('r1', 'turn the provider rejects\n')
     assert rejected['status'] == 'rejected'
+    assert rejected['delivery'] == 'rejected'
+    assert rejected_code == 2
     assert ws.status()['state'] == 'idle'
     ws.set_behavior('ok')
     accepted = ws.run('r2', 'a later turn after rejection\n')
@@ -785,16 +848,24 @@ def run_suite(base):
 
     # 10. Owned process crash mid-send: untyped failure stays uncertain;
     #     replay returns the recorded result; new turns refuse with zero
-    #     turn starts.
+    #     turn starts. The native exit is reported explicitly with a
+    #     bounded private stderr tail (no discarded diagnostics).
     ws = Workspace(base)
     ws.start()
     ws.set_behavior('crash')
-    crashed = ws.run('r1', 'turn that crashes the owned process\n')
+    crashed, crashed_code = ws.run_exit(
+        'r1', 'turn that crashes the owned process\n')
     assert crashed['status'] == 'uncertain'
+    assert crashed['delivery'] == 'uncertain'
+    assert crashed_code == 3
+    assert crashed['provider_exited'] is True
+    assert 'fake owned crash diagnostic' in crashed['stderr_tail']
     assert ws.status()['state'] == 'outcome_unknown'
     before_starts = len(ws.turn_starts())
-    replay = ws.run('r1', 'turn that crashes the owned process\n')
+    replay, replay_code = ws.run_exit(
+        'r1', 'turn that crashes the owned process\n')
     assert replay['status'] == 'uncertain'
+    assert replay_code == 3
     assert len(ws.turn_starts()) == before_starts
     message = refuses(['--project', str(ws.root), 'run', '--file',
                        ws.input('a fresh turn\n'), '--request-id', 'r2',
@@ -819,13 +890,17 @@ def run_suite(base):
     assert 'changed content for request id' in message
     print('ok idempotent replay sends zero new turn starts', flush=True)
 
-    # 12. Original failures are retained; the session stays usable.
+    # 12. Original failures are retained; the session stays usable; a
+    #     failed turn exits nonzero with its actual terminal status.
     ws = Workspace(base)
     ws.start()
     ws.set_behavior('fail-turn')
-    failed = ws.run('r1', 'turn that fails\n')
+    failed, failed_code = ws.run_exit('r1', 'turn that fails\n')
     assert failed['status'] == 'accepted'
     assert failed['turn_completed'] is False
+    assert failed['turn_status'] == 'failed'
+    assert failed['delivery'] == 'failed'
+    assert failed_code == 4
     view = ws.status()
     assert view['state'] == 'terminal'
     assert view['last_turn']['status'] == 'failed'
@@ -856,6 +931,120 @@ def run_suite(base):
         raise AssertionError('owned process %d survived its command'
                              % rec['pid'])
     print('ok output journal, decisions and owned-process cleanup', flush=True)
+
+    # 14. Real overlapping CLI processes: control commands issued while a
+    #     delayed turn/start RPC is in flight (after the turn decision,
+    #     before the run's persistence) survive — pending effort, worker
+    #     terminal wakeup and STOP are never overwritten by the stale
+    #     pre-turn snapshot, and the run's own wakeup consumption is
+    #     merged on top instead of clobbering the concurrent queue.
+    ws = Workspace(base)
+    ws.start()
+    ws.worker('register', 'w-pre')
+    ws.worker('terminal', 'w-pre')  # one review wakeup pending at run load
+    ws.set_behavior('slow-ack')
+    run_argv = [sys.executable, str(SOURCE / 'tools' / 'lead-session.py'),
+                '--project', str(ws.root), 'run', '--file',
+                ws.input('slow acknowledgement turn\n'),
+                '--request-id', 'r1', '--turn-wait', '5', '--json']
+    proc = subprocess.Popen(run_argv, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True)
+    deadline = time.monotonic() + 10
+    while not ws.turn_starts():
+        assert time.monotonic() < deadline, 'fake never received turn/start'
+        time.sleep(0.05)
+    # The run process is now mid-RPC, past its turn decision (which
+    # consumed the w-pre wakeup as a review turn): concurrent control
+    # commands must survive its persistence.
+    ws.effort('request', 'xhigh', '--reason', 'during the active turn')
+    ws.worker('register', 'w-during')
+    ws.worker('terminal', 'w-during')
+    ws.stop()
+    stdout, stderr = proc.communicate(timeout=60)
+    assert stderr == '', stderr
+    assert proc.returncode == 0  # slow-ack completes the turn
+    payload = json.loads(stdout[stdout.index('{'):])
+    assert payload['delivery'] == 'completed'
+    assert payload['kind'] == 'review' and payload['effort'] == 'xhigh'
+    state = json.loads((ws.root / 'coord' / 'lead-effort'
+                        / (ws.sid + '.json')).read_text())
+    assert state['policy']['pending'] == {
+        'effort': 'xhigh', 'reason': 'during the active turn'}
+    assert state['stopped'] is True
+    assert state['workers']['w-pre']['state'] == 'terminal'
+    assert state['workers']['w-during']['state'] == 'terminal'
+    assert [w['worker'] for w in state['policy']['wakeups']] == ['w-during']
+    assert state['policy']['wakeups_consumed'] == 1
+    assert state['policy']['decisions'][0]['kind'] == 'review'
+    message = refuses(['--project', str(ws.root), 'run', '--file',
+                       ws.input('blocked by stop\n'), '--request-id', 'r2',
+                       '--turn-wait', '5', '--json'])
+    assert 'stopped' in message
+    # The surviving pending request applies exactly once, next turn.
+    ws = Workspace(base)
+    ws.start()
+    ws.set_behavior('slow-ack')
+    run_argv = [sys.executable, str(SOURCE / 'tools' / 'lead-session.py'),
+                '--project', str(ws.root), 'run', '--file',
+                ws.input('slow acknowledgement turn\n'),
+                '--request-id', 'r1', '--turn-wait', '5', '--json']
+    proc = subprocess.Popen(run_argv, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True)
+    deadline = time.monotonic() + 10
+    while not ws.turn_starts():
+        assert time.monotonic() < deadline, 'fake never received turn/start'
+        time.sleep(0.05)
+    ws.effort('request', 'xhigh', '--reason', 'during the active turn')
+    stdout, stderr = proc.communicate(timeout=60)
+    assert stderr == '', stderr
+    assert proc.returncode == 0
+    payload = json.loads(stdout[stdout.index('{'):])
+    assert payload['effort'] == 'low'  # this turn's decision already made
+    ws.set_behavior('ok')
+    applied = ws.run('r2', 'next turn with the requested effort\n')
+    assert applied['effort'] == 'xhigh' and applied['source'] == 'pending'
+    assert applied['delivery'] == 'completed'
+    back = ws.run('r3', 'routine coordination again\n')
+    assert back['effort'] == 'low' and back['source'] == 'auto'
+    print('ok concurrent controls survive a real overlapping run process',
+          flush=True)
+
+    # 15. A typed RPC rejection on initialize is a controlled refusal
+    #     preserving method, code and reason — never a raw traceback.
+    ws = Workspace(base)
+    ws.set_behavior('reject-init')
+    message = refuses(['--project', str(ws.root), 'start', '--goal',
+                       ws.input('goal\n'), '--model', MODEL,
+                       '--transport', 'owned', '--codex-binary',
+                       str(ws.binary), '--json'])
+    assert 'owned app-server rejected initialize' in message
+    assert 'code -32000' in message
+    assert 'fake initialize rejection' in message
+    assert len(ws.spawns()) == 1
+    assert not (ws.root / 'coord' / 'lead-effort'
+                / 'owner.json').exists()
+    print('ok non-turn RPC rejection is controlled with method, code, '
+          'reason', flush=True)
+
+    # 16. Child death during the turn wait: the wait stops promptly (no
+    #     busy loop until the deadline), the outcome stays pending with
+    #     the native exit and bounded stderr tail reported, and no
+    #     terminal is ever inferred.
+    ws = Workspace(base)
+    ws.start()
+    ws.set_behavior('die-waiting')
+    started = time.monotonic()
+    died, died_code = ws.run_exit('r1', 'turn whose process dies waiting\n')
+    elapsed = time.monotonic() - started
+    assert died['status'] == 'accepted'
+    assert died['delivery'] == 'pending' and died['turn_status'] is None
+    assert died['provider_exited'] is True
+    assert 'fake owned wait death diagnostic' in died['stderr_tail']
+    assert died_code == 6
+    assert elapsed < 4.0, elapsed  # prompt stop, not the 5s deadline spin
+    assert ws.status()['state'] == 'running'  # no inferred terminal
+    print('ok child death in the wait loop stops promptly without '
+          'inferring success', flush=True)
 
 
 def main():
