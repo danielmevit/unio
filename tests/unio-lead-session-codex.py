@@ -14,12 +14,14 @@ in-process fake-only seam is NOT selected anywhere here. No real Codex
 binary, account or model call is ever touched.
 """
 import contextlib
+import fcntl
 import importlib.util
 import io
 import json
 import os
 from pathlib import Path
 import tempfile
+import time
 
 SOURCE = Path(__file__).resolve().parents[1]
 
@@ -36,9 +38,10 @@ ml = cli.ml
 bx = cli.bx
 pe = cli.pe
 cx = cli.cx
+lp = cli.lp
 
 MODEL = 'gpt-5.4-codex'
-REFUSALS = (cli.Refusal, ml.Refusal, pe.Refusal, bx.Refusal, cx.Refusal)
+REFUSALS = (cli.Refusal, ml.Refusal, pe.Refusal, bx.Refusal, cx.Refusal, lp.Refusal)
 
 FAKE_TEMPLATE = '''#!/usr/bin/env python3
 """Generated fake Codex app-server for offline owned lead-session tests."""
@@ -240,6 +243,12 @@ class Workspace:
         Workspace.counter += 1
         self.root = Path(base) / ('lead-owned-' + str(Workspace.counter))
         self.root.mkdir(mode=0o700)
+        coord = self.root / 'coord'
+        coord.mkdir(mode=0o700, exist_ok=True)
+        (coord / 'work-policy.json').write_text(json.dumps({
+            'schema_version': 1, 'mode': 'yolo', 'tier': 'low',
+            'lead_agent': 'codex', 'accounts': {'codex': 'codex-shared'},
+        }) + '\n', encoding='utf-8')
         self.inputs = 0
         self.binary = self.root / 'fake-codex-app-server.py'
         self.state_path = self.root / 'fake-state.json'
@@ -252,6 +261,70 @@ class Workspace:
                   .replace('__MODEL__', json.dumps(MODEL)))
         self.binary.write_text(script, encoding='utf-8')
         os.chmod(self.binary, 0o700)
+
+    def set_stop(self, active=True):
+        stop_file = self.root / 'coord' / 'STOP'
+        if active:
+            stop_file.write_text('STOP\n')
+        elif stop_file.exists():
+            stop_file.unlink()
+
+    def set_off(self, agent='codex', duration=None):
+        off_dir = self.root / 'coord' / 'off'
+        off_dir.mkdir(mode=0o700, exist_ok=True)
+        marker = off_dir / agent
+        if duration is None:
+            marker.write_text('')
+        else:
+            marker.write_text(str(int(time.time() + duration)) + '\n')
+
+    def clear_off(self, agent='codex'):
+        marker = self.root / 'coord' / 'off' / agent
+        if marker.exists():
+            marker.unlink()
+
+    def set_policy(self, doc):
+        (self.root / 'coord' / 'work-policy.json').write_text(
+            json.dumps(doc) + '\n', encoding='utf-8')
+
+    @contextlib.contextmanager
+    def occupy_slot(self, group='codex-shared', name='slot-1'):
+        slot_dir = self.root / 'coord' / '.locks' / 'work-policy-slots' / group
+        slot_dir.mkdir(parents=True, exist_ok=True)
+        slot_path = slot_dir / ('wpslot-%s.json' % name)
+        slot_path.write_text(json.dumps({
+            'schema_version': 1, 'group': group, 'agent': 'worker-1',
+            'worker': 'w1', 'task': 't1', 'kind': 'run',
+            'created_at': '2026-11-15T10:00:00Z',
+        }) + '\n', encoding='utf-8')
+        fd = os.open(slot_path, os.O_RDWR)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            yield slot_path
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(fd)
+            if slot_path.exists():
+                slot_path.unlink()
+
+    @contextlib.contextmanager
+    def occupy_lease(self):
+        locks_dir = self.root / 'coord' / '.locks'
+        locks_dir.mkdir(parents=True, exist_ok=True)
+        lease_path = locks_dir / 'lead-session.lock'
+        fd = os.open(lease_path, os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            yield lease_path
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(fd)
 
     def input(self, text):
         self.inputs += 1
@@ -470,6 +543,162 @@ def run_suite(base):
                        '--turn-wait', '5', '--json'])
     assert 'unknown lead session control state' in message
     assert len(ws.spawns()) == before_spawns
+
+    # 5a. Project STOP before start and after start / before run.
+    ws = Workspace(base)
+    ws.set_stop(True)
+    msg = refuses(['--project', str(ws.root), 'start', '--goal',
+                   ws.input('stop goal\n'), '--model', MODEL,
+                   '--transport', 'owned', '--codex-binary',
+                   str(ws.binary), '--json'])
+    assert 'project STOP is active' in msg
+    assert len(ws.spawns()) == 0
+    ws.set_stop(False)
+    ws.start()
+    assert len(ws.spawns()) == 1
+    ws.set_stop(True)
+    msg = refuses(['--project', str(ws.root), 'run', '--file',
+                   ws.input('blocked by project stop\n'), '--request-id', 'r-stop',
+                   '--turn-wait', '5', '--json'])
+    assert 'project STOP is active' in msg
+    assert len(ws.spawns()) == 1  # zero new spawns
+    assert ws.turn_starts() == []
+
+    # 5b. Read-only status and pending controls are zero-provider and allowed in STOP.
+    before_spawns = len(ws.spawns())
+    status_view = ws.status()
+    assert status_view['session_id'] == ws._sid
+    assert 'records' in ws.output()
+    assert ws.effort('show')['mode'] == 'auto'
+    pending_req = ws.effort('request', 'xhigh', '--reason', 'stop plan')
+    assert pending_req['pending_next_turn']['effort'] == 'xhigh'
+    w_reg = ws.worker('register', 'w-stop')
+    assert w_reg['worker'] == 'w-stop'
+    w_wait = ws.worker('wait')
+    assert w_wait['waiting'] is True
+    assert len(ws.spawns()) == before_spawns  # zero provider calls in STOP
+    ws.set_stop(False)
+    unstopped_run = ws.run('r1', 'after stop cleared\n')
+    assert unstopped_run['status'] == 'accepted'
+
+    # 5c. Real off holds (project-level and installed) with duration expiry.
+    ws = Workspace(base)
+    ws.set_off('codex')
+    msg = refuses(['--project', str(ws.root), 'start', '--goal',
+                   ws.input('off goal\n'), '--model', MODEL,
+                   '--transport', 'owned', '--codex-binary',
+                   str(ws.binary), '--json'])
+    assert 'off: hold is active' in msg
+    assert len(ws.spawns()) == 0
+    # Expired off hold passes admission
+    ws.set_off('codex', duration=-10)
+    ws.start()
+    assert len(ws.spawns()) == 1
+    # Off hold set before run refuses before child
+    ws.set_off('codex')
+    msg = refuses(['--project', str(ws.root), 'run', '--file',
+                   ws.input('off turn\n'), '--request-id', 'r-off',
+                   '--turn-wait', '5', '--json'])
+    assert 'off: hold is active' in msg
+    assert len(ws.spawns()) == 1
+    ws.clear_off('codex')
+    off_run = ws.run('r1', 'resumed after off cleared\n')
+    assert off_run['status'] == 'accepted'
+
+    # 5d. Absent and mismatched lead registration.
+    ws = Workspace(base)
+    ws.set_policy({'schema_version': 1, 'mode': 'yolo', 'tier': 'low',
+                   'lead_agent': None, 'accounts': {}})
+    msg = refuses(['--project', str(ws.root), 'start', '--goal',
+                   ws.input('no lead\n'), '--model', MODEL,
+                   '--transport', 'owned', '--codex-binary',
+                   str(ws.binary), '--json'])
+    assert 'no lead registered' in msg
+    assert len(ws.spawns()) == 0
+    ws.set_policy({'schema_version': 1, 'mode': 'yolo', 'tier': 'low',
+                   'lead_agent': 'opencode', 'accounts': {}})
+    msg = refuses(['--project', str(ws.root), 'start', '--goal',
+                   ws.input('wrong lead\n'), '--model', MODEL,
+                   '--transport', 'owned', '--codex-binary',
+                   str(ws.binary), '--json'])
+    assert 'registered lead mismatch' in msg
+    assert len(ws.spawns()) == 0
+
+    # 5e. Shared-account group full / contention.
+    ws = Workspace(base)
+    with ws.occupy_slot('codex-shared', 'contending-w1'):
+        msg = refuses(['--project', str(ws.root), 'start', '--goal',
+                       ws.input('busy slot\n'), '--model', MODEL,
+                       '--transport', 'owned', '--codex-binary',
+                       str(ws.binary), '--json'])
+        assert 'at capacity' in msg
+        assert len(ws.spawns()) == 0
+    ws.start()
+    with ws.occupy_slot('codex-shared', 'contending-w2'):
+        msg = refuses(['--project', str(ws.root), 'run', '--file',
+                       ws.input('busy turn\n'), '--request-id', 'r-busy',
+                       '--turn-wait', '5', '--json'])
+        assert 'at capacity' in msg
+        assert len(ws.spawns()) == 1
+    slot_cleared = ws.run('r1', 'turn after slot clear\n')
+    assert slot_cleared['status'] == 'accepted'
+
+    # 5f. Mapped aliases and arbitrary budget label refusal.
+    ws = Workspace(base)
+    ws.set_policy({'schema_version': 1, 'mode': 'yolo', 'tier': 'low',
+                   'lead_agent': 'codex', 'accounts': {'codex': 'antigravity'}})
+    msg = refuses(['--project', str(ws.root), 'start', '--goal',
+                   ws.input('arbitrary budget\n'), '--model', MODEL,
+                   '--transport', 'owned', '--codex-binary',
+                   str(ws.binary), '--budget-label', 'made-up-group', '--json'])
+    assert 'budget label mismatch' in msg
+    assert len(ws.spawns()) == 0
+    # Unrelated group busy does not block antigravity
+    with ws.occupy_slot('unrelated', 'w-unrelated'):
+        alias_start = ws.start()
+        assert alias_start['budget_label'] == 'antigravity'
+    with ws.occupy_slot('antigravity', 'w-antigravity'):
+        msg = refuses(['--project', str(ws.root), 'run', '--file',
+                       ws.input('anti busy\n'), '--request-id', 'r-anti',
+                       '--turn-wait', '5', '--json'])
+        assert 'at capacity' in msg
+        assert len(ws.spawns()) == 1
+    anti_ok = ws.run('r1', 'anti clear turn\n')
+    assert anti_ok['status'] == 'accepted'
+
+    # 5g. Concurrent starts and setter guard against active owned invocations.
+    ws = Workspace(base)
+    with ws.occupy_lease():
+        msg = refuses(['--project', str(ws.root), 'start', '--goal',
+                       ws.input('concurrent start\n'), '--model', MODEL,
+                       '--transport', 'owned', '--codex-binary',
+                       str(ws.binary), '--json'])
+        assert 'active owned lead session already running' in msg
+        assert len(ws.spawns()) == 0
+    ws.start()
+    with ws.occupy_lease():
+        msg = refuses(['--project', str(ws.root), 'run', '--file',
+                       ws.input('concurrent run\n'), '--request-id', 'r-conc',
+                       '--turn-wait', '5', '--json'])
+        assert 'active owned lead session already running' in msg
+        assert len(ws.spawns()) == 1
+        # Setter guard also refuses while lease is held
+        guard_refused = False
+        try:
+            with lp.lead_session_guard(ws.root):
+                pass
+        except lp.Refusal as exc:
+            assert 'active owned lead session is running' in str(exc)
+            guard_refused = True
+        assert guard_refused is True
+
+    # 5h. Correct real lead counted once under low tier.
+    ws = Workspace(base)
+    low_start = ws.start()
+    assert low_start['baseline_effort'] == 'xhigh'
+    low_run = ws.run('r1', 'low tier lead turn\n')
+    assert low_run['status'] == 'accepted'
+    assert low_run['turn_completed'] is True
     print('ok STOP, owner holds and contention refuse before the child',
           flush=True)
 

@@ -11,12 +11,13 @@ FILES = (('tools', 'managed-lead.py', 'UNIO_MANAGED_LEAD_PY'),
          ('tools', 'lead-effort.py', 'UNIO_LEAD_EFFORT_PY'),
          ('tools', 'lead-session.py', 'UNIO_LEAD_SESSION_PY'),
          ('tools', 'lead-session-codex.py', 'UNIO_LEAD_SESSION_CODEX_PY'),
+         ('tools', 'lead-session-policy.py', 'UNIO_LEAD_SESSION_POLICY_PY'),
          ('docs', 'ADAPTIVE-LEAD-EFFORT.md', 'UNIO_ADAPTIVE_LEAD_EFFORT_MD'))
 BEGIN = '# BEGIN EMBEDDED MANAGED LEAD\n'
 END = '# END EMBEDDED MANAGED LEAD\n'
 DIRS = ('"$CONF_DIR/lib"',)
 NAMES = ('managed-lead.py', 'managed-lead-codex.py', 'lead-effort.py',
-         'lead-session.py', 'lead-session-codex.py',
+         'lead-session.py', 'lead-session-codex.py', 'lead-session-policy.py',
          'ADAPTIVE-LEAD-EFFORT.md')
 
 

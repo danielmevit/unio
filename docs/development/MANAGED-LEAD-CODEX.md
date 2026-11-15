@@ -234,3 +234,20 @@ case makes no RPC and is not counted as exercising a reused ack. Deferred
 and out of scope: four-turn capacity and pre-intent native authority,
 widening the counted notification set, and a supported handoff. This is
 Opus-authored and needs other-lab review; it is not lead acceptance.
+
+Native admission correction (0532-ADAPTIVE-LEAD-ADMISSION-V4), 2026-11-15:
+resolves the proven offline reproduction where 1c333d3 started an owned child
+process and submitted turn/start while project coord/STOP existed. The local
+session.stopped flag and owner.json were insufficient: real project STOP, real
+installed/project off holds with expiry semantics (coord/off/<agent>,
+$UNIO_CONF_DIR/off/<agent>), valid registered lead matching coord/work-policy.json,
+and low-tier shared account group capacity (counting the registered lead exactly
+once) are now verified before any owned process launch or turn dispatch
+(tools/lead-session-policy.py). To prevent race conditions with setters (unio set-lead,
+unio set-account), admission acquires coord/.locks/lead-session.lock first, then takes
+a brief coord/.locks/work-policy.lock transaction before releasing work-policy.lock,
+retaining only lead-session.lock for the duration of the owned invocation. Setters
+check lead-session.lock with a non-blocking flock. Read-only status and pending
+controls remain permitted under STOP with zero provider calls. Offline regressions
+cover the full contract matrix via tests/unio-lead-session-codex.py using executable
+fake app-servers and offline policy fixtures.

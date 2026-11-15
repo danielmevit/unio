@@ -102,6 +102,7 @@ ml = _load_module('unio_managed_lead', 'managed-lead.py')
 bx = _load_module('unio_managed_lead_codex', 'managed-lead-codex.py')
 pe = _load_module('unio_lead_effort', 'lead-effort.py')
 cx = _load_module('unio_lead_session_codex', 'lead-session-codex.py')
+lp = _load_module('unio_lead_session_policy', 'lead-session-policy.py')
 
 
 def _now():
@@ -456,8 +457,11 @@ def _authority(root, session_id):
         owner = _load_owner(root)
         if not isinstance(owner, dict) or owner.get('session_id') != session_id:
             raise Refusal('workspace owner mismatch')
-        if facts.get('action') == 'next_turn' and state['stopped']:
-            raise Refusal('lead session stopped: new turns are blocked')
+        if facts.get('action') == 'next_turn':
+            if state['stopped']:
+                raise Refusal('lead session stopped: new turns are blocked')
+            if lp.is_project_stop_active(root):
+                raise Refusal('project STOP is active: new turns are blocked')
         return {'role': 'lead', 'authorized': True}
     return authority
 
@@ -612,13 +616,14 @@ def _cmd_start(root, args):
     efforts = [item.strip() for item in args.fake_efforts.split(',') if item.strip()]
     if not efforts:
         raise Refusal('no fake efforts advertised')
+    budget_label = args.budget_label or BUDGET_DEFAULT
     policy = pe.AdaptiveEffortPolicy(ceiling=args.ceiling)
     wrapper = EffortTransport(None, policy, None, None)
     session = ml.create_lead_session(
         ml.safe_path(Path(root)), transport=wrapper,
         authority=_authority(root, 'pending'),
         ownership=_ownership(root, 'pending'),
-        workspace=args.workspace, budget_label=args.budget_label,
+        workspace=args.workspace, budget_label=budget_label,
         route=args.route, model=args.model, effort=baseline,
         max_requests=args.max_requests)
     sid = session.session_id
@@ -652,7 +657,7 @@ def _cmd_start(root, args):
     now = _now()
     state = {
         'session_id': sid, 'workspace': args.workspace, 'route': args.route,
-        'budget_label': args.budget_label, 'model': args.model,
+        'budget_label': budget_label, 'model': args.model,
         'thread_id': THREAD_FAKE, 'baseline_effort': baseline,
         'transport': 'fake', 'codex_binary': '', 'fake_efforts': efforts,
         'goal_sha256': goal_sha,
@@ -672,57 +677,62 @@ def _cmd_start(root, args):
 def _cmd_start_owned(root, args, goal_sha, baseline):
     """Start one owned app-server connection and ONE new owned thread.
 
-    Contention, STOP and owner holds are checked before the owned process
-    is spawned; the ownership claim is atomic under the workspace owner
-    lock, so a concurrent start refuses honestly instead of creating a
+    Contention, STOP, policy and owner holds are checked before the owned
+    process is spawned; the ownership claim is atomic under the workspace
+    owner lock, so a concurrent start refuses honestly instead of creating a
     second managed owner. The exact provider thread id is persisted; no
     turn is started here.
     """
-    with _owner_guard(root):
-        owner = _load_owner(root)
-        if isinstance(owner, dict) and owner['session_id']:
+    policy_doc, lead_group, lease = lp.admit_lead(
+        root, expected_agent='codex', budget_label=args.budget_label)
+    try:
+        with _owner_guard(root):
+            owner = _load_owner(root)
+            if isinstance(owner, dict) and owner['session_id']:
+                try:
+                    existing = _load_state(root, owner['session_id'])
+                except Refusal:
+                    existing = None
+                if existing is not None and not existing['stopped']:
+                    raise Refusal('workspace already has an active managed '
+                                  'lead session: ' + owner['session_id'])
+            conn = cx.OwnedCodexConnection(args.codex_binary, cwd=str(root))
             try:
-                existing = _load_state(root, owner['session_id'])
-            except Refusal:
-                existing = None
-            if existing is not None and not existing['stopped']:
-                raise Refusal('workspace already has an active managed '
-                              'lead session: ' + owner['session_id'])
-        conn = cx.OwnedCodexConnection(args.codex_binary, cwd=str(root))
-        try:
-            conn.initialize()
-            efforts = conn.query_model_efforts(args.model)
-            thread_id = conn.start_thread(args.model)
-        finally:
-            conn.close()
-        policy = pe.AdaptiveEffortPolicy(ceiling=args.ceiling)
-        policy.query_supported(lambda: list(efforts))
-        if args.effort != 'auto':
-            policy.set_manual(args.effort, 'explicit owner start effort')
-        wrapper = EffortTransport(None, policy, None, None)
-        session = ml.create_lead_session(
-            ml.safe_path(Path(root)), transport=wrapper,
-            authority=_authority(root, 'pending'),
-            ownership=_ownership(root, 'pending'),
-            workspace=args.workspace, budget_label=args.budget_label,
-            route=args.route, model=args.model, effort=baseline,
-            max_requests=args.max_requests)
-        sid = session.session_id
-        state = {
-            'session_id': sid, 'workspace': args.workspace,
-            'route': args.route, 'budget_label': args.budget_label,
-            'model': args.model, 'thread_id': thread_id,
-            'baseline_effort': baseline, 'transport': 'owned',
-            'codex_binary': args.codex_binary, 'fake_efforts': [],
-            'goal_sha256': goal_sha,
-            'max_requests': args.max_requests,
-            'max_mappings': args.max_mappings,
-            'provider_turns': {}, 'policy': policy.snapshot(),
-            'stopped': False, 'waiting': False, 'workers': {},
-            'created_at': _now(), 'updated_at': _now(),
-        }
-        _save_state(root, state)
-        _save_owner(root, sid)
+                conn.initialize()
+                efforts = conn.query_model_efforts(args.model)
+                thread_id = conn.start_thread(args.model)
+            finally:
+                conn.close()
+            policy = pe.AdaptiveEffortPolicy(ceiling=args.ceiling)
+            policy.query_supported(lambda: list(efforts))
+            if args.effort != 'auto':
+                policy.set_manual(args.effort, 'explicit owner start effort')
+            wrapper = EffortTransport(None, policy, None, None)
+            session = ml.create_lead_session(
+                ml.safe_path(Path(root)), transport=wrapper,
+                authority=_authority(root, 'pending'),
+                ownership=_ownership(root, 'pending'),
+                workspace=args.workspace, budget_label=lead_group,
+                route=args.route, model=args.model, effort=baseline,
+                max_requests=args.max_requests)
+            sid = session.session_id
+            state = {
+                'session_id': sid, 'workspace': args.workspace,
+                'route': args.route, 'budget_label': lead_group,
+                'model': args.model, 'thread_id': thread_id,
+                'baseline_effort': baseline, 'transport': 'owned',
+                'codex_binary': args.codex_binary, 'fake_efforts': [],
+                'goal_sha256': goal_sha,
+                'max_requests': args.max_requests,
+                'max_mappings': args.max_mappings,
+                'provider_turns': {}, 'policy': policy.snapshot(),
+                'stopped': False, 'waiting': False, 'workers': {},
+                'created_at': _now(), 'updated_at': _now(),
+            }
+            _save_state(root, state)
+            _save_owner(root, sid)
+    finally:
+        lease.release()
     session, bridge, rpc, policy, wrapper = _open(root, state)
     view = _session_view(root, state, session, bridge, policy)
     _emit(args, view, 'lead session started: %s (model %s, ceiling %s, '
@@ -765,102 +775,109 @@ def _reconcile_active(root, state, session, conn, view):
 def _cmd_run_owned(root, state, args, text):
     """One explicit owner turn over the owned production transport.
 
-    Admission (STOP, owner holds) is checked before the owned process is
-    spawned. The command then owns ONE app-server process: initialize,
-    account, exact thread/resume, optional reconciliation of a proven
-    active turn, one turn/start with the decided effort, and bounded
+    Admission (STOP, owner holds, policy, capacity) is checked before the
+    owned process is spawned. The command then owns ONE app-server process:
+    initialize, account, exact thread/resume, optional reconciliation of a
+    proven active turn, one turn/start with the decided effort, and bounded
     waiting for the turn's terminal notification. The core's idempotent
     request check and its open-state check decide replays and uncertain
     sessions; nothing is ever resent, and an unacknowledged turn is
     never reconciled. The connection is closed in a finally so no owned
     process outlives the command.
     """
-    owner = _load_owner(root)
-    if not isinstance(owner, dict) or owner.get('session_id') != state['session_id']:
-        raise Refusal('workspace owner mismatch')
-    session, bridge, _rpc, policy, wrapper = _open(root, state)
-    view = session.status(session_id=state['session_id'])
-    wrapper.kind = args.kind
-    wrapper.reason = args.reason
-    conn = cx.OwnedCodexConnection(state['codex_binary'], cwd=str(root))
+    policy_doc, lead_group, lease = lp.admit_lead(
+        root, expected_agent='codex', budget_label=state['budget_label'])
     try:
-        conn.initialize()
-        conn.resume_thread(state['thread_id'])
-        view = _reconcile_active(root, state, session, conn, view)
+        owner = _load_owner(root)
+        if not isinstance(owner, dict) or owner.get('session_id') != state['session_id']:
+            raise Refusal('workspace owner mismatch')
+        session, bridge, _rpc, policy, wrapper = _open(root, state)
+        view = session.status(session_id=state['session_id'])
+        wrapper.kind = args.kind
+        wrapper.reason = args.reason
+        conn = cx.OwnedCodexConnection(state['codex_binary'], cwd=str(root))
         try:
-            live = bx.CodexLeadTransport(
-                conn.rpc, state['thread_id'], model=state['model'],
-                effort=state['baseline_effort'],
-                supported_efforts=policy.supported(),
-                max_mappings=state['max_mappings'],
-                prior_mappings=dict(state['provider_turns']),
-                rejection=cx.ProviderRejected)
-            live.bind(session)
-        except (bx.Refusal, ml.Refusal):
-            # Unproven handoff (for example an unacknowledged turn):
-            # inspection only. The core still returns recorded replay
-            # results; every new send refuses with zero turn starts.
-            live = bx.CodexLeadTransport(
-                conn.rpc, state['thread_id'], model=state['model'],
-                effort=state['baseline_effort'],
-                supported_efforts=policy.supported(),
-                max_mappings=state['max_mappings'],
-                rejection=cx.ProviderRejected)
-            live.bind(session)
-        conn.on_notification = live.handle_notification
-        wrapper.bridge = live
-        generation = view['generation']
-        try:
-            result = session.submit_next_turn(
-                session_id=state['session_id'], generation=generation,
-                request_id=args.request_id, text=text)
+            conn.initialize()
+            conn.resume_thread(state['thread_id'])
+            view = _reconcile_active(root, state, session, conn, view)
+            try:
+                live = bx.CodexLeadTransport(
+                    conn.rpc, state['thread_id'], model=state['model'],
+                    effort=state['baseline_effort'],
+                    supported_efforts=policy.supported(),
+                    max_mappings=state['max_mappings'],
+                    prior_mappings=dict(state['provider_turns']),
+                    rejection=cx.ProviderRejected)
+                live.bind(session)
+            except (bx.Refusal, ml.Refusal):
+                # Unproven handoff (for example an unacknowledged turn):
+                # inspection only. The core still returns recorded replay
+                # results; every new send refuses with zero turn starts.
+                live = bx.CodexLeadTransport(
+                    conn.rpc, state['thread_id'], model=state['model'],
+                    effort=state['baseline_effort'],
+                    supported_efforts=policy.supported(),
+                    max_mappings=state['max_mappings'],
+                    rejection=cx.ProviderRejected)
+                live.bind(session)
+            conn.on_notification = live.handle_notification
+            wrapper.bridge = live
+            generation = view['generation']
+            try:
+                result = session.submit_next_turn(
+                    session_id=state['session_id'], generation=generation,
+                    request_id=args.request_id, text=text)
+            finally:
+                _persist(root, state, policy, live, session)
+            decision = wrapper.last_decision
+            if decision is None:
+                for item in policy.decisions():
+                    if item['turn_id'] == result.get('turn_id'):
+                        decision = item
+            completed = False
+            if result.get('state') == 'accepted' and args.turn_wait > 0:
+                turn_id = result['turn_id']
+                deadline = time.monotonic() + args.turn_wait
+                while True:
+                    view = session.status(session_id=state['session_id'])
+                    if view['turn'] is None:
+                        last = view['last_turn']
+                        completed = bool(last and last['turn_id'] == turn_id
+                                         and last['status'] == 'completed')
+                        break
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    conn.pump(min(0.2, remaining))
+            payload = {
+                'session_id': state['session_id'], 'request_id': args.request_id,
+                'generation': result.get('generation'),
+                'turn_id': result.get('turn_id'), 'status': result.get('state'),
+                'effort': decision['effort'] if decision else None,
+                'kind': decision['kind'] if decision else None,
+                'source': decision['source'] if decision else None,
+                'turn_completed': completed, 'thread_id': state['thread_id'],
+                'bridge': live.status(), 'effective': 'Unknown',
+                'caution': CAUTION,
+            }
+            _emit(args, payload, 'turn %s: %s (effort %s, kind %s, source %s, '
+                                 'owned thread %s)'
+                  % (result.get('turn_id'), result.get('state'),
+                     payload['effort'], payload['kind'], payload['source'],
+                     state['thread_id']))
+            return 0
         finally:
-            _persist(root, state, policy, live, session)
-        decision = wrapper.last_decision
-        if decision is None:
-            for item in policy.decisions():
-                if item['turn_id'] == result.get('turn_id'):
-                    decision = item
-        completed = False
-        if result.get('state') == 'accepted' and args.turn_wait > 0:
-            turn_id = result['turn_id']
-            deadline = time.monotonic() + args.turn_wait
-            while True:
-                view = session.status(session_id=state['session_id'])
-                if view['turn'] is None:
-                    last = view['last_turn']
-                    completed = bool(last and last['turn_id'] == turn_id
-                                     and last['status'] == 'completed')
-                    break
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                conn.pump(min(0.2, remaining))
-        payload = {
-            'session_id': state['session_id'], 'request_id': args.request_id,
-            'generation': result.get('generation'),
-            'turn_id': result.get('turn_id'), 'status': result.get('state'),
-            'effort': decision['effort'] if decision else None,
-            'kind': decision['kind'] if decision else None,
-            'source': decision['source'] if decision else None,
-            'turn_completed': completed, 'thread_id': state['thread_id'],
-            'bridge': live.status(), 'effective': 'Unknown',
-            'caution': CAUTION,
-        }
-        _emit(args, payload, 'turn %s: %s (effort %s, kind %s, source %s, '
-                             'owned thread %s)'
-              % (result.get('turn_id'), result.get('state'),
-                 payload['effort'], payload['kind'], payload['source'],
-                 state['thread_id']))
-        return 0
+            conn.close()
     finally:
-        conn.close()
+        lease.release()
 
 
 def _cmd_run(root, args):
     state = _load_state(root, args.session)
     if state['stopped']:
         raise Refusal('lead session stopped: new turns are blocked')
+    if lp.is_project_stop_active(root):
+        raise Refusal('project STOP is active: lead session operations are blocked')
     text = _read_input(args.file, MAX_INPUT_BYTES)
     if args.kind is not None and args.kind not in pe.KINDS:
         raise Refusal('unknown work kind: ' + args.kind)
@@ -1039,7 +1056,9 @@ def build_parser():
     start.add_argument('--goal', required=True, help='owner goal file')
     start.add_argument('--model', required=True, help='owned model id')
     start.add_argument('--route', default=ROUTE_DEFAULT)
-    start.add_argument('--budget-label', default=BUDGET_DEFAULT)
+    start.add_argument('--budget-label', default=None,
+                       help='optional explicit budget group label (must match '
+                            'policy mapping if specified)')
     start.add_argument('--workspace', default=None,
                        help='workspace label (default: project root)')
     start.add_argument('--ceiling', default=pe.DEFAULT_CEILING,
@@ -1156,6 +1175,6 @@ def main(argv=None):
 if __name__ == '__main__':
     try:
         sys.exit(main())
-    except (Refusal, ml.Refusal, pe.Refusal, bx.Refusal, cx.Refusal) as exc:
+    except (Refusal, ml.Refusal, pe.Refusal, bx.Refusal, cx.Refusal, lp.Refusal) as exc:
         print('unio lead-session: ' + str(exc), file=sys.stderr)
         sys.exit(1)

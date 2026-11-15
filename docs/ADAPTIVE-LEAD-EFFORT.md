@@ -87,15 +87,33 @@ unio lead-session output [--after N] [--limit N] [--json]
 - `output` reads the bounded ordered journal with explicit gap and
   truncation flags (same limits as managed sessions).
 
-## Ownership, authority and recovery
+## Ownership, authority and native project admission
 
 - `coord/lead-effort/owner.json` records the one managed lead session per
   workspace. A second `start` refuses while the recorded session is live;
   a stopped session may be replaced by an explicit new start. Unknown or
   mismatched ownership refuses every control operation.
-- The controller injects the authority and ownership callbacks required by
-  the managed lead core; STOP is enforced both by the controller and by the
-  injected authority, before any transport call.
+- Project STOP (`coord/STOP`), real installed/project off holds with expiry
+  semantics (`coord/off/<agent>`, `$UNIO_CONF_DIR/off/<agent>`), and initialized
+  project policy (`coord/work-policy.json`) are enforced before any owned child
+  process spawn or turn execution (per contract V4).
+- The registered lead agent in project work-policy must match the expected lead
+  (`codex`). Absent, mismatched or malformed policy rejects admission before
+  child launch. Arbitrary `--budget-label` arguments or fabricated groups are
+  refused; the lead's group is resolved from real policy accounts.
+- Under `tier: low` (limit 1), the lead reservation is counted exactly once
+  (`active_native + 1 <= cap`). If active native workflows occupy the group,
+  admission refuses with capacity limit without creating a duplicate slot.
+- Short policy transaction and owned lease lock: admission acquires non-blocking
+  `coord/.locks/lead-session.lock` first, then briefly acquires
+  `coord/.locks/work-policy.lock` to check policy and slot counts. It releases
+  `work-policy.lock` immediately so other groups are never blocked during lead
+  model inference. The owned lease lock is held during command execution.
+  Lead and account setters (`unio set-lead`, `unio set-account`) check the
+  owned lease lock with non-blocking flock, preventing races with active owned
+  lead turns.
+- Read-only status, effort query and pending controls make zero provider calls
+  and remain accessible even when project STOP is active.
 - Provider turn ids validated by acknowledgements are recorded durably
   outside the core and handed explicitly to the next bridge instance. A
   handoff is proven only when it covers exactly the session's recorded
@@ -107,22 +125,25 @@ unio lead-session output [--after N] [--limit N] [--json]
 
 ## Honest boundary of this slice
 
-The real owned app-server connection — native thread creation, notification
-routing, and the native account/lead reservation that counts the registered
-lead exactly once — is not wired in this slice. The default transport refuses
-with an explicit message; `--transport fake` selects a deterministic fake
-owned connection for tests and demos that implements only `model/list` and
-`turn/start` and records every call to a bounded log. No real Codex
-invocation, thread, turn or worker happens during development or validation.
-Native cross-workspace and unmanaged visibility remain Unknown.
+Native project policy admission, STOP, off-holds, tier slot counting, lock-backed
+owned lease and the owned app-server connection lifecycle are wired and verified
+via executable fake app-server and genuine offline policy fixtures (contract V4).
+Real Codex model inference, external network calls, paid credits/billing, and
+cross-workspace/unmanaged visibility remain zero/Unknown during development and
+validation. No real model calls, billing, or credentials are used.
 
 ## Components
 
 - `tools/lead-effort.py` — importable adaptive effort policy (query once,
   rank and ceiling, manual/pending controls, wakeups, immutable decisions).
+- `tools/lead-session-policy.py` — native project policy admission, STOP, off holds,
+  tier slot counting, lock-backed lease and setter guards.
 - `tools/managed-lead.py` — managed lead session core (unchanged).
 - `tools/managed-lead-codex.py` — owned Codex bridge with opt-in per-turn
   effort and explicit handoff; legacy defaults preserved exactly.
+- `tools/lead-session-codex.py` — owned Codex connection lifecycle and notification
+  pumps.
 - `tools/lead-session.py` — the `unio lead-session` CLI controller.
 - Tests: `tests/unio-lead-effort.py`, `tests/unio-lead-session.py`,
-  `tests/unio-managed-lead.py`, `tests/unio-managed-lead-codex.py`.
+  `tests/unio-lead-session-codex.py`, `tests/unio-managed-lead.py`,
+  `tests/unio-managed-lead-codex.py`.

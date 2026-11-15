@@ -33,10 +33,11 @@ ml = cli.ml
 bx = cli.bx
 pe = cli.pe
 cx = cli.cx
+lp = cli.lp
 
 MODEL = 'gpt-5.4-codex'
 THREAD = 'fake-owned-thread-1'
-REFUSALS = (cli.Refusal, ml.Refusal, pe.Refusal, bx.Refusal, cx.Refusal)
+REFUSALS = (cli.Refusal, ml.Refusal, pe.Refusal, bx.Refusal, cx.Refusal, lp.Refusal)
 
 
 def refuses(argv):
@@ -67,6 +68,12 @@ class Workspace:
         Workspace.counter += 1
         self.root = Path(base) / ('lead-cli-' + str(Workspace.counter))
         self.root.mkdir(mode=0o700)
+        coord = self.root / 'coord'
+        coord.mkdir(mode=0o700, exist_ok=True)
+        (coord / 'work-policy.json').write_text(json.dumps({
+            'schema_version': 1, 'mode': 'yolo', 'tier': 'low',
+            'lead_agent': 'codex', 'accounts': {'codex': 'codex-shared'},
+        }) + '\n', encoding='utf-8')
         self.inputs = 0
 
     def input(self, text):

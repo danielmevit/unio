@@ -13,8 +13,15 @@ xhigh, medium/high refuse with an explicit interface message, and advertised
 sets containing medium/high plus fixed legacy worker/core settings remain
 compatible. The bridge gains opt-in per-turn effort, an explicit mapping
 bound (1..64) and an explicit acknowledgement-proven handoff; legacy defaults
-are preserved exactly. The real owned app-server connection seam stays an
-explicit refusal (fake test transport only); effective provider effort stays
-Unknown. Installer embedding, help and completion are registered; focused
-suites: tests/unio-lead-effort.py, tests/unio-lead-session.py,
+are preserved exactly. Contract V4 enforces real project policy admission
+(`tools/lead-session-policy.py`): project STOP (`coord/STOP`), real installed
+and project-level off holds with duration expiry checking, valid registered lead
+matching `coord/work-policy.json`, and low-tier shared account group capacity
+(counting the registered lead reservation exactly once) before any child process
+is spawned or turn dispatched. Concurrency and races with lead/account setters
+are prevented via non-blocking `coord/.locks/lead-session.lock` owned lease and
+brief `coord/.locks/work-policy.lock` transactions. Read-only status and pending
+controls remain allowed in STOP with zero provider calls. Installer embedding,
+help and completion are registered; focused suites: tests/unio-lead-effort.py,
+tests/unio-lead-session.py, tests/unio-lead-session-codex.py,
 tests/unio-managed-lead.py, tests/unio-managed-lead-codex.py. Unreleased.
