@@ -235,6 +235,38 @@ and out of scope: four-turn capacity and pre-intent native authority,
 widening the counted notification set, and a supported handoff. This is
 Opus-authored and needs other-lab review; it is not lead acceptance.
 
+Native transport corrections (0532-ADAPTIVE-TRANSPORT-CORRECTIONS-V6),
+2026-11-15: the independent review of the owned transport returned
+REQUEST-CHANGES; the corrections land in `tools/lead-session-codex.py`
+and `tools/lead-session.py` with the bridge contract above unchanged.
+`ProviderRejected` now subclasses the connection's `Refusal` and
+preserves the rejected method, the provider's error code and a bounded
+reason: a typed rejection on initialize/account/model/thread operations
+exits as one controlled CLI refusal instead of an unhandled traceback,
+while the bridge still catches it first as its injected typed-rejection
+class, keeping typed `turn/start` rejection distinct from missing or
+uncertain acknowledgements. The child's stderr is captured (never
+discarded) into a bounded private most-recent tail surfaced on exit
+paths (`stderr_tail`, and a bounded note in the exit refusal), so startup
+and crash diagnostics stay actionable without unbounded output. A child
+exit during the turn wait is flagged (`exited`): the final buffered
+terminal events and last stderr diagnostics are drained, the caller stops
+waiting promptly instead of busy-polling until the deadline, and no
+outcome is inferred from the process exit. The controller keeps
+submission acknowledgement, actual turn outcome and owner acceptance
+distinct (`status`, `turn_status`, `delivery`, `provider_exited`) with
+truthful nonzero exit codes for rejected, uncertain, failed, interrupted
+and timed-out work; control-state changes are short locked transactions
+with a merge-persist for run commands so concurrent pending effort
+requests, worker wakeups and STOP flags survive an active turn; mutating
+controls require the current workspace owner even with an explicit
+`--session`, and read-only views of a retired session are labelled
+`historical`. Offline regressions in `tests/unio-lead-session-codex.py`
+overlap real CLI processes against a delayed fake `turn/start`
+(slow-ack), and cover typed initialize rejection, crash and
+wait-loop-death stderr tails and the exit-code matrix. No real Codex
+model call happens anywhere in this validation.
+
 Native admission correction (0532-ADAPTIVE-LEAD-ADMISSION-V4), 2026-11-15:
 resolves the proven offline reproduction where 1c333d3 started an owned child
 process and submitted turn/start while project coord/STOP existed. The local

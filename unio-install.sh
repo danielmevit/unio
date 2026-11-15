@@ -28057,7 +28057,20 @@ unio lead-session output [--after N] [--limit N] [--json]
 - `run` submits one bounded owner turn (at most 8 KiB). Without `--kind`,
   the turn is review when a wakeup is pending, else coordination. Request
   ids are idempotent: an identical replay returns the recorded result with
-  zero new provider calls; changed content refuses.
+  zero new provider calls; changed content refuses. The JSON payload
+  separates the submission acknowledgement (`status`: accepted/rejected/
+  uncertain), the actual turn outcome (`turn_status`: completed/failed/
+  interrupted, or null while pending; `turn_completed`) and the observed
+  native exit (`provider_exited`, plus a bounded private `stderr_tail`
+  when the owned process died). `delivery` states the combined result:
+  `completed`, `failed`, `interrupted`, `rejected`, `uncertain` or
+  `pending`. Exit codes are truthful: 0 only for an observed completed
+  turn (or an explicit `--turn-wait 0` asynchronous acknowledgement,
+  which stays `pending` — the owned process is terminated at command
+  end, so no background execution is promised); 1 for controlled
+  refusals; 2 rejected; 3 uncertain; 4 failed; 5 interrupted; 6 accepted
+  but not observed terminal before the wait ended (timeout or provider
+  exit). A process exit is never inferred as model success.
 - `effort manual` suspends auto; `effort auto` resumes it; `effort request`
   is pending for the next turn only (a newer request replaces an older
   pending one; manual clears it). Both accept only `low` or `xhigh` in
@@ -28105,6 +28118,36 @@ unio lead-session output [--after N] [--limit N] [--json]
   handed over: the session reopens for inspection only, an identical replay
   still returns its recorded result, and every new turn refuses. There is
   no id eviction, rebinding, automatic resend or new thread.
+
+## Concurrent controls, ownership and diagnostics
+
+- Control-state changes are short locked transactions. A per-session
+  control lock (`coord/lead-effort/<session_id>.lock`) is held only for
+  the bounded read-modify-write of the control state — never across a
+  model/RPC turn — so concurrent commands never wait on an active turn.
+- A `run` never writes its stale pre-turn snapshot back: at persist time
+  it re-reads the current control state under the control lock and merges
+  only its own effects (proven provider mappings, its immutable decision
+  records, its at-most-one pending-effort consumption and at-most-one
+  wakeup consumption). A pending effort request, worker terminal wakeup
+  or STOP arriving during an active turn therefore survives; a pending
+  effort arriving after the current turn's decision applies only from
+  the next turn on.
+- Mutating controls (`run`, `effort auto|manual|request`, `worker`,
+  `stop`) require the current workspace owner session recorded under
+  `coord/lead-effort/owner.json`, even when `--session` is supplied
+  explicitly. Read-only `status`, `output` and `effort show` stay
+  available for a retired session but are explicitly labelled
+  `historical: true`.
+- An explicit typed provider rejection on initialize/account/model/thread
+  operations is a controlled refusal that preserves the method, code and
+  bounded reason — never a raw traceback. Typed `turn/start` rejection
+  stays distinct from missing or uncertain acknowledgements.
+- If the owned process dies mid-turn, the wait stops promptly (no busy
+  loop until the deadline), the final buffered terminal events and a
+  bounded private stderr tail are drained, the outcome stays
+  `pending`/Unknown with `provider_exited: true`, and no terminal status
+  is ever inferred from the process exit.
 
 ## Honest boundary of this slice
 
