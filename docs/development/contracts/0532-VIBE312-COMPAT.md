@@ -1,0 +1,7 @@
+# Vibe3.1.2 compatibility — bounded contract
+
+Global Vibe changed3.1.1to3.1.2, initiator Unknown. Existing canonical support is2.26.1/3.1.1; prior preparation correctly refused before a provider call. Do not rewrite that failure. Current adaptive-lead implementation uses isolated supported3.1.1 and must not be interrupted or modified.
+
+Inspect actual3.1.2 help and public installed code/official changelog, without reading auth/session stores or making model calls. Extend the tested exact allowlist only if explicit --model startup selection, bounded output/session export and budget semantics can be validated with meaningful offline fixtures. Preserve2.26.1/3.1.1 behavior, --thinking existing shape, Unknown effective settings, canonical bound checks, terminal/usage diagnostics, no fallback/retry/auth/global update. Do not accept a version range. If unsupported behavior cannot be safely validated, retain refusal and report the exact gap instead of claiming compatibility.
+
+Scope tools/vibe-worker.py, existing offline Vibe tests, integration guide, one fragment and corresponding generated installer bytes only. No route-profile schema expansion, managed-lead implementation, version bump, UI/site edits or broad unrelated refactor. Mechanical embed checks and focused existing/new regressions required. A live3.1.2 trial remains separate and must be labelled unrun if not performed. No model calls by this worker except its assigned Gemini Source. Commit useful stages and required summary early; independent other-lab review plus lead follows.

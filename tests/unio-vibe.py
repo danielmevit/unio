@@ -485,7 +485,7 @@ alias=os.environ['EXPECT_MODEL'];wire=os.environ['EXPECT_WIRE']
 config=json.loads(os.environ.get('FAKE_CONFIG',
     '{"active_model":"%s","routed_model_config":{"name":"%s","provider":"mistral","alias":"%s","thinking":"%s"}}'
     %(alias,wire,alias,os.environ.get('EXPECT_THINKING','high'))))
-x={'schema_version':1,'vibe_version':'3.1.1','outcome':os.environ.get('FAKE_OUTCOME','finished' if code==0 else 'turn_limit'),
+x={'schema_version':1,'vibe_version':os.environ.get('FAKE_VERSION','3.1.1'),'outcome':os.environ.get('FAKE_OUTCOME','finished' if code==0 else 'turn_limit'),
    'stop_reason':None if code==0 else 'limit','exit_code':code,'session_id':'sess',
    'usage':{'input_tokens':1543219,'output_tokens':26307,'cached_input_tokens':1273088,'total_tokens':1569526},
    'cost_usd':0.0,'steps':33,'config':config,'error':{'message':'NEVER-IN-RECEIPT'},
@@ -788,8 +788,13 @@ class Vibe31Tests(unittest.TestCase):
             worker.owned_call([sys.executable,'-c','import time;time.sleep(5)'],dict(os.environ),.2)
 
     def test_model_and_none_caps_are_version_gated_before_provider(self):
-        # mistral-medium-3-5 is not a validated 3.1.1 alias: refuse, no call, no receipt.
+        # mistral-medium-3-5 is not a validated 3.1.1 or 3.1.2 alias: refuse, no call, no receipt.
         p=self.invoke('--model','mistral-medium-3-5')
+        self.assertEqual(p.returncode,2,p.stderr)
+        self.assertIn('unsupported_model_for_cli_version',p.stderr)
+        self.assertFalse(self.marker.exists())
+        self.assertFalse(list(self.receipts.iterdir()))
+        p=self.invoke('--model','mistral-medium-3-5',FAKE_VERSION='3.1.2')
         self.assertEqual(p.returncode,2,p.stderr)
         self.assertIn('unsupported_model_for_cli_version',p.stderr)
         self.assertFalse(self.marker.exists())
@@ -806,10 +811,12 @@ class Vibe31Tests(unittest.TestCase):
         self.assertFalse(self.marker.exists())
         self.assertFalse(list(self.receipts.iterdir()))
         # Unknown versions still refuse before provider.
-        p=self.invoke(FAKE_VERSION='3.2.0')
-        self.assertEqual(p.returncode,2,p.stderr)
-        self.assertIn('unsupported_cli',p.stderr)
-        self.assertFalse(self.marker.exists())
+        for unknown in ('3.1.3', '3.2.0'):
+            with self.subTest(version=unknown):
+                p=self.invoke(FAKE_VERSION=unknown)
+                self.assertEqual(p.returncode,2,p.stderr)
+                self.assertIn('unsupported_cli',p.stderr)
+                self.assertFalse(self.marker.exists())
 
     def test_311_contract_parity_for_new_alias_and_none(self):
         def contract(*args):
@@ -907,6 +914,139 @@ class Vibe31Tests(unittest.TestCase):
         self.assertEqual(reason['argument'],'max-turns')
         self.assertIn('Vibe setup: Native CLI rejected launch argument --max-turns',p.stdout)
         self.assertNotIn('nope',json.dumps(latest)+p.stdout+p.stderr)
+
+
+class Vibe312Tests(unittest.TestCase):
+    """Vibe 3.1.2: explicit --model alias, --output json message list, omittable caps, matching 3.1.1 semantics."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="vibe312-offline-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.prompt = self.root / "task.md"
+        self.prompt.write_text("b" * 4096)
+        self.receipts = self.root / "receipts"
+        self.receipts.mkdir(mode=0o700)
+        cli = self.root / "vibe"
+        cli.write_text("#!" + sys.executable + "\n" + FAKE31)
+        cli.chmod(0o700)
+        self.marker = self.root / "calls"
+        self.env = dict(os.environ, PATH=str(self.root)+os.pathsep+os.environ['PATH'],
+                        FAKE_VERSION="3.1.2",
+                        MARKER=str(self.marker), EXPECT_PROMPT_LENGTH="4096",
+                        EXPECT_MODEL="mistral-large-4-0-3", EXPECT_WIRE="mistral-large-4-0",
+                        EXPECT_PRICE="5.0", EXPECT_TOKENS="2000000", EXPECT_TIME="5400", EXPECT_TURNS="120",
+                        VIBE_ACTIVE_MODEL="wrong", VIBE_INVENTED_OVERRIDE="wrong")
+
+    def invoke(self, *args, **env):
+        return subprocess.run([sys.executable,"-B",str(SCRIPT),"--model","mistral-large-4-0-3",
+                               "--prompt-file",str(self.prompt),"--receipt-dir",str(self.receipts),*args],
+                              env=dict(self.env,**env),capture_output=True,text=True,timeout=30)
+
+    def receipt(self):
+        paths=list(self.receipts.glob('vibe-run-*/receipt.json'))
+        self.assertEqual(len(paths),1)
+        return json.loads(paths[0].read_text())
+
+    def test_312_explicit_model_json_verified_selection_final_response_and_unpriced_usd(self):
+        p=self.invoke()
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['cli_version'],'3.1.2')
+        self.assertEqual(r['output_mode'],'json')
+        self.assertEqual(r['requested_model'],'mistral-large-4-0-3')
+        self.assertEqual(r['configured_wire_model'],'mistral-large-4-0')
+        self.assertEqual(r['configured_wire_effort'],'unknown')
+        self.assertEqual(r['effective_model'],'unknown')
+        self.assertEqual(r['remaining_allowance'],'unknown')
+        sel=r['session_selection']
+        self.assertEqual(sel['state'],'verified')
+        self.assertEqual(sel['session_alias'],'mistral-large-4-0-3')
+        self.assertEqual(sel['session_wire'],'mistral-large-4-0')
+        self.assertEqual(sel['session_thinking'],'high')
+        fr=r['final_response']
+        self.assertEqual(fr['state'],'present')
+        self.assertEqual(fr['message_count'],3)
+        self.assertEqual(fr['assistant_messages'],2)
+        self.assertEqual(fr['final_index'],2)
+        self.assertEqual(len(fr['final_sha256']),64)
+        self.assertGreater(fr['final_text_bytes'],0)
+        self.assertEqual(r['export']['usage']['total_tokens'],1569526)
+        self.assertEqual(r['export']['usage']['cached_input_tokens'],1273088)
+        self.assertEqual(r['export']['limits']['max_turns'],120)
+        self.assertEqual(r['omitted_caps'],[])
+        b=r['budget_telemetry']
+        self.assertEqual(b['tokens'],{'used':1569526,'cap':2000000,'provenance':'reported'})
+        self.assertEqual(b['turns'],{'used':2,'cap':120,'provenance':'estimated'})
+        self.assertEqual(b['usd']['used'],None)
+        self.assertEqual(b['usd']['provenance'],'unknown')
+        self.assertTrue(any('unknown, not zero' in n for n in b['notes']))
+        self.assertTrue(any('3.1.2 --output json message list' in n for n in b['notes']))
+        self.assertEqual(self.marker.read_text(),'call\n')
+        self.assertNotIn('NEVER-IN-RECEIPT',json.dumps(r)+p.stdout+p.stderr)
+        self.assertNotIn('SECRET',json.dumps(r)+p.stdout+p.stderr)
+        raw=next(self.receipts.glob('vibe-run-*/native-stdout.log')).read_text()
+        self.assertIn('SECRET-VERDICT accepted',raw)
+        final=json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual(final['cli_version'],'3.1.2')
+        self.assertEqual(final['selection'],'verified')
+        self.assertEqual(final['final_response'],'present')
+        self.assertEqual(final['adapter_exit'],0)
+
+    def test_312_glm_alias_supported_with_wire_verification(self):
+        p=self.invoke('--model','glm-5-3',EXPECT_MODEL='glm-5-3',EXPECT_WIRE='zai-glm-5-3')
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['cli_version'],'3.1.2')
+        self.assertEqual(r['configured_wire_model'],'zai-glm-5-3')
+        self.assertEqual(r['session_selection']['state'],'verified')
+        self.assertEqual(r['session_selection']['session_wire'],'zai-glm-5-3')
+
+    def test_312_owner_can_omit_caps_and_native_defaults_are_recorded(self):
+        p=self.invoke('--max-turns','none','--time-limit','none',
+                      EXPECT_TURNS='',EXPECT_TIME='')
+        self.assertEqual(p.returncode,0,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['cli_version'],'3.1.2')
+        self.assertEqual(sorted(r['omitted_caps']),['max_turns','time_limit'])
+        self.assertIsNone(r['native_limits']['max_turns'])
+        self.assertIsNone(r['native_limits']['time_limit'])
+        self.assertEqual(r['export']['limits']['max_turns'],None)
+        self.assertIsNone(r['export']['limits']['time_limit_s'])
+        self.assertEqual(r['supervisor_seconds'],7220)
+
+    def test_312_unsupported_thinking_levels_refuse_before_provider(self):
+        for level in ('low','medium'):
+            with self.subTest(level=level):
+                p=self.invoke('--thinking',level)
+                self.assertEqual(p.returncode,2,p.stderr)
+                self.assertIn('thinking control',p.stderr)
+                self.assertIn('2.26.1',p.stderr)
+                self.assertIn('3.1.2',p.stderr)
+                self.assertFalse(self.marker.exists())
+                self.assertFalse(list(self.receipts.iterdir()))
+
+    def test_312_native_limit_exit_three_and_stop_reason(self):
+        p=self.invoke(FAKE_EXIT='3')
+        self.assertEqual(p.returncode,3,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['cli_version'],'3.1.2')
+        self.assertEqual(r['process_exit'],3)
+        self.assertEqual(r['adapter_exit'],3)
+        self.assertEqual(r['export']['outcome'],'turn_limit')
+        self.assertEqual(r['stop_reason'],'turn_cap')
+        self.assertEqual(r['session_selection']['state'],'verified')
+
+    def test_312_usage_error_unavailable_alias(self):
+        original=('Unknown model: mistral-large-4-0-3. Available: glm-5-3, mistral-medium-3.5')
+        p=self.invoke(FAKE_EXIT='1',FAKE_OUTCOME='usage_error',
+                      FAKE_ERROR=json.dumps({'message':original,'code':None}))
+        self.assertEqual(p.returncode,1,p.stderr)
+        r=self.receipt()
+        self.assertEqual(r['cli_version'],'3.1.2')
+        self.assertEqual(r['process_exit'],1)
+        self.assertEqual(r['adapter_exit'],1)
+        self.assertEqual(r['setup_reason']['category'],'unavailable_model')
+        self.assertEqual(r['setup_reason']['alias'],'mistral-large-4-0-3')
 
 
 class SetupReasonTests(unittest.TestCase):

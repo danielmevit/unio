@@ -109,7 +109,7 @@ class Read(unittest.TestCase):
         self.assertIn('unknown, not zero', budget.NOTE_NO_EXPORT)
 
     def test_omitted_native_cap_is_none_and_unpriced_note_is_fixed(self):
-        # A cap omitted on Vibe 3.1.1 is an unknown native default (None),
+        # A cap omitted on Vibe 3.1.1/3.1.2 is an unknown native default (None),
         # never zero and never an unlimited claim.
         value = budget.telemetry(
             tokens=budget.meter(1569526, 16000000, 'reported'),
