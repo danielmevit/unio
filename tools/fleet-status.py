@@ -254,7 +254,16 @@ def valid_policy(obj):
     for group, count in active.items():
         if not is_label(group) or not is_int(count) or not 0 <= count <= MAX_ENTRIES:
             return None
-    return {'mode': mode, 'tier': tier, 'lead_agent': lead_agent,
+    protocol = obj.get('protocol')
+    if not protocol or protocol not in ('fast', 'balanced', 'thorough', 'yolo', 'medium', 'safe'):
+        protocol = {'yolo': 'fast', 'medium': 'balanced', 'safe': 'thorough'}.get(mode, mode)
+    elif protocol == 'yolo':
+        protocol = 'fast'
+    elif protocol == 'medium':
+        protocol = 'balanced'
+    elif protocol == 'safe':
+        protocol = 'thorough'
+    return {'mode': mode, 'tier': tier, 'protocol': protocol, 'lead_agent': lead_agent,
             'lead_group': lead_group, 'accounts': accounts, 'limit': limit,
             'active_with_lead': active}
 
@@ -589,6 +598,7 @@ def build_report(root, timeout, stop, observed, statuses):
         'timeout_seconds': timeout,
         'stop': stop,
         'mode': policy['mode'] if policy else 'unknown',
+        'protocol': policy['protocol'] if policy else 'unknown',
         'tier': policy['tier'] if policy else 'unknown',
         'lead_agent': policy['lead_agent'] if policy else None,
         'lead_group': policy['lead_group'] if policy else None,
@@ -772,7 +782,8 @@ def render_text(report):
     if report['stop']:
         head += '  [STOP active]'
     lines.append(head)
-    summary = 'Mode: {} | Tier: {}'.format(report['mode'], report['tier'])
+    mode_label = report.get('protocol') or {'yolo': 'fast', 'medium': 'balanced', 'safe': 'thorough'}.get(report['mode'], report['mode'])
+    summary = 'Mode: {} | Tier: {}'.format(mode_label, report['tier'])
     if report['lead_agent'] is not None:
         summary += ' | Lead: ' + report['lead_agent']
         if report['lead_group'] is not None and report['lead_group'] != report['lead_agent']:

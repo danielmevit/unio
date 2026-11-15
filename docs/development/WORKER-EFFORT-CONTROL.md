@@ -65,7 +65,7 @@ Owner ceilings still apply; this Unio development workspace excludes max/ultra.
 
 ## Coordination and evidence
 
-Keep this separate from review protocol (YOLO/Balanced/Thorough), subscription
+Keep this separate from review protocol (Fast/Balanced/Thorough), subscription
 concurrency tier (low/medium/high), and the documented Low/Medium/Max reasoning
 profiles. A per-worker setting change must not change other workers or the lead.
 Preserve real shared-account mappings and the registered lead reservation.

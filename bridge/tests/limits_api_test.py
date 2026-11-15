@@ -160,6 +160,7 @@ class LimitsApi(unittest.TestCase):
         policy = view['policy']
         self.assertEqual((policy['mode'], policy['tier'], policy['lead_agent'], policy['lead_group']),
                          ('yolo', 'low', 'codex', 'codex'))
+        self.assertEqual(policy['protocol'], 'fast')
         self.assertEqual(policy['accounts'], {'codex-reviewer': 'codex'})
         self.assertNotIn('owner_email', policy)
         manual = view['manual']['groups']['claude']['windows']

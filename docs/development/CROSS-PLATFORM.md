@@ -118,7 +118,7 @@ inside a VM. [Windows Sandbox](https://learn.microsoft.com/en-us/windows/securit
 is useful for disposable checks, but closing it deletes its state; persistent
 agent login/checkpoint workflows need separate design. No VM product is selected.
 
-Keep execution isolation separate from YOLO/Balanced/Thorough review pace and
+Keep execution isolation separate from Fast/Balanced/Thorough review pace and
 coordination tier. Reviews and recovery remain valuable inside a restricted
 execution environment; they do not replace its OS boundary. Future UI should
 make actual execution host, enforced limits and any unrestricted route visible.

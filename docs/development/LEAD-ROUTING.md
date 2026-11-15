@@ -13,7 +13,7 @@ approved plans, task scope or invocation budget.
 Read the [Low / Medium / Max reasoning profiles](https://github.com/danielmevit/unio/blob/main/docs/ai/REASONING-PROFILES.md)
 (or installed `templates/REASONING-PROFILES.md`) at startup. New-project prompts
 provide explicit effort and coordination-tier fields. Any effort profile
-can accompany YOLO, Balanced or Thorough. The owner can switch any axis for
+can accompany Fast, Balanced or Thorough. The owner can switch any axis for
 future assignments; preserve the other two, record the choice in the project's
 instructions/handoff, and map only verified supported model controls.
 
@@ -407,7 +407,7 @@ lead always performs its own assessment. For this owner's Unio development,
 code changes need at least two independent worker reviews from different AI
 labs, followed by the lead's assessment. Gemini must not be the sole worker
 reviewer. This owner direction supersedes the earlier session exception for
-personal lead review alone; YOLO still uses focused checks and one final gate.
+personal lead review alone; Fast still uses focused checks and one final gate.
 Keep verdicts separate and prepare reviewers without their peers' conclusions.
 Use native `unio review-set` for a new simultaneous review batch when supported;
 let an existing healthy single review finish before adding another under its
@@ -423,7 +423,7 @@ Fixes require fresh reviews of the changed candidate. Reviews reduce risk;
 they cannot guarantee every error will be found.
 
 Run the checks frozen for the task and push the exact accepted revision.
-Under the current YOLO cadence, use focused checks per coherent feature and
+Under the current Fast cadence, use focused checks per coherent feature and
 reserve the full repository gate for release or demonstrated need. Keep releases and installation within the owner's authorization.
 The owner remains in control of plans, spending and published changes.
 

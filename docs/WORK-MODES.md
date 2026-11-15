@@ -17,11 +17,11 @@ names and public labels are the 0.5.13 update.
 
 | Mode | How the lead organizes work | Checks and review |
 | --- | --- | --- |
-| `yolo` | Finish a useful feature in a coherent batch. Delegate implementation and keep coordination brief. | Focused checks for changed behavior, a real smoke check where relevant, and a brief lead review. Avoid routine extra reviewer calls. Run the full required gate at a release boundary. |
+| `fast` | Quick delivery with essential checks and accepted follow-up work. Delegate implementation and keep coordination brief. | Focused checks for changed behavior, a real smoke check where relevant, and a brief lead review. Avoid routine extra reviewer calls. Run the full required gate at a release boundary. |
 | `balanced` | Deliver manageable feature batches with more integration attention. | Focused and relevant integration checks; one independent review for substantive implementation batches, a second for sensitive changes or unresolved disagreement, then lead assessment. |
 | `thorough` | Plan risks, interfaces, failure cases and rollback before small reviewable batches. | Broader integration/security checks and the required project gate; two capable independent reviews from different known AI labs, both different from the author, then lead assessment and owner acceptance under existing authority. |
 
-`balanced` is the default (`medium` is its compatibility alias). A mode shapes the next task's scope, validation and
+`balanced` is the default (`medium` is its compatibility alias; `yolo` remains an accepted compatibility alias for Fast). A mode shapes the next task's scope, validation and
 review plan; it never silently removes an already frozen task's Validate
 commands. Required checks must actually pass. Repeat or broaden checks only
 when changed code, a failure or an unresolved concern justifies it. Record
@@ -32,7 +32,7 @@ retries, worker limit handling or acceptance rules. They do not interpret
 an AI's output as an instruction to change policy. Releases still need their
 required quality gate and the owner's authorization.
 
-Across YOLO, Balanced and Thorough, a status or explanation question does not
+Across Fast, Balanced and Thorough, a status or explanation question does not
 pause work: answer briefly and continue the authorized task in the same turn.
 Preserve a handoff before an unavoidable stop. See [lead continuity](https://github.com/danielmevit/unio/blob/main/docs/development/LEAD-ROUTING.md#answer-questions-and-continue-authorized-work).
 
@@ -117,7 +117,7 @@ Do not downgrade models or change billing/fallback because a tier changed.
 From a Unio project, the command surface is:
 
 ```bash
-unio mode yolo
+unio mode fast
 unio tier low
 unio lead codex
 unio policy
@@ -141,8 +141,8 @@ unio account opencode go-primary
 unio account glm go-primary
 ```
 
-Public mode values are `yolo`, `balanced`, `thorough`; old `medium` and `safe`
-values remain aliases for Balanced and Thorough. Allowed tier values are
+Public mode values are `fast`, `balanced`, `thorough`; old `yolo`, `medium` and `safe`
+values remain aliases (yolo for Fast, medium for Balanced, safe for Thorough). Allowed tier values are
 `low`, `medium`, `high`. Reject extra arguments and invalid values.
 Both settings are workspace-wide and persist across sessions in
 `coord/work-policy.json`. A missing file means the documented defaults;
@@ -151,7 +151,7 @@ silently resetting settings. Setter operations validate before writing and
 replace the file atomically under a shared lock.
 
 The policy JSON keeps schema 1 and its compatibility `mode` values
-(`yolo`/`medium`/`safe`), adding `protocol` (`yolo`/`balanced`/`thorough`). The
+(`yolo`/`medium`/`safe`), adding `protocol` (`fast`/`balanced`/`thorough`). The
 stored mode values remain readable by older runners. JSON also includes
 `tier`, an optional update timestamp,
 the effective per-group workflow limit, lead reservation, account mappings,

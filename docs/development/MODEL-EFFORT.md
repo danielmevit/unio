@@ -47,7 +47,7 @@ model identity or a quality ranking. CodeGraph improvements remain deferred.
 Read the [Low / Medium / Max reasoning profiles](https://github.com/danielmevit/unio/blob/main/docs/ai/REASONING-PROFILES.md)
 (or installed `templates/REASONING-PROFILES.md`) at startup. New-project prompts
 provide explicit effort and coordination-tier fields. Any effort profile
-can accompany YOLO, Balanced or Thorough. The owner can switch any axis for
+can accompany Fast, Balanced or Thorough. The owner can switch any axis for
 future assignments; preserve the other two, record the choice in the project's
 instructions/handoff, and map only verified supported model controls.
 

@@ -175,6 +175,7 @@ LIMIT_LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
 LIMIT_BUCKET = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,63}')
 LIMIT_TIME = re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]{8,15}(?:Z|[+-][0-9]{2}:[0-9]{2})')
 LIMIT_MODES = ('yolo', 'medium', 'safe')
+PUBLIC_MODES = {'yolo': 'fast', 'medium': 'balanced', 'safe': 'thorough'}
 LIMIT_TIERS = ('low', 'medium', 'high')
 WINDOW_STATUSES = ('fresh', 'stale', 'expired', 'unknown', 'historical')
 CODEX_REASONS = frozenset((
@@ -279,7 +280,19 @@ def limits_policy(doc):
     accounts = doc.get('accounts')
     _limit_expect(isinstance(accounts, dict) and len(accounts) <= MAX_LIMIT_ENTRIES)
     lead, group = doc.get('lead_agent'), doc.get('lead_group')
+    protocol = doc.get('protocol')
+    if protocol is not None:
+        _limit_expect(protocol in ('fast', 'balanced', 'thorough', 'yolo', 'medium', 'safe'))
+        if protocol == 'yolo':
+            protocol = 'fast'
+        elif protocol == 'medium':
+            protocol = 'balanced'
+        elif protocol == 'safe':
+            protocol = 'thorough'
+    else:
+        protocol = PUBLIC_MODES.get(doc['mode'], doc['mode'])
     return {'state': 'ok', 'mode': doc['mode'], 'tier': doc['tier'],
+            'protocol': protocol,
             'lead_agent': None if lead is None else _limit_label(lead),
             'lead_group': None if group is None else _limit_label(group),
             'accounts': {_limit_label(a): _limit_label(g) for a, g in accounts.items()},
@@ -6368,8 +6381,10 @@ cat > "$CONF_DIR/lib/browser/activity.js" <<'UNIO_BROWSER_ACTIVITY_JS'
     const lead = document.getElementById("limits-lead");
     lead.replaceChildren();
     if (policy) {
+      const modeMap = { yolo: "fast", medium: "balanced", safe: "thorough" };
+      const modeLabel = policy.protocol || modeMap[policy.mode] || policy.mode;
       lead.append(text("strong", "Registered lead: " + (policy.lead_agent || "none") + (policy.lead_group ? " (group " + policy.lead_group + ")" : "")));
-      lead.append(document.createTextNode(" · mode " + policy.mode + " · tier " + policy.tier + " · up to "
+      lead.append(document.createTextNode(" · mode " + modeLabel + " · tier " + policy.tier + " · up to "
         + policy.workflow_limit_per_group + " workflow" + (policy.workflow_limit_per_group === 1 ? "" : "s")
         + " per shared budget, including the lead. A registered lead is a reservation, not an attached live conversation; your external lead CLI session is not captured here."));
     } else {
@@ -10724,7 +10739,16 @@ def valid_policy(obj):
     for group, count in active.items():
         if not is_label(group) or not is_int(count) or not 0 <= count <= MAX_ENTRIES:
             return None
-    return {'mode': mode, 'tier': tier, 'lead_agent': lead_agent,
+    protocol = obj.get('protocol')
+    if not protocol or protocol not in ('fast', 'balanced', 'thorough', 'yolo', 'medium', 'safe'):
+        protocol = {'yolo': 'fast', 'medium': 'balanced', 'safe': 'thorough'}.get(mode, mode)
+    elif protocol == 'yolo':
+        protocol = 'fast'
+    elif protocol == 'medium':
+        protocol = 'balanced'
+    elif protocol == 'safe':
+        protocol = 'thorough'
+    return {'mode': mode, 'tier': tier, 'protocol': protocol, 'lead_agent': lead_agent,
             'lead_group': lead_group, 'accounts': accounts, 'limit': limit,
             'active_with_lead': active}
 
@@ -11059,6 +11083,7 @@ def build_report(root, timeout, stop, observed, statuses):
         'timeout_seconds': timeout,
         'stop': stop,
         'mode': policy['mode'] if policy else 'unknown',
+        'protocol': policy['protocol'] if policy else 'unknown',
         'tier': policy['tier'] if policy else 'unknown',
         'lead_agent': policy['lead_agent'] if policy else None,
         'lead_group': policy['lead_group'] if policy else None,
@@ -11242,7 +11267,8 @@ def render_text(report):
     if report['stop']:
         head += '  [STOP active]'
     lines.append(head)
-    summary = 'Mode: {} | Tier: {}'.format(report['mode'], report['tier'])
+    mode_label = report.get('protocol') or {'yolo': 'fast', 'medium': 'balanced', 'safe': 'thorough'}.get(report['mode'], report['mode'])
+    summary = 'Mode: {} | Tier: {}'.format(mode_label, report['tier'])
     if report['lead_agent'] is not None:
         summary += ' | Lead: ' + report['lead_agent']
         if report['lead_group'] is not None and report['lead_group'] != report['lead_agent']:
@@ -21090,7 +21116,7 @@ approved plans, task scope or invocation budget.
 Read the [Low / Medium / Max reasoning profiles](https://github.com/danielmevit/unio/blob/main/docs/ai/REASONING-PROFILES.md)
 (or installed `templates/REASONING-PROFILES.md`) at startup. New-project prompts
 provide explicit effort and coordination-tier fields. Any effort profile
-can accompany YOLO, Balanced or Thorough. The owner can switch any axis for
+can accompany Fast, Balanced or Thorough. The owner can switch any axis for
 future assignments; preserve the other two, record the choice in the project's
 instructions/handoff, and map only verified supported model controls.
 
@@ -21484,7 +21510,7 @@ lead always performs its own assessment. For this owner's Unio development,
 code changes need at least two independent worker reviews from different AI
 labs, followed by the lead's assessment. Gemini must not be the sole worker
 reviewer. This owner direction supersedes the earlier session exception for
-personal lead review alone; YOLO still uses focused checks and one final gate.
+personal lead review alone; Fast still uses focused checks and one final gate.
 Keep verdicts separate and prepare reviewers without their peers' conclusions.
 Use native `unio review-set` for a new simultaneous review batch when supported;
 let an existing healthy single review finish before adding another under its
@@ -21500,7 +21526,7 @@ Fixes require fresh reviews of the changed candidate. Reviews reduce risk;
 they cannot guarantee every error will be found.
 
 Run the checks frozen for the task and push the exact accepted revision.
-Under the current YOLO cadence, use focused checks per coherent feature and
+Under the current Fast cadence, use focused checks per coherent feature and
 reserve the full repository gate for release or demonstrated need. Keep releases and installation within the owner's authorization.
 The owner remains in control of plans, spending and published changes.
 
@@ -21743,7 +21769,7 @@ model identity or a quality ranking. CodeGraph improvements remain deferred.
 Read the [Low / Medium / Max reasoning profiles](https://github.com/danielmevit/unio/blob/main/docs/ai/REASONING-PROFILES.md)
 (or installed `templates/REASONING-PROFILES.md`) at startup. New-project prompts
 provide explicit effort and coordination-tier fields. Any effort profile
-can accompany YOLO, Balanced or Thorough. The owner can switch any axis for
+can accompany Fast, Balanced or Thorough. The owner can switch any axis for
 future assignments; preserve the other two, record the choice in the project's
 instructions/handoff, and map only verified supported model controls.
 
@@ -21990,7 +22016,7 @@ uses. Increasing one does not silently change the others.
 
 | Choice | Options | What it changes |
 | --- | --- | --- |
-| Review protocol | YOLO, Balanced, Thorough | Task size, validation, independent reviews and acceptance planning. Commands are `yolo`, `balanced`, `thorough` in 0.5.13; older runners use `medium`/`safe` for the last two. |
+| Review protocol | Fast, Balanced, Thorough | Task size, validation, independent reviews and acceptance planning. Commands are `fast`, `balanced`, `thorough`; older runners use `yolo` for Fast, and `medium`/`safe` remain accepted aliases. |
 | Coordination tier | low, medium, high | Native per-workspace concurrency caps: 1, 2 or 4 independent workflows per shared account, including the lead. |
 | Reasoning profile | Low, Medium, Max | Instructions for choosing the supported effort of the lead, workers and reviewers on future assignments. |
 
@@ -22002,8 +22028,8 @@ profile to each route's verified controls and explains any fixed limit.
 
 The [new-project prompts](NEW-PROJECT-PROMPT.md) start at **low coordination
 tier + Low reasoning**. Balanced is the middle review protocol; its
-matching CLI value is `balanced` in 0.5.13 (`medium` remains an alias). Any review protocol can use any
-reasoning profile: Thorough can use Low, and YOLO can use Max.
+matching CLI value is `balanced` (`medium` remains an alias). Any review protocol can use any
+reasoning profile: Thorough can use Low, and Fast can use Max.
 
 ## Same-model and shared-subscription effort default
 
@@ -22068,7 +22094,7 @@ a quota error nor a network failure is a reason to increase effort.
 ## Mix and change the settings independently
 
 Any review protocol works with any reasoning profile and coordination tier.
-For example, YOLO + Max + low tier means fast focused checks, the highest
+For example, Fast + Max + low tier means fast focused checks, the highest
 permitted reasoning setting and one independent workflow per shared account.
 Thorough + Low + low tier means broader independent reviews with economical
 reasoning and the same concurrency limit. Reviewers also consume their account's
@@ -32787,7 +32813,7 @@ QUALITY_PY
 policy() {
   command -v python3 >/dev/null || die "Python 3 is required before mode/tier/lead/account/policy"
   UNIO_POLICY_CONF="$CONF_DIR" UNIO_COOLDOWN_HELPER="$CONF_DIR/lib/lead_cooldown.py" python3 - "$@" <<'POLICY_PY'
-import datetime, fcntl, hashlib, json, os, re, signal, stat, sys, tempfile, time, uuid
+import contextlib, datetime, fcntl, hashlib, importlib.util, json, os, re, signal, stat, sys, tempfile, time, uuid
 
 MAX_STATE = 65536
 MAX_SLOT_META = 4096
@@ -32800,15 +32826,15 @@ ALLOWED_KEYS = {'schema_version', 'mode', 'tier', 'lead_agent', 'accounts', 'upd
 MODES = ('yolo', 'medium', 'safe')
 # Stored schema-1 modes stay ('yolo', 'medium', 'safe') so older released
 # runners can read an existing project's policy. The public protocol names are
-# yolo/balanced/thorough; this single mapping drives both directions.
-PUBLIC_MODES = {'yolo': 'yolo', 'medium': 'balanced', 'safe': 'thorough'}
-# Accepted inputs: public names plus the medium/safe compatibility aliases.
-MODE_INPUTS = {'yolo': 'yolo', 'balanced': 'medium', 'medium': 'medium',
+# fast/balanced/thorough; this single mapping drives both directions.
+PUBLIC_MODES = {'yolo': 'fast', 'medium': 'balanced', 'safe': 'thorough'}
+# Accepted inputs: public names plus the yolo/medium/safe compatibility aliases.
+MODE_INPUTS = {'fast': 'yolo', 'yolo': 'yolo', 'balanced': 'medium', 'medium': 'medium',
                'thorough': 'safe', 'safe': 'safe'}
 TIERS = ('low', 'medium', 'high')
 LIMITS = {'low': 1, 'medium': 2, 'high': 4}
 MODE_BLURB = {
-    'yolo': 'finish a useful feature in a coherent batch; focused checks, a real smoke check, brief lead review; full gate at release',
+    'yolo': 'quick delivery with essential checks and accepted follow-up work; focused checks, a real smoke check, brief lead review; full gate at release',
     'medium': 'manageable batches with integration attention; focused plus relevant integration checks; independent review when warranted',
     'safe': 'smaller checkpoints, careful interface and failure-path inspection; broader checks plus independent reviews',
 }
@@ -33402,7 +33428,7 @@ def main(argv):
         sys.stdout.write(json.dumps(describe(root, doc), sort_keys=True, indent=2) + '\n')
     elif cmd == 'get-mode':
         if args:
-            fail('usage: unio mode [yolo|balanced|thorough]')
+            fail('usage: unio mode [fast|balanced|thorough]')
         sys.stdout.write('mode: ' + PUBLIC_MODES[read_state(root)['mode']] + '\n')
     elif cmd == 'get-tier':
         if args:
@@ -33424,7 +33450,7 @@ def main(argv):
                 sys.stdout.write('accounts: %s=%s\n' % (agent, accounts[agent]))
     elif cmd == 'set-mode':
         if len(args) != 1 or args[0] not in MODE_INPUTS:
-            fail('usage: unio mode [yolo|balanced|thorough]')
+            fail('usage: unio mode [fast|balanced|thorough]')
         stored = MODE_INPUTS[args[0]]
         def _set_mode(doc, value=stored):
             doc['mode'] = value
@@ -33459,7 +33485,6 @@ def main(argv):
             doc['updated_at'] = stamp()
         # Same lock order as supervisor launch: cooldown/session state, then policy.
         # Older/staged configs without the helper have no cooldown feature.
-        import contextlib, importlib.util
         helper = os.environ.get('UNIO_COOLDOWN_HELPER', '')
         cooldown_dir = os.path.join(root, 'coord', 'lead-cooldown')
         guard = contextlib.nullcontext()
@@ -42940,7 +42965,7 @@ cmd_license() {
 # touching coord/work-policy.json.
 cmd_mode() {
   local root; root=$(find_root) || die "not inside a Unio project"
-  [ $# -gt 1 ] && die "usage: unio mode [yolo|balanced|thorough]"
+  [ $# -gt 1 ] && die "usage: unio mode [fast|balanced|thorough]"
   if [ $# -eq 0 ]; then policy "$root" get-mode
   else policy "$root" set-mode "$1"
   fi
@@ -44062,9 +44087,9 @@ switches
   unio license                  original credit and full AGPLv3 terms
 
 work policy (native per-group slots; workflow_enforcement=native_workflows)
-  unio mode [yolo|balanced|thorough]
+  unio mode [fast|balanced|thorough]
                                       show or set the work pace (default
-                                      balanced; medium/safe stay accepted
+                                      balanced; yolo/medium/safe stay accepted
                                       aliases)
   unio tier [low|medium|high]   show or set the coordination budget
                                       (default low: 1 workflow per shared
@@ -49490,11 +49515,11 @@ names and public labels are the 0.5.13 update.
 
 | Mode | How the lead organizes work | Checks and review |
 | --- | --- | --- |
-| `yolo` | Finish a useful feature in a coherent batch. Delegate implementation and keep coordination brief. | Focused checks for changed behavior, a real smoke check where relevant, and a brief lead review. Avoid routine extra reviewer calls. Run the full required gate at a release boundary. |
+| `fast` | Quick delivery with essential checks and accepted follow-up work. Delegate implementation and keep coordination brief. | Focused checks for changed behavior, a real smoke check where relevant, and a brief lead review. Avoid routine extra reviewer calls. Run the full required gate at a release boundary. |
 | `balanced` | Deliver manageable feature batches with more integration attention. | Focused and relevant integration checks; one independent review for substantive implementation batches, a second for sensitive changes or unresolved disagreement, then lead assessment. |
 | `thorough` | Plan risks, interfaces, failure cases and rollback before small reviewable batches. | Broader integration/security checks and the required project gate; two capable independent reviews from different known AI labs, both different from the author, then lead assessment and owner acceptance under existing authority. |
 
-`balanced` is the default (`medium` is its compatibility alias). A mode shapes the next task's scope, validation and
+`balanced` is the default (`medium` is its compatibility alias; `yolo` remains an accepted compatibility alias for Fast). A mode shapes the next task's scope, validation and
 review plan; it never silently removes an already frozen task's Validate
 commands. Required checks must actually pass. Repeat or broaden checks only
 when changed code, a failure or an unresolved concern justifies it. Record
@@ -49505,7 +49530,7 @@ retries, worker limit handling or acceptance rules. They do not interpret
 an AI's output as an instruction to change policy. Releases still need their
 required quality gate and the owner's authorization.
 
-Across YOLO, Balanced and Thorough, a status or explanation question does not
+Across Fast, Balanced and Thorough, a status or explanation question does not
 pause work: answer briefly and continue the authorized task in the same turn.
 Preserve a handoff before an unavoidable stop. See [lead continuity](https://github.com/danielmevit/unio/blob/main/docs/development/LEAD-ROUTING.md#answer-questions-and-continue-authorized-work).
 
@@ -49590,7 +49615,7 @@ Do not downgrade models or change billing/fallback because a tier changed.
 From a Unio project, the command surface is:
 
 ```bash
-unio mode yolo
+unio mode fast
 unio tier low
 unio lead codex
 unio policy
@@ -49614,8 +49639,8 @@ unio account opencode go-primary
 unio account glm go-primary
 ```
 
-Public mode values are `yolo`, `balanced`, `thorough`; old `medium` and `safe`
-values remain aliases for Balanced and Thorough. Allowed tier values are
+Public mode values are `fast`, `balanced`, `thorough`; old `yolo`, `medium` and `safe`
+values remain aliases (yolo for Fast, medium for Balanced, safe for Thorough). Allowed tier values are
 `low`, `medium`, `high`. Reject extra arguments and invalid values.
 Both settings are workspace-wide and persist across sessions in
 `coord/work-policy.json`. A missing file means the documented defaults;
@@ -49624,7 +49649,7 @@ silently resetting settings. Setter operations validate before writing and
 replace the file atomically under a shared lock.
 
 The policy JSON keeps schema 1 and its compatibility `mode` values
-(`yolo`/`medium`/`safe`), adding `protocol` (`yolo`/`balanced`/`thorough`). The
+(`yolo`/`medium`/`safe`), adding `protocol` (`fast`/`balanced`/`thorough`). The
 stored mode values remain readable by older runners. JSON also includes
 `tier`, an optional update timestamp,
 the effective per-group workflow limit, lead reservation, account mappings,
@@ -50270,7 +50295,7 @@ _unio() {
     tail)        COMPREPLY=( $(compgen -W "$tasks -f --follow --lines" -- "$cur") );;
     kill|report) COMPREPLY=( $(compgen -W "$tasks" -- "$cur") );;
     off|on) COMPREPLY=( $(compgen -W "$agents" -- "$cur") );;
-    mode) COMPREPLY=( $(compgen -W "yolo balanced thorough medium safe" -- "$cur") );;
+    mode) COMPREPLY=( $(compgen -W "fast balanced thorough yolo medium safe" -- "$cur") );;
     tier) COMPREPLY=( $(compgen -W "low medium high" -- "$cur") );;
     lead) COMPREPLY=( $(compgen -W "none $agents" -- "$cur") );;
     lead-cooldown) COMPREPLY=( $(compgen -W "start status pause resume stop complete" -- "$cur") );;

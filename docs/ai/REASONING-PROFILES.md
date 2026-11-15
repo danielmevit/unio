@@ -6,7 +6,7 @@ uses. Increasing one does not silently change the others.
 
 | Choice | Options | What it changes |
 | --- | --- | --- |
-| Review protocol | YOLO, Balanced, Thorough | Task size, validation, independent reviews and acceptance planning. Commands are `yolo`, `balanced`, `thorough` in 0.5.13; older runners use `medium`/`safe` for the last two. |
+| Review protocol | Fast, Balanced, Thorough | Task size, validation, independent reviews and acceptance planning. Commands are `fast`, `balanced`, `thorough`; older runners use `yolo` for Fast, and `medium`/`safe` remain accepted aliases. |
 | Coordination tier | low, medium, high | Native per-workspace concurrency caps: 1, 2 or 4 independent workflows per shared account, including the lead. |
 | Reasoning profile | Low, Medium, Max | Instructions for choosing the supported effort of the lead, workers and reviewers on future assignments. |
 
@@ -18,8 +18,8 @@ profile to each route's verified controls and explains any fixed limit.
 
 The [new-project prompts](NEW-PROJECT-PROMPT.md) start at **low coordination
 tier + Low reasoning**. Balanced is the middle review protocol; its
-matching CLI value is `balanced` in 0.5.13 (`medium` remains an alias). Any review protocol can use any
-reasoning profile: Thorough can use Low, and YOLO can use Max.
+matching CLI value is `balanced` (`medium` remains an alias). Any review protocol can use any
+reasoning profile: Thorough can use Low, and Fast can use Max.
 
 ## Same-model and shared-subscription effort default
 
@@ -84,7 +84,7 @@ a quota error nor a network failure is a reason to increase effort.
 ## Mix and change the settings independently
 
 Any review protocol works with any reasoning profile and coordination tier.
-For example, YOLO + Max + low tier means fast focused checks, the highest
+For example, Fast + Max + low tier means fast focused checks, the highest
 permitted reasoning setting and one independent workflow per shared account.
 Thorough + Low + low tier means broader independent reviews with economical
 reasoning and the same concurrency limit. Reviewers also consume their account's

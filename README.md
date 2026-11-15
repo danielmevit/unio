@@ -90,7 +90,7 @@ See [the changelog](CHANGELOG.md) for release history.
   supported adapter results; missing or unsupported evidence stays Unknown.
 - **Control publication destinations.** Opt into [remote policy](docs/REMOTE-POLICY.md)
   to separate development and release pushes, while preserving owner hooks.
-- **Choose your workflow.** Set YOLO, Balanced or Thorough review, choose
+- **Choose your workflow.** Set Fast, Balanced or Thorough review, choose
   reasoning effort, and control concurrency per shared account. See
   [the independent workflow choices](#choose-how-unio-works).
 - **Use the right worker.** [Packaged integrations](docs/development/AGENT-FLEET.md)
@@ -250,7 +250,7 @@ Building something new from scratch? Use the
 describe your idea, and let your lead set up Unio and coordinate the workers.
 You do not need an existing repository or a clone of Unio's source.
 Choose a complete startup protocol:
-[YOLO](docs/ai/NEW-PROJECT-PROMPT.md#yolo-prompt),
+[Fast](docs/ai/NEW-PROJECT-PROMPT.md#fast-prompt),
 [Balanced](docs/ai/NEW-PROJECT-PROMPT.md#balanced-prompt), or
 [Thorough](docs/ai/NEW-PROJECT-PROMPT.md#thorough-prompt).
 They range from focused checks and lead review to two independent reviews
@@ -310,16 +310,16 @@ effort** and **low coordination tier**, then change either when needed.
 
 | Choice | Options | What changes |
 | --- | --- | --- |
-| **Review protocol** | YOLO / Balanced / Thorough | The depth of checks and independent reviews. |
+| **Review protocol** | Fast / Balanced / Thorough | The depth of checks and independent reviews. |
 | **Reasoning effort** | Low / Medium / Max | How the lead chooses supported reasoning settings for itself, workers and reviewers. |
 | **Coordination tier** | low / medium / high | 1 / 2 / 4 independent workflows per shared account, including the lead. |
 
-Use `yolo`, `balanced` and `thorough` for the review protocol. The older
-`medium` and `safe` aliases remain supported.
+Use `fast`, `balanced` and `thorough` for the review protocol. The older
+`yolo`, `medium` and `safe` aliases remain accepted.
 See the [work modes guide](docs/WORK-MODES.md).
 
 ```bash
-unio mode yolo
+unio mode fast
 unio mode balanced
 unio mode thorough
 unio tier low                     # account concurrency; separate from reasoning effort
@@ -347,7 +347,7 @@ Keep Balanced review and low coordination tier. Switch reasoning effort to
 Medium for future tasks, using supported max only when difficulty warrants it.
 ```
 
-Any combination works: YOLO + Max and Thorough + Low are valid. Changes apply
+Any combination works: Fast + Max and Thorough + Low are valid. Changes apply
 to new assignments; existing runs keep their settings and evidence. The lead
 must remember your choice, preserve the other settings and explain any route
 that cannot change effort. Higher effort or concurrency never adds quota or

@@ -106,6 +106,7 @@ LIMIT_LABEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
 LIMIT_BUCKET = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,63}')
 LIMIT_TIME = re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]{8,15}(?:Z|[+-][0-9]{2}:[0-9]{2})')
 LIMIT_MODES = ('yolo', 'medium', 'safe')
+PUBLIC_MODES = {'yolo': 'fast', 'medium': 'balanced', 'safe': 'thorough'}
 LIMIT_TIERS = ('low', 'medium', 'high')
 WINDOW_STATUSES = ('fresh', 'stale', 'expired', 'unknown', 'historical')
 CODEX_REASONS = frozenset((
@@ -210,7 +211,19 @@ def limits_policy(doc):
     accounts = doc.get('accounts')
     _limit_expect(isinstance(accounts, dict) and len(accounts) <= MAX_LIMIT_ENTRIES)
     lead, group = doc.get('lead_agent'), doc.get('lead_group')
+    protocol = doc.get('protocol')
+    if protocol is not None:
+        _limit_expect(protocol in ('fast', 'balanced', 'thorough', 'yolo', 'medium', 'safe'))
+        if protocol == 'yolo':
+            protocol = 'fast'
+        elif protocol == 'medium':
+            protocol = 'balanced'
+        elif protocol == 'safe':
+            protocol = 'thorough'
+    else:
+        protocol = PUBLIC_MODES.get(doc['mode'], doc['mode'])
     return {'state': 'ok', 'mode': doc['mode'], 'tier': doc['tier'],
+            'protocol': protocol,
             'lead_agent': None if lead is None else _limit_label(lead),
             'lead_group': None if group is None else _limit_label(group),
             'accounts': {_limit_label(a): _limit_label(g) for a, g in accounts.items()},

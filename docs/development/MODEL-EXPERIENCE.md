@@ -29,7 +29,7 @@ an official capability description or an untested hypothesis.
 Profiles are scoped to exact model/version, CLI/gateway, requested/effective
 effort and task type. A good docs reviewer is not automatically a good UI
 builder or shell debugger. Record language/stack, project type, task size,
-YOLO/medium/safe mode and subscription tier so results remain interpretable.
+Fast/Balanced/Thorough mode and subscription tier so results remain interpretable.
 Shared budget grouping remains separate from AI lab provenance.
 
 ## Evidence to collect

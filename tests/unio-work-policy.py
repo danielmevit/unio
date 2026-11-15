@@ -11,8 +11,8 @@ Mock-only. Installs under a temporary directory, drives a mock project
 whose path contains spaces, and exercises defaults, every enum switch,
 persistence, lead/account grouping, invalid arguments, malformed/unsafe/
 oversized state, preserved custom roles and the packaged guide. Mode
-commands use the public protocol names yolo/balanced/thorough while the
-stored schema-1 enum stays yolo/medium/safe; medium/safe remain accepted
+commands use the public protocol names fast/balanced/thorough while the
+stored schema-1 enum stays yolo/medium/safe; yolo/medium/safe remain accepted
 compatibility aliases and `unio policy --json` adds a `protocol` field.
 Provider commands are mock scripts; no funded provider is called.
 """
@@ -107,9 +107,10 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
           and doc['capacity'] == 'unknown'
           and doc['workflow_enforcement'] == 'native_workflows')
 
-    # Every public name plus the medium/safe compatibility aliases: the
+    # Every public name plus the yolo/medium/safe compatibility aliases: the
     # command displays the public name while the stored enum stays schema 1.
-    for name, shown, stored in (('yolo', 'yolo', 'yolo'),
+    for name, shown, stored in (('fast', 'fast', 'yolo'),
+                                ('yolo', 'fast', 'yolo'),
                                 ('balanced', 'balanced', 'medium'),
                                 ('thorough', 'thorough', 'safe'),
                                 ('medium', 'balanced', 'medium'),
@@ -172,6 +173,16 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
 
     # A policy file written by an older released runner stays readable
     # as-is and is displayed with its public protocol name.
+    old_policy_yolo = (b'{"accounts": {},"lead_agent": null,"mode": "yolo",'
+                       b'"schema_version": 1,"tier": "low"}\n')
+    state_file.write_bytes(old_policy_yolo)
+    out = unio('policy')
+    doc = json.loads(unio('policy', '--json').stdout)
+    check('frozen old yolo policy accepted and shown as fast',
+          out.returncode == 0 and 'mode: fast' in out.stdout
+          and doc['mode'] == 'yolo' and doc['protocol'] == 'fast'
+          and state_file.read_bytes() == old_policy_yolo)
+
     old_policy = (b'{"accounts": {},"lead_agent": null,"mode": "safe",'
                   b'"schema_version": 1,"tier": "low"}\n')
     state_file.write_bytes(old_policy)
@@ -268,13 +279,13 @@ with tempfile.TemporaryDirectory(prefix='work-policy-') as directory:
     check('status displays policy',
           status.returncode == 0 and 'mode: balanced' in status.stdout)
     check('help documents the switches',
-          'unio mode [yolo|balanced|thorough]' in unio('help').stdout
-          and 'medium/safe stay accepted' in unio('help').stdout
+          'unio mode [fast|balanced|thorough]' in unio('help').stdout
+          and 'yolo/medium/safe stay accepted' in unio('help').stdout
           and 'unio policy [--json]' in unio('help').stdout)
     completion = (base / 'completion' / 'unio').read_text()
     check('completion offers switches and values',
           'mode tier lead account policy' in completion
-          and 'yolo balanced thorough medium safe' in completion
+          and 'fast balanced thorough yolo medium safe' in completion
           and 'low medium high' in completion)
     check('fresh guide still installed', guide.is_file())
 

@@ -220,12 +220,12 @@ with tempfile.TemporaryDirectory(prefix='work-policy-guard-') as directory:
         def set_tier(t):
             return unio('tier', t).stdout
         with ThreadPoolExecutor(max_workers=2) as ex:
-            mode_out = ex.submit(set_mode, 'yolo')
+            mode_out = ex.submit(set_mode, 'fast')
             tier_out = ex.submit(set_tier, 'high')
             mode_out.result()
             tier_out.result()
         st = unio('policy').stdout
-        check('same-lock concurrent setters', 'mode: yolo' in st and 'tier: high' in st)
+        check('same-lock concurrent setters', 'mode: fast' in st and 'tier: high' in st)
 
         # reset state
         unio('tier', 'low')
