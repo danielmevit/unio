@@ -36,6 +36,7 @@ python3 -B tools/embed-adapters.py --check
 python3 -B tools/embed-route-profiles.py --check
 python3 -B tools/embed-model-experience.py --check
 python3 -B tools/embed-codex-worker.py --check
+python3 -B tools/embed-managed-lead.py --check
 python3 -B tools/embed-run-observation.py --check
 python3 -B tools/embed-cli-updates.py --check
 python3 -B tools/embed-role-cards.py --check
@@ -98,6 +99,9 @@ python3 -B tests/unio-worker-effort.py
 python3 -B tests/unio-managed-session.py
 python3 -B tests/unio-managed-lead.py
 python3 -B tests/unio-managed-lead-codex.py
+python3 -B tests/unio-lead-effort.py
+python3 -B tests/unio-lead-session.py
+python3 -B tests/unio-lead-session-codex.py
 python3 -B tests/unio-task-plan.py
 python3 -B tests/unio-worktree-cache.py
 python3 -B tests/unio-task-dispatch.py

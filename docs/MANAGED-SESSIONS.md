@@ -84,3 +84,16 @@ These are trusted-host, same-user controls, not OS isolation. Cleanup signals
 only the newly created app-server process group while its leader remains
 unreaped, then reaps the leader. Processes deliberately detached into another
 session are outside that group and are not signalled.
+
+## Relationship to managed lead sessions
+
+`unio lead-session` (see `docs/ADAPTIVE-LEAD-EFFORT.md`) is a separate
+experimental opt-in controller for one owned lead per workspace; it is not
+part of the worker `unio session` surface above. Worker sessions keep
+their fixed requested effort and single-turn steering model; the lead
+session instead sends one explicit `turn/start` per owner turn with an
+adaptive requested effort (only auto plus low and xhigh in this first
+interface) on one owned thread, and never steers a turn mid-flight. Both
+share the same honesty rules: no provider calls for observation, Unknown
+effective settings, idempotent request ids with no replay or resend, and
+STOP that blocks new turns without killing workers.

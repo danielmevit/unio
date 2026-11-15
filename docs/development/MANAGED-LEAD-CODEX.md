@@ -1,6 +1,8 @@
 # Managed lead Codex RPC bridge — transport contract and limits
 
-Status: parallel prototype slice, 2026-10-24. `tools/managed-lead-codex.py`
+Status: parallel prototype slice, 2026-10-24, with opt-in adaptive-effort
+additions from 2026-11-15 (contract 0532-ADAPTIVE-LEAD-EFFORT-V1/V2, see
+the dated addendum below). `tools/managed-lead-codex.py`
 is an importable bridge connecting the managed lead core's
 `send_turn(facts)` seam to ONE already owned, already initialized Codex
 app-server RPC connection and thread. It is NOT final integration or
@@ -74,13 +76,14 @@ CLI, not all future runtime behavior.
   `quarantined` and are counted in `quarantined_events`. The bridge records
   one `bridge_identity_ambiguous` lifecycle fact for the old turn. Nothing
   is resent, resumed or claimed delivered, and historical records are never
-  rewritten. The bridge
+  rewritten. By default the bridge
   retains at most four mappings for its lifetime; at capacity, the next
   submission returns `uncertain` with an explicit handoff requirement before
   making any RPC. The core holds that request as `outcome_unknown`; its
   idempotent replay makes no RPC. There is no automatic replacement thread,
-  session, resend or successful acknowledgement. Native handoff remains
-  unsupported; this conservative limit is intentional prototype behavior.
+  session, resend or successful acknowledgement. Without the 0532 opt-in
+  (see the addendum below) native handoff remains unsupported and this
+  conservative limit is intentional prototype behavior.
 - `handle_notification` returns a controlled result
   (`ignored`/`buffered`/`dropped`/`observed`/`refused`) and never raises.
   A core refusal — including a saved terminal fact plus a journal-write
@@ -99,9 +102,10 @@ an old id therefore cannot open or terminate a new turn. A
 `pending`/`running`/`outcome_unknown` session may still be bound for
 inspection (`inherited_history`). The core refuses new submissions there,
 and `send_turn` refuses with zero RPC calls. The core's own status and
-output reads never need the bridge. No supported explicit handoff exists
-yet. Continuing a session after the owner process restarts is unsupported
-and is refused instead of guessed. If a caller ignores the bind refusal and
+output reads never need the bridge. No implicit handoff exists: continuing
+a session after the owner process restarts is refused instead of guessed
+unless the caller hands over explicitly proven mappings through the 0532
+opt-in (see the addendum below). If a caller ignores the bind refusal and
 submits through the core anyway, the core reserves its intent before calling
 the unbound transport, which raises. The core then records `outcome_unknown`
 with zero RPC calls. That is core behavior, and its API is frozen.
@@ -147,6 +151,40 @@ silently claims complete history.
   decisions remain with the future native caller; the bridge never claims
   the registered lead and counts as no workflow by itself.
 
+## Adaptive effort and explicit handoff addendum (0532, 2026-11-15)
+
+Opt-in additions for the `unio lead-session` vertical slice (contracts
+`docs/development/contracts/0532-ADAPTIVE-LEAD-EFFORT-V1.md` and the V2
+owner correction); the legacy default behavior is preserved byte-for-byte
+when the options are not given.
+
+- `CodexLeadTransport(..., supported_efforts=...)` opts into per-turn
+  effort: the pinned effort must be advertised in the given set, and
+  `send_turn` accepts one optional `facts['effort']` that must be a
+  string in that set. It is sent explicitly as the `effort` override of
+  that one `turn/start` on the same owned thread. The app-server schema
+  has no effort override on `turn/steer`, so an effort change is only
+  ever applied by the next turn start; the effective provider-side
+  effort remains Unknown. Without `supported_efforts` the bridge rejects
+  any per-turn effort and behaves exactly as before.
+- `max_mappings` (1..64) raises the mapping bound for one owned lead
+  session; the default remains four for non-lead use. There is still no
+  id eviction or rebinding: at capacity the next submission refuses with
+  an explicit handoff requirement before any RPC.
+- `prior_mappings` hands acknowledgement-proven provider-turn mappings to
+  a fresh bridge explicitly. The handoff is proven only when it covers
+  exactly the session's recorded non-rejected turns with matching
+  generations; anything missing, extra or mismatched refuses. An
+  unacknowledged (`outcome_unknown`) turn can never be handed over: the
+  session reopens for inspection only, an identical request replay still
+  returns its recorded result, and every new turn refuses. The
+  `unio lead-session` controller records the proven mappings durably
+  outside the core and performs this handoff on reopen.
+- The adaptive interface itself exposes only auto plus low and xhigh per
+  the V2 correction; see `docs/ADAPTIVE-LEAD-EFFORT.md`. The bridge stays
+  generic: it validates only that a requested effort is in the supplied
+  supported set.
+
 ## Verification
 
 `python3 -B tests/unio-managed-lead-codex.py` exercises, with a
@@ -163,6 +201,9 @@ plus journal-write error; and proof that every owned RPC call is exactly
 one `turn/start` with no thread/process lifecycle RPC. State and RPC call
 counts are asserted outside the notification callbacks. The suite is
 registered in `tools/quality-check.sh` beside the managed lead core suite.
+Since 2026-11-15 it also covers the 0532 opt-ins: per-turn effort
+validation, the explicit mapping bound and proven `prior_mappings`
+handoff, with the legacy four-mapping default asserted unchanged.
 
 
 Correction verification, 2026-10-24: the bridge and unchanged core suites run
@@ -193,3 +234,20 @@ case makes no RPC and is not counted as exercising a reused ack. Deferred
 and out of scope: four-turn capacity and pre-intent native authority,
 widening the counted notification set, and a supported handoff. This is
 Opus-authored and needs other-lab review; it is not lead acceptance.
+
+Native admission correction (0532-ADAPTIVE-LEAD-ADMISSION-V4), 2026-11-15:
+resolves the proven offline reproduction where 1c333d3 started an owned child
+process and submitted turn/start while project coord/STOP existed. The local
+session.stopped flag and owner.json were insufficient: real project STOP, real
+installed/project off holds with expiry semantics (coord/off/<agent>,
+$UNIO_CONF_DIR/off/<agent>), valid registered lead matching coord/work-policy.json,
+and low-tier shared account group capacity (counting the registered lead exactly
+once) are now verified before any owned process launch or turn dispatch
+(tools/lead-session-policy.py). To prevent race conditions with setters (unio set-lead,
+unio set-account), admission acquires coord/.locks/lead-session.lock first, then takes
+a brief coord/.locks/work-policy.lock transaction before releasing work-policy.lock,
+retaining only lead-session.lock for the duration of the owned invocation. Setters
+check lead-session.lock with a non-blocking flock. Read-only status and pending
+controls remain permitted under STOP with zero provider calls. Offline regressions
+cover the full contract matrix via tests/unio-lead-session-codex.py using executable
+fake app-servers and offline policy fixtures.
