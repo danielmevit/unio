@@ -21716,6 +21716,18 @@ fallback. Requested model/effort remain distinct from effective Unknowns.
 This is the owner's workflow preference; consult the current personal
 `~/.config/unio/OWNER-WORKFLOW.md` and project instructions. It does not add
 automatic reviewer dispatch or change another user's policies.
+
+
+## Present effort separately from its selection policy
+
+Lead status puts the current turn's requested LOW or XHIGH first. Adaptive
+(or AUTO) is secondary information about selection policy, never a substitute
+for the effort level. A queued change is labelled next-turn and cannot replace
+the running turn's value. When no turn is active, show idle/waiting and the last
+request if useful; before any decision or without evidence, show not started or
+Unknown. Keep requested settings separate from effective provider Unknowns.
+Do not imply that Unio controls an existing unmanaged AI CLI or its own header.
+Pace, coordination tier and effort remain separate settings.
 UNIO_LEAD_ROUTING_MD
 fi
 if [ ! -e "$TPL_DIR/MODEL-EFFORT.md" ] && [ ! -L "$TPL_DIR/MODEL-EFFORT.md" ]; then
