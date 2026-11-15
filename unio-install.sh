@@ -26920,19 +26920,21 @@ def _cmd_status(root, args):
 
 
 def _cmd_effort(root, args):
-    with _control_guard(root, args.session):
+    if args.control == 'show':
+        # Read-only: zero provider calls, no control lock needed.
         state = _load_state(root, args.session)
-        if args.control != 'show':
-            _require_owner(root, args.session)
         session, bridge, rpc, policy, wrapper = _open(root, state)
-        if args.control == 'show':
-            status = policy.status()
-            status['session_id'] = state['session_id']
-            status['stopped'] = state['stopped']
-            status['historical'] = _historical(root, state['session_id'])
-            _emit(args, status, 'effort mode %s, ceiling %s, requested %s'
-                  % (status['mode'], status['ceiling'], status['requested']))
-            return 0
+        status = policy.status()
+        status['session_id'] = state['session_id']
+        status['stopped'] = state['stopped']
+        status['historical'] = _historical(root, state['session_id'])
+        _emit(args, status, 'effort mode %s, ceiling %s, requested %s'
+              % (status['mode'], status['ceiling'], status['requested']))
+        return 0
+    with _control_guard(root, args.session):
+        _require_owner(root, args.session)
+        state = _load_state(root, args.session)
+        session, bridge, rpc, policy, wrapper = _open(root, state)
         if args.control == 'auto':
             policy.set_auto(args.reason)
             human = 'automatic effort selection resumed'
