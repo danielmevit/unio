@@ -251,3 +251,20 @@ check lead-session.lock with a non-blocking flock. Read-only status and pending
 controls remain permitted under STOP with zero provider calls. Offline regressions
 cover the full contract matrix via tests/unio-lead-session-codex.py using executable
 fake app-servers and offline policy fixtures.
+
+Native admission review corrections (0532-ADAPTIVE-ADMISSION-CORRECTIONS-V5), 2026-11-15:
+resolves findings from independent review against 9d4f60a. Default installed off hold
+discovery now falls back to ~/.config/unio/off/<agent> when UNIO_CONF_DIR and CONF_DIR
+are unset, and the production unio lead-session dispatch exports UNIO_CONF_DIR.
+Project-level coord/off/<agent> is clarified as a read-only compatibility observation
+without adding a project-scoped off command. Slot metadata bound is aligned with the
+native 4096-byte limit (MAX_SLOT_META = 4096), and slot counting fails closed on
+unreadable or unsafe slot state (unreadable directories, open/read I/O or permission
+errors, oversized or non-regular files, malformed JSON, and invalid schema/labels/timestamps)
+matching native count_active and read_slot_meta. Policy labels (lead_agent, accounts
+mapping, and budget labels) strictly align with native check_label rules, refusing
+whitespace, slashes, leading dashes, and traversal components. Safe locks directory
+creation ensures coord exists before .locks creation. Focused unit and regression
+coverage is added in tests/unio-lead-session-policy.py (registered in tools/quality-check.sh),
+verifying default entrypoint environment, genuine permission faults without assuming
+root is denied by chmod 000, and full fail-closed bounds.
