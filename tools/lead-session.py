@@ -40,6 +40,25 @@ Guarantees kept by this controller:
   this slice clears a STOP, a stopped session stays stopped;
 - worker terminal events are explicit controlled events; each queues at
   most one review wakeup consumed by exactly one later turn;
+- control state changes are short locked transactions: a per-session
+  control lock is held only for the bounded read-modify-write of the
+  control state, never across a model/RPC turn, and a run merges its own
+  effects into the freshly re-read control state at persist time — so a
+  pending effort request, worker terminal wakeup or STOP arriving during
+  an active turn survives and is never overwritten by a stale pre-turn
+  snapshot (a pending effort applies only from the next turn on);
+- mutating controls (run, effort auto/manual/request, worker, stop)
+  require the current workspace owner session even when ``--session`` is
+  supplied; read-only status/output/effort show stay available for a
+  retired session but are explicitly labelled ``historical``;
+- run payloads separate the submission acknowledgement (``status``),
+  the actual turn outcome (``turn_status``, ``delivery``) and the
+  observed native exit (``provider_exited`` plus a bounded private
+  stderr tail); exit codes are truthful — 0 only for an observed
+  completed turn (or an explicit ``--turn-wait 0`` asynchronous
+  acknowledgement labelled ``pending``), nonzero for rejected,
+  uncertain, failed, interrupted or timed-out work, and a process exit
+  is never inferred as model success;
 - the provider-id mappings its own acknowledgements validated are
   recorded durably (outside the core) and handed explicitly to the next
   bridge; an unproven, incomplete or mismatched handoff refuses instead
@@ -254,6 +273,46 @@ def _owner_guard(root):
         yield
     finally:
         os.close(fd)
+
+
+@contextlib.contextmanager
+def _control_guard(root, session_id):
+    """Short per-session control-state transaction lock.
+
+    Held only for the bounded read-modify-write of one session's control
+    state — never across a model/RPC turn — so concurrent control
+    commands (effort requests, worker terminal events, STOP) serialize
+    briefly while an active turn keeps running and its wait loop is
+    never blocked by a long lock.
+    """
+    fd = ml._acquire_lock(_state_dir(root) / (session_id + '.lock'))
+    try:
+        yield
+    finally:
+        os.close(fd)
+
+
+def _require_owner(root, session_id):
+    """Mutating controls require the current workspace owner session.
+
+    An explicit ``--session`` for a retired or foreign session can never
+    mutate controls or submit turns; only the session recorded under
+    ``coord/lead-effort/owner.json`` may.
+    """
+    owner = _load_owner(root)
+    if not isinstance(owner, dict) or owner.get('session_id') != session_id:
+        raise Refusal('workspace owner mismatch: mutating lead session '
+                      'controls require the current managed owner session')
+
+
+def _historical(root, session_id):
+    """True when this session is not the current workspace owner."""
+    try:
+        owner = _load_owner(root)
+    except Refusal:
+        return True
+    return not (isinstance(owner, dict)
+                and owner.get('session_id') == session_id)
 
 
 def _closed_rpc(method, params):
@@ -529,7 +588,11 @@ def _open(root, state):
 
 
 def _persist(root, state, policy, bridge, session):
-    """Persist policy and exactly the proven mappings for recorded turns."""
+    """Persist policy and exactly the proven mappings for recorded turns.
+
+    The caller holds the per-session control lock and loaded ``state``
+    inside that same short transaction, so this plain save is consistent.
+    """
     view = session.status(session_id=state['session_id'])
     recorded = set()
     for item in view['history']:
@@ -549,6 +612,82 @@ def _persist(root, state, policy, bridge, session):
         raise Refusal('provider turn mapping bound exceeded')
     state['policy'] = policy.snapshot()
     _save_state(root, state)
+
+
+def _merge_policy_snapshot(base, disk, live):
+    """Merge one run's own policy effects into the concurrent disk state.
+
+    ``base`` is the snapshot the run loaded when it started, ``disk`` the
+    current on-disk snapshot (possibly changed by concurrent control
+    commands during the active turn) and ``live`` the run's in-memory
+    snapshot after its own effects. Concurrent pending effort requests,
+    worker wakeups and manual/auto mode changes are never overwritten by
+    the stale pre-turn snapshot; the run's own consumption (at most one
+    pending request, at most one wakeup) and its immutable decisions are
+    applied on top. A pending effort arriving after the current turn's
+    decision therefore survives persistence and applies only next turn.
+    """
+    merged = dict(live)
+    if disk['mode'] != base['mode'] or disk['manual'] != base['manual']:
+        merged['mode'] = disk['mode']
+        merged['manual'] = disk['manual']
+    if disk['pending'] != base['pending']:
+        # A newer concurrent request wins over this turn's consumption.
+        merged['pending'] = disk['pending']
+    if disk['wakeups'] != base['wakeups']:
+        consumed_count = len(base['wakeups']) - len(live['wakeups'])
+        consumed = base['wakeups'][:consumed_count]
+        merged['wakeups'] = list(disk['wakeups'])
+        for item in consumed:
+            for index, candidate in enumerate(merged['wakeups']):
+                if candidate == item:
+                    del merged['wakeups'][index]
+                    break
+        merged['wakeups_consumed'] = disk['wakeups_consumed'] + consumed_count
+    disk_ids = {item['turn_id'] for item in disk['decisions']}
+    merged['decisions'] = (disk['decisions']
+                           + [item for item in live['decisions']
+                              if item['turn_id'] not in disk_ids])
+    merged['decisions'] = merged['decisions'][-pe.MAX_DECISIONS:]
+    return merged
+
+
+def _persist_run(root, base_state, policy, bridge, session):
+    """Locked merge-persist for one run command; returns the fresh state.
+
+    The run's pre-turn in-memory snapshot is never written over the
+    control state: under the short per-session control lock the current
+    on-disk state is re-read and only this run's own effects (proven
+    provider mappings, its policy decisions and consumption) are merged
+    in. Concurrent pending effort requests, worker terminal wakeups and
+    STOP flags written during the active turn survive; the lock is never
+    held across the model/RPC turn itself.
+    """
+    view = session.status(session_id=base_state['session_id'])
+    recorded = set()
+    for item in view['history']:
+        if item['status'] != 'rejected':
+            recorded.add(item['turn_id'])
+    if view['last_turn']:
+        recorded.add(view['last_turn']['turn_id'])
+    if view['turn']:
+        recorded.add(view['turn']['turn_id'])
+    proven = dict(bridge.status()['mappings'])
+    with _control_guard(root, base_state['session_id']):
+        disk = _load_state(root, base_state['session_id'])
+        merged = dict(disk['provider_turns'])
+        for provider_turn, local in proven.items():
+            merged[provider_turn] = local
+        disk['provider_turns'] = {
+            provider_turn: local for provider_turn, local in merged.items()
+            if local['turn_id'] in recorded}
+        if len(disk['provider_turns']) > disk['max_mappings']:
+            raise Refusal('provider turn mapping bound exceeded')
+        disk['policy'] = _merge_policy_snapshot(base_state['policy'],
+                                                 disk['policy'],
+                                                 policy.snapshot())
+        _save_state(root, disk)
+    return disk
 
 
 def _session_view(root, state, session, bridge, policy):
@@ -575,6 +714,7 @@ def _session_view(root, state, session, bridge, policy):
         'decisions': [dict(item) for item in policy.decisions()],
         'goal_sha256': state['goal_sha256'],
         'created_at': state['created_at'], 'updated_at': state['updated_at'],
+        'historical': _historical(root, state['session_id']),
         'effective': 'Unknown',
         'caution': CAUTION,
     }
@@ -772,6 +912,53 @@ def _reconcile_active(root, state, session, conn, view):
     return session.status(session_id=state['session_id'])
 
 
+def _turn_terminal_status(view, turn_id):
+    """The recorded terminal status of one turn from a core view, or None.
+
+    Covers the active turn (still running), the latest turn and the
+    bounded history, so an idempotent replay of an already recorded turn
+    reports its real recorded outcome instead of an inferred one.
+    """
+    if not isinstance(turn_id, str):
+        return None
+    if view.get('turn') and view['turn']['turn_id'] == turn_id:
+        return None
+    if view.get('last_turn') and view['last_turn']['turn_id'] == turn_id:
+        return view['last_turn']['status']
+    for item in view.get('history') or []:
+        if item['turn_id'] == turn_id:
+            return item['status']
+    return None
+
+
+def _delivery_state(ack, turn_status, turn_wait):
+    """Explicit delivery state and truthful exit code for one run.
+
+    Submission acknowledgement, actual turn outcome and completion stay
+    distinct: ``status`` keeps the provider's acknowledgement while
+    ``delivery`` states what actually happened to the turn. Exit code 0
+    means the turn was observed completed — or, with ``--turn-wait 0``,
+    that the owner explicitly chose an asynchronous acknowledgement
+    (delivery stays ``pending``; the owned process is terminated at
+    command end, so no background execution is promised). Failed,
+    rejected, interrupted, uncertain and timed-out work all exit
+    nonzero. A process exit is never inferred as model success.
+    """
+    if ack == 'rejected':
+        return 'rejected', 2
+    if ack != 'accepted':
+        return 'uncertain', 3
+    if turn_status == 'completed':
+        return 'completed', 0
+    if turn_status == 'failed':
+        return 'failed', 4
+    if turn_status == 'interrupted':
+        return 'interrupted', 5
+    if turn_wait > 0:
+        return 'pending', 6
+    return 'pending', 0
+
+
 def _cmd_run_owned(root, state, args, text):
     """One explicit owner turn over the owned production transport.
 
@@ -783,7 +970,13 @@ def _cmd_run_owned(root, state, args, text):
     request check and its open-state check decide replays and uncertain
     sessions; nothing is ever resent, and an unacknowledged turn is
     never reconciled. The connection is closed in a finally so no owned
-    process outlives the command.
+    process outlives the command. The payload separates the submission
+    acknowledgement (``status``) from the actual turn outcome
+    (``turn_status``, ``delivery``) and the observed native exit
+    (``provider_exited``); the exit code is truthful: 0 only for an
+    observed completed turn (or an explicit ``--turn-wait 0``
+    asynchronous acknowledgement), nonzero for rejected, uncertain,
+    failed, interrupted and timed-out work.
     """
     policy_doc, lead_group, lease = lp.admit_lead(
         root, expected_agent='codex', budget_label=state['budget_label'])
@@ -828,27 +1021,44 @@ def _cmd_run_owned(root, state, args, text):
                     session_id=state['session_id'], generation=generation,
                     request_id=args.request_id, text=text)
             finally:
-                _persist(root, state, policy, live, session)
+                # Locked merge-persist: concurrent pending effort requests,
+                # worker terminal wakeups and STOP flags written while this
+                # turn was in flight survive; the lock is held only for this
+                # short transaction, never across the turn itself.
+                state = _persist_run(root, state, policy, live, session)
             decision = wrapper.last_decision
             if decision is None:
                 for item in policy.decisions():
                     if item['turn_id'] == result.get('turn_id'):
                         decision = item
             completed = False
-            if result.get('state') == 'accepted' and args.turn_wait > 0:
+            turn_status = None
+            if result.get('state') == 'accepted':
                 turn_id = result['turn_id']
-                deadline = time.monotonic() + args.turn_wait
-                while True:
-                    view = session.status(session_id=state['session_id'])
-                    if view['turn'] is None:
-                        last = view['last_turn']
-                        completed = bool(last and last['turn_id'] == turn_id
-                                         and last['status'] == 'completed')
-                        break
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        break
-                    conn.pump(min(0.2, remaining))
+                view = session.status(session_id=state['session_id'])
+                turn_status = _turn_terminal_status(view, turn_id)
+                if turn_status is None and args.turn_wait > 0:
+                    deadline = time.monotonic() + args.turn_wait
+                    while True:
+                        view = session.status(session_id=state['session_id'])
+                        if view['turn'] is None:
+                            turn_status = _turn_terminal_status(view,
+                                                                turn_id)
+                            break
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        conn.pump(min(0.2, remaining))
+                        if conn.exited:
+                            # Child death: stop waiting promptly (no tight
+                            # polling, no inferred success); the actual
+                            # process outcome, partial output and Unknown
+                            # model completion stay honest.
+                            break
+                completed = turn_status == 'completed'
+            provider_exited = conn.exited
+            delivery, code = _delivery_state(result.get('state'),
+                                              turn_status, args.turn_wait)
             payload = {
                 'session_id': state['session_id'], 'request_id': args.request_id,
                 'generation': result.get('generation'),
@@ -856,16 +1066,21 @@ def _cmd_run_owned(root, state, args, text):
                 'effort': decision['effort'] if decision else None,
                 'kind': decision['kind'] if decision else None,
                 'source': decision['source'] if decision else None,
-                'turn_completed': completed, 'thread_id': state['thread_id'],
+                'turn_completed': completed, 'turn_status': turn_status,
+                'delivery': delivery,
+                'provider_exited': provider_exited,
+                'thread_id': state['thread_id'],
                 'bridge': live.status(), 'effective': 'Unknown',
                 'caution': CAUTION,
             }
+            if provider_exited:
+                payload['stderr_tail'] = conn.stderr_tail()
             _emit(args, payload, 'turn %s: %s (effort %s, kind %s, source %s, '
-                                 'owned thread %s)'
+                                 'delivery %s, owned thread %s)'
                   % (result.get('turn_id'), result.get('state'),
                      payload['effort'], payload['kind'], payload['source'],
-                     state['thread_id']))
-            return 0
+                     delivery, state['thread_id']))
+            return code
         finally:
             conn.close()
     finally:
@@ -874,6 +1089,7 @@ def _cmd_run_owned(root, state, args, text):
 
 def _cmd_run(root, args):
     state = _load_state(root, args.session)
+    _require_owner(root, args.session)
     if state['stopped']:
         raise Refusal('lead session stopped: new turns are blocked')
     if lp.is_project_stop_active(root):
@@ -907,15 +1123,24 @@ def _cmd_run(root, args):
             session_id=state['session_id'], generation=generation,
             request_id=args.request_id, text=text)
     finally:
-        _persist(root, state, policy, bridge, session)
+        # Same locked merge-persist as the owned path: concurrent control
+        # state written during this turn is never overwritten.
+        state = _persist_run(root, state, policy, bridge, session)
     decision = wrapper.last_decision
     if decision is None:
         for item in policy.decisions():
             if item['turn_id'] == result.get('turn_id'):
                 decision = item
     completed = False
-    if result.get('state') == 'accepted' and rpc.complete_last():
-        completed = True
+    turn_status = None
+    if result.get('state') == 'accepted':
+        view = session.status(session_id=state['session_id'])
+        turn_status = _turn_terminal_status(view, result.get('turn_id'))
+        if turn_status is None and rpc.complete_last():
+            turn_status = 'completed'
+        completed = turn_status == 'completed'
+    delivery, code = _delivery_state(result.get('state'), turn_status,
+                                     args.turn_wait)
     payload = {
         'session_id': state['session_id'], 'request_id': args.request_id,
         'generation': result.get('generation'),
@@ -923,13 +1148,16 @@ def _cmd_run(root, args):
         'effort': decision['effort'] if decision else None,
         'kind': decision['kind'] if decision else None,
         'source': decision['source'] if decision else None,
-        'turn_completed': completed, 'effective': 'Unknown',
+        'turn_completed': completed, 'turn_status': turn_status,
+        'delivery': delivery, 'provider_exited': False,
+        'effective': 'Unknown',
         'caution': CAUTION,
     }
-    _emit(args, payload, 'turn %s: %s (effort %s, kind %s, source %s)'
+    _emit(args, payload, 'turn %s: %s (effort %s, kind %s, source %s, '
+                         'delivery %s)'
           % (result.get('turn_id'), result.get('state'),
-             payload['effort'], payload['kind'], payload['source']))
-    return 0
+             payload['effort'], payload['kind'], payload['source'], delivery))
+    return code
 
 
 def _cmd_status(root, args):
@@ -937,98 +1165,109 @@ def _cmd_status(root, args):
     session, bridge, rpc, policy, wrapper = _open(root, state)
     view = _session_view(root, state, session, bridge, policy)
     _emit(args, view, 'lead session %s: state %s, generation %d, effort mode '
-                      '%s, stopped %s, waiting %s'
+                      '%s, stopped %s, waiting %s%s'
           % (state['session_id'], view['state'], view['generation'],
-             view['effort']['mode'], view['stopped'], view['waiting']))
+             view['effort']['mode'], view['stopped'], view['waiting'],
+             '' if not view['historical'] else ' (historical: not the '
+             'current workspace owner)'))
     return 0
 
 
 def _cmd_effort(root, args):
-    state = _load_state(root, args.session)
-    session, bridge, rpc, policy, wrapper = _open(root, state)
-    if args.control == 'show':
-        view = _session_view(root, state, session, bridge, policy)
-        _emit(args, view['effort'], 'effort mode %s, ceiling %s, requested %s'
-              % (view['effort']['mode'], view['effort']['ceiling'],
-                 view['effort']['requested']))
-        return 0
-    if args.control == 'auto':
-        policy.set_auto(args.reason)
-        human = 'automatic effort selection resumed'
-    elif args.control == 'manual':
-        policy.set_manual(args.effort, args.reason)
-        human = 'manual effort override: %s (auto suspended)' % args.effort
-    else:
-        policy.request_next_turn(args.effort, args.reason)
-        human = ('pending next-turn effort request: %s (applied only after '
-                 'the active turn ends)' % args.effort)
-    _persist(root, state, policy, bridge, session)
-    status = policy.status()
-    status['session_id'] = state['session_id']
-    status['stopped'] = state['stopped']
-    _emit(args, status, human)
+    with _control_guard(root, args.session):
+        state = _load_state(root, args.session)
+        if args.control != 'show':
+            _require_owner(root, args.session)
+        session, bridge, rpc, policy, wrapper = _open(root, state)
+        if args.control == 'show':
+            status = policy.status()
+            status['session_id'] = state['session_id']
+            status['stopped'] = state['stopped']
+            status['historical'] = _historical(root, state['session_id'])
+            _emit(args, status, 'effort mode %s, ceiling %s, requested %s'
+                  % (status['mode'], status['ceiling'], status['requested']))
+            return 0
+        if args.control == 'auto':
+            policy.set_auto(args.reason)
+            human = 'automatic effort selection resumed'
+        elif args.control == 'manual':
+            policy.set_manual(args.effort, args.reason)
+            human = 'manual effort override: %s (auto suspended)' % args.effort
+        else:
+            policy.request_next_turn(args.effort, args.reason)
+            human = ('pending next-turn effort request: %s (applied only '
+                     'after the active turn ends)' % args.effort)
+        _persist(root, state, policy, bridge, session)
+        status = policy.status()
+        status['session_id'] = state['session_id']
+        status['stopped'] = state['stopped']
+        _emit(args, status, human)
     return 0
 
 
 def _cmd_worker(root, args):
-    state = _load_state(root, args.session)
-    session, bridge, rpc, policy, wrapper = _open(root, state)
-    if args.control == 'register':
-        if not ml.LABEL.fullmatch(args.worker):
-            raise Refusal('invalid worker id')
-        if args.worker in state['workers']:
-            raise Refusal('worker already registered: ' + args.worker)
-        if len(state['workers']) >= MAX_WORKERS:
-            raise Refusal('worker registry bound exceeded')
-        state['workers'][args.worker] = {'state': 'registered',
-                                        'updated_at': _now()}
-        human = 'worker registered: ' + args.worker
-    elif args.control == 'wait':
-        if not state['workers']:
-            raise Refusal('no registered workers to wait on')
-        state['waiting'] = True
-        human = ('lead waiting on %d registered worker(s); no model calls '
-                 'happen while waiting' % len(state['workers']))
-    else:
-        worker = state['workers'].get(args.worker)
-        if worker is None:
-            raise Refusal('unknown worker: ' + args.worker)
-        if worker['state'] == 'terminal':
-            raise Refusal('worker terminal event already recorded: '
-                          + args.worker)
-        worker['state'] = 'terminal'
-        worker['updated_at'] = _now()
-        policy.record_wakeup(args.worker, 'worker terminal event')
-        human = ('worker terminal event recorded: %s (one review wakeup '
-                 'queued)' % args.worker)
-    _persist(root, state, policy, bridge, session)
-    payload = {
-        'session_id': state['session_id'], 'control': args.control,
-        'worker': getattr(args, 'worker', None),
-        'workers': {wid: dict(w) for wid, w in
-                    state['workers'].items()},
-        'waiting': state['waiting'],
-        'pending_wakeups': policy.pending_wakeups(),
-        'stopped': state['stopped'], 'effective': 'Unknown',
-    }
-    _emit(args, payload, human)
+    with _control_guard(root, args.session):
+        _require_owner(root, args.session)
+        state = _load_state(root, args.session)
+        session, bridge, rpc, policy, wrapper = _open(root, state)
+        if args.control == 'register':
+            if not ml.LABEL.fullmatch(args.worker):
+                raise Refusal('invalid worker id')
+            if args.worker in state['workers']:
+                raise Refusal('worker already registered: ' + args.worker)
+            if len(state['workers']) >= MAX_WORKERS:
+                raise Refusal('worker registry bound exceeded')
+            state['workers'][args.worker] = {'state': 'registered',
+                                            'updated_at': _now()}
+            human = 'worker registered: ' + args.worker
+        elif args.control == 'wait':
+            if not state['workers']:
+                raise Refusal('no registered workers to wait on')
+            state['waiting'] = True
+            human = ('lead waiting on %d registered worker(s); no model '
+                     'calls happen while waiting' % len(state['workers']))
+        else:
+            worker = state['workers'].get(args.worker)
+            if worker is None:
+                raise Refusal('unknown worker: ' + args.worker)
+            if worker['state'] == 'terminal':
+                raise Refusal('worker terminal event already recorded: '
+                              + args.worker)
+            worker['state'] = 'terminal'
+            worker['updated_at'] = _now()
+            policy.record_wakeup(args.worker, 'worker terminal event')
+            human = ('worker terminal event recorded: %s (one review wakeup '
+                     'queued)' % args.worker)
+        _persist(root, state, policy, bridge, session)
+        payload = {
+            'session_id': state['session_id'], 'control': args.control,
+            'worker': getattr(args, 'worker', None),
+            'workers': {wid: dict(w) for wid, w in
+                        state['workers'].items()},
+            'waiting': state['waiting'],
+            'pending_wakeups': policy.pending_wakeups(),
+            'stopped': state['stopped'], 'effective': 'Unknown',
+        }
+        _emit(args, payload, human)
     return 0
 
 
 def _cmd_stop(root, args):
-    state = _load_state(root, args.session)
-    session, bridge, rpc, policy, wrapper = _open(root, state)
-    state['stopped'] = True
-    _persist(root, state, policy, bridge, session)
-    payload = {
-        'session_id': state['session_id'], 'stopped': True,
-        'workers': {wid: dict(w) for wid, w in state['workers'].items()},
-        'note': ('STOP blocks new turns; workers are not killed and nothing '
-                 'resumes automatically; no command in this slice clears '
-                 'a STOP'),
-    }
-    _emit(args, payload, 'lead session stopped: new turns are blocked; '
-                          'workers keep running; no automatic resume')
+    with _control_guard(root, args.session):
+        _require_owner(root, args.session)
+        state = _load_state(root, args.session)
+        session, bridge, rpc, policy, wrapper = _open(root, state)
+        state['stopped'] = True
+        _persist(root, state, policy, bridge, session)
+        payload = {
+            'session_id': state['session_id'], 'stopped': True,
+            'workers': {wid: dict(w) for wid, w in state['workers'].items()},
+            'note': ('STOP blocks new turns; workers are not killed and '
+                     'nothing resumes automatically; no command in this '
+                     'slice clears a STOP'),
+        }
+        _emit(args, payload, 'lead session stopped: new turns are blocked; '
+                              'workers keep running; no automatic resume')
     return 0
 
 
@@ -1037,8 +1276,11 @@ def _cmd_output(root, args):
     session, bridge, rpc, policy, wrapper = _open(root, state)
     page = session.read_output(session_id=state['session_id'],
                                after=args.after, limit=args.limit)
-    _emit(args, page, '%d journal record(s) after cursor %d'
-          % (len(page['records']), args.after))
+    page['historical'] = _historical(root, state['session_id'])
+    _emit(args, page, '%d journal record(s) after cursor %d%s'
+          % (len(page['records']), args.after,
+             '' if not page['historical'] else ' (historical: not the '
+             'current workspace owner)'))
     return 0
 
 
