@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Unio — Copyright (C) 2026 Daniel Mitev
 # SPDX-License-Identifier: AGPL-3.0-only; additional terms in NOTICE.
-"""Optional, explicitly pinned Vibe worker (2.26.1 and 3.1.1). No dependency installation."""
+"""Optional, explicitly pinned Vibe worker (2.26.1, 3.1.1 and 3.1.2). No dependency installation."""
 import argparse
 import codecs
 from datetime import datetime, timezone
@@ -23,12 +23,13 @@ import time
 # Explicitly validated CLI versions and, per version, the model aliases this
 # adapter may request. Anything else refuses before any provider invocation.
 # 2.26.1 is the tested pin: process-local VIBE_* model overlay + --output
-# streaming. 3.1.1 is validated through the documented --model ALIAS flag with
-# --output json (a message list); VIBE_* model overlays are a 2.26.1 mechanism
-# only and are never assumed on 3.1.1.
+# streaming. 3.1.1 and 3.1.2 are validated through the documented --model ALIAS
+# flag with --output json (a message list); VIBE_* model overlays are a 2.26.1
+# mechanism only and are never assumed on 3.1.1 or 3.1.2.
 CLI_VERSIONS = {
     "2.26.1": {"models": ("glm-5-3", "mistral-medium-3-5"), "overlay": True},
     "3.1.1": {"models": ("glm-5-3", "mistral-large-4-0-3"), "overlay": False},
+    "3.1.2": {"models": ("glm-5-3", "mistral-large-4-0-3"), "overlay": False},
 }
 MODELS = {
     "glm-5-3": ("zai-glm-5-3", "Z.ai", 1.4, .14, 4.4),
@@ -40,16 +41,17 @@ MODELS = {
 }
 # Adapter-level thinking selector. On the pinned 2.26.1 CLI the level travels
 # only through the process-local model override (all three levels, unchanged).
-# 3.1.1 has no per-run thinking control at all (no overlay mechanism, no native
-# thinking flag), so only the catalog level "high" observed for the validated
-# aliases may run there and a low/medium request refuses before the provider
-# (see check_bounds) instead of silently executing the account's existing level.
+# 3.1.1 and 3.1.2 have no per-run thinking control at all (no overlay mechanism,
+# no native thinking flag), so only the catalog level "high" observed for the
+# validated aliases may run there and a low/medium request refuses before the
+# provider (see check_bounds) instead of silently executing the account's
+# existing level.
 THINKING_LEVELS = ("low", "medium", "high")
 # Supported numeric bounds; the route contract check validates against exactly
 # these, on every supported CLI version, so dispatch and execution agree.
-# On 3.1.1 each cap may additionally be the documented choice "none", which
-# omits the native flag (the CLI default then applies and is recorded from
-# the export limits when present). Omission is not an unlimited-provider
+# On 3.1.1 and 3.1.2 each cap may additionally be the documented choice "none",
+# which omits the native flag (the CLI default then applies and is recorded
+# from the export limits when present). Omission is not an unlimited-provider
 # claim and never permits a paid fallback; the owned-process supervisor
 # bound below still applies and is recorded separately.
 MAX_TOKENS = 16000000
@@ -293,7 +295,7 @@ class Progress:
 
 
 def cap_int(text):
-    # "none" is the documented omission choice on Vibe 3.1.1 only; the bound
+    # "none" is the documented omission choice on Vibe 3.1.1 and 3.1.2; the bound
     # check decides that per detected CLI version. The error message never
     # echoes the rejected value.
     if text == "none":
@@ -776,13 +778,13 @@ def build_parser():
     parser.add_argument("--prompt-file", help="Regular UTF-8 task; otherwise TASKFILE")
     parser.add_argument("--receipt-dir", required=True, help="Existing private parent; each invocation creates a new run")
     parser.add_argument("--max-price", type=cap_float, default=5.0,
-                        help="USD cap, or 'none' to omit the native cap on Vibe 3.1.1")
+                        help="USD cap, or 'none' to omit the native cap on Vibe 3.1.1 and 3.1.2")
     parser.add_argument("--max-tokens", type=cap_int, default=2000000,
-                        help="cumulative token cap, or 'none' to omit the native cap on Vibe 3.1.1")
+                        help="cumulative token cap, or 'none' to omit the native cap on Vibe 3.1.1 and 3.1.2")
     parser.add_argument("--time-limit", type=cap_float, default=5400,
-                        help="seconds cap, or 'none' to omit the native cap on Vibe 3.1.1")
+                        help="seconds cap, or 'none' to omit the native cap on Vibe 3.1.1 and 3.1.2")
     parser.add_argument("--max-turns", type=cap_int, default=120,
-                        help="turn cap, or 'none' to omit the native cap on Vibe 3.1.1")
+                        help="turn cap, or 'none' to omit the native cap on Vibe 3.1.1 and 3.1.2")
     return parser
 
 
@@ -795,20 +797,20 @@ def check_bounds(args, cli_version=None):
     explicitly, never clamped or silently substituted.
     """
     problems = []
-    allow_none = cli_version in (None, "3.1.1")
-    # 3.1.1 has no adapter-supported per-run thinking control: the VIBE_* model
-    # overlay is a 2.26.1-only mechanism and the 3.1.1 CLI documents no thinking
+    allow_none = cli_version in (None, "3.1.1", "3.1.2")
+    # 3.1.1 and 3.1.2 have no adapter-supported per-run thinking control: the VIBE_* model
+    # overlay is a 2.26.1-only mechanism and neither 3.1.1 nor 3.1.2 documents a thinking
     # flag, so a requested low/medium would silently execute the account's
     # existing catalog level. There is no honest subset to run, so such a
     # request is refused before any provider invocation. "high" is accepted
     # only because it matches the catalog declaration observed for the
     # validated aliases (selection reference 2026-11-10); the adapter claims no
     # control and records the effective effort as Unknown either way.
-    if cli_version == "3.1.1" and args.thinking != "high":
-        problems.append("--thinking " + args.thinking + " is not supported on Vibe 3.1.1: "
+    if cli_version in ("3.1.1", "3.1.2") and args.thinking != "high":
+        problems.append("--thinking " + args.thinking + " is not supported on Vibe " + cli_version + ": "
                        "the CLI has no per-run thinking control (model overlays are a 2.26.1-only "
                        "mechanism and no native thinking flag exists), so the request would "
-                       "silently execute the account's existing level; keep 3.1.1 runs at the "
+                       "silently execute the account's existing level; keep " + cli_version + " runs at the "
                        "observed catalog level high with the effective effort recorded as "
                        "unknown, or use the pinned 2.26.1 route for low/medium control; "
                        "edit the agents.conf route and retry")
@@ -819,7 +821,7 @@ def check_bounds(args, cli_version=None):
     for flag, value, bound, kind, unit in caps:
         if value is None:
             if not allow_none:
-                problems.append(flag + " none (omitted native cap) is only supported on Vibe 3.1.1; "
+                problems.append(flag + " none (omitted native cap) is only supported on Vibe 3.1.1 and 3.1.2; "
                                 "select a numeric bound for this CLI version")
             continue
         if kind == "int":
@@ -903,7 +905,8 @@ def run_telemetry(record, progress):
         # when its final entry carried no text; that never proves a completed
         # delivery (final_response state is kept separate from this meter).
         turns = module.meter(final.get("assistant_messages"), limits.get("max_turns"), "estimated")
-        notes.append("turns are the count of assistant entries in the 3.1.1 --output json message list; the native export's step count is model calls, not turns")
+        ver = record.get("cli_version") or "3.1.1"
+        notes.append("turns are the count of assistant entries in the " + ver + " --output json message list; the native export's step count is model calls, not turns")
     else:
         turns = module.meter(None, limits.get("max_turns"), "unknown")
     return module.telemetry(tokens=tokens, turns=turns, usd=usd, notes=notes)
@@ -979,7 +982,7 @@ def main():
                                     if value is None],
                       invocations=1, invocation_retries=0, process_exit=None, outcome="starting")
         receipt.write_text(json.dumps(record, indent=2) + "\n")
-        # 3.1.1 uses the documented --model ALIAS selection and --output json
+        # 3.1.1 and 3.1.2 use the documented --model ALIAS selection and --output json
         # (a message list whose final completed assistant reply can carry a
         # verdict/summary absent from the saved export). 2.26.1 keeps its
         # exact tested shape: overlay env, all caps, --output streaming.
@@ -988,7 +991,7 @@ def main():
                             ("--time-limit", args.time_limit), ("--max-turns", args.max_turns)):
             if value is not None:
                 cap_args.extend([flag, str(value)])
-        if cli_version == "3.1.1":
+        if cli_version in ("3.1.1", "3.1.2"):
             argv = [cli, "--model", args.model, "--prompt-file", str(task),
                     "--workdir", str(Path.cwd()), "--trust", "--agent", "auto-approve"]
             argv += cap_args
@@ -1004,7 +1007,7 @@ def main():
             argv.extend(["--enabled-tools", name])
         # The owned-process supervisor bound is separate from the requested
         # CLI time limit (and from the outer UNIO_TIMEOUT): when the owner
-        # omits --time-limit on 3.1.1, supervision still applies at the
+        # omits --time-limit on 3.1.1 or 3.1.2, supervision still applies at the
         # documented maximum plus shutdown margin.
         supervisor_seconds = (args.time_limit if args.time_limit is not None else MAX_TIME_LIMIT) + 20
         record["supervisor_seconds"] = supervisor_seconds
