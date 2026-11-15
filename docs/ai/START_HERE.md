@@ -207,6 +207,12 @@ and [REVIEWER-STARTUP-CARD.md](REVIEWER-STARTUP-CARD.md) (copied to
 compulsory reading of full lead guides. The frozen task and current owner
 instructions prevail.
 
+Leads read the default [lead review policy](LEAD-REVIEW-POLICY.md) before
+planning reviews or final acceptance. It installs as the managed, refreshed
+`templates/LEAD-REVIEW-POLICY.md`; project and owner policy and stricter
+approvals prevail. An older custom `MASTER.md` gains one marked pointer when
+`unio init` runs again; running sessions see it only after rereading.
+
 Before delegating, read the [agent fleet guide](../development/AGENT-FLEET.md)
 for approved account routes, useful assignments and current exclusions. Local
 models are excluded under the current owner rule; Copilot Free uses its GitHub

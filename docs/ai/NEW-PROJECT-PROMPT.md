@@ -40,6 +40,12 @@ new runner keeps accepting those old names. A mode change guides the lead;
 it does not automatically launch reviewers or select tests. The runner
 enforces each task's declared checks and native budget slots.
 
+Reviewer pairing, low lead allowance, the honestly labelled same-model
+fallback and waiting instead of weaker substitutes follow the default
+[lead review policy](LEAD-REVIEW-POLICY.md) (installed as
+`templates/LEAD-REVIEW-POLICY.md`). A protocol that asks for more review,
+such as Thorough, is stricter and prevails.
+
 ## Choose reasoning effort independently
 
 Every prompt has a **Reasoning effort** field. Start with **Low**; change it

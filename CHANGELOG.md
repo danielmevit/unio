@@ -10,6 +10,7 @@ version is released.
 - Keep task hashes and parsed scope tied to one bounded observation; preserve exact filenames and return Unknown/incomplete exit 2 for unsupported inputs. Offer JSON completion only after preview is selected; ordinary verification stays unchanged.
 - Support Antigravity CLI 1.5.9 alongside the retained 1.3.5 route, and Vibe 3.1.2. Adapters record the observed CLI version as provenance (`Unknown` when the query fails) instead of refusing by version number. 1.3.5 keeps its legacy arguments; other Antigravity versions pass the selected effort explicitly. Real model, effort, protocol and terminal-error failures still fail.
 - Rename the work mode YOLO to Fast; `yolo` remains an accepted alias and the stored value.
+- Ship the default lead review policy as a managed, always-refreshed installed template (`templates/LEAD-REVIEW-POLICY.md`) referenced by fresh `MASTER.md` and `unio init`; customized `MASTER.md`, owner policy and `agents.conf` are preserved and reviewer selection stays manual.
 - Add the experimental `unio lead-session` managed Codex lead with AUTO LOW/XHIGH effort, owner-recorded worker wakeups, bounded turn waits with exact interrupt and `recover`, and native admission. Experimental, offline-tested only; no live Codex turn has been run through it.
 
 Focused native checks ran for each part. The final adaptive corrections still need their independent current-code review and lead assessment. The combined release gate, installation and publication have not happened. See [scope and limits](docs/RELEASE-0.5.31.md).
