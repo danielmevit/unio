@@ -4,13 +4,15 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.31 — task-scope preview and current Antigravity compatibility (unreleased)
+## 0.5.31 — task-scope preview, current CLI policy and experimental adaptive lead (unreleased)
 
 - Inspect an implementation task's current paths, scope, declared checks and Git revision with `unio verify WORKER TASK --preview [--json]`. Preview runs no validation or provider, preserves results and recovery state, works during STOP and refuses busy or changing observations.
 - Keep task hashes and parsed scope tied to one bounded observation; preserve exact filenames and return Unknown/incomplete exit 2 for unsupported inputs. Offer JSON completion only after preview is selected; ordinary verification stays unchanged.
-- Support exactly Antigravity CLI 1.5.9 alongside the retained 1.3.5 route. Record the observed version, pass supported effort explicitly on 1.5.9 and preserve legacy arguments, unknown-version refusal and terminal-error handling.
+- Support Antigravity CLI 1.5.9 alongside the retained 1.3.5 route, and Vibe 3.1.2. Adapters record the observed CLI version as provenance (`Unknown` when the query fails) instead of refusing by version number. 1.3.5 keeps its legacy arguments; other Antigravity versions pass the selected effort explicitly. Real model, effort, protocol and terminal-error failures still fail.
+- Rename the work mode YOLO to Fast; `yolo` remains an accepted alias and the stored value.
+- Add the experimental `unio lead-session` managed Codex lead with AUTO LOW/XHIGH effort, owner-recorded worker wakeups, bounded turn waits with exact interrupt and `recover`, and native admission. Experimental, offline-tested only; no live Codex turn has been run through it.
 
-Focused native checks, an independent current-code review and the lead assessment passed. The combined release gate and installation are pending. See [scope and limits](docs/RELEASE-0.5.31.md).
+Focused native checks ran for each part. The final adaptive corrections still need their independent current-code review and lead assessment. The combined release gate, installation and publication have not happened. See [scope and limits](docs/RELEASE-0.5.31.md).
 
 ## 0.5.30 — review evidence and bounded archive maintenance — 2026-11-14
 

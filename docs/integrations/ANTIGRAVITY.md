@@ -10,9 +10,12 @@ status are evaluated separately, and both must be clean for exit 0.
 
 ## What the adapter pins
 
-The adapter supports the inspected `agy` 1.3.5 and 1.5.9 only; any other
-`--version` output is refused before a provider call, and the receipt
-records the version the CLI actually reported rather than an assumed one.
+The adapter was inspected against `agy` 1.3.5 and 1.5.9. It does not gate
+on an exact version list: the receipt records the version the CLI actually
+reported (or `Unknown` when `--version` fails) as provenance, and any
+version runs with the modern argv except 1.3.5, which keeps its legacy
+argv. Real model, effort and protocol failures still fail (see
+[latest-CLI policy](#latest-cli-policy-and-model-availability)).
 It selects one fixed Gemini 3.8 Flash variant advertised by both CLIs:
 
 | Selector | Requested model | Requested effort |
@@ -27,8 +30,10 @@ level, and agy 1.3.4 rejected a matching high model plus a separate effort
 flag before inference — so the 1.3.5 argv never passes it and requested
 effort is derived from the selector name only. `agy` 1.5.9 documents
 `--effort`, and the proven 1.5.9 review passed it explicitly after the
-model selector, so on 1.5.9 the adapter passes `--effort` with exactly the
-selected low, medium or high; no inherited max or ultra default exists.
+model selector, so on 1.5.9 and every other reported or `Unknown` version
+the adapter passes `--effort` with exactly the selected low, medium or
+high; no inherited max or ultra default exists. A CLI that rejects that
+flag fails honestly; there is no retry without it.
 The effective model, AI lab, effort and remaining allowance stay
 `unknown`: the adapter does not verify what the account actually served.
 There is no fallback model, no retry and no second invocation.

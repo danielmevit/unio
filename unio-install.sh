@@ -23797,7 +23797,10 @@ adaptive requested effort (only auto plus low and xhigh in this first
 interface) on one owned thread, and never steers a turn mid-flight. Both
 share the same honesty rules: no provider calls for observation, Unknown
 effective settings, idempotent request ids with no replay or resend, and
-STOP that blocks new turns without killing workers.
+STOP that blocks new turns without killing workers. A lead `run` keeps its
+owned process alive until the turn ends or a bounded deadline, then
+requests an exact `turn/interrupt`; an unconfirmed end stays Unknown and is
+handled later by `unio lead-session recover` on the same thread.
 UNIO_MANAGED_SESSIONS_MD
 # END EMBEDDED CODEX WORKER
 # BEGIN EMBEDDED MANAGED LEAD
@@ -28474,7 +28477,8 @@ cat > "$CONF_DIR/lib/ADAPTIVE-LEAD-EFFORT.md" <<'UNIO_ADAPTIVE_LEAD_EFFORT_MD'
 
 Status: experimental vertical slice for contracts
 `docs/development/contracts/0532-ADAPTIVE-LEAD-EFFORT-V1.md` and the
-owner correction `...-V2.md` (0.5.x series, unreleased). `unio
+owner correction `...-V2.md`, with the final review corrections of
+`0531-ADAPTIVE-REVIEW-CORRECTIONS-V7.md` (0.5.x series, unreleased). `unio
 lead-session` is an opt-in managed lead session with adaptive requested
 effort. It is not a replacement dashboard, it never adopts an unmanaged
 TUI or connection, and `unio lead` keeps its existing budget-reservation
@@ -28503,12 +28507,21 @@ worker/core settings remain compatible.
   owned thread. The app-server schema has no effort override on `turn/steer`,
   so an effort change is only ever applied by the next turn start; the
   effective provider-side effort remains Unknown everywhere.
-- Zero model calls while waiting: nothing is ever sent automatically. Status,
-  effort, worker, stop and output commands make no provider calls at all.
-- Worker terminal events are explicit controlled events. Each queues at most
-  one review wakeup; the next turn without an explicit work kind consumes
-  exactly one wakeup and is classified as review. Heartbeat or status
-  polling can never create a wakeup or trigger inference.
+- No inference while waiting: nothing is ever sent automatically. Status,
+  effort, worker, stop and output commands open no provider connection at
+  all. `run` and `recover` make control RPCs (initialize, account check,
+  thread resume/read, and `turn/interrupt` when requested); control RPCs
+  are not inference. Only `turn/start` starts a model turn.
+- Work kind is never recognized from prose. A turn is `planning` or
+  `review` only when the owner passes `--kind`, or `review` when a recorded
+  worker terminal wakeup is pending; everything else is `coordination`.
+  Worker events are recorded by the owner (`worker register`, `worker
+  terminal`); nothing watches workers, and there is no continuous or
+  autonomous phase scheduler.
+- Each worker terminal event queues at most one review wakeup; the next
+  turn without an explicit work kind consumes exactly one wakeup.
+  Heartbeat or status polling can never create a wakeup or trigger
+  inference.
 - Manual override suspends automatic selection until `effort auto` is
   selected again. `effort request` records a pending effort that is applied
   only by the next turn, never mid-turn.
@@ -28527,7 +28540,9 @@ unio lead-session start --goal FILE --model MODEL [--ceiling low|xhigh]
                         [--transport fake] [--fake-efforts low,medium,high,xhigh]
                         [--json]
 unio lead-session run --file FILE --request-id ID
-                      [--kind coordination|planning|review] [--json]
+                      [--kind coordination|planning|review] [--reason R]
+                      [--turn-wait SECONDS] [--interrupt-drain SECONDS] [--json]
+unio lead-session recover [--interrupt] [--drain SECONDS] [--json]
 unio lead-session status [--json]
 unio lead-session effort show|auto|manual low|xhigh|request low|xhigh [--reason R]
 unio lead-session worker register ID|wait|terminal ID [--json]
@@ -28545,21 +28560,95 @@ unio lead-session output [--after N] [--limit N] [--json]
   default of four is unchanged for non-lead use).
 - `run` submits one bounded owner turn (at most 8 KiB). Without `--kind`,
   the turn is review when a wakeup is pending, else coordination. Request
-  ids are idempotent: an identical replay returns the recorded result with
-  zero new provider calls; changed content refuses. The JSON payload
-  separates the submission acknowledgement (`status`: accepted/rejected/
-  uncertain), the actual turn outcome (`turn_status`: completed/failed/
-  interrupted, or null while pending; `turn_completed`) and the observed
-  native exit (`provider_exited`, plus a bounded private `stderr_tail`
-  when the owned process died). `delivery` states the combined result:
+  ids are idempotent: an identical replay returns the recorded result and
+  starts no new turn (no `turn/start`, no inference). On the owned
+  transport a replay still passes admission (STOP, holds, capacity) and
+  makes control RPCs (initialize, account, thread resume, possibly thread
+  read); it never waits for or interrupts the recorded turn. Changed
+  content refuses.
+- The JSON payload separates the submission acknowledgement (`status`:
+  accepted/rejected/uncertain), the actual turn outcome (`turn_status`:
+  completed/failed/interrupted, or null when no terminal was observed;
+  `turn_completed`), the wait (`wait.seconds`, `wait.outcome`: `terminal`,
+  `deadline`, `provider_exited` or `replay_not_waited`), any deadline
+  interrupt (`interrupt`), restored consumption (`restored`) and the
+  observed native exit (`provider_exited`, plus a bounded private
+  `stderr_tail` when the owned process died). `delivery` is one of
   `completed`, `failed`, `interrupted`, `rejected`, `uncertain` or
-  `pending`. Exit codes are truthful: 0 only for an observed completed
-  turn (or an explicit `--turn-wait 0` asynchronous acknowledgement,
-  which stays `pending` — the owned process is terminated at command
-  end, so no background execution is promised); 1 for controlled
-  refusals; 2 rejected; 3 uncertain; 4 failed; 5 interrupted; 6 accepted
-  but not observed terminal before the wait ended (timeout or provider
-  exit). A process exit is never inferred as model success.
+  `unknown`. Exit codes: 0 only for an observed completed turn; 1
+  controlled refusal; 2 rejected; 3 uncertain; 4 failed; 5 interrupted;
+  6 unknown (accepted, no terminal observed). A process exit or an
+  interrupt acknowledgement is never inferred as a turn outcome.
+
+### Waiting, deadline and interrupt (owned transport)
+
+- The owned app-server process belongs to the `run` command and is
+  terminated when the command ends; terminating it ends that local
+  app-server, so the command keeps it alive while the turn runs.
+  `--turn-wait` (default 3600 seconds, 1..86400) bounds that wait.
+  `--turn-wait 0` is refused before launch: an asynchronous
+  acknowledgement would be killed by the same command.
+- At the deadline, `run` sends one `turn/interrupt` with the exact proven
+  `threadId` and provider `turnId` (the local schema requires both; the
+  `{}` response only acknowledges the request). It then drains terminal
+  events for `--interrupt-drain` seconds (default 30, 1..600) and reads
+  the provider's own thread state once. An observed `turn/completed` or
+  terminal thread status is recorded (usually `interrupted`, exit 5).
+  Without one, the turn stays active in the session and the outcome is
+  `unknown` (exit 6) — an acknowledgement is not terminal proof. Partial
+  output, the original request, the thread and the provider-turn mapping
+  are kept; nothing is resent.
+- What Codex reports later for a turn whose app-server was killed is
+  Unknown (no live evidence in this slice). The run never assumes it kept
+  computing or finished.
+
+### Recovering a stale turn
+
+`unio lead-session recover` handles a turn that was acknowledged (its
+provider id is proven) but whose end was never observed, on the SAME
+thread:
+
+1. It passes normal admission (project STOP refuses), then opens one owned
+   process, resumes the exact thread and reads the provider's own turn
+   status.
+2. A terminal provider status is recorded (exit 0).
+3. If the provider still reports the turn in progress, plain `recover`
+   changes nothing (exit 6). `recover --interrupt` sends one
+   `turn/interrupt` for that exact turn, drains terminal events for
+   `--drain` seconds and reads the thread again; it records a terminal
+   only from that evidence (exit 0), otherwise it stays Unknown (exit 6).
+4. It never sends `turn/start`, never resends the request, never fabricates
+   a terminal and never replaces or resets the thread. An unacknowledged
+   (`outcome_unknown`, unproven) turn refuses before any process starts.
+
+Session STOP does not block `recover` (it starts no turn); project STOP
+does.
+
+### Rejected and never-sent turns
+
+A turn that was provably never delivered — a typed `turn/start` rejection
+with no contradicting provider activity, or a local refusal before any
+`turn/start` (for example the provider-turn mapping bound) — does not use
+up the pending effort request or the review wakeup it would have consumed.
+The attempted decision stays visible in `status` with outcome `rejected`,
+and the `run` payload reports what was kept under `restored`. Newer
+pending, manual/auto or wakeup changes written while the attempt ran are
+kept. An uncertain attempt (malformed acknowledgement, lost connection,
+contradicting activity) is never restored.
+
+### Session lifetime limits
+
+- A session records at most `--max-requests` request ids (default 64),
+  including rejected and replayed attempts; then `run` refuses with
+  `request history exhausted`.
+- The provider-turn mapping bound (`--max-mappings`, default and maximum
+  64) and the core history of 32 recorded turns bound how many turns one
+  session can hand over. Reaching the mapping bound returns `rejected`
+  (no turn sent) with a note, never `uncertain`.
+- To continue past a limit, `stop` the session and `start` a new one. The
+  new session starts a new thread; the earlier conversation context is
+  not carried over.
+
 - `effort manual` suspends auto; `effort auto` resumes it; `effort request`
   is pending for the next turn only (a newer request replaces an older
   pending one; manual clears it). Both accept only `low` or `xhigh` in
@@ -28569,6 +28658,8 @@ unio lead-session output [--after N] [--limit N] [--json]
   review wakeup. Duplicate terminal events for the same worker refuse.
 - `stop` sets STOP. Workers keep running; new turns refuse; there is no
   automatic or manual resume in this slice.
+- `recover` reconciles, and with `--interrupt` interrupts, one proven
+  stale turn on the same thread (see below).
 - `output` reads the bounded ordered journal with explicit gap and
   truncation flags (same limits as managed sessions).
 
@@ -28642,8 +28733,29 @@ unio lead-session output [--after N] [--limit N] [--json]
 - If the owned process dies mid-turn, the wait stops promptly (no busy
   loop until the deadline), the final buffered terminal events and a
   bounded private stderr tail are drained, the outcome stays
-  `pending`/Unknown with `provider_exited: true`, and no terminal status
-  is ever inferred from the process exit.
+  `unknown` with `provider_exited: true` (exit 6), and no terminal status
+  is ever inferred from the process exit. Use `recover` afterwards.
+
+## Permissions, approvals and owner setup
+
+- The owned connection answers every provider server-to-client request
+  (command, file-change and permission approvals, user-input and tool
+  requests) with an error (`-32601`). Nothing is auto-approved.
+- `thread/start` sets no sandbox or approval policy, so the turn inherits
+  the user's own Codex configuration. Whether a managed lead turn can run
+  a command such as `unio run ...` without an approval prompt depends on
+  that configuration; a turn that needs an approval will see it rejected.
+  Unio does not widen permissions, and this slice does not change Codex
+  settings.
+- Owner setup: a ChatGPT-subscription Codex login (`account/read` must
+  report `chatgpt`; `OPENAI_API_KEY`/`CODEX_API_KEY` in the environment
+  refuse), an initialized project policy whose registered lead is `codex`
+  with a real account group, and no other Codex lead session open on that
+  account. Close any existing AI CLI lead session before a separate
+  terminal-driven managed trial.
+- Live limitations: no real Codex turn has been run through this slice.
+  Live `turn/interrupt`, approval handling, stale-turn reporting after a
+  killed app-server and the effective model/effort are Unknown.
 
 ## Honest boundary of this slice
 
@@ -28652,6 +28764,10 @@ metadata bound and fail-closed validation, strict label validation matching nati
 policy, lock-backed owned lease and the owned app-server connection lifecycle are
 wired and verified via executable fake app-server and genuine offline policy
 fixtures (contracts V4 and V5).
+Deadline interrupt, recovery and rejected-attempt restoration are exercised the
+same way: the executable fake app-server only progresses a turn while its own
+process lives, so a killed turn stays in progress unless an explicit interrupt
+or the provider's own thread state ends it.
 Real Codex model inference, external network calls, paid credits/billing, and
 cross-workspace/unmanaged visibility remain zero/Unknown during development and
 validation. No real model calls, billing, or credentials are used.
@@ -48823,7 +48939,7 @@ the existing lead.
   spawn another lead-provider CLI, worker or independent test agent. Keep
   the lead reservation; do not bypass budget admission by changing aliases.
 - Make an early coherent commit, run checks appropriate to the change and
-  maintain a handoff. Use the selected work mode: focused checks for YOLO,
+  maintain a handoff. Use the selected work mode: focused checks for Fast,
   with the full required gate at release. Test corrections must preserve
   their behavioral assertion; never make a failure pass by deleting coverage.
 - Identify lead-authored code and self-review honestly. It is not an

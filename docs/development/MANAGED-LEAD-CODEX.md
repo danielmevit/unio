@@ -78,9 +78,12 @@ CLI, not all future runtime behavior.
   is resent, resumed or claimed delivered, and historical records are never
   rewritten. By default the bridge
   retains at most four mappings for its lifetime; at capacity, the next
-  submission returns `uncertain` with an explicit handoff requirement before
-  making any RPC. The core holds that request as `outcome_unknown`; its
-  idempotent replay makes no RPC. There is no automatic replacement thread,
+  submission returns `rejected` (`rpc_sent: false`, known non-delivery)
+  with an explicit handoff requirement before making any RPC (changed by
+  contract 0531-ADAPTIVE-REVIEW-CORRECTIONS-V7; it was `uncertain` and
+  left the core request `outcome_unknown`). The core records the request
+  as rejected and the session stays open; its idempotent replay makes no
+  RPC. There is no automatic replacement thread,
   session, resend or successful acknowledgement. Without the 0532 opt-in
   (see the addendum below) native handoff remains unsupported and this
   conservative limit is intentional prototype behavior.
@@ -169,8 +172,8 @@ when the options are not given.
   any per-turn effort and behaves exactly as before.
 - `max_mappings` (1..64) raises the mapping bound for one owned lead
   session; the default remains four for non-lead use. There is still no
-  id eviction or rebinding: at capacity the next submission refuses with
-  an explicit handoff requirement before any RPC.
+  id eviction or rebinding: at capacity the next submission is a known
+  non-delivery (`rejected`, no RPC) with an explicit handoff requirement.
 - `prior_mappings` hands acknowledgement-proven provider-turn mappings to
   a fresh bridge explicitly. The handoff is proven only when it covers
   exactly the session's recorded non-rejected turns with matching
@@ -300,3 +303,26 @@ creation ensures coord exists before .locks creation. Focused unit and regressio
 coverage is added in tests/unio-lead-session-policy.py (registered in tools/quality-check.sh),
 verifying default entrypoint environment, genuine permission faults without assuming
 root is denied by chmod 000, and full fail-closed bounds.
+
+Final adaptive review corrections (0531-ADAPTIVE-REVIEW-CORRECTIONS-V7),
+2026-11-15: the independent Opus MEDIUM review of f0e3ca63 returned
+REQUEST-CHANGES. The owned `run` no longer closes (and so kills) the
+app-server of an in-flight turn after a short wait: it keeps the process
+until a terminal event or `--turn-wait` (default 3600s), then sends
+`turn/interrupt` for the exact proven thread/turn
+(`tools/lead-session-codex.py` `interrupt_turn`), drains terminal events
+and reads the provider's thread state. The `{}` acknowledgement is never
+treated as terminal; without terminal evidence the delivery is `unknown`
+(exit 6) and the turn stays active. `--turn-wait 0` refuses before launch.
+`unio lead-session recover [--interrupt]` reconciles or interrupts one
+proven stale turn on the same thread with no `turn/start`. A provably
+rejected or never-sent attempt restores only its own pending-effort and
+wakeup consumption (`_merge_policy_snapshot(restore=True)`); pre-RPC
+refusals are proven by a `turn/start` counter (`SendProbe`). The bridge's
+mapping-bound refusal became `rejected` as described above. The executable
+fake app-server in `tests/unio-lead-session-codex.py` now progresses a turn
+only while its own process is alive, so a killed turn stays in progress
+unless an explicit interrupt or the provider's thread state ends it. No
+real Codex model call was made; live interrupt and stale-turn reporting
+remain Unknown. This is worker-authored and needs independent review and
+lead assessment.

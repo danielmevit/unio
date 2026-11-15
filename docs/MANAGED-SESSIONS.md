@@ -96,4 +96,7 @@ adaptive requested effort (only auto plus low and xhigh in this first
 interface) on one owned thread, and never steers a turn mid-flight. Both
 share the same honesty rules: no provider calls for observation, Unknown
 effective settings, idempotent request ids with no replay or resend, and
-STOP that blocks new turns without killing workers.
+STOP that blocks new turns without killing workers. A lead `run` keeps its
+owned process alive until the turn ends or a bounded deadline, then
+requests an exact `turn/interrupt`; an unconfirmed end stays Unknown and is
+handled later by `unio lead-session recover` on the same thread.
