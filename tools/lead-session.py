@@ -115,7 +115,24 @@ BUDGET_DEFAULT = 'codex-shared'
 STATE_KEYS = frozenset(
     'session_id workspace route budget_label model thread_id baseline_effort '
     'transport codex_binary fake_efforts goal_sha256 max_requests max_mappings '
-    'provider_turns policy stopped waiting workers created_at updated_at'.split())
+    'provider_turns policy stopped waiting workers created_at updated_at '
+    'thread_lifecycle'.split())
+# Control state written before contract 0532-FIRST-TURN-PERSISTENCE has no
+# lifecycle field; it stays readable as ``legacy`` (owned) or ``eager``
+# (in-process fake) without rewriting any historical receipt.
+LEGACY_STATE_KEYS = STATE_KEYS - {'thread_lifecycle'}
+# Owned thread lifecycle. The native app-server materializes a thread's
+# rollout only with its first turn (observed with codex-cli 0.169.0 by a
+# zero-inference control: no rollout file after thread/start or after a
+# graceful exit, and even same-process thread/resume refuses -32600 "no
+# rollout found"). So:
+#   deferred      start recorded ownership but created no thread yet;
+#   started       the first run created the exact thread and persisted its
+#                 id BEFORE its first turn/start (delivery may be Unknown);
+#   acknowledged  a turn/start on that exact thread was acknowledged;
+#   legacy        an earlier start created the thread and closed it;
+#   eager         the in-process fake transport (always resumable).
+THREAD_LIFECYCLES = ('deferred', 'started', 'acknowledged', 'legacy', 'eager')
 WORKER_STATES = ('registered', 'terminal')
 CAUTION = ('requested effort only; the effective provider effort remains Unknown; '
            'no unmanaged TUI is adopted')
@@ -175,9 +192,23 @@ def _validate_state(doc):
     if not isinstance(doc, dict) or set(doc) != STATE_KEYS:
         refuse()
     for key in ('session_id', 'workspace', 'route', 'budget_label', 'model',
-                'thread_id', 'baseline_effort', 'transport', 'goal_sha256',
+                'baseline_effort', 'transport', 'goal_sha256',
                 'created_at', 'updated_at'):
         if not isinstance(doc.get(key), str) or not doc[key] or '\x00' in doc[key]:
+            refuse()
+    lifecycle = doc.get('thread_lifecycle')
+    if lifecycle not in THREAD_LIFECYCLES:
+        refuse()
+    if (lifecycle == 'eager') != (doc['transport'] == 'fake'):
+        refuse()
+    if lifecycle == 'deferred':
+        if doc.get('thread_id') is not None or doc.get('provider_turns'):
+            refuse()
+    else:
+        thread_id = doc.get('thread_id')
+        if (not isinstance(thread_id, str) or not thread_id
+                or '\x00' in thread_id
+                or len(thread_id.encode('utf-8')) > cx.ID_BOUND):
             refuse()
     if doc['baseline_effort'] not in pe.INTERFACE_EFFORTS:
         refuse()
@@ -249,6 +280,10 @@ def _load_state(root, session_id):
         doc = json.loads(data)
     except (ValueError, UnicodeError, RecursionError):
         raise Refusal('invalid lead session control state')
+    if isinstance(doc, dict) and set(doc) == LEGACY_STATE_KEYS:
+        # Readable pre-0532 state; the next control write adds the field.
+        doc['thread_lifecycle'] = ('eager' if doc.get('transport') == 'fake'
+                                   else 'legacy')
     _validate_state(doc)
     if doc['session_id'] != session_id:
         raise Refusal('lead session identity mismatch')
@@ -539,11 +574,13 @@ class EffortTransport:
         self.last_decision = None
         self.attempted = False
         self.consumed = None
+        self.not_sent_reason = None
 
     def _not_sent(self, reason):
+        self.not_sent_reason = ('known non-delivery before any turn/start: '
+                                + str(reason))
         return {'status': 'rejected', 'rpc_sent': False,
-                'reason': 'known non-delivery before any turn/start: '
-                          + str(reason)}
+                'reason': self.not_sent_reason}
 
     def send_turn(self, facts):
         self.attempted = True
@@ -740,7 +777,8 @@ def _merge_policy_snapshot(base, disk, live, restore=False):
     return merged
 
 
-def _persist_run(root, base_state, policy, bridge, session, restore=False):
+def _persist_run(root, base_state, policy, bridge, session, restore=False,
+                 created_thread=None):
     """Locked merge-persist for one run command; returns the fresh state.
 
     The run's pre-turn in-memory snapshot is never written over the
@@ -771,6 +809,20 @@ def _persist_run(root, base_state, policy, bridge, session, restore=False):
             if local['turn_id'] in recorded}
         if len(disk['provider_turns']) > disk['max_mappings']:
             raise Refusal('provider turn mapping bound exceeded')
+        if disk['thread_lifecycle'] == 'started' and disk['provider_turns']:
+            # A turn/start on the exact recorded thread was acknowledged.
+            disk['thread_lifecycle'] = 'acknowledged'
+        elif (restore and created_thread is not None
+                and disk['thread_lifecycle'] == 'started'
+                and disk['thread_id'] == created_thread
+                and not disk['provider_turns'] and not recorded):
+            # THIS command created the thread and its only turn attempt was
+            # provably never delivered: the thread never carried a turn, so
+            # it was never materialized and nothing can resume it. Return to
+            # deferred so the next owner turn creates its thread in its own
+            # process. Never applied to a thread from an earlier command.
+            disk['thread_id'] = None
+            disk['thread_lifecycle'] = 'deferred'
         disk['policy'] = _merge_policy_snapshot(base_state['policy'],
                                                  disk['policy'],
                                                  policy.snapshot(),
@@ -1009,6 +1061,7 @@ def _session_view(root, state, session, bridge, policy):
         'workspace': state['workspace'],
         'route': state['route'], 'budget_label': state['budget_label'],
         'model': state['model'], 'thread_id': state['thread_id'],
+        'thread_lifecycle': state['thread_lifecycle'],
         'transport': state['transport'],
         'baseline_effort': state['baseline_effort'],
         'generation': view['generation'], 'state': view['state'],
@@ -1154,6 +1207,7 @@ def _cmd_start(root, args):
         'max_requests': args.max_requests, 'max_mappings': args.max_mappings,
         'provider_turns': {}, 'policy': policy.snapshot(), 'stopped': False,
         'waiting': False, 'workers': {}, 'created_at': now, 'updated_at': now,
+        'thread_lifecycle': 'eager',
     }
     _save_state(root, state)
     _save_owner(root, sid)
@@ -1166,13 +1220,18 @@ def _cmd_start(root, args):
 
 
 def _cmd_start_owned(root, args, goal_sha, baseline):
-    """Start one owned app-server connection and ONE new owned thread.
+    """Start one owned app-server connection and record the owned session.
 
     Contention, STOP, policy and owner holds are checked before the owned
     process is spawned; the ownership claim is atomic under the workspace
     owner lock, so a concurrent start refuses honestly instead of creating a
-    second managed owner. The exact provider thread id is persisted; no
-    turn is started here.
+    second managed owner. The connection verifies the subscription account
+    and the model catalog; no thread and no turn is started here. The
+    native app-server materializes a thread only with its first turn, and
+    a thread whose creating process has closed can never be resumed, so
+    the exact thread is created by the first ``run`` in its own process,
+    immediately before its first turn/start (``thread_lifecycle``
+    ``deferred``). No bootstrap or dummy model request exists.
     """
     policy_doc, lead_group, lease = lp.admit_lead(
         root, expected_agent='codex', budget_label=args.budget_label)
@@ -1183,7 +1242,6 @@ def _cmd_start_owned(root, args, goal_sha, baseline):
             try:
                 conn.initialize()
                 efforts = conn.query_model_efforts(args.model)
-                thread_id = conn.start_thread(args.model)
             finally:
                 conn.close()
             policy = pe.AdaptiveEffortPolicy(ceiling=args.ceiling)
@@ -1202,7 +1260,8 @@ def _cmd_start_owned(root, args, goal_sha, baseline):
             state = {
                 'session_id': sid, 'workspace': args.workspace,
                 'route': args.route, 'budget_label': lead_group,
-                'model': args.model, 'thread_id': thread_id,
+                'model': args.model, 'thread_id': None,
+                'thread_lifecycle': 'deferred',
                 'baseline_effort': baseline, 'transport': 'owned',
                 'codex_binary': args.codex_binary, 'fake_efforts': [],
                 'goal_sha256': goal_sha,
@@ -1220,8 +1279,9 @@ def _cmd_start_owned(root, args, goal_sha, baseline):
     view = _session_view(root, state, session, bridge, policy)
     pol_mode = 'adaptive' if args.effort == 'auto' else ('manual (%s)' % args.effort)
     _emit(args, view, 'lead session started: %s (model %s, effort not started, '
-                      'policy %s, ceiling %s, owned thread %s)'
-          % (sid, args.model, pol_mode, args.ceiling, thread_id))
+                      'policy %s, ceiling %s, owned thread created by the '
+                      'first turn)'
+          % (sid, args.model, pol_mode, args.ceiling))
     return 0
 
 
@@ -1398,6 +1458,71 @@ def _run_note(bridge_status, delivery, wait):
     return None
 
 
+def _resume_owned_thread(conn, state):
+    """Resume the EXACT recorded thread; a refusal never falls back.
+
+    The original provider error is preserved verbatim; only a lifecycle
+    explanation is appended. No replacement thread is ever created here.
+    """
+    try:
+        conn.resume_thread(state['thread_id'])
+    except cx.ProviderRejected as exc:
+        lifecycle = state['thread_lifecycle']
+        if lifecycle == 'legacy' and not state['provider_turns']:
+            hint = ('this session was started by an earlier Unio whose start '
+                    'created the thread and closed its process before any '
+                    'turn; the native app-server materializes a thread only '
+                    'with its first turn, so it cannot be resumed')
+        elif lifecycle == 'started':
+            hint = ('the first turn/start on this exact thread was never '
+                    'acknowledged, so the native thread may never have been '
+                    'materialized')
+        else:
+            hint = 'the exact owned thread could not be resumed'
+        raise Refusal('%s; %s. No replacement thread is created and nothing '
+                      'is resent; stop this session and start a new one '
+                      '(thread %s)' % (exc, hint, state['thread_id'])) from exc
+
+
+def _first_thread_creator(root, state, conn):
+    """One-shot creator of the exact owned thread for a deferred session.
+
+    Called by the bridge only inside the first real send, after every local
+    refusal and immediately before that turn/start, in the same owned
+    process (native same-process resume of a fresh thread also refuses, so
+    the thread is never resumed in this command). The new id is durably
+    recorded under the per-session control lock BEFORE it is returned, so a
+    turn/start is never sent on an unrecorded thread. If another command
+    already recorded a thread, this refuses (before any turn/start) instead
+    of using a second thread.
+    """
+    def create():
+        thread_id = conn.start_thread(state['model'])
+        with _control_guard(root, state['session_id']):
+            disk = _load_state(root, state['session_id'])
+            if (disk['thread_lifecycle'] != 'deferred'
+                    or disk['thread_id'] is not None):
+                raise Refusal('owned thread already recorded by another '
+                              'command; refusing a second thread')
+            disk['thread_id'] = thread_id
+            disk['thread_lifecycle'] = 'started'
+            _save_state(root, disk)
+        state['thread_id'] = thread_id
+        state['thread_lifecycle'] = 'started'
+        create.created = thread_id
+        return thread_id
+    create.created = None
+    return create
+
+
+def _unavailable_thread(error):
+    """Bridge creator that refuses every new send BEFORE any turn/start."""
+    def refuse():
+        raise Refusal('exact owned thread unavailable: %s' % (error,))
+    refuse.created = None
+    return refuse
+
+
 def _cmd_run_owned(root, state, args, text):
     """One explicit owner turn over the owned production transport.
 
@@ -1430,24 +1555,47 @@ def _cmd_run_owned(root, state, args, text):
         conn = cx.OwnedCodexConnection(state['codex_binary'], cwd=str(root))
         try:
             conn.initialize()
-            conn.resume_thread(state['thread_id'])
-            view = _reconcile_active(root, state, session, conn, view)
+            creator = None
+            bridge_thread = state['thread_id']
+            unavailable = None
+            if state['thread_lifecycle'] == 'deferred':
+                # First owned turn: the exact thread is created inside the
+                # send itself (see _first_thread_creator); nothing to
+                # resume or reconcile yet.
+                creator = _first_thread_creator(root, state, conn)
+            else:
+                try:
+                    _resume_owned_thread(conn, state)
+                except Refusal as exc:
+                    if state['thread_lifecycle'] != 'started':
+                        raise
+                    # First turn/start never acknowledged: the exact thread
+                    # may never have materialized. Recorded replays still
+                    # answer from the core; any new send refuses before any
+                    # turn/start with this original error. No replacement.
+                    unavailable = str(exc)
+                    bridge_thread = None
+                    creator = _unavailable_thread(exc)
+                else:
+                    view = _reconcile_active(root, state, session, conn, view)
             probe = SendProbe(conn.rpc)
             try:
                 live = bx.CodexLeadTransport(
-                    probe, state['thread_id'], model=state['model'],
+                    probe, bridge_thread, model=state['model'],
                     effort=state['baseline_effort'],
                     supported_efforts=policy.supported(),
                     max_mappings=state['max_mappings'],
                     prior_mappings=dict(state['provider_turns']),
-                    rejection=cx.ProviderRejected)
+                    rejection=cx.ProviderRejected,
+                    create_thread=creator)
                 live.bind(session)
             except (bx.Refusal, ml.Refusal):
                 # Unproven handoff (for example an unacknowledged turn):
                 # inspection only. The core still returns recorded replay
                 # results; every new send refuses with zero turn starts.
+                creator = None
                 live = bx.CodexLeadTransport(
-                    probe, state['thread_id'], model=state['model'],
+                    probe, bridge_thread, model=state['model'],
                     effort=state['baseline_effort'],
                     supported_efforts=policy.supported(),
                     max_mappings=state['max_mappings'],
@@ -1468,9 +1616,13 @@ def _cmd_run_owned(root, state, args, text):
                 # turn was in flight survive; the lock is held only for this
                 # short transaction, never across the turn itself. Mappings
                 # are durable BEFORE the long wait, so recover stays possible.
+                created_now = getattr(creator, 'created', None)
                 state = _persist_run(root, state, policy, live, session,
-                                     restore=_restore_for(result, wrapper))
+                                     restore=_restore_for(result, wrapper),
+                                     created_thread=created_now)
             restore = _restore_for(result, wrapper)
+            discarded = (created_now if created_now is not None
+                         and state['thread_id'] != created_now else None)
             decision = wrapper.last_decision
             if decision is None:
                 for item in policy.decisions():
@@ -1521,6 +1673,11 @@ def _cmd_run_owned(root, state, args, text):
                 'note': _run_note(live_status, delivery, wait),
                 'provider_exited': provider_exited,
                 'thread_id': state['thread_id'],
+                'thread_lifecycle': state['thread_lifecycle'],
+                'thread_created': created_now is not None,
+                'discarded_unused_thread_id': discarded,
+                'thread_unavailable': unavailable,
+                'not_sent_reason': wrapper.not_sent_reason,
                 'bridge': live_status, 'effective': 'Unknown',
                 'caution': CAUTION,
             }
@@ -1666,7 +1823,7 @@ def _cmd_recover(root, args):
         conn = cx.OwnedCodexConnection(state['codex_binary'], cwd=str(root))
         try:
             conn.initialize()
-            conn.resume_thread(state['thread_id'])
+            _resume_owned_thread(conn, state)
             live = bx.CodexLeadTransport(
                 SendProbe(conn.rpc), state['thread_id'], model=state['model'],
                 effort=state['baseline_effort'],

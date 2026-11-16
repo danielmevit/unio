@@ -168,11 +168,28 @@ class CodexLeadTransport:
                  buffer_events=DEFAULT_BUFFER_EVENTS,
                  buffer_bytes=DEFAULT_BUFFER_BYTES,
                  supported_efforts=None, max_mappings=MAX_MAPPINGS,
-                 prior_mappings=None):
+                 prior_mappings=None, create_thread=None):
         if not callable(rpc):
             raise Refusal('owned rpc callable required')
         self._rpc = rpc
-        self._thread = _bounded(thread_id, ID_BOUND, 'thread id')
+        # Deferred thread (contract 0532-FIRST-TURN-PERSISTENCE): the native
+        # app-server materializes a thread's rollout only with its first
+        # turn, so a thread created by an earlier, already closed process
+        # can never be resumed. ``thread_id=None`` defers creation to the
+        # one ``create_thread`` call made inside the first real send, after
+        # every local refusal and immediately before that turn/start, in
+        # the same owned process. Without a creator a deferred bridge
+        # refuses every send before any RPC.
+        if thread_id is None:
+            if create_thread is not None and not callable(create_thread):
+                raise Refusal('invalid deferred thread creator')
+            self._thread = None
+            self._create_thread = create_thread
+        else:
+            if create_thread is not None:
+                raise Refusal('thread creator given for an existing thread')
+            self._thread = _bounded(thread_id, ID_BOUND, 'thread id')
+            self._create_thread = None
         self._model = _bounded(model, LABEL_BOUND, 'model')
         self._effort = _bounded(effort, LABEL_BOUND, 'effort')
         if supported_efforts is None:
@@ -365,6 +382,21 @@ class CodexLeadTransport:
             effort = facts['effort']
             if not isinstance(effort, str) or effort not in self._supported_efforts:
                 raise Refusal('unsupported per-turn effort refused before any rpc')
+        if self._thread is None:
+            # Still before any turn/start: a failure here is known
+            # non-delivery. The creator durably records the exact new id
+            # before returning, so no turn/start is ever sent on a thread
+            # whose id is not persisted. Exactly one creation attempt.
+            creator, self._create_thread = self._create_thread, None
+            if creator is None:
+                raise Refusal('owned thread not created; refused before any rpc')
+            try:
+                created = creator()
+            except Exception as exc:
+                raise Refusal('owned thread creation failed before any '
+                              'turn/start: %s' % (exc,)) from exc
+            self._thread = _bounded(created, ID_BOUND,
+                                    'created thread acknowledgement')
         params = {'threadId': self._thread, 'model': self._model, 'effort': effort,
                   'input': [{'type': 'text', 'text': text}]}
         self._inflight = {'turn_id': turn_id, 'generation': generation}
@@ -520,7 +552,7 @@ class CodexLeadTransport:
         params = msg.get('params')
         if not isinstance(params, dict):
             return {'action': 'ignored', 'reason': 'malformed notification'}
-        if params.get('threadId') != self._thread:
+        if self._thread is None or params.get('threadId') != self._thread:
             return {'action': 'ignored', 'reason': 'foreign thread'}
         event = self._extract(method, params)
         if event is None:
