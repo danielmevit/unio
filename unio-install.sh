@@ -28982,9 +28982,12 @@ cat > "$CONF_DIR/lib/ADAPTIVE-LEAD-EFFORT.md" <<'UNIO_ADAPTIVE_LEAD_EFFORT_MD'
 Status: experimental vertical slice for contracts
 `docs/development/contracts/0532-ADAPTIVE-LEAD-EFFORT-V1.md` and the
 owner correction `...-V2.md`, with the final review corrections of
-`0531-ADAPTIVE-REVIEW-CORRECTIONS-V7.md` (0.5.x series, unreleased). `unio
+`0531-ADAPTIVE-REVIEW-CORRECTIONS-V7.md`. First shipped in 0.5.31; 0.5.32
+(candidate, not yet published) fixes the first owned turn, see
+`docs/development/contracts/0532-FIRST-TURN-PERSISTENCE.md`. `unio
 lead-session` is an opt-in managed lead session with adaptive requested
-effort. It is not a replacement dashboard, it never adopts an unmanaged
+effort. The concrete requested effort of each turn (`low` or `xhigh`) is
+the primary fact; the adaptive or manual policy that chose it is secondary. It is not a replacement dashboard, it never adopts an unmanaged
 TUI or connection, and `unio lead` keeps its existing budget-reservation
 meaning. Per V2, this first adaptive interface exposes only AUTO plus
 LOW and XHIGH: no intermediate effort levels are choices in adaptive
@@ -29290,9 +29293,15 @@ contradicting activity) is never restored.
   with a real account group, and no other Codex lead session open on that
   account. Close any existing AI CLI lead session before a separate
   terminal-driven managed trial.
-- Live limitations: no real Codex turn has been run through this slice.
-  Live `turn/interrupt`, approval handling, stale-turn reporting after a
-  killed app-server and the effective model/effort are Unknown.
+- Live evidence (0.5.32 candidate, owner-authorized): three tiny real turns
+  completed through codex-cli 0.169.0 with requested `gpt-6.1-sol` and
+  requested LOW, XHIGH, LOW, with zero bootstrap turns. They span two
+  managed sessions: a test-harness error, not a product failure, stopped
+  the first session after its LOW turn, and the second session ran XHIGH
+  then LOW on one native thread. A full LOW→XHIGH→LOW sequence on one
+  thread was not run live. Live `turn/interrupt`, approval handling,
+  stale-turn reporting after a killed app-server, native persistence after
+  an interrupted first turn and the effective model/effort are Unknown.
 
 ## Honest boundary of this slice
 
@@ -29305,9 +29314,26 @@ Deadline interrupt, recovery and rejected-attempt restoration are exercised the
 same way: the executable fake app-server only progresses a turn while its own
 process lives, so a killed turn stays in progress unless an explicit interrupt
 or the provider's own thread state ends it.
-Real Codex model inference, external network calls, paid credits/billing, and
-cross-workspace/unmanaged visibility remain zero/Unknown during development and
-validation. No real model calls, billing, or credentials are used.
+Automated tests and checks make no real model calls and use no billing or
+credentials. Apart from the three owner-authorized live turns described
+above, real Codex behavior, paid credits/billing and cross-workspace or
+unmanaged visibility remain Unknown.
+
+## Upgrading and rolling back
+
+- State written by 0.5.31 is read as `legacy`. A legacy thread that never
+  ran a turn refuses with the native error; stop it and start a new
+  session.
+- 0.5.31 cannot read control state written by 0.5.32: it fails closed and
+  refuses a new `start`. A safe rollback needs the matching 0.5.31 binary
+  and a backup of the project state taken before the upgrade, restored
+  only while the managed lead is idle and every turn is reconciled.
+  Without such a backup, keep 0.5.32, or use 0.5.31 only in a separate
+  isolated trial project.
+- Do not delete or casually move `coord/lead-effort/`, override STOP, or
+  replace an owner whose ownership or pending turn is unresolved; that
+  state is the history and evidence. There is no automatic migration,
+  downgrade or retry.
 
 ## Components
 
@@ -31352,7 +31378,7 @@ trap 'rm -rf -- "$unio_runtime_stage"' EXIT
 #   PROJECT/coord/    board.md, base, docs/, tasks/, reports/, blockers.md, STOP
 set -euo pipefail
 
-UNIO_VERSION="0.5.31"
+UNIO_VERSION="0.5.32"
 CONF_DIR="${UNIO_CONF_DIR:-$HOME/.config/unio}"
 CONF_FILE="$CONF_DIR/agents.conf"
 TPL_DIR="$CONF_DIR/templates"

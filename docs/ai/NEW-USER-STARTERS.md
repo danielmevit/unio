@@ -105,10 +105,13 @@ remain Unknown unless there is evidence.
 
 ## Optional: adaptive managed lead trial
 
-This is experimental and **unreleased** (Unio 0.5.30 predates it; check
-`unio version` and `unio lead-session --help` on your machine). It is a
-separate trial that you drive from a terminal. It is not something to paste
-into an AI CLI.
+This is experimental. Use Unio 0.5.32 or newer once it is published and
+installed: in 0.5.31 the first `run` fails with `no rollout found` before
+any model turn. Check `unio version` and `unio lead-session --help` on
+your machine. It is a separate trial that you drive from a terminal. It is
+not something to paste into an AI CLI, and it does not take over an
+existing AI CLI chat. A new session starts a new thread: give it a goal
+file, your turn files and a short handoff, not a whole earlier chat.
 
 What it is: `unio lead-session` owns its own Codex app-server connection
 and sends one lead turn each time you run a command. It requests LOW
@@ -171,10 +174,15 @@ What to expect:
 - Rerunning the same `--request-id` with the same file returns the
   recorded result and starts no new turn.
 - A rejected turn keeps your pending effort request and the review wakeup.
+- The shown effort is the concrete requested level of each turn (`low`
+  or `xhigh`); the adaptive or manual policy is secondary. Effective
+  effort stays Unknown.
 - One session allows up to 64 request ids. To continue past a limit, stop
   it and start a new one; the new thread does not carry the old context.
 - Lead turns cannot approve commands or file changes. The turn uses your
   own Codex sandbox and approval settings, and any approval request is
   declined. Unio does not widen them.
 
-Details: [adaptive lead effort](../ADAPTIVE-LEAD-EFFORT.md).
+Details, including safe rollback: [adaptive lead effort](../ADAPTIVE-LEAD-EFFORT.md).
+Rolling back to 0.5.31 needs a pre-upgrade state backup; never delete
+`coord/lead-effort/` to work around it.
