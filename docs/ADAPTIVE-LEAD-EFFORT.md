@@ -340,6 +340,72 @@ credentials. Apart from the three owner-authorized live turns described
 above, real Codex behavior, paid credits/billing and cross-workspace or
 unmanaged visibility remain Unknown.
 
+## Existing-session attach (shared daemon, experimental)
+
+The `attach` subcommands extend the SAME controller to an existing,
+already valuable conversation that lives on the CURRENT RUNNING shared
+Codex app-server daemon, without restarting, forking, replaying or
+summarizing it. They speak only to that daemon through `codex
+app-server proxy`, which is a raw stdio-to-unix-socket byte pump; the
+daemon's control socket is a websocket listener, so the connector
+implements the minimal RFC 6455 client on top of the proxy (HTTP
+`Upgrade` handshake, masked TEXT frames out, unmasked frames in, one
+JSON-RPC message per frame). This exact transport was diagnosed from
+the official 0.169.0 sources and proven live on 2026-11-16 with
+bounded zero-inference probes: an `initialize` handshake plus a
+`thread/loaded/list` metadata call both answered on the running daemon,
+with zero model calls, zero account reads and no thread resumed.
+
+- `unio lead-session attach inspect --thread-id ID` is READ-ONLY: it
+  reports whether the exact requested thread is loaded in the shared
+  daemon, its status (idle, active, notLoaded, systemError), the
+  native requested effort it currently records and whether effort
+  control is tested, available, unavailable or uncertain. It never
+  resumes, starts or creates a thread, and it works during a STOP
+  (it explains the STOP instead of enforcing it).
+- `attach attach --thread-id ID` performs the explicit initial
+  attachment. Native admission runs first (project STOP, off holds,
+  the configured registered lead, account-group mapping, tier slot
+  counting that counts the lead exactly once and the owned lead lease),
+  then the workspace checks refuse a duplicate attachment, a second
+  concurrent attached thread and an unstopped managed owned lead. The
+  thread must be loaded in the daemon, acknowledged with the exact
+  requested id and IDLE; a running turn is never touched, interrupted
+  or relabelled. An optional `--effort low|xhigh` requests the effort
+  for FUTURE turns through one `thread/settings/update` whose params
+  are exactly `threadId` and `effort`.
+- `attach phase` is the explicit cooperating-lead signal:
+  `--kind coordination` requests low, `--kind planning` or `--kind
+  review` request the ceiling, and an explicit `--effort low|xhigh`
+  wins. Native manual changes take precedence: before every apply the
+  freshly read native effort is compared with the record's last
+  acknowledged request and last observation, and a detected native
+  manual change suspends AUTO and refuses to overwrite it — only the
+  explicit `attach auto` re-enables control. A running turn is never
+  relabelled; the request is shown as pending and applied only at a
+  later explicit idle command. The requested level must be advertised
+  by the thread's own native model (`model/list`, read-only); medium
+  and high are never substituted for low or xhigh.
+- `attach status` is a zero-connection local record view: the last
+  requested effort with its acknowledgement (acknowledged, typed
+  unavailable, or preserved uncertain), any pending request, whether
+  AUTO is on or suspended, the last observed native effort and the
+  always-Unknown effective effort.
+- `attach detach` releases the record; the shared daemon and the
+  owner TUI are never touched. Detach also works during a STOP.
+
+Honest boundary: the TUI keeps full manual control and its manual
+turns are not Unio-admitted turns; effective model, service tier and
+effort stay Unknown; no continuous manual-change monitoring exists
+while no command is connected (the comparison happens at each command
+boundary); a typed settings rejection is `unavailable`, a timed-out
+update is `uncertain` and is never retried blindly. Full hands-free
+per-turn phase classification and worker watching remain follow-ups;
+the explicit cooperating-lead phase signal is the automation of this
+slice. Attach state is strictly additive under
+`coord/lead-session-attach/` (0700, records 0600) and never rewrites
+the owned session state under `coord/lead-effort/`.
+
 ## Upgrading and rolling back
 
 - State written by 0.5.31 is read as `legacy`. A legacy thread that never
@@ -370,6 +436,11 @@ unmanaged visibility remain Unknown.
 - `tools/lead-session-codex.py` — owned Codex connection lifecycle and notification
   pumps.
 - `tools/lead-session.py` — the `unio lead-session` CLI controller.
+- `tools/lead-session-attach.py` — existing-session attach connector:
+  the websocket-over-proxy shared-daemon transport, the strictly
+  additive attach record store and the inspect/attach/phase/auto/
+  status/detach controls.
 - Tests: `tests/unio-lead-effort.py`, `tests/unio-lead-session.py`,
   `tests/unio-lead-session-codex.py`, `tests/unio-lead-session-policy.py`,
+  `tests/unio-lead-session-attach.py`,
   `tests/unio-managed-lead.py`, `tests/unio-managed-lead-codex.py`.

@@ -117,7 +117,8 @@ def main():
         check("baseline snapshot has the original 125 commands",
               len(baseline["commands"]) == 125, len(baseline["commands"]))
         check("only explicitly added self-tests extend the gate",
-              [e["id"] for e in added] == ["test-unio-quality-gate"],
+              [e["id"] for e in added] == ["test-unio-quality-gate",
+                                          "test-unio-lead-session-attach"],
               [e["id"] for e in added])
         check("command ids are unique",
               len({e["id"] for e in commands}) == len(commands))

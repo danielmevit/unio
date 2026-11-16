@@ -13,15 +13,16 @@ without pretending a partial run is a full pass.
 
 | Command | Behaviour |
 | --- | --- |
-| `bash tools/quality-check.sh` | Full offline gate: all 126 catalogue commands in canonical order. The first failing command stops the run and its exit code becomes the gate's. Only a complete full run prints `quality-check: all checks passed`. |
+| `bash tools/quality-check.sh` | Full offline gate: all 127 catalogue commands in canonical order. The first failing command stops the run and its exit code becomes the gate's. Only a complete full run prints `quality-check: all checks passed`. |
 | `bash tools/quality-check.sh --list` | Dry listing of the selected (or full) command ids and commands. Runs nothing, installs nothing, creates no fixture, changes no configuration and never claims a pass. |
 | `bash tools/quality-check.sh --lane NAME` | Runs the named lane; repeatable. The union of the selected lanes is deduplicated and kept in canonical order. A successful lane run prints a PARTIAL coverage summary and never the full-gate success string. |
 
 Unknown flags, unknown lanes, duplicate lanes and missing values exit 2
 before any check or fixture is started. The ordered catalogue lives in
 `tools/quality-gate-commands.json`; the dispatcher is `tools/quality-gate.py`.
-The catalogue contains the original 125 commands plus one explicitly added
-runner self-test (`tests/unio-quality-gate.py`, static lane); the tracked
+The catalogue contains the original 125 commands plus two explicitly
+added self-tests (`tests/unio-quality-gate.py`, static lane, and
+`tests/unio-lead-session-attach.py`, managed-lead lane); the tracked
 snapshot `tests/fixtures/quality-gate-baseline.json` pins the original list so
 any coverage or order drift is caught by the self-test. A run made with
 `UNIO_QUALITY_GATE_CATALOGUE` set is always labelled `FIXTURE`/noncanonical
@@ -36,7 +37,7 @@ certify the production catalogue.
 | `install-smoke` | The private installer fixture (fresh install into a temp directory, shellcheck on the installed engine), installer-safety, neutral-startup, thin-config, selftest, role-cards. |
 | `safety-core` | startup-refusal, `unio-quality.sh`, run-identity, loop-brake, limit-wall, lead-budget, work-policy, work-policy-guard, admission-deadline, remote-guard, kill-pid, native-stop, `unio-probes.sh`. |
 | `evidence-review` | required-delivery, handoff-incomplete, task-outcomes, tail, scope-annotations, task-preview, the review family, report-reviews. The heavy lane. |
-| `managed-lead` | codex-worker, worker-effort, managed-session, managed-lead, managed-lead-codex, lead-effort, lead-session, lead-session-codex, lead-session-policy, lead-effort-display, lead-cooldown. |
+| `managed-lead` | codex-worker, worker-effort, managed-session, managed-lead, managed-lead-codex, lead-effort, lead-session, lead-session-codex, lead-session-policy, lead-effort-display, lead-cooldown, lead-session-attach. |
 | `adapters` | opencode, prompt-transport, command-audit, cli-updates, perplexity, vibe, copilot, antigravity, adapters-install, route-profiles, adapter-outcome, adapter-budget. |
 | `observation` | watch, orphan-observation, capacity (bridge and unio), readiness, fleet, model-experience, provider-capacity (bridge and unio). |
 | `bridge` | The bridge unit and API tests, both `node --check` checks, browser-launcher, dashboard. |

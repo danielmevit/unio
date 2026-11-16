@@ -1427,6 +1427,18 @@
         "static"
       ],
       "added_self_test": true
+    },
+    {
+      "id": "test-unio-lead-session-attach",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-lead-session-attach.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ],
+      "added_self_test": true
     }
   ]
 }

@@ -31,6 +31,17 @@ Guarantees kept by this controller:
   nothing is ever sent automatically, so zero model calls happen while
   the lead waits for workers, and status/effort/worker/stop/output open
   no owned connection at all;
+
+- the `attach` subcommands are a SEPARATE existing-session path
+  (`tools/lead-session-attach.py`): they speak to the CURRENT RUNNING
+  shared Codex daemon through `codex app-server proxy` (the websocket
+  control transport of the app-server daemon), inspect one exact
+  already-loaded thread read-only and control ONLY its future-turn
+  effort through `thread/settings/update`. They never start, resume,
+  fork, interrupt or sign anything, own no lifecycle beyond their own
+  proxy child, keep strictly additive state under
+  `coord/lead-session-attach/` and change nothing about the owned
+  `start`/`run` behaviour above;
 - a `run` keeps its owned app-server alive until the turn's terminal
   event or a bounded `--turn-wait` deadline (default 3600s; 0 refuses
   before launch because the process cannot outlive the command). At the
@@ -160,6 +171,8 @@ bx = _load_module('unio_managed_lead_codex', 'managed-lead-codex.py')
 pe = _load_module('unio_lead_effort', 'lead-effort.py')
 cx = _load_module('unio_lead_session_codex', 'lead-session-codex.py')
 lp = _load_module('unio_lead_session_policy', 'lead-session-policy.py')
+at = _load_module('unio_lead_session_attach', 'lead-session-attach.py')
+at.bind(ml, pe, lp, cx)
 
 
 def _now():
@@ -2125,6 +2138,87 @@ def build_parser():
     output.add_argument('--limit', type=int, default=ml.DEFAULT_LIMIT)
     output.add_argument('--session', default=None)
     output.add_argument('--json', action='store_true')
+
+    def _attach_transport_flags(target):
+        target.add_argument('--codex-binary', default='codex',
+                            help='codex binary whose app-server proxy is '
+                                 'spawned (default: codex on PATH)')
+        target.add_argument('--sock', default=None,
+                            help='explicit control socket path (default: '
+                                 'the codex home control socket)')
+        target.add_argument('--rpc-timeout', type=float, default=None,
+                            help='bounded per-RPC timeout in seconds '
+                                 '0.5..60 (default 8)')
+
+    attach = sub.add_parser(
+        'attach', help='existing-session attach: read-only inspect plus '
+                       'explicit attach/status/phase/auto/detach control of '
+                       'the CURRENT RUNNING shared Codex daemon through its '
+                       'app-server proxy (experimental; nothing is resumed, '
+                       'started, forked or signalled)')
+    attach_sub = attach.add_subparsers(dest='control', required=True)
+
+    attach_inspect = attach_sub.add_parser(
+        'inspect', help='read-only: is the exact requested thread loaded, '
+                        'its status and control capability; never resumes, '
+                        'starts or creates a thread')
+    attach_inspect.add_argument('--thread-id', required=True)
+    _attach_transport_flags(attach_inspect)
+    attach_inspect.add_argument('--json', action='store_true')
+
+    attach_attach = attach_sub.add_parser(
+        'attach', help='explicit initial attach to one exact already-loaded '
+                       'IDLE thread on the shared daemon (admission-checked; '
+                       'an optional requested effort applies to future '
+                       'turns only)')
+    attach_attach.add_argument('--thread-id', required=True)
+    attach_attach.add_argument('--ceiling', default=pe.DEFAULT_CEILING,
+                               help='planning/review ceiling (low or xhigh; '
+                                    'default: xhigh)')
+    attach_attach.add_argument('--effort', default=None,
+                              help='optional requested effort at attach '
+                                   '(low or xhigh, future turns only)')
+    attach_attach.add_argument('--reason', default=None)
+    attach_attach.add_argument('--budget-label', default=None,
+                               help='optional explicit budget group label '
+                                    '(must match policy mapping if given)')
+    _attach_transport_flags(attach_attach)
+    attach_attach.add_argument('--json', action='store_true')
+
+    attach_phase = attach_sub.add_parser(
+        'phase', help='explicit cooperating-lead phase signal: request the '
+                      'effort for future turns of the attached thread (low '
+                      'or xhigh; kind coordination is low, planning/review '
+                      'are the ceiling; a running turn is never relabelled)')
+    attach_phase.add_argument('--effort', default=None,
+                              help='low or xhigh (explicit; wins over kind)')
+    attach_phase.add_argument('--kind', choices=pe.KINDS, default=None,
+                              help='coordination, planning or review; '
+                                   'default: coordination')
+    attach_phase.add_argument('--reason', default=None)
+    attach_phase.add_argument('--thread-id', default=None,
+                              help='required when several threads are '
+                                   'attached')
+    _attach_transport_flags(attach_phase)
+    attach_phase.add_argument('--json', action='store_true')
+
+    attach_auto = attach_sub.add_parser(
+        'auto', help='explicit re-enable of AUTO control after a suspend '
+                     '(local record operation; no proxy)')
+    attach_auto.add_argument('--reason', default=None)
+    attach_auto.add_argument('--thread-id', default=None)
+    attach_auto.add_argument('--json', action='store_true')
+
+    attach_status = attach_sub.add_parser(
+        'status', help='local-only attach record view; zero daemon calls')
+    attach_status.add_argument('--thread-id', default=None)
+    attach_status.add_argument('--json', action='store_true')
+
+    attach_detach = attach_sub.add_parser(
+        'detach', help='release the attach record; the shared daemon and '
+                       'the owner TUI are never touched')
+    attach_detach.add_argument('--thread-id', default=None)
+    attach_detach.add_argument('--json', action='store_true')
     return parser
 
 
@@ -2168,12 +2262,15 @@ def main(argv=None):
         return _cmd_stop(root, args)
     if args.command == 'output':
         return _cmd_output(root, args)
+    if args.command == 'attach':
+        return at.run(root, args)
     raise Refusal('unknown command: ' + str(args.command))
 
 
 if __name__ == '__main__':
     try:
         sys.exit(main())
-    except (Refusal, ml.Refusal, pe.Refusal, bx.Refusal, cx.Refusal, lp.Refusal) as exc:
+    except (Refusal, ml.Refusal, pe.Refusal, bx.Refusal, cx.Refusal, lp.Refusal,
+            at.Refusal) as exc:
         print('unio lead-session: ' + str(exc), file=sys.stderr)
         sys.exit(1)
