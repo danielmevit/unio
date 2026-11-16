@@ -66,6 +66,7 @@ STATE_PATH = Path(__STATE__)
 WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 LOADED_DEFAULT = __LOADED__
 MODEL = __MODEL__
+FOREIGN_ID = __FOREIGN__
 IDLE_DEADLINE = 120.0
 
 
@@ -172,6 +173,7 @@ def reply(doc):
 
 
 def main():
+    log('argv', argv=sys.argv)
     deadline = time.monotonic() + IDLE_DEADLINE
     head = b''
     while b'\\r\\n\\r\\n' not in head:
@@ -259,8 +261,12 @@ def main():
             effort = behavior().get('read_effort')
             if effort is None:
                 effort = state.get('efforts', {}).get(thread_id, 'medium')
+            read_id = behavior().get('read_foreign_id', thread_id)
+            if (behavior().get('read_foreign_id_after_settings')
+                    and thread_id in state.get('efforts', {})):
+                read_id = FOREIGN_ID
             reply({'id': request_id, 'result': {'thread': {
-                'id': behavior().get('read_foreign_id', thread_id),
+                'id': read_id,
                 'status': {'type': behavior().get('read_status', 'idle')},
                 'reasoningEffort': effort,
                 'model': behavior().get('read_model', MODEL),
@@ -338,6 +344,7 @@ class Workspace:
                   .replace('__STATE__', json.dumps(str(self.state_path)))
                   .replace('__LOADED__',
                            json.dumps([THREAD, OTHER]))
+                  .replace('__FOREIGN__', json.dumps(FOREIGN))
                   .replace('__MODEL__', json.dumps(MODEL)))
         self.binary.write_text(script, encoding='utf-8')
         os.chmod(self.binary, 0o700)
@@ -1186,6 +1193,277 @@ def run_suite(base):
     print('  ok    status with no record is an honest local answer',
           flush=True)
 
+    print('initial attach persists the FRESH post-apply observation',
+          flush=True)
+    obs_ws = Workspace(base)
+    payload, _, code = obs_ws.attach(THREAD, '--effort', 'xhigh')
+    assert code == 0
+    record = obs_ws.record()
+    assert record['effort']['requested'] == 'xhigh'
+    assert record['effort']['ack'] == 'acknowledged'
+    # dd570c0 saved the record before observing, so disk kept the stale
+    # pre-apply anchor 'medium' while the requested level was xhigh.
+    assert record['native']['effort'] == 'xhigh'
+    # the fresh anchor keeps later manual-change detection honest: a
+    # native return to the old level is now CAUGHT as a manual change.
+    obs_ws.behavior({'read_effort': 'medium'})
+    message = obs_ws.refuses_phase('--effort', 'xhigh', '--rpc-timeout',
+                                   '3', '--json')
+    assert 'native manual change detected' in message
+    after = obs_ws.record()
+    assert after['auto'] is False
+    obs_ws.behavior({})
+    print('  ok    the post-apply native anchor is observed BEFORE the '
+          'record is saved, so a later native manual change back to the '
+          'old level is detected instead of missed', flush=True)
+
+    honest_ws = Workspace(base)
+    honest_ws.behavior({'read_foreign_id_after_settings': True})
+    payload, _, code = honest_ws.attach(THREAD, '--effort', 'xhigh')
+    assert code == 0 and payload['requested']['ack'] == 'acknowledged'
+    record = honest_ws.record()
+    assert record['effort']['requested'] == 'xhigh'
+    assert record['effort']['ack'] == 'acknowledged'
+    # the post-apply reread failed: uncertainty stays honest - an
+    # explicitly Unknown anchor (never the knowingly stale pre-apply
+    # 'medium') and the acknowledged delivery fact itself unchanged.
+    assert record['native']['effort'] is None
+    assert record['native']['updated_at']
+    honest_ws.behavior({})
+    print('  ok    a failed post-apply reread persists an explicitly '
+          'Unknown anchor instead of a knowingly stale pre-apply '
+          'effort; the acknowledged delivery fact never changes', flush=True)
+
+    print('a queued pending choice is consumed, never discarded',
+          flush=True)
+    pend_ws = Workspace(base)
+    pend_ws.attach()
+    pend_ws.behavior({'read_status': 'active'})
+    payload, _, code = pend_ws.phase('--effort', 'xhigh', '--rpc-timeout',
+                                     '3', '--json')
+    assert code == 0 and payload['active_turn'] is True
+    assert payload['pending']['effort'] == 'xhigh'
+    # no explicit new choice at a STILL-active boundary keeps the queue
+    # (dd570c0 overwrote it with the coordination default low).
+    payload, _, code = pend_ws.phase('--rpc-timeout', '3', '--json')
+    assert code == 0 and payload['pending']['effort'] == 'xhigh'
+    record = pend_ws.record()
+    assert record['pending']['effort'] == 'xhigh'
+    assert record['effort']['requested'] is None
+    # the queued choice is consumed at the idle boundary instead of the
+    # coordination default low being applied (the dd570c0 defect).
+    pend_ws.behavior({})
+    before = len(pend_ws.wire())
+    payload, _, code = pend_ws.phase('--rpc-timeout', '3', '--json')
+    assert code == 0
+    calls = pend_ws.settings_calls(pend_ws.wire(after=before))
+    assert calls and calls[-1]['params'] == {'threadId': THREAD,
+                                             'effort': 'xhigh'}
+    assert payload['requested']['effort'] == 'xhigh'
+    assert payload['requested']['ack'] == 'acknowledged'
+    assert payload['pending'] is None
+    record = pend_ws.record()
+    assert record['effort']['requested'] == 'xhigh'
+    assert record['pending'] is None
+    # an explicit new choice intentionally wins over the queued one
+    pend_ws.behavior({'read_status': 'active'})
+    payload, _, code = pend_ws.phase('--effort', 'xhigh', '--rpc-timeout',
+                                     '3', '--json')
+    assert code == 0 and payload['pending']['effort'] == 'xhigh'
+    pend_ws.behavior({})
+    payload, _, code = pend_ws.phase('--effort', 'low', '--rpc-timeout',
+                                     '3', '--json')
+    assert code == 0 and payload['requested']['effort'] == 'low'
+    assert payload['pending'] is None
+    pend_ws.behavior({'read_status': 'active'})
+    payload, _, code = pend_ws.phase('--effort', 'xhigh', '--rpc-timeout',
+                                     '3', '--json')
+    assert code == 0 and payload['pending']['effort'] == 'xhigh'
+    pend_ws.behavior({})
+    payload, _, code = pend_ws.phase('--kind', 'coordination',
+                                     '--rpc-timeout', '3', '--json')
+    assert code == 0 and payload['requested']['effort'] == 'low'
+    assert payload['pending'] is None
+    print('  ok    a queued pending request applies at a later explicit '
+          'idle phase command with NO explicit choice (an explicit '
+          '--effort or --kind intentionally wins), stays queued at '
+          'active boundaries and stays separate from the current '
+          'requested level', flush=True)
+
+    # the consumed pending choice revalidates the persisted ceiling at
+    # the apply boundary (here a record tampered above its ceiling).
+    ceilpend_ws = Workspace(base)
+    ceilpend_ws.attach(THREAD, '--ceiling', 'low')
+    doc = at._load_record(Path(ceilpend_ws.root), THREAD)
+    doc['pending'] = {'effort': 'xhigh',
+                      'reason': 'tampered queued request above ceiling',
+                      'updated_at': at._now()}
+    at._save_record(Path(ceilpend_ws.root), doc)
+    before = len(ceilpend_ws.wire())
+    message = ceilpend_ws.refuses_phase('--rpc-timeout', '3', '--json')
+    assert 'exceeds the configured ceiling low' in message
+    assert ceilpend_ws.settings_calls(ceilpend_ws.wire(after=before)) == []
+    assert ceilpend_ws.record()['pending']['effort'] == 'xhigh'
+    print('  ok    consuming the queue revalidates the persisted '
+          'ceiling: a queued level above the ceiling refuses with zero '
+          'settings calls and the queue is kept', flush=True)
+
+    # a queued AUTOMATIC choice is never consumed while AUTO is
+    # suspended (manual pin or a detected native manual change).
+    susp_ws = Workspace(base)
+    susp_ws.attach()
+    susp_ws.behavior({'read_status': 'active'})
+    payload, _, code = susp_ws.phase('--effort', 'xhigh', '--rpc-timeout',
+                                     '3', '--json')
+    assert code == 0 and payload['pending']['effort'] == 'xhigh'
+    susp_ws.behavior({'read_effort': 'low'})
+    message = susp_ws.refuses_phase('--rpc-timeout', '3', '--json')
+    assert 'native manual change detected' in message
+    before = len(susp_ws.wire())
+    message = susp_ws.refuses_phase('--rpc-timeout', '3', '--json')
+    assert 'stays suspended' in message
+    assert susp_ws.settings_calls(susp_ws.wire(after=before)) == []
+    record = susp_ws.record()
+    assert record['auto'] is False
+    assert record['pending']['effort'] == 'xhigh'
+    print('  ok    a queued automatic choice is never consumed while '
+          'AUTO is suspended by a native manual change: no setter and '
+          'no pending automatic write until the explicit re-enable',
+          flush=True)
+
+    print('read-only commands never create or change attach state',
+          flush=True)
+    ro_ws = Workspace(base)
+    absent = ro_ws.root / 'coord' / 'lead-session-attach'
+    payload, _, code = ro_ws.inspect()
+    assert code == 0 and payload['loaded'] is True
+    assert not absent.exists()
+    payload, _, code = ro_ws.status()
+    assert code == 0 and payload['attached'] is False
+    assert not absent.exists()
+    ro_ws.set_stop(True)
+    message = refuses(ro_ws.argv('attach', '--thread-id', THREAD,
+                                 '--rpc-timeout', '3', '--json'))
+    assert 'STOP' in message
+    assert not absent.exists()
+    payload, _, code = ro_ws.status()
+    assert code == 0 and payload['stop_active'] is True
+    payload, _, code = ro_ws.inspect()
+    assert code == 0 and payload['stop_active'] is True
+    assert not absent.exists()
+    ro_ws.set_stop(False)
+    message = ro_ws.refuses_phase('--effort', 'xhigh', '--rpc-timeout',
+                                  '3', '--json')
+    assert 'no active attach record' in message
+    message = refuses(['--project', str(ro_ws.root), 'attach', 'auto',
+                       '--json'])
+    assert 'no active attach record' in message
+    message = refuses(['--project', str(ro_ws.root), 'attach', 'detach',
+                       '--json'])
+    assert 'no active attach record' in message
+    assert not absent.exists()
+    print('  ok    inspect, status and pre-record refusals keep an '
+          'absent attach store absent (including under an active STOP)',
+          flush=True)
+
+    ro_ws.attach()
+    directory = ro_ws.root / 'coord' / 'lead-session-attach'
+    assert directory.is_dir()
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    dir_meta = (stat.S_IMODE(directory.stat().st_mode),
+                directory.stat().st_ctime_ns, directory.stat().st_mtime_ns)
+    entry_meta = {path.name: (stat.S_IMODE(path.stat().st_mode),
+                              path.stat().st_ctime_ns,
+                              path.stat().st_mtime_ns)
+                  for path in directory.iterdir()}
+    payload, _, code = ro_ws.status()
+    assert code == 0
+    payload, _, code = ro_ws.inspect()
+    assert code == 0
+    assert (stat.S_IMODE(directory.stat().st_mode),
+            directory.stat().st_ctime_ns,
+            directory.stat().st_mtime_ns) == dir_meta
+    for path in directory.iterdir():
+        assert entry_meta[path.name] == (stat.S_IMODE(path.stat().st_mode),
+                                         path.stat().st_ctime_ns,
+                                         path.stat().st_mtime_ns)
+    print('  ok    existing attach state metadata and modes are '
+          'unchanged by status and inspect (no chmod, no rewrite)',
+          flush=True)
+
+    unsafe_ro = Workspace(base)
+    unsafe_ro.attach()
+    store = unsafe_ro.root / 'coord' / 'lead-session-attach'
+    os.chmod(store, 0o755)
+    message = refuses(['--project', str(unsafe_ro.root), 'attach',
+                       'status', '--json'])
+    assert 'unsafe attach state directory' in message
+    os.chmod(store, 0o700)
+    print('  ok    a non-private existing store refuses read commands '
+          'instead of silently repairing it (fail closed)', flush=True)
+
+    print('the persisted transport selection governs later control',
+          flush=True)
+    end_ws = Workspace(base)
+    saved_sock = end_ws.root / 'fake-control.sock'
+    payload, _, code = end_ws.attach(THREAD, '--sock', str(saved_sock))
+    assert code == 0
+    record = end_ws.record()
+    assert record['codex_binary'] == str(end_ws.binary)
+    assert record['sock'] == str(saved_sock)
+    # omitted later flags CANNOT run the default real codex: the saved
+    # endpoint (fake) is re-used (dd570c0 ignored the saved selection).
+    before = len(end_ws.wire())
+    payload, _, code = invoke(['--project', str(end_ws.root), 'attach',
+                               'phase', '--effort', 'xhigh',
+                               '--rpc-timeout', '3', '--json'])
+    assert code == 0
+    calls = end_ws.settings_calls(end_ws.wire(after=before))
+    assert calls and calls[-1]['params'] == {'threadId': THREAD,
+                                             'effort': 'xhigh'}
+    argvs = [rec for rec in end_ws.wire(after=before)
+             if rec.get('event') == 'argv']
+    assert argvs and argvs[0]['argv'] == [str(end_ws.binary),
+                                          'app-server', 'proxy',
+                                          '--sock', str(saved_sock)]
+    # an explicit conflicting endpoint refuses with ZERO setter calls
+    # anywhere: no thread/settings/update runs on either endpoint.
+    alt_ws = Workspace(base)
+    before_ws = len(end_ws.wire())
+    message = refuses(['--project', str(end_ws.root), 'attach', 'phase',
+                       '--effort', 'low', '--codex-binary',
+                       str(alt_ws.binary), '--rpc-timeout', '3', '--json'])
+    assert 'conflicts with the transport selection persisted' in message
+    assert 'detach' in message
+    message = refuses(['--project', str(end_ws.root), 'attach', 'phase',
+                       '--effort', 'low', '--sock',
+                       str(alt_ws.root / 'other.sock'),
+                       '--rpc-timeout', '3', '--json'])
+    assert 'conflicts with the transport selection persisted' in message
+    assert end_ws.settings_calls(end_ws.wire(after=before_ws)) == []
+    assert alt_ws.wire() == []
+    # matching repeated flags stay allowed, and inspect keeps free
+    # transport flags (read-only exploration is not record-bound).
+    payload, _, code = invoke(['--project', str(end_ws.root), 'attach',
+                               'phase', '--effort', 'low',
+                               '--codex-binary', str(end_ws.binary),
+                               '--sock', str(saved_sock),
+                               '--rpc-timeout', '3', '--json'])
+    assert code == 0
+    before_alt = len(alt_ws.wire())
+    payload, _, code = invoke(['--project', str(end_ws.root), 'attach',
+                               'inspect', '--thread-id', OTHER,
+                               '--codex-binary', str(alt_ws.binary),
+                               '--rpc-timeout', '3', '--json'])
+    assert code == 0 and payload['thread_id'] == OTHER
+    assert alt_ws.wire(after=before_alt)
+    print('  ok    later control re-uses the endpoint saved at attach '
+          '(omitted flags can never run a default real codex or a '
+          'different implicit daemon), an explicit conflicting endpoint '
+          'refuses with zero settings calls until the owner detaches '
+          'and re-attaches, matching repeated flags stay allowed and '
+          'inspect keeps free transport flags', flush=True)
+
     print('human and JSON displays', flush=True)
     human_ws = Workspace(base)
     _, text, code = invoke(['--project', str(human_ws.root), 'attach',
@@ -1214,7 +1492,9 @@ def run_suite(base):
                  'model/list', 'thread/settings/update'}
     for space in (ws, fresh, adm, owner_ws, reject_ws, silent_ws,
                   human_ws, empty_ws, none_ws, pin_ws, ceil_ws, adv_ws,
-                  jr_ws, crash_ws, dangling_ws):
+                  jr_ws, crash_ws, dangling_ws, obs_ws, honest_ws,
+                  pend_ws, ceilpend_ws, susp_ws, ro_ws, unsafe_ro,
+                  end_ws, alt_ws):
         names = space.rpc_names(space.wire())
         assert not (set(names) & forbidden), set(names) & forbidden
         assert set(names) <= permitted, set(names) - permitted

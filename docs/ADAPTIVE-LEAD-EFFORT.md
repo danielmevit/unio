@@ -76,11 +76,42 @@ unio lead-session effort show|auto|manual low|xhigh|request low|xhigh [--reason 
 unio lead-session worker register ID|wait|terminal ID [--json]
 unio lead-session stop [--json]
 unio lead-session output [--after N] [--limit N] [--json]
-unio lead-session attach inspect|attach|phase|manual|auto|status|detach
-                        [--thread-id ID] [--effort low|xhigh]
-                        [--kind coordination|planning|review]
-                        [--ceiling low|xhigh] [--reason R] [--json]
+# existing-session attach (experimental). NOTE the nesting: the command
+# is `lead-session attach`; its `attach` subcommand performs the INITIAL
+# attachment to an already-running shared-daemon thread, so
+# `unio lead-session attach attach ...` is "attach to the existing
+# session now" (the double word is deliberate, not a typo).
+unio lead-session attach inspect --thread-id ID
+                      [--codex-binary BIN] [--sock PATH]
+                      [--rpc-timeout SECONDS] [--json]
+unio lead-session attach attach --thread-id ID
+                      [--ceiling low|xhigh] [--effort low|xhigh]
+                      [--reason R] [--budget-label LABEL]
+                      [--codex-binary BIN] [--sock PATH]
+                      [--rpc-timeout SECONDS] [--json]
+unio lead-session attach phase [--thread-id ID]
+                      [--effort low|xhigh]
+                      [--kind coordination|planning|review] [--reason R]
+                      [--codex-binary BIN] [--sock PATH]
+                      [--rpc-timeout SECONDS] [--json]
+unio lead-session attach manual --effort low|xhigh [--thread-id ID]
+                      [--reason R] [--codex-binary BIN] [--sock PATH]
+                      [--rpc-timeout SECONDS] [--json]
+unio lead-session attach auto [--thread-id ID] [--reason R] [--json]
+unio lead-session attach status [--thread-id ID] [--json]
+unio lead-session attach detach [--thread-id ID] [--json]
 ```
+
+Attach subcommand defaults and flag notes: the transport flags
+(`--codex-binary`, default the `codex` found on PATH; `--sock`, default
+the codex home control socket; `--rpc-timeout`, default 8 seconds,
+range 0.5..60) select the shared-daemon control transport;
+`attach attach --ceiling` accepts `low` or `xhigh` and defaults to
+`xhigh`; `attach attach --effort` is optional (an attach without it
+changes no settings); `attach manual --effort` is required. The
+`--thread-id` flag is optional for every control after the initial
+attach (the one active record is selected automatically) and required
+for `inspect` and `attach attach`.
 
 - `start` requires an explicit owner goal file (bounded, private, regular,
   UTF-8, at most 8 KiB) and model. `--ceiling` bounds planning/review; in
@@ -366,7 +397,10 @@ with zero model calls, zero account reads and no thread resumed.
   native requested effort it currently records and whether effort
   control is tested, available, unavailable or uncertain. It never
   resumes, starts or creates a thread, and it works during a STOP
-  (it explains the STOP instead of enforcing it).
+  (it explains the STOP instead of enforcing it). It is read-only on
+  disk too: `inspect` (and `status`) never create, chmod or write
+  `coord/lead-session-attach/` — an absent attach store is reported
+  honestly as "no record" and stays absent.
 - `attach attach --thread-id ID` performs the explicit initial
   attachment. Native admission runs first (project STOP, off holds,
   the configured registered lead, account-group mapping, tier slot
@@ -375,12 +409,21 @@ with zero model calls, zero account reads and no thread resumed.
   concurrent attached thread and an unstopped managed owned lead. The
   thread must be loaded in the daemon, acknowledged with the exact
   requested id and IDLE; a running turn is never touched, interrupted
-  or relabelled. An optional `--effort low|xhigh` requests the effort
-  for FUTURE turns through one `thread/settings/update` whose params
-  are exactly `threadId` and `effort`: the requested level must not
-  exceed the requested `--ceiling` and must be advertised by the
+  or relabelled. `--ceiling low|xhigh` (default `xhigh`, the top of
+  this first interface) is the promised automatic bound persisted with
+  the attach record. An optional `--effort low|xhigh` requests the
+  effort for FUTURE turns through one `thread/settings/update` whose
+  params are exactly `threadId` and `effort`: the requested level must
+  not exceed the requested `--ceiling` and must be advertised by the
   thread's own native model (`model/list`, read-only) or the attach
-  refuses with no record and no settings call.
+  refuses with no record and no settings call. When the optional
+  effort IS acknowledged, the record persists the FRESH post-apply
+  native anchor (a failed post-apply reread persists an explicitly
+  Unknown anchor, never the stale pre-apply value), so a later native
+  manual change back to the pre-attach level is still detected. The
+  transport selection of this command (`--codex-binary`, `--sock`) is
+  persisted with the record and governs every later phase/manual
+  control (see the transport paragraph below).
 - `attach phase` is the explicit cooperating-lead signal:
   `--kind coordination` requests low, `--kind planning` or `--kind
   review` request EXACTLY the persisted ceiling recorded at attach
@@ -395,8 +438,17 @@ with zero model calls, zero account reads and no thread resumed.
   later `phase` signal (kind or explicit) refuses with NO setter and
   NO pending automatic write until the owner explicitly re-enables
   with `attach auto`. A running turn is never relabelled; the request
-  is shown as pending and applied only at a later explicit idle
-  command. The requested level must be advertised by the thread's own
+  is shown as pending and applies at the next explicit idle `phase`
+  command. When THAT later command carries no explicit `--kind` and no
+  explicit `--effort`, the queued pending choice itself is consumed and
+  applied (an explicit new choice intentionally wins, and a queued
+  choice is never silently replaced by the coordination default or
+  dropped at a still-active boundary); the consume revalidates the
+  persisted ceiling, the manual pin/suspension state, admission (STOP
+  and holds) and the thread's model advertisement at the apply
+  boundary, and the queued level stays separate from the current
+  requested level until it applies. The requested level must be
+  advertised by the thread's own
   native model (`model/list`, read-only); medium and high are never
   substituted for low or xhigh.
 - `attach manual --effort low|xhigh` is the explicit owner manual
@@ -423,7 +475,10 @@ with zero model calls, zero account reads and no thread resumed.
   pin, whether AUTO is on or suspended, the last observed native
   effort and the always-Unknown effective effort. The concrete
   requested level comes first, the AUTO control state second, and the
-  effective provider effort is always Unknown.
+  effective provider effort is always Unknown. Like `inspect`, it is
+  read-only on disk: it never creates, chmods or writes the attach
+  store, reports an absent store honestly and refuses instead of
+  silently repairing a present but unsafe (non-private) store.
 - `attach detach` releases the record; the shared daemon and the
   owner TUI are never touched. Detach also works during a STOP.
 
@@ -441,6 +496,39 @@ rewritten, and a full journal refuses new attempts instead of dropping
 history. A dangling intent (an interrupted run whose result receipt
 never landed) keeps its Unknown outcome and blocks further updates
 until the owner resolves it explicitly; no completion is invented.
+
+Transport selection is persisted and honoured. The codex binary and
+control socket used at the initial `attach attach` are saved with the
+record: every later record-bound control (`phase`, `manual`) re-uses
+that exact selection by default, so omitted later flags cannot silently
+talk to a DIFFERENT local daemon or spawn a default `codex` from PATH
+when the attachment was made through another binary or socket. An
+endpoint that explicitly conflicts with the persisted selection refuses
+with zero settings calls until the owner deliberately detaches and
+re-attaches; repeating the SAME flags as the attachment stays allowed.
+Two honest qualifications: the saved selection is a NAME preserved only
+by convention — an implicit `codex` PATH default is resolved again at
+every command (the native CLI keeps updating normally on PATH; there is
+no binary-hash, version or allowlist check, and continuity of an
+implicit default across installations cannot be established), and the
+connector NEVER starts a daemon, fallback server or extra history — the
+record-bound control only spawns its own `codex app-server proxy` child
+to the persisted endpoint. `inspect` keeps free transport flags: it may
+look at another endpoint on purpose (it is the pre-attach exploration
+command).
+
+Store purity and this slice's limits. Only mutating writes (attach,
+phase, manual, auto, detach) create or change
+`coord/lead-session-attach/` (private 0700, records and attempt journal
+0600, fail closed on unsafe paths and recording failures);
+`inspect`/`status` and every pre-record refusal leave the filesystem
+exactly as they found it, and an absent store stays absent under a
+STOP. This slice remains the FUTURE-TURN, explicit-phase slice: control
+happens only at explicit `attach phase`/`manual` command boundaries and
+applies only to FUTURE turns of the attached thread — it is distinct
+from a full AUTO scheduler (no continuous monitoring, no per-turn phase
+classification) and from mid-turn control (a running turn is never
+relabelled, interrupted or steered).
 
 Honest boundary: the TUI keeps full manual control and its manual
 turns are not Unio-admitted turns; effective model, service tier and

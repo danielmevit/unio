@@ -104,6 +104,70 @@ resolution. Record schema is additively versioned (v1 prototype records
 load unchanged and gain neutral defaults on their next save); owned legacy
 records are untouched.
 
+Second correction: four fake-reproduced existing-session control defects
+(bounded fix, same slice; prior guarantees unchanged; every new check was
+proven to FAIL on the previous dd570c0 code for the reproduced cause):
+(1) the initial `attach attach --effort` now persists the FRESH post-apply
+native anchor — the record is saved AFTER the post-apply reread, exactly like
+phase/manual do (previously the disk anchor kept the stale pre-apply value, so
+a later native manual change back to the pre-attach level could be missed);
+a failed post-apply reread persists an explicitly Unknown anchor instead of a
+knowingly stale pre-apply effort, the acknowledged delivery fact never
+changes, the immutable original attempt receipts stay untouched, and
+subsequent manual changes are re-checked against the fresh anchor. (2) a
+queued pending choice (recorded while the turn was running) is now CONSUMED
+by the later explicit idle `phase` command when it carries no explicit
+`--kind`/`--effort` — an explicit new choice intentionally wins, the queue is
+never silently replaced by the coordination default (previously the idle
+default low applied and cleared the queue) and never dropped at a
+still-active boundary; the consume revalidates the persisted ceiling, manual
+pin/suspension, admission and the thread's model advertisement at the apply
+boundary, and pending stays separate from the current requested level.
+(3) read-only local behaviour is now actually read-only: `inspect`/`status`
+and every pre-record refusal never create, chmod or write
+`coord/lead-session-attach/` — absent state stays absent (also under an active
+STOP), existing metadata and modes are unchanged by read commands, and a
+present but non-private store refuses reads instead of silently repairing
+them; only mutating writes create the private 0700/0600 store, failing closed
+on unsafe paths and recording failures. (4) the transport selection
+(`codex_binary`, `sock`) persisted at attach is now HONOURED by every later
+record-bound control (`phase`, `manual`): omitted flags re-use the attached
+endpoint instead of silently defaulting to a possibly different local
+daemon/client, and an explicit conflicting endpoint refuses with zero setter
+calls until the deliberate detach/re-attach; no daemon, fork or fallback
+service is ever started and no history is touched; the saved selection is a
+name, never an identity proof — the implicit PATH `codex` default is resolved
+per command, the native CLI keeps updating normally (no binary-hash or
+version allowlist), and continuity of an implicit default across
+installations cannot be established (qualified in the docs). `inspect` keeps
+free transport flags as the pre-attach exploration command.
+
+Documentation in the same component follows the CopilotFree AutoBalance
+CURRENTFLAGS text audit (two independent documentation observations): the CLI
+synopsis now lists every attach subcommand with usable command forms, actual
+accepted flags and defaults (including `attach attach --ceiling` default
+xhigh) and explains the nested `attach attach` initial-attachment name
+instead of hiding it, and the future-turn explicit-phase slice stays
+documented as distinct from full AUTO scheduling and mid-turn control.
+
+Regression coverage grows inside the registered suite
+(`tests/unio-lead-session-attach.py`, quality-gate entry
+`test-unio-lead-session-attach`): fresh fake-proxy checks cover the fresh
+post-apply anchor and the subsequent manual-change detection, honest
+Unknown anchoring on a failed post-apply reread, queue consumption with
+explicit-wins, ceiling revalidation and suspended blocking, absent-store
+purity and unchanged metadata/modes for `inspect`/`status` (including STOP),
+and the persisted transport selection end to end — the fake proxy records
+its own argv, omitted later flags provably cannot run a default real `codex`,
+and an explicit conflicting control makes zero `thread/settings/update` calls
+on both endpoints. The checks fail on dd570c0 for exactly those causes.
+Validation was fake-only: zero real Codex/test-provider calls, zero real
+model calls and zero billing inside this correction's validation (the worker
+assignment itself is ONE Mistral implementer invocation, stated truthfully in
+the delivery report); the installer embedding was regenerated for the
+connector, CLI and doc changes, and the quality-gate catalogue, baselines and
+lanes are unchanged.
+
 Follow-ups (not claimed): continuous manual-change monitoring while
 disconnected, full hands-free per-turn phase classification, worker watching,
 and consented live probes of `thread/settings/update` acceptance against a real

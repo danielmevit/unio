@@ -29148,12 +29148,18 @@ Enforced by this component:
   daemon applies it to the thread's configured effort, which the TUI's
   ``settings.rs`` consumes into its local state — never to a running
   turn; a busy thread is never relabelled, the request is recorded as
-  pending and applied only at a later explicit idle command);
+  pending and consumed by the later explicit idle command — with NO
+  explicit new choice the queued choice itself is applied, an explicit
+  choice wins, and the queue is never silently replaced by the
+  coordination default);
 - native manual changes win: before applying, the freshly read native
   effort is compared with this record's last acknowledged request and
   last observation; a mismatch means a native manual change (for example
   the owner's own ``/model --reasoning`` in the TUI) and the connector
-  suspends AUTO control and refuses to overwrite it; a suspended
+  suspends AUTO control and refuses to overwrite it; every acknowledged
+  apply also RE-OBSERVES the native anchor and persists the fresh
+  POST-apply evidence (a failed reread persists an explicitly Unknown
+  anchor — never a knowingly stale pre-apply value); a suspended
   automatic phase STAYS suspended across commands - NO setter and NO
   pending automatic write happens - until the explicit ``attach auto``
   command re-enables it, and the explicit owner ``attach manual
@@ -29186,7 +29192,21 @@ Enforced by this component:
   (the lead is counted exactly once) and the owned lead lease are
   enforced before any proxy process is spawned, for ``attach`` and every
   mutating control; read-only ``inspect`` reports an active STOP instead
-  of enforcing it;
+  of enforcing it, and READ commands (inspect/status) create or change
+  NOTHING on disk — an absent attach store stays absent, a present
+  unsafe store refuses, and only mutating writes create the private
+  0700/0600 store;
+- the transport selection (codex binary and control socket) is PERSISTED
+  at attach and re-used by every later record-bound control command:
+  omitted flags keep the attached endpoint instead of silently
+  defaulting to a possibly different local daemon/client, and an
+  explicit CONFLICTING endpoint refuses until the owner deliberately
+  detaches and re-attaches; the saved selection is a name, never an
+  identity proof (the implicit PATH ``codex`` default is resolved again
+  per command and its continuity across installations cannot be
+  established; the native CLI keeps updating normally with no
+  binary-hash allowlist), and no daemon or fallback service is ever
+  started;
 - the attach record store is strictly additive and separate
   (``coord/lead-session-attach/``): historical managed-owned session
   state under ``coord/lead-effort/`` is never read into control
@@ -29761,7 +29781,7 @@ def _journal_name(thread_id):
 
 
 def _journal_path(root, thread_id):
-    return _attach_dir(root) / _journal_name(thread_id)
+    return _attach_dir_path(root) / _journal_name(thread_id)
 
 
 def _validate_journal_entry(entry, name):
@@ -29850,6 +29870,7 @@ def _journal_append(root, thread_id, entry):
     """
     _validate_journal_entry(entry, _journal_name(thread_id))
     path = _journal_path(root, thread_id)
+    _attach_dir(root)  # mutating path: private 0700 store, fail closed
     ml.safe_path(path)
     entries = _journal_entries(root, thread_id)
     if len(entries) >= JOURNAL_ENTRIES_BOUND:
@@ -29919,8 +29940,42 @@ def _journal_next_attempt(root, thread_id):
     return (max(numbers) + 1) if numbers else 1
 
 
+def _attach_dir_path(root):
+    """The attach record directory path; NEVER created or changed here."""
+    return ml.safe_path(root / 'coord' / 'lead-session-attach')
+
+
+def _attach_dir_read(root):
+    """The attach record directory for READ paths: existing safe state only.
+
+    Returns None when the store does not exist yet — an absent state IS
+    the honest answer for a read-only view. A present but unsafe
+    directory (symlink inside the path is refused by ``safe_path``, a
+    non-directory, a foreign owner or a non-private mode) refuses
+    instead of being silently repaired: ``inspect`` and ``status``
+    never mkdir, chmod or write ANYTHING.
+    """
+    path = _attach_dir_path(root)
+    if not path.exists():
+        return None
+    try:
+        st = os.stat(path)
+    except OSError as exc:
+        raise Refusal('attach state directory unreadable') from exc
+    if (not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid()
+            or st.st_mode & 0o077):
+        raise Refusal('unsafe attach state directory: read commands refuse '
+                      'instead of repairing or ignoring it')
+    return path
+
+
 def _attach_dir(root):
-    path = ml.safe_path(root / 'coord' / 'lead-session-attach')
+    """The attach record directory for MUTATING paths (private 0700).
+
+    Only through here may the store be created or chmodded; both fail
+    closed when the directory is unavailable or unsafe.
+    """
+    path = _attach_dir_path(root)
     try:
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(path, 0o700)
@@ -29935,7 +29990,7 @@ def _record_name(thread_id):
 
 
 def _record_path(root, thread_id):
-    return _attach_dir(root) / _record_name(thread_id)
+    return _attach_dir_path(root) / _record_name(thread_id)
 
 
 def _validate_record(doc):
@@ -30052,12 +30107,19 @@ def _save_record(root, doc):
     data = json.dumps(doc, ensure_ascii=False).encode('utf-8')
     if len(data) > STATE_BOUND:
         raise Refusal('attach record bound exceeded')
+    _attach_dir(root)  # mutating path: private 0700 store, fail closed
     ml._atomic_write(_record_path(root, doc['thread_id']), data)
 
 
 def _active_records(root):
-    """Active (not detached) attach records; fail closed on unsafe state."""
-    directory = _attach_dir(root)
+    """Active (not detached) attach records; fail closed on unsafe state.
+
+    Read-only: the store is resolved WITHOUT creating or changing it, and
+    an absent store is simply an empty active-record set.
+    """
+    directory = _attach_dir_read(root)
+    if directory is None:
+        return []
     records = []
     try:
         names = sorted(os.listdir(directory))
@@ -30191,7 +30253,21 @@ def _emit(args, payload, human, exit_code=0):
     return exit_code
 
 
-def _connect(args):
+def _connect(args, record=None):
+    """One attach connection for read-only exploration or record-bound control.
+
+    Control commands that operate on an ACTIVE attach record re-use its
+    PERSISTED transport selection (codex binary and control socket, saved
+    at attach): omitted flags keep the attached endpoint instead of
+    silently defaulting to a possibly different local daemon, and an
+    EXPLICIT conflicting endpoint refuses until the owner deliberately
+    detaches and re-attaches. The saved selection is a NAME, never an
+    identity proof: an implicit PATH ``codex`` default is resolved again
+    per command (the native CLI keeps updating normally; there is no
+    binary-hash or version allowlist), and continuity of an implicit
+    default across installations cannot be established - qualified in the
+    docs. No daemon is ever started by this connector.
+    """
     rpc_timeout = getattr(args, 'rpc_timeout', None)
     if rpc_timeout is None:
         rpc_timeout = RPC_TIMEOUT
@@ -30199,6 +30275,23 @@ def _connect(args):
         raise Refusal('--rpc-timeout must be 0.5..60 seconds')
     binary = getattr(args, 'codex_binary', None) or 'codex'
     sock = getattr(args, 'sock', None) or None
+    if record is not None:
+        saved_binary = record['codex_binary'] or 'codex'
+        saved_sock = record['sock'] or None
+        explicit_binary = ((getattr(args, 'codex_binary', None) or 'codex')
+                           != 'codex')
+        explicit_sock = getattr(args, 'sock', None) is not None
+        if ((explicit_binary and binary != saved_binary)
+                or (explicit_sock and sock != saved_sock)):
+            raise Refusal('the explicit endpoint (binary %r, socket %r) '
+                          'conflicts with the transport selection persisted '
+                          'at attach (binary %r, socket %r) for thread %s; '
+                          'control never switches endpoints implicitly or '
+                          'explicitly: detach and re-attach to change it '
+                          'deliberately'
+                          % (binary, sock, saved_binary, saved_sock,
+                             record['thread_id']))
+        binary, sock = saved_binary, saved_sock
     return AttachConnection(binary, sock=sock,
                             rpc_timeout=float(rpc_timeout))
 
@@ -30523,9 +30616,13 @@ def cmd_attach(root, args):
                 ack, exit_code = _apply_effort(
                     root, conn, record, thread_id, requested, 'attach',
                     _bounded_reason(args.reason))
+                # Observe FIRST, persist second: the disk anchor must be
+                # the fresh POST-apply evidence (or an explicitly Unknown
+                # anchor when the reread failed), never the stale
+                # pre-apply effort - exactly like phase and manual.
+                _observe_record_after_apply(conn, record, thread_id)
                 with _record_guard(root):
                     _save_record(root, record)
-                _observe_record_after_apply(conn, record, thread_id)
                 payload['requested'] = _requested_view(record)
                 payload['control_capability'] = record['effort']['ack']
                 if ack == 'acknowledged':
@@ -30566,15 +30663,23 @@ def _requested_view(record):
 
 def _observe_record_after_apply(conn, record, thread_id):
     """Re-read the native effort after an acknowledged apply so the manual
-    precedence comparison stays anchored on fresh evidence."""
+    precedence comparison stays anchored on fresh evidence.
+
+    When the reread fails, the pre-apply observation is KNOWINGLY stale
+    (the settings update was acknowledged), so the anchor becomes
+    explicitly Unknown instead of keeping a value the record knows is
+    outdated: uncertainty stays honest, no fresh observation is claimed
+    for the old effort, and the acknowledged delivery fact itself never
+    changes. An unavailable or uncertain acknowledgement keeps the
+    existing anchor untouched (nothing is known to have landed).
+    """
     if record['effort']['ack'] != 'acknowledged':
         return
     try:
         reading = conn.read_loaded_thread(thread_id)
         _observe(record, reading)
     except Exception:
-        # Observation is best-effort; the record keeps its prior anchor.
-        pass
+        record['native'] = {'effort': None, 'updated_at': _now()}
 
 
 def cmd_phase(root, args):
@@ -30583,11 +30688,17 @@ def cmd_phase(root, args):
     A suspended automatic phase stays suspended across commands: this
     gate refuses with NO setter and NO pending automatic write until the
     owner explicitly re-enables AUTO or applies the explicit owner
-    manual override (`attach manual`). Honours STOP via admission,
-    keeps native manual changes in control, never relabels a running
-    turn (pending is recorded and applied only at a later explicit idle
-    command), and validates the requested level against the thread's
-    model advertisement before changing anything.
+    manual override (`attach manual`). With NO explicit new choice
+    (`--kind`/`--effort` both absent), a previously QUEUED pending
+    request (recorded while the turn was running) IS the choice: it is
+    consumed at an idle boundary instead of being silently replaced by
+    the coordination default, and it stays queued untouched at a
+    still-active boundary; an explicit new choice intentionally wins.
+    Honours STOP via admission, keeps native manual changes in control,
+    never relabels a running turn, revalidates the persisted ceiling,
+    manual pin and model advertisement at apply, and validates the
+    requested level against the thread's model advertisement before
+    changing anything.
     """
     record = _find_record(root, args.thread_id)
     if record is None:
@@ -30595,12 +30706,32 @@ def cmd_phase(root, args):
                       'first')
     _refuse_suspended(record)
     thread_id = record['thread_id']
-    effort, kind = _resolve_effort(args, record)
-    reason = _bounded_reason(args.reason)
+    explicit_choice = (getattr(args, 'effort', None) is not None
+                       or getattr(args, 'kind', None) is not None)
+    consuming = not explicit_choice and record['pending'] is not None
+    if consuming:
+        # The queued pending choice (kept separate from the current
+        # requested level) is consumed; the persisted ceiling is
+        # revalidated at this apply boundary.
+        pending = record['pending']
+        effort = pending['effort']
+        kind = 'pending'
+        reason = _bounded_reason(pending['reason'])
+        if pe.RANK.index(effort) > pe.RANK.index(record['ceiling']):
+            raise Refusal('the queued pending request %s exceeds the '
+                          'configured ceiling %s; it is not applied: the '
+                          'promised bound is never silently exceeded - '
+                          're-attach with a higher ceiling or apply the '
+                          'explicit owner override `unio lead-session '
+                          'attach manual --effort %s`'
+                          % (effort, record['ceiling'], effort))
+    else:
+        effort, kind = _resolve_effort(args, record)
+        reason = _bounded_reason(args.reason)
     policy_doc, lead_group, lease = lp.admit_lead(
         root, expected_agent='codex', budget_label=None)
     try:
-        conn = _connect(args)
+        conn = _connect(args, record)
         try:
             conn.initialize()
             loaded = conn.loaded_thread_ids()
@@ -30610,22 +30741,34 @@ def cmd_phase(root, args):
                               'it); control refused without a fallback')
             reading = conn.read_loaded_thread(thread_id)
             if reading['status_type'] == 'active':
-                # Never relabel a running turn: record the request as
-                # pending and show it separately.
-                record['pending'] = {'effort': effort, 'reason': reason,
-                                     'updated_at': _now()}
-                with _record_guard(root):
-                    _save_record(root, record)
+                # Never relabel a running turn: the request is shown as
+                # pending and applies only at a later explicit idle
+                # command. A QUEUED choice is never silently replaced by
+                # a re-resolved default: without an explicit new choice
+                # the queue stays exactly as it is.
+                if not consuming:
+                    record['pending'] = {'effort': effort, 'reason': reason,
+                                         'updated_at': _now()}
+                    with _record_guard(root):
+                        _save_record(root, record)
                 payload = {
                     'thread_id': thread_id,
                     'requested': _requested_view(record),
-                    'pending': dict(record['pending']),
+                    'pending': dict(record['pending'])
+                               if record['pending'] else None,
                     'active_turn': True,
                     'native_requested_effort': reading['reasoning_effort'],
-                    'note': ('the thread has a running turn: its active '
-                             'effort is never relabelled; %s is recorded as '
-                             'pending and applies only at a later explicit '
-                             'idle attach phase command' % effort),
+                    'note': (('the thread still has a running turn: it is '
+                              'never relabelled and no settings changed; '
+                              'the queued pending choice %s stays queued '
+                              'and applies at the next explicit idle '
+                              'attach phase command' % effort)
+                             if consuming else
+                             ('the thread has a running turn: its active '
+                              'effort is never relabelled; %s is recorded '
+                              'as pending and applies only at a later '
+                              'explicit idle attach phase command'
+                              % effort)),
                     'effective': 'Unknown',
                     'caution': CAUTION,
                 }
@@ -30728,11 +30871,14 @@ def cmd_phase(root, args):
                                            'acknowledgement UNKNOWN; '
                                            'verify in the TUI' % effort,
                                             exit_code=6)
-            return _emit(args, payload, 'attach phase: requested %s set '
-                                        'for future turns (acknowledged; '
-                                        'kind %s; effective Unknown; the '
-                                        'owner TUI keeps manual control)'
-                         % (effort, kind))
+            human = ('attach phase: the queued pending choice %s was '
+                     'consumed and set for future turns (acknowledged; '
+                     'effective Unknown; the owner TUI keeps manual '
+                     'control)' % effort) if consuming else (
+                'attach phase: requested %s set for future turns '
+                '(acknowledged; kind %s; effective Unknown; the '
+                'owner TUI keeps manual control)' % (effort, kind))
+            return _emit(args, payload, human)
         finally:
             conn.close()
     finally:
@@ -30826,7 +30972,7 @@ def cmd_manual(root, args):
         root, expected_agent='codex', budget_label=None)
     try:
         pin = {'effort': effort, 'reason': reason, 'updated_at': _now()}
-        conn = _connect(args)
+        conn = _connect(args, record)
         try:
             conn.initialize()
             loaded = conn.loaded_thread_ids()
@@ -30951,7 +31097,12 @@ def cmd_manual(root, args):
 
 
 def cmd_status(root, args):
-    """Local-only status view: zero proxy connections, zero daemon calls."""
+    """Local-only status view: zero proxy connections, zero daemon calls.
+
+    Read-only on disk too: the attach store is inspected WITHOUT mkdir,
+    chmod or write — an absent store is reported honestly as no record,
+    and a present unsafe store refuses instead of being repaired.
+    """
     stop_active = lp.is_project_stop_active(root)
     record = _find_record(root, args.thread_id)
     if record is None:
@@ -31018,8 +31169,12 @@ def cmd_detach(root, args):
 
 
 def run(root, args):
-    """Dispatch one ``unio lead-session attach`` control."""
-    _attach_dir(root)  # fail early on an unavailable state directory
+    """Dispatch one ``unio lead-session attach`` control.
+
+    No store is created here: read-only commands (inspect/status) never
+    touch the filesystem, and mutating commands create the private store
+    only through their own writes, failing closed on unsafe state.
+    """
     if args.control == 'inspect':
         return cmd_inspect(root, args)
     if args.control == 'attach':
@@ -31115,11 +31270,42 @@ unio lead-session effort show|auto|manual low|xhigh|request low|xhigh [--reason 
 unio lead-session worker register ID|wait|terminal ID [--json]
 unio lead-session stop [--json]
 unio lead-session output [--after N] [--limit N] [--json]
-unio lead-session attach inspect|attach|phase|manual|auto|status|detach
-                        [--thread-id ID] [--effort low|xhigh]
-                        [--kind coordination|planning|review]
-                        [--ceiling low|xhigh] [--reason R] [--json]
+# existing-session attach (experimental). NOTE the nesting: the command
+# is `lead-session attach`; its `attach` subcommand performs the INITIAL
+# attachment to an already-running shared-daemon thread, so
+# `unio lead-session attach attach ...` is "attach to the existing
+# session now" (the double word is deliberate, not a typo).
+unio lead-session attach inspect --thread-id ID
+                      [--codex-binary BIN] [--sock PATH]
+                      [--rpc-timeout SECONDS] [--json]
+unio lead-session attach attach --thread-id ID
+                      [--ceiling low|xhigh] [--effort low|xhigh]
+                      [--reason R] [--budget-label LABEL]
+                      [--codex-binary BIN] [--sock PATH]
+                      [--rpc-timeout SECONDS] [--json]
+unio lead-session attach phase [--thread-id ID]
+                      [--effort low|xhigh]
+                      [--kind coordination|planning|review] [--reason R]
+                      [--codex-binary BIN] [--sock PATH]
+                      [--rpc-timeout SECONDS] [--json]
+unio lead-session attach manual --effort low|xhigh [--thread-id ID]
+                      [--reason R] [--codex-binary BIN] [--sock PATH]
+                      [--rpc-timeout SECONDS] [--json]
+unio lead-session attach auto [--thread-id ID] [--reason R] [--json]
+unio lead-session attach status [--thread-id ID] [--json]
+unio lead-session attach detach [--thread-id ID] [--json]
 ```
+
+Attach subcommand defaults and flag notes: the transport flags
+(`--codex-binary`, default the `codex` found on PATH; `--sock`, default
+the codex home control socket; `--rpc-timeout`, default 8 seconds,
+range 0.5..60) select the shared-daemon control transport;
+`attach attach --ceiling` accepts `low` or `xhigh` and defaults to
+`xhigh`; `attach attach --effort` is optional (an attach without it
+changes no settings); `attach manual --effort` is required. The
+`--thread-id` flag is optional for every control after the initial
+attach (the one active record is selected automatically) and required
+for `inspect` and `attach attach`.
 
 - `start` requires an explicit owner goal file (bounded, private, regular,
   UTF-8, at most 8 KiB) and model. `--ceiling` bounds planning/review; in
@@ -31405,7 +31591,10 @@ with zero model calls, zero account reads and no thread resumed.
   native requested effort it currently records and whether effort
   control is tested, available, unavailable or uncertain. It never
   resumes, starts or creates a thread, and it works during a STOP
-  (it explains the STOP instead of enforcing it).
+  (it explains the STOP instead of enforcing it). It is read-only on
+  disk too: `inspect` (and `status`) never create, chmod or write
+  `coord/lead-session-attach/` — an absent attach store is reported
+  honestly as "no record" and stays absent.
 - `attach attach --thread-id ID` performs the explicit initial
   attachment. Native admission runs first (project STOP, off holds,
   the configured registered lead, account-group mapping, tier slot
@@ -31414,12 +31603,21 @@ with zero model calls, zero account reads and no thread resumed.
   concurrent attached thread and an unstopped managed owned lead. The
   thread must be loaded in the daemon, acknowledged with the exact
   requested id and IDLE; a running turn is never touched, interrupted
-  or relabelled. An optional `--effort low|xhigh` requests the effort
-  for FUTURE turns through one `thread/settings/update` whose params
-  are exactly `threadId` and `effort`: the requested level must not
-  exceed the requested `--ceiling` and must be advertised by the
+  or relabelled. `--ceiling low|xhigh` (default `xhigh`, the top of
+  this first interface) is the promised automatic bound persisted with
+  the attach record. An optional `--effort low|xhigh` requests the
+  effort for FUTURE turns through one `thread/settings/update` whose
+  params are exactly `threadId` and `effort`: the requested level must
+  not exceed the requested `--ceiling` and must be advertised by the
   thread's own native model (`model/list`, read-only) or the attach
-  refuses with no record and no settings call.
+  refuses with no record and no settings call. When the optional
+  effort IS acknowledged, the record persists the FRESH post-apply
+  native anchor (a failed post-apply reread persists an explicitly
+  Unknown anchor, never the stale pre-apply value), so a later native
+  manual change back to the pre-attach level is still detected. The
+  transport selection of this command (`--codex-binary`, `--sock`) is
+  persisted with the record and governs every later phase/manual
+  control (see the transport paragraph below).
 - `attach phase` is the explicit cooperating-lead signal:
   `--kind coordination` requests low, `--kind planning` or `--kind
   review` request EXACTLY the persisted ceiling recorded at attach
@@ -31434,8 +31632,17 @@ with zero model calls, zero account reads and no thread resumed.
   later `phase` signal (kind or explicit) refuses with NO setter and
   NO pending automatic write until the owner explicitly re-enables
   with `attach auto`. A running turn is never relabelled; the request
-  is shown as pending and applied only at a later explicit idle
-  command. The requested level must be advertised by the thread's own
+  is shown as pending and applies at the next explicit idle `phase`
+  command. When THAT later command carries no explicit `--kind` and no
+  explicit `--effort`, the queued pending choice itself is consumed and
+  applied (an explicit new choice intentionally wins, and a queued
+  choice is never silently replaced by the coordination default or
+  dropped at a still-active boundary); the consume revalidates the
+  persisted ceiling, the manual pin/suspension state, admission (STOP
+  and holds) and the thread's model advertisement at the apply
+  boundary, and the queued level stays separate from the current
+  requested level until it applies. The requested level must be
+  advertised by the thread's own
   native model (`model/list`, read-only); medium and high are never
   substituted for low or xhigh.
 - `attach manual --effort low|xhigh` is the explicit owner manual
@@ -31462,7 +31669,10 @@ with zero model calls, zero account reads and no thread resumed.
   pin, whether AUTO is on or suspended, the last observed native
   effort and the always-Unknown effective effort. The concrete
   requested level comes first, the AUTO control state second, and the
-  effective provider effort is always Unknown.
+  effective provider effort is always Unknown. Like `inspect`, it is
+  read-only on disk: it never creates, chmods or writes the attach
+  store, reports an absent store honestly and refuses instead of
+  silently repairing a present but unsafe (non-private) store.
 - `attach detach` releases the record; the shared daemon and the
   owner TUI are never touched. Detach also works during a STOP.
 
@@ -31480,6 +31690,39 @@ rewritten, and a full journal refuses new attempts instead of dropping
 history. A dangling intent (an interrupted run whose result receipt
 never landed) keeps its Unknown outcome and blocks further updates
 until the owner resolves it explicitly; no completion is invented.
+
+Transport selection is persisted and honoured. The codex binary and
+control socket used at the initial `attach attach` are saved with the
+record: every later record-bound control (`phase`, `manual`) re-uses
+that exact selection by default, so omitted later flags cannot silently
+talk to a DIFFERENT local daemon or spawn a default `codex` from PATH
+when the attachment was made through another binary or socket. An
+endpoint that explicitly conflicts with the persisted selection refuses
+with zero settings calls until the owner deliberately detaches and
+re-attaches; repeating the SAME flags as the attachment stays allowed.
+Two honest qualifications: the saved selection is a NAME preserved only
+by convention — an implicit `codex` PATH default is resolved again at
+every command (the native CLI keeps updating normally on PATH; there is
+no binary-hash, version or allowlist check, and continuity of an
+implicit default across installations cannot be established), and the
+connector NEVER starts a daemon, fallback server or extra history — the
+record-bound control only spawns its own `codex app-server proxy` child
+to the persisted endpoint. `inspect` keeps free transport flags: it may
+look at another endpoint on purpose (it is the pre-attach exploration
+command).
+
+Store purity and this slice's limits. Only mutating writes (attach,
+phase, manual, auto, detach) create or change
+`coord/lead-session-attach/` (private 0700, records and attempt journal
+0600, fail closed on unsafe paths and recording failures);
+`inspect`/`status` and every pre-record refusal leave the filesystem
+exactly as they found it, and an absent store stays absent under a
+STOP. This slice remains the FUTURE-TURN, explicit-phase slice: control
+happens only at explicit `attach phase`/`manual` command boundaries and
+applies only to FUTURE turns of the attached thread — it is distinct
+from a full AUTO scheduler (no continuous monitoring, no per-turn phase
+classification) and from mid-turn control (a running turn is never
+relabelled, interrupted or steered).
 
 Honest boundary: the TUI keeps full manual control and its manual
 turns are not Unio-admitted turns; effective model, service tier and
