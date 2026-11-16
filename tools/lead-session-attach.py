@@ -79,17 +79,32 @@ Enforced by this component:
   ``unavailable`` and an uncertain (timeout/exit) acknowledgement as
   ``uncertain`` - and every settings attempt is a durable two-line
   journal receipt (``coord/lead-session-attach/attempts-*.jsonl``):
-  the intent entry persists BEFORE the mutating RPC (a refusal to
-  record means ZERO settings calls) and the result entry records the
-  actual acknowledgement afterward, so old unknown/rejected/
-  acknowledged attempt facts stay separate from the current control
-  state, byte-identical and never truncated, deleted or rewritten by
-  later setters, ``auto`` re-enables, successes, detaches or
-  re-attaches; an owner re-enable acknowledges AUTHORITY only, never
-  delivery - the original uncertain acknowledgement is kept intact,
-  and a dangling intent (interrupted run) blocks further updates until
-  the owner resolves it explicitly; no invented completion ever
-  happens;
+  durable room for BOTH lines (the intent AND its bounded worst-case
+  serialized result, JSON escaping and multibyte error text included)
+  is reserved BEFORE the intent is persisted, so every capacity
+  refusal happens BEFORE the mutating RPC (a refusal to record means
+  ZERO settings calls, truthfully); the intent entry persists before
+  the RPC and the result entry records the actual acknowledgement
+  afterward, with the provider error bounded to VALID UTF-8 BYTES
+  (never by character count), so old unknown/rejected/acknowledged
+  attempt facts stay separate from the current control state,
+  byte-identical and never truncated, deleted or rewritten by later
+  setters, ``auto`` re-enables, successes, detaches or re-attaches; an
+  unforeseen result-receipt failure AFTER the request is reported
+  truthfully as after-the-request with an Unknown outcome, never
+  claimed as zero calls; an owner re-enable acknowledges AUTHORITY
+  only, never delivery - the original uncertain acknowledgement is
+  kept intact, and a dangling intent (interrupted run) blocks further
+  updates until the owner resolves it explicitly; no invented
+  completion ever happens;
+- persisted attach state binds to the EXACT request: a record (or
+  journal entry) is trusted only when its own stored thread id matches
+  the requested id, its own workspace is this workspace and its hashed
+  filename matches its content; a wrong-id, wrong-workspace, misnamed
+  or foreign valid-shaped record refuses BEFORE any mutating RPC with
+  zero settings calls, never selects another record and is never
+  repaired by copying, rewriting or deleting evidence (the genuine
+  legacy prototype migration and owned-session refusals stay intact);
 - admission uses the SAME policy controller as the owned path
   (``lead-session-policy.py``): project STOP, off holds, the configured
   registered lead's real account group mapping, native slot counting
@@ -200,6 +215,29 @@ def _bounded_reason(value):
     return value
 
 
+def _bounded_utf8(value, bound):
+    """The longest valid-UTF-8 prefix of ``value`` within ``bound`` BYTES.
+
+    Receipt bounds are enforced on the ENCODED bytes, so a multibyte
+    provider message must be truncated by UTF-8 bytes (never by
+    character count): the slice backs off to a character boundary, so
+    the stored text stays valid UTF-8 within the byte bound instead of
+    becoming an invalid receipt that the journal validator must refuse.
+    """
+    if value is None:
+        return None
+    text = value.replace('\x00', '')
+    raw = text.encode('utf-8', 'replace')
+    if len(raw) <= bound:
+        return text
+    raw = raw[:bound]
+    while raw and (raw[-1] & 0xC0) == 0x80:  # cut continuation bytes
+        raw = raw[:-1]
+    if raw and (raw[-1] & 0xC0) == 0xC0:      # cut the orphaned lead byte
+        raw = raw[:-1]
+    return raw.decode('utf-8', 'replace')
+
+
 class AttachConnection:
     """One owned ``codex app-server proxy`` child speaking websocket to
     the running shared daemon.
@@ -295,6 +333,14 @@ class AttachConnection:
             if not data:
                 self._eof = True
                 self._pump_stderr(STDERR_DRAIN_GRACE)
+                # Distinguish the ACTUAL stage: the same proxy EOF is a
+                # transport-unreachable failure before the upgrade and a
+                # mid-RPC connection close after it completed.
+                if self._handshake_done:
+                    raise Refusal('the attach proxy exited after the '
+                                  'websocket handshake completed: the '
+                                  'shared daemon connection closed mid-RPC'
+                                  + self._stderr_note())
                 raise Refusal('attach proxy exited before the handshake '
                               'completed; the shared daemon is not reachable '
                               'through this transport' + self._stderr_note())
@@ -759,10 +805,74 @@ def _journal_entries(root, thread_id):
         except (ValueError, UnicodeError, RecursionError) as exc:
             raise Refusal('invalid attach attempt journal (unreadable '
                           'entry; refusing any settings call)') from exc
-        entries.append(_validate_journal_entry(entry, path.name))
+        _validate_journal_entry(entry, path.name)
+        # Identity binding: a journal file is trusted only when every
+        # entry belongs to the EXACT requested thread — structural
+        # validity alone must never let a miscopied or foreign journal
+        # drive settings for this thread, and it is never repaired or
+        # completed from another thread's receipts.
+        if entry['thread_id'] != thread_id:
+            raise Refusal('foreign attach attempt journal entry in %s: '
+                          'the entry belongs to thread %s while thread %s '
+                          'was requested; the journal is never repaired '
+                          'and no settings call is made before the owner '
+                          'archives or restores the file'
+                          % (path.name, entry['thread_id'], thread_id))
+        entries.append(entry)
     if len(entries) > JOURNAL_ENTRIES_BOUND:
         raise Refusal('attach attempt journal bound exceeded')
     return entries
+
+
+def _journal_full_refusal(unit):
+    """One truthful full-journal refusal BEFORE any settings call."""
+    return Refusal('the attach attempt journal is full (%s); '
+                   'no new attempt is recorded and no settings call is '
+                   'made; old failures are never truncated or deleted - '
+                   'archive the journal file before continuing' % unit)
+
+
+def _journal_worst_result_bytes(thread_id, attempt):
+    """The bounded worst-case serialized result line for one attempt.
+
+    The result entry this component can still write after the mutating
+    RPC: every ack class, the longest bounded timestamp and an error
+    message truncated to EXACTLY JOURNAL_ERROR_BOUND valid UTF-8 bytes
+    so that every byte escapes to JSON \\uXXXX (the bound must hold for
+    the SERIALIZED line, so the worst-case JSON escaping expansion is
+    reserved up front instead of being discovered after the request).
+    """
+    worst = {'v': JOURNAL_VERSION, 'kind': 'result', 'attempt': attempt,
+             'at': 'z' * 32, 'thread_id': thread_id, 'ack': 'uncertain',
+             'error': '\x01' * JOURNAL_ERROR_BOUND}
+    return len((json.dumps(worst, ensure_ascii=False)
+                + '\n').encode('utf-8'))
+
+
+def _journal_reserve(root, thread_id, intent):
+    """Verify durable room for the intent AND its bounded worst-case
+    result line BEFORE persisting the intent or making the mutating
+    RPC; refuse without writing anything and with zero settings calls.
+
+    Without this reservation a nearly-full journal would persist the
+    intent, send the setter and then be unable to append the truthful
+    outcome line — an after-the-request recording gap. Reserving both
+    lines up front (entry count for the intent AND its result, bytes
+    for the intent line AND the bounded worst-case serialized result
+    line) keeps every capacity-bound refusal BEFORE any settings call,
+    truthfully reported as zero calls, with no truncation, deletion or
+    silent rotation of old receipts.
+    """
+    entries = _journal_entries(root, thread_id)  # fail closed on unsafe state
+    if len(entries) + 2 > JOURNAL_ENTRIES_BOUND:
+        raise _journal_full_refusal('%d entries' % JOURNAL_ENTRIES_BOUND)
+    intent_line = (json.dumps(intent, ensure_ascii=False)
+                   + '\n').encode('utf-8')
+    worst = _journal_worst_result_bytes(thread_id, intent['attempt'])
+    path = _journal_path(root, thread_id)
+    size = path.stat().st_size if path.exists() else 0
+    if size + len(intent_line) + worst > JOURNAL_BYTES_BOUND:
+        raise _journal_full_refusal('%d bytes' % JOURNAL_BYTES_BOUND)
 
 
 def _journal_append(root, thread_id, entry):
@@ -778,18 +888,10 @@ def _journal_append(root, thread_id, entry):
     ml.safe_path(path)
     entries = _journal_entries(root, thread_id)
     if len(entries) >= JOURNAL_ENTRIES_BOUND:
-        raise Refusal('the attach attempt journal is full (%d entries); '
-                      'no new attempt is recorded and no settings call is '
-                      'made; old failures are never truncated or deleted - '
-                      'archive the journal file before continuing'
-                      % JOURNAL_ENTRIES_BOUND)
+        raise _journal_full_refusal('%d entries' % JOURNAL_ENTRIES_BOUND)
     line = (json.dumps(entry, ensure_ascii=False) + '\n').encode('utf-8')
     if path.exists() and path.stat().st_size + len(line) > JOURNAL_BYTES_BOUND:
-        raise Refusal('the attach attempt journal is full (%d bytes); '
-                      'no new attempt is recorded and no settings call is '
-                      'made; old failures are never truncated or deleted - '
-                      'archive the journal file before continuing'
-                      % JOURNAL_BYTES_BOUND)
+        raise _journal_full_refusal('%d bytes' % JOURNAL_BYTES_BOUND)
     fd = None
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND
@@ -992,6 +1094,36 @@ def _validate_record(doc):
     return doc
 
 
+def _refuse_foreign_record(doc, root, thread_id, name):
+    """Identity binding: stored state must belong to the EXACT request.
+
+    The hashed filename alone proves nothing — a valid-shaped record
+    miscopied into it would otherwise silently redirect control to a
+    DIFFERENT thread. A record is trusted only when its OWN stored
+    thread id matches the requested id AND its OWN stored workspace
+    matches this workspace; a mismatch refuses BEFORE any mutating RPC,
+    never selects another record and never 'repairs' the evidence by
+    copying, rewriting or deleting it. The owner restores or archives
+    the file deliberately to continue.
+    """
+    if doc['thread_id'] != thread_id:
+        raise Refusal(
+            'the attach record %s stores thread %s while thread %s was '
+            'requested: the record identity does not bind to this request; '
+            'control refuses with zero settings calls, never selects '
+            'another record and never repairs the record; archive or '
+            'restore the record file deliberately'
+            % (name, doc['thread_id'], thread_id))
+    if doc['workspace'] != str(root):
+        raise Refusal(
+            'the attach record %s was recorded for another workspace '
+            '(%s) than this one (%s): the record identity does not bind '
+            'to this request; control refuses with zero settings calls, '
+            'never selects another record and never repairs the record; '
+            'archive or restore the record file deliberately'
+            % (name, doc['workspace'], root))
+
+
 def _load_record(root, thread_id):
     path = _record_path(root, thread_id)
     if not path.exists():
@@ -1002,6 +1134,7 @@ def _load_record(root, thread_id):
     except (ValueError, UnicodeError, RecursionError):
         raise Refusal('invalid attach record')
     _validate_record(doc)
+    _refuse_foreign_record(doc, root, thread_id, path.name)
     return doc
 
 
@@ -1043,6 +1176,28 @@ def _active_records(root):
         except (ValueError, UnicodeError, RecursionError) as exc:
             raise Refusal('invalid attach record: ' + name) from exc
         _validate_record(doc)
+        # Filename/content binding: a record may count as this
+        # workspace's state only when its own thread id hashes EXACTLY
+        # to the filename it was found under and its own workspace is
+        # this workspace. Misnamed, misplaced or foreign valid-shaped
+        # records refuse (fail closed) instead of being silently
+        # selected, renamed or rewritten.
+        if _record_name(doc['thread_id']) != name:
+            raise Refusal(
+                'misnamed attach record: %s stores thread %s, whose hashed '
+                'record filename is %s; control refuses with zero settings '
+                'calls, never selects another record and never repairs or '
+                'renames the evidence; archive or restore the file '
+                'deliberately'
+                % (name, doc['thread_id'], _record_name(doc['thread_id'])))
+        if doc['workspace'] != str(root):
+            raise Refusal(
+                'the attach record %s was recorded for another workspace '
+                '(%s) than this one (%s): control refuses with zero '
+                'settings calls, never selects another record and never '
+                'repairs the record; archive or restore the file '
+                'deliberately'
+                % (name, doc['workspace'], root))
         if not doc['detached']:
             records.append(doc)
         if len(records) > 64:
@@ -1182,8 +1337,11 @@ def _connect(args, record=None):
     if record is not None:
         saved_binary = record['codex_binary'] or 'codex'
         saved_sock = record['sock'] or None
-        explicit_binary = ((getattr(args, 'codex_binary', None) or 'codex')
-                           != 'codex')
+        # Explicitness is tracked by the parser's None default, never
+        # by comparing against the default binary NAME: an explicit
+        # `--codex-binary codex` is a real owner choice and must not be
+        # silently absorbed by a conflicting saved custom endpoint.
+        explicit_binary = getattr(args, 'codex_binary', None) is not None
         explicit_sock = getattr(args, 'sock', None) is not None
         if ((explicit_binary and binary != saved_binary)
                 or (explicit_sock and sock != saved_sock)):
@@ -1273,16 +1431,21 @@ def _observe(record, reading):
 def _apply_effort(root, conn, record, thread_id, effort, source, reason):
     """One bounded thread/settings/update with a durable attempt receipt.
 
-    The intent entry is persisted BEFORE the mutating RPC: if required
-    recording cannot be made, the call refuses and ZERO settings RPCs
-    happen. The result entry records the ACTUAL acknowledgement class
-    ('acknowledged' 0, 'unavailable' 5 typed provider rejection,
-    'uncertain' 6 timeout/exit: the update may or may not have landed).
-    Every attempt keeps its requested effort, exact thread id, request
-    timestamp and truthful outcome separately and durably; a previous
-    unknown/rejected attempt is never rewritten by a later setter, and a
-    dangling intent (interrupted run) blocks further updates until the
-    owner resolves it explicitly - no invented completion ever happens.
+    The journal is first VERIFIED to have durable room for BOTH receipt
+    lines (the intent AND the bounded worst-case serialized result),
+    then the intent entry is persisted BEFORE the mutating RPC: if
+    required recording cannot be made, the call refuses and ZERO
+    settings RPCs happen. The result entry records the ACTUAL
+    acknowledgement class ('acknowledged' 0, 'unavailable' 5 typed
+    provider rejection, 'uncertain' 6 timeout/exit: the update may or
+    may not have landed) with an error bounded to valid UTF-8 BYTES
+    (a multibyte provider message is truncated at a character
+    boundary, never by character count). Should the result receipt
+    nevertheless fail to persist after the request crossed the wire,
+    the failure is reported truthfully as happening AFTER the request
+    with its outcome Unknown — never as 'no settings call was made';
+    the dangling intent then blocks further updates until the owner
+    resolves it explicitly, so no invented completion ever happens.
     """
     dangling = _journal_dangling(root, thread_id)
     if dangling is not None:
@@ -1298,6 +1461,7 @@ def _apply_effort(root, conn, record, thread_id, effort, source, reason):
     intent = {'v': JOURNAL_VERSION, 'kind': 'intent', 'attempt': attempt,
               'at': _now(), 'thread_id': thread_id, 'source': source,
               'requested': effort, 'reason': reason}
+    _journal_reserve(root, thread_id, intent)
     _journal_append(root, thread_id, intent)
     try:
         conn.update_thread_effort(thread_id, effort)
@@ -1306,13 +1470,28 @@ def _apply_effort(root, conn, record, thread_id, effort, source, reason):
         ack, code, error = 'unavailable', 5, str(exc)
     except Refusal as exc:
         ack, code, error = 'uncertain', 6, str(exc)
-    if error is not None and len(error) > JOURNAL_ERROR_BOUND:
-        error = error[:JOURNAL_ERROR_BOUND]
+    error = _bounded_utf8(error, JOURNAL_ERROR_BOUND)
     _apply_effort.last_error = error
-    _journal_append(root, thread_id,
-                    {'v': JOURNAL_VERSION, 'kind': 'result',
-                     'attempt': attempt, 'at': _now(),
-                     'thread_id': thread_id, 'ack': ack, 'error': error})
+    try:
+        _journal_append(root, thread_id,
+                        {'v': JOURNAL_VERSION, 'kind': 'result',
+                         'attempt': attempt, 'at': _now(),
+                         'thread_id': thread_id, 'ack': ack,
+                         'error': error})
+    except Refusal as exc:
+        # The request HAS crossed the wire: this is an after-the-request
+        # recording failure, never a zero-call refusal.
+        _apply_effort.last_error = str(exc)
+        raise Refusal(
+            'the settings request was ALREADY SENT to the shared daemon '
+            'as attempt %d (acknowledgement %s) but its result receipt '
+            'could NOT be recorded (%s): the attempt outcome stays '
+            'Unknown with the intent receipt left visibly unresolved; it '
+            'is never claimed that no settings call was made and nothing '
+            'was truncated or deleted; verify the thread in the TUI, '
+            'then resolve it explicitly with `unio lead-session attach '
+            'auto` before any further update'
+            % (attempt, ack, exc)) from exc
     record['effort'] = {'requested': effort, 'source': source,
                         'ack': ack, 'owner_acknowledged': None,
                         'updated_at': _now()}

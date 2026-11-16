@@ -2140,9 +2140,14 @@ def build_parser():
     output.add_argument('--json', action='store_true')
 
     def _attach_transport_flags(target):
-        target.add_argument('--codex-binary', default='codex',
+        target.add_argument('--codex-binary', default=None,
                             help='codex binary whose app-server proxy is '
-                                 'spawned (default: codex on PATH)')
+                                 'spawned; omitted: codex on PATH for '
+                                 'attach/inspect, or the transport '
+                                 'selection persisted in the attach record '
+                                 'for later control (an explicitly given '
+                                 'value, including an explicit codex, is '
+                                 'always a real explicit choice)')
         target.add_argument('--sock', default=None,
                             help='explicit control socket path (default: '
                                  'the codex home control socket)')

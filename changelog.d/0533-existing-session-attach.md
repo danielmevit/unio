@@ -173,3 +173,73 @@ disconnected, full hands-free per-turn phase classification, worker watching,
 and consented live probes of `thread/settings/update` acceptance against a real
 loaded thread are open; runtime acceptance of the settings update on a real
 shared thread is still Unknown until the owner exercises it.
+
+Third correction: the three fake-reproduced record-boundary defects
+(bounded fix, same slice; prior guarantees unchanged; every affected
+behaviour was re-reproduced on the previous 28d8550 code before fixing,
+fake-only, zero real threads):
+
+(1) journal capacity is reserved for BOTH receipt lines BEFORE the
+mutating RPC. A valid 255-entry journal (127 complete attempt pairs
+plus an owner-resolution) used to admit the intent line, send
+`thread/settings/update`, and then refuse the truthful result receipt
+with the false claim that 'no settings call is made'. The connector now
+verifies durable room for the intent AND its bounded worst-case
+serialized result line - entry count for both lines and byte headroom
+covering the full JSON-escaped, multibyte-capable error text - BEFORE
+the intent is persisted or the setter is sent, so every
+capacity-bound refusal is truthfully zero-call, with no truncation,
+deletion or rotation of old receipts. A journal with room for exactly
+one two-line attempt still admits it (both receipts land) and the next
+attempt then refuses up front. Should a result receipt nevertheless
+fail after the request crossed the wire, the failure is reported
+truthfully as AFTER the request with the attempt outcome Unknown and
+the intent left visibly dangling - never claimed as zero calls.
+
+(2) persisted state binds to the exact request. A valid-shaped record
+for thread B copied into thread A's hashed filename used to make
+`attach phase --thread-id A` send settings for thread B. Loading now
+verifies the stored own thread id against the requested id AND the
+stored own workspace against the current canonical workspace, the
+record listing verifies filename/content binding and workspace, and
+journal entries must belong to the requested thread rather than merely
+be structurally valid. Wrong-id, wrong-workspace, misnamed-record and
+foreign-journal cases all refuse BEFORE any mutating RPC with zero
+setter calls, never select another record or endpoint, and are never
+'repaired' by copying, rewriting or deleting evidence; the genuine
+additive v1 prototype record migration for the exact same thread and
+workspace keeps working.
+
+(3) provider errors are bounded to valid UTF-8 BYTES. Character-count
+truncation previously let a 256-Chinese-character typed rejection
+(768 UTF-8 bytes) bust the 256-byte receipt bound, so the app lost the
+unavailable result and raised 'invalid journal entry' instead. The
+error receipt is now truncated at a UTF-8 character boundary within
+the byte bound (JSON-escaped characters covered by the reservation
+math), the unavailable/uncertain classification is retained - a
+bounded rejection never becomes invented success - and the journal
+reloads cleanly after multibyte and escaping-heavy rejections.
+
+Same-endpoint contract polish: a proxy EOF is now diagnosed by its
+ACTUAL stage (Gemini's LOW follow-up) - an exit before the websocket
+handshake completed is reported as an unreachable transport, a close
+after the completed handshake as a mid-RPC daemon disconnect - with
+both stages fake-tested; and explicitness of `--codex-binary` is
+decided by whether the flag was given (parser default None), so an
+explicit `--codex-binary codex` refuses against a saved custom
+endpoint instead of being silently absorbed, while omitted flags keep
+the attached endpoint and the native CLI keeps updating normally (no
+binary-hash or version guard).
+
+Regression coverage grows inside the registered suite
+(`tests/unio-lead-session-attach.py`, quality-gate entry
+`test-unio-lead-session-attach`): 73 checks now cover both
+capacity-bound refusal stages (entries and bytes, byte-identical
+journals), the exact-one-attempt boundary, the post-request receipt
+failure truth wording, the multibyte and JSON-escaped rejection
+receipts, wrong-id/wrong-workspace/misnamed/foreign refusals with
+zero setter calls, the deliberate-restore resume, the legacy migration
+and both EOF stages. The new checks were verified to fail on the
+28d8550 code for exactly the reproduced causes; validation was
+fake-only (zero real Codex/daemon/model calls), and the installer
+embedding was regenerated for the updated connector and CLI.

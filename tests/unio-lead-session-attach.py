@@ -174,6 +174,9 @@ def reply(doc):
 
 def main():
     log('argv', argv=sys.argv)
+    if behavior().get('exit_before_handshake'):
+        log('exit_before_handshake')
+        sys.exit(0)
     deadline = time.monotonic() + IDLE_DEADLINE
     head = b''
     while b'\\r\\n\\r\\n' not in head:
@@ -279,7 +282,9 @@ def main():
             if mode == 'reject':
                 reply({'id': request_id, 'error': {
                     'code': -32602,
-                    'message': 'fake daemon rejects this effort'}})
+                    'message': behavior().get(
+                        'reject_message',
+                        'fake daemon rejects this effort')}})
                 continue
             state = load_state()
             state.setdefault('efforts', {})[params.get('threadId')] = \\
@@ -537,13 +542,22 @@ def run_suite(base):
     print('  ok    a refused websocket upgrade is one honest refusal '
           '(no invented transport)', flush=True)
 
+    ws.behavior({'exit_before_handshake': True})
+    message = refuses(ws.argv('inspect', '--thread-id', THREAD,
+                              '--rpc-timeout', '3', '--json'))
+    assert 'before the handshake' in message
+    assert 'not reachable' in message
+    assert 'after the websocket handshake' not in message
     ws.behavior({'exit_after_handshake': True})
     message = refuses(ws.argv('inspect', '--thread-id', THREAD,
                               '--rpc-timeout', '3', '--json'))
-    assert 'not reachable' in message
+    assert 'after the websocket handshake completed' in message
+    assert 'before the handshake' not in message
     ws.behavior({})
-    print('  ok    a proxy exit right after the upgrade is honest (never '
-          'a silent hang or fake success)', flush=True)
+    print('  ok    a proxy EOF is diagnosed by its ACTUAL stage: '
+          'before the handshake it is an unreachable transport, after '
+          'the completed handshake it is a mid-RPC close (never the '
+          'wrong stage claim or a silent hang)', flush=True)
 
     ws.behavior({'oversize': True})
     message = refuses(ws.argv('inspect', '--thread-id', THREAD,
@@ -851,6 +865,53 @@ def run_suite(base):
           'recovers only through a new explicit signal while its original '
           'rejected receipt stays durably in the journal', flush=True)
 
+    print('multibyte rejection messages keep a valid bounded receipt',
+          flush=True)
+    utf_ws = Workspace(base)
+    utf_ws.attach()
+    utf_ws.behavior({'settings': 'reject', 'reject_message': '拒' * 300})
+    payload, _, code = utf_ws.phase('--effort', 'xhigh', '--rpc-timeout',
+                                    '3', '--json')
+    # the typed rejection classification is RETAINED: a bounded error
+    # never invents success, and the app never loses the receipt to an
+    # 'invalid journal' refusal the way character-count truncation did
+    # (300 Chinese chars were 900 UTF-8 bytes, far past the byte bound).
+    assert code == 5
+    assert payload['requested']['ack'] == 'unavailable'
+    result = utf_ws.journal_entries()[-1]
+    assert result['kind'] == 'result' and result['ack'] == 'unavailable'
+    error = result['error']
+    raw = error.encode('utf-8')  # the stored text stays valid UTF-8
+    assert len(raw) <= at.JOURNAL_ERROR_BOUND
+    assert '拒' in error
+    # the bounded receipt reloads cleanly through the byte-bound
+    # validator instead of refusing as an invalid journal entry
+    at._journal_entries(Path(utf_ws.root), THREAD)
+    assert utf_ws.record()['effort']['ack'] == 'unavailable'
+    utf_ws.behavior({})
+    payload, _, code = utf_ws.phase('--effort', 'xhigh', '--rpc-timeout',
+                                    '3', '--json')
+    assert code == 0 and payload['requested']['ack'] == 'acknowledged'
+    print('  ok    a 256-Chinese-character-class typed rejection keeps '
+          'its unavailable classification with a byte-bounded valid '
+          'UTF-8 receipt instead of an invalid-journal failure',
+          flush=True)
+
+    utf2_ws = Workspace(base)
+    utf2_ws.attach()
+    escaping = '"quoted \\ backslash" \x01ctrl · ' + '拒' * 300
+    utf2_ws.behavior({'settings': 'reject', 'reject_message': escaping})
+    payload, _, code = utf2_ws.phase('--effort', 'xhigh', '--rpc-timeout',
+                                    '3', '--json')
+    assert code == 5 and payload['requested']['ack'] == 'unavailable'
+    result = utf2_ws.journal_entries()[-1]
+    assert result['ack'] == 'unavailable'
+    assert len(result['error'].encode('utf-8')) <= at.JOURNAL_ERROR_BOUND
+    at._journal_entries(Path(utf2_ws.root), THREAD)
+    print('  ok    multibyte text mixed with JSON-escaped characters '
+          '(quotes, backslash, control byte) keeps one valid bounded '
+          'receipt even though the serialized line escapes', flush=True)
+
     silent_ws = Workspace(base)
     silent_ws.attach()
     before = len(silent_ws.wire())
@@ -1146,6 +1207,257 @@ def run_suite(base):
     print('  ok    a dangling intent (interrupted run) is never completed '
           'silently: it blocks updates, needs the explicit owner '
           'resolution, and keeps its unresolved receipt untouched', flush=True)
+
+    print('journal capacity is reserved for BOTH receipt lines BEFORE '
+          'the setter', flush=True)
+
+    def _seed_journal_pair(ws, number, reason):
+        with open(ws.journal_path(), 'a', encoding='utf-8') as stream:
+            stream.write(json.dumps({
+                'v': 1, 'kind': 'intent', 'attempt': number,
+                'at': '2026-11-16T00:00:00Z', 'thread_id': THREAD,
+                'source': 'phase', 'requested': 'xhigh',
+                'reason': reason}, ensure_ascii=False) + '\n')
+            stream.write(json.dumps({
+                'v': 1, 'kind': 'result', 'attempt': number,
+                'at': '2026-11-16T00:00:00Z', 'thread_id': THREAD,
+                'ack': 'acknowledged', 'error': None},
+                ensure_ascii=False) + '\n')
+
+    # 127 completed pairs (254 entries) plus one owner-resolution make a
+    # valid 255-entry journal: room for exactly ONE more line, while a
+    # new attempt needs TWO (intent plus result). The reservation must
+    # refuse the WHOLE attempt before the setter instead of persisting
+    # the intent, sending the RPC and then losing the result receipt.
+    count_ws = Workspace(base)
+    count_ws.attach()
+    for number in range(1, 128):
+        _seed_journal_pair(count_ws, number, 'seed')
+    with open(count_ws.journal_path(), 'a', encoding='utf-8') as stream:
+        stream.write(json.dumps({
+            'v': 1, 'kind': 'owner-resolution',
+            'at': '2026-11-16T00:00:00Z', 'thread_id': THREAD,
+            'acknowledged': 'seeded owner resolution'},
+            ensure_ascii=False) + '\n')
+    os.chmod(count_ws.journal_path(), 0o600)
+    assert len(count_ws.journal_entries()) == 255
+    seeded_count = count_ws.journal_bytes()
+    before = len(count_ws.wire())
+    message = count_ws.refuses_phase('--effort', 'xhigh', '--rpc-timeout',
+                                     '3', '--json')
+    assert 'journal is full (256 entries)' in message
+    assert 'no settings call is made' in message
+    assert count_ws.settings_calls(count_ws.wire(after=before)) == []
+    assert count_ws.journal_bytes() == seeded_count
+    print('  ok    a journal one line short of the entry bound refuses '
+          'the whole attempt BEFORE the setter: zero settings calls and '
+          'a byte-identical journal (no intent without a result)',
+          flush=True)
+
+    room_ws = Workspace(base)
+    room_ws.attach()
+    for number in range(1, 128):     # 254 entries: exactly one attempt fits
+        _seed_journal_pair(room_ws, number, 'seed')
+    os.chmod(room_ws.journal_path(), 0o600)
+    payload, _, code = room_ws.phase('--effort', 'xhigh', '--rpc-timeout',
+                                     '3', '--json')
+    assert code == 0 and payload['requested']['ack'] == 'acknowledged'
+    assert len(room_ws.journal_entries()) == 256
+    before = len(room_ws.wire())
+    message = room_ws.refuses_phase('--effort', 'low', '--rpc-timeout',
+                                    '3', '--json')
+    assert 'journal is full (256 entries)' in message
+    assert room_ws.settings_calls(room_ws.wire(after=before)) == []
+    print('  ok    a journal with room for exactly ONE two-line attempt '
+          'admits it (both receipts land) and then refuses the next one '
+          'before any setter', flush=True)
+
+    # Byte exhaustion follows the same all-before-RPC rule: the seeded
+    # pair lines are fat (256-byte reasons), so the byte bound trips
+    # long before the entry bound, including the reserved worst-case
+    # serialized result line (JSON escaping of a fully-escaped
+    # multibyte/error text included in the estimate).
+    byte_ws = Workspace(base)
+    byte_ws.attach()
+    sample_intent = json.dumps({
+        'v': 1, 'kind': 'intent', 'attempt': 1,
+        'at': '2026-11-16T00:00:00Z', 'thread_id': THREAD,
+        'source': 'phase', 'requested': 'xhigh', 'reason': ''},
+        ensure_ascii=False) + '\n'
+    reserve_need = (len(sample_intent.encode('utf-8'))
+                    + at._journal_worst_result_bytes(THREAD, 999))
+    while len(byte_ws.journal_bytes()) + reserve_need \
+            <= at.JOURNAL_BYTES_BOUND:
+        _seed_journal_pair(byte_ws, len(byte_ws.journal_entries()) // 2 + 1,
+                           'r' * 256)
+    os.chmod(byte_ws.journal_path(), 0o600)
+    assert len(byte_ws.journal_entries()) + 2 < at.JOURNAL_ENTRIES_BOUND
+    seeded_bytes = byte_ws.journal_bytes()
+    before = len(byte_ws.wire())
+    message = byte_ws.refuses_phase('--effort', 'xhigh', '--rpc-timeout',
+                                    '3', '--json')
+    assert 'journal is full (65536 bytes)' in message
+    assert 'no settings call is made' in message
+    assert byte_ws.settings_calls(byte_ws.wire(after=before)) == []
+    assert byte_ws.journal_bytes() == seeded_bytes
+    print('  ok    a journal with fewer entries but no byte headroom for '
+          'intent plus the bounded worst-case serialized result refuses '
+          'the whole attempt BEFORE the setter, byte-identical',
+          flush=True)
+
+    print('an unforeseen post-request receipt failure is reported '
+          'truthfully', flush=True)
+    post_ws = Workspace(base)
+    post_ws.attach()
+    real_journal_append = at._journal_append
+
+    def failing_result_append(root, thread_id, entry):
+        if entry.get('kind') == 'result':
+            raise at.Refusal('simulated post-request journal failure')
+        return real_journal_append(root, thread_id, entry)
+
+    at._journal_append = failing_result_append
+    try:
+        before = len(post_ws.wire())
+        message = post_ws.refuses_phase('--effort', 'xhigh',
+                                         '--rpc-timeout', '3', '--json')
+    finally:
+        at._journal_append = real_journal_append
+    # one settings RPC crossed the wire; the failure text must say so
+    # and never claim zero calls or invent a completion
+    assert len(post_ws.settings_calls(post_ws.wire(after=before))) == 1
+    assert 'ALREADY SENT' in message and 'Unknown' in message
+    assert 'attach auto' in message
+    assert 'no new attempt is recorded' not in message
+    kinds = [entry['kind'] for entry in post_ws.journal_entries()]
+    assert kinds == ['intent']
+    # the next automatic attempt stays BLOCKED until the explicit owner
+    # resolution (whichever honest gate fires first - the dangling
+    # receipt or the now-unattributed native change the daemon applied -
+    # both demand the same explicit `attach auto`), always zero calls:
+    before = len(post_ws.wire())
+    message = post_ws.refuses_phase('--effort', 'low', '--rpc-timeout',
+                                    '3', '--json')
+    assert 'attach auto' in message
+    assert post_ws.settings_calls(post_ws.wire(after=before)) == []
+    payload, _, code = post_ws.auto()
+    assert code == 0
+    payload, _, code = post_ws.phase('--effort', 'low')
+    assert code == 0 and payload['requested']['ack'] == 'acknowledged'
+    kinds = [entry['kind'] for entry in post_ws.journal_entries()]
+    assert kinds == ['intent', 'owner-resolution', 'intent', 'result']
+    print('  ok    a result receipt failure AFTER the request reports an '
+          'already-sent request with an Unknown outcome (never zero '
+          'calls), keeps a visibly dangling intent and stays blocked '
+          'until the explicit owner resolution', flush=True)
+
+    print('state identity binds to the exact thread, workspace and file',
+          flush=True)
+    ident_ws = Workspace(base)
+    ident_ws.attach()
+    store = ident_ws.root / 'coord' / 'lead-session-attach'
+    record_path = store / at._record_name(THREAD)
+    original_record = json.loads(record_path.read_text())
+    # a valid-shaped record for ANOTHER thread (or another workspace)
+    # miscopied into this thread's hashed filename must never redirect
+    # the settings call: both tampering shapes refuse before any
+    # mutating RPC.
+    for tamper in ({'thread_id': OTHER}, {'workspace': '/somewhere/else'}):
+        doc = dict(original_record, **tamper)
+        record_path.write_text(json.dumps(doc, ensure_ascii=False),
+                               encoding='utf-8')
+        os.chmod(record_path, 0o600)
+        before = len(ident_ws.wire())
+        message = ident_ws.refuses_phase('--thread-id', THREAD, '--effort',
+                                         'xhigh', '--rpc-timeout', '3',
+                                         '--json')
+        assert 'does not bind to this request' in message
+        assert ident_ws.settings_calls(ident_ws.wire(after=before)) == []
+    # nothing was repaired: restoring the owner's own record file resumes
+    # control (the tool never copied, rewrote or deleted the evidence)
+    record_path.write_text(json.dumps(original_record, ensure_ascii=False),
+                           encoding='utf-8')
+    os.chmod(record_path, 0o600)
+    payload, _, code = ident_ws.phase('--thread-id', THREAD, '--effort',
+                                      'xhigh', '--rpc-timeout', '3',
+                                      '--json')
+    assert code == 0 and payload['requested']['ack'] == 'acknowledged'
+    print('  ok    a wrong-id or wrong-workspace record in the requested '
+          'hashed filename refuses with zero settings calls instead of '
+          'silently redirecting control; nothing is repaired and the '
+          'deliberately restored record resumes control', flush=True)
+
+    # a record file whose name does not match its content's hashed thread
+    # id refuses too (no silent selection among records)
+    mis_ws = Workspace(base)
+    mis_ws.attach()
+    store = mis_ws.root / 'coord' / 'lead-session-attach'
+    (store / at._record_name(THREAD)).rename(store / 'attach-deadbeef.json')
+    before = len(mis_ws.wire())
+    message = mis_ws.refuses_phase('--effort', 'xhigh', '--rpc-timeout',
+                                   '3', '--json')
+    assert 'misnamed attach record' in message
+    assert 'zero settings calls' in message
+    assert mis_ws.settings_calls(mis_ws.wire(after=before)) == []
+    print('  ok    a misnamed record file (content hashes elsewhere) '
+          'refuses instead of being silently selected, renamed or '
+          'rewritten', flush=True)
+
+    # a journal file whose entries belong to ANOTHER thread is foreign
+    # evidence: it refuses without repair or completion
+    fj_ws = Workspace(base)
+    fj_ws.attach()
+    fj_ws.journal_path().write_text(json.dumps({
+        'v': 1, 'kind': 'intent', 'attempt': 1,
+        'at': '2026-11-16T00:00:00Z', 'thread_id': OTHER,
+        'source': 'phase', 'requested': 'xhigh',
+        'reason': 'foreign journal evidence'}, ensure_ascii=False) + '\n',
+        encoding='utf-8')
+    os.chmod(fj_ws.journal_path(), 0o600)
+    before = len(fj_ws.wire())
+    message = fj_ws.refuses_phase('--effort', 'xhigh', '--rpc-timeout',
+                                  '3', '--json')
+    assert 'foreign attach attempt journal entry' in message
+    assert fj_ws.settings_calls(fj_ws.wire(after=before)) == []
+    assert json.loads(fj_ws.journal_bytes().splitlines()[0])[
+        'thread_id'] == OTHER
+    print('  ok    a foreign-thread journal under this thread\'s hashed '
+          'filename refuses without repair; the evidence stays intact',
+          flush=True)
+
+    print('genuine legacy prototype records still migrate additively',
+          flush=True)
+    legacy_ws = Workspace(base)
+    store = legacy_ws.root / 'coord' / 'lead-session-attach'
+    store.mkdir(mode=0o700)
+    legacy_doc = {
+        'schema_version': 1, 'thread_id': THREAD,
+        'workspace': str(legacy_ws.root), 'route': at.ROUTE_DEFAULT,
+        'codex_binary': str(legacy_ws.binary), 'sock': '',
+        'ceiling': 'xhigh', 'auto': True,
+        'effort': {'requested': None, 'source': None, 'ack': None,
+                   'updated_at': ''},
+        'native': {'effort': 'medium',
+                   'updated_at': '2026-11-16T00:00:00Z'},
+        'pending': None, 'created_at': '2026-11-16T00:00:00Z',
+        'updated_at': '2026-11-16T00:00:00Z',
+        'detached': False, 'detached_at': None,
+    }
+    legacy_path = store / at._record_name(THREAD)
+    legacy_path.write_text(json.dumps(legacy_doc, ensure_ascii=False),
+                           encoding='utf-8')
+    os.chmod(legacy_path, 0o600)
+    payload, _, code = legacy_ws.status('--thread-id', THREAD)
+    assert code == 0 and payload['attached'] is True
+    payload, _, code = legacy_ws.phase('--effort', 'xhigh',
+                                       '--rpc-timeout', '3', '--json')
+    assert code == 0 and payload['requested']['ack'] == 'acknowledged'
+    record = json.loads(legacy_path.read_text())
+    at._validate_record(record)
+    assert record['schema_version'] == 2 and record['owner_pin'] is None
+    print('  ok    a genuine v1 prototype record for THIS exact thread '
+          'and workspace still migrates additively; the identity binding '
+          'refuses only foreign records', flush=True)
 
     print('status, detach and STOP interactions', flush=True)
     before = len(ws.wire())
@@ -1464,6 +1776,21 @@ def run_suite(base):
           'and re-attaches, matching repeated flags stay allowed and '
           'inspect keeps free transport flags', flush=True)
 
+    # an EXPLICIT `--codex-binary codex` is a real explicit choice: the
+    # saved custom endpoint must not silently absorb it (explicitness is
+    # tracked by the parser's None default, not by comparing the value
+    # against the default binary name).
+    before_codex = len(end_ws.wire())
+    message = refuses(['--project', str(end_ws.root), 'attach', 'phase',
+                       '--effort', 'low', '--codex-binary', 'codex',
+                       '--rpc-timeout', '3', '--json'])
+    assert 'conflicts with the transport selection persisted' in message
+    assert end_ws.settings_calls(end_ws.wire(after=before_codex)) == []
+    print('  ok    an explicit --codex-binary codex conflicts with a '
+          'saved custom endpoint exactly like any other explicit '
+          'mismatch, with zero settings calls; only an OMITTED flag '
+          'keeps the attached endpoint', flush=True)
+
     print('human and JSON displays', flush=True)
     human_ws = Workspace(base)
     _, text, code = invoke(['--project', str(human_ws.root), 'attach',
@@ -1494,7 +1821,8 @@ def run_suite(base):
                   human_ws, empty_ws, none_ws, pin_ws, ceil_ws, adv_ws,
                   jr_ws, crash_ws, dangling_ws, obs_ws, honest_ws,
                   pend_ws, ceilpend_ws, susp_ws, ro_ws, unsafe_ro,
-                  end_ws, alt_ws):
+                  end_ws, alt_ws, utf_ws, utf2_ws, count_ws, room_ws,
+                  byte_ws, post_ws, ident_ws, mis_ws, fj_ws, legacy_ws):
         names = space.rpc_names(space.wire())
         assert not (set(names) & forbidden), set(names) & forbidden
         assert set(names) <= permitted, set(names) - permitted

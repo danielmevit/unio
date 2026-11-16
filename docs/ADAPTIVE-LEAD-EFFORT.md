@@ -103,7 +103,12 @@ unio lead-session attach detach [--thread-id ID] [--json]
 ```
 
 Attach subcommand defaults and flag notes: the transport flags
-(`--codex-binary`, default the `codex` found on PATH; `--sock`, default
+(`--codex-binary`, omitted resolves to the `codex` found on PATH for
+the pre-attach `attach attach`/`inspect` commands, while every later
+record-bound control re-uses the transport selection persisted in the
+attach record — an explicitly GIVEN value, including an explicit
+`codex`, is always a real explicit choice that refuses on conflict;
+`--sock`, default
 the codex home control socket; `--rpc-timeout`, default 8 seconds,
 range 0.5..60) select the shared-daemon control transport;
 `attach attach --ceiling` accepts `low` or `xhigh` and defaults to
@@ -484,18 +489,41 @@ with zero model calls, zero account reads and no thread resumed.
 
 Every settings attempt also keeps a durable, crash-aware two-line
 receipt in the thread's append-only attempt journal
-(`coord/lead-session-attach/attempts-*.jsonl`, 0600, bounded): the
-intent entry (requested effort, exact thread id, request timestamp)
-persists BEFORE the mutating RPC — a refusal to record is a refusal to
-call — and the result entry records the actual acknowledgement
-(acknowledged, rejected-unavailable or Unknown) afterward. Old
+(`coord/lead-session-attach/attempts-*.jsonl`, 0600, bounded): durable
+room for BOTH lines is reserved BEFORE the attempt — the entry count
+and the byte headroom for the intent line plus the bounded worst-case
+serialized result line (JSON escaping and multibyte error text
+included) — so every capacity-bound refusal happens BEFORE the
+mutating RPC and is truthfully zero calls. The intent entry (requested
+effort, exact thread id, request timestamp) persists before the RPC —
+a refusal to record is a refusal to call — and the result entry
+records the actual acknowledgement (acknowledged,
+rejected-unavailable or Unknown) afterward, with the provider error
+bounded to VALID UTF-8 BYTES at a character boundary (never by
+character count), so a multibyte rejection message keeps a valid
+bounded receipt and the rejection stays a rejection instead of
+turning into an 'invalid journal' failure. Old
 unknown/rejected/acknowledged attempts stay separate from the current
 control state and byte-identical through re-enables, later successes,
 detaches and re-attaches; nothing is ever truncated, deleted or
 rewritten, and a full journal refuses new attempts instead of dropping
-history. A dangling intent (an interrupted run whose result receipt
-never landed) keeps its Unknown outcome and blocks further updates
-until the owner resolves it explicitly; no completion is invented.
+history. Should a result receipt nevertheless fail to persist after
+the request crossed the wire, the failure is reported truthfully as
+happening AFTER the request with the attempt outcome Unknown — never
+as 'no settings call was made'; the visibly dangling intent then
+blocks further updates until the owner resolves it explicitly; no
+completion is invented. Every journal entry, record and record
+FILENAME is identity-bound to the exact request: an entry or record
+is trusted only when its own stored thread id matches the requested
+thread, its own stored workspace is this workspace and its hashed
+filename matches its content; a wrong-id, wrong-workspace, misnamed,
+misplaced or foreign valid-shaped record (or journal) refuses BEFORE
+any mutating RPC with zero settings calls, never silently selects
+another record, thread or endpoint, and is never 'repaired' by
+copying, rewriting or deleting evidence — the genuine v1 prototype
+record migration for this exact thread and workspace keeps working
+and restoring or archiving the right file deliberately resumes
+control.
 
 Transport selection is persisted and honoured. The codex binary and
 control socket used at the initial `attach attach` are saved with the
@@ -505,7 +533,11 @@ talk to a DIFFERENT local daemon or spawn a default `codex` from PATH
 when the attachment was made through another binary or socket. An
 endpoint that explicitly conflicts with the persisted selection refuses
 with zero settings calls until the owner deliberately detaches and
-re-attaches; repeating the SAME flags as the attachment stays allowed.
+re-attaches; repeating the SAME flags as the attachment stays allowed,
+and explicitness is decided by whether the flag was GIVEN, not by
+comparing its text against the default binary name — an explicit
+`--codex-binary codex` is a real explicit choice that must not be
+silently absorbed by a saved custom endpoint.
 Two honest qualifications: the saved selection is a NAME preserved only
 by convention — an implicit `codex` PATH default is resolved again at
 every command (the native CLI keeps updating normally on PATH; there is
@@ -535,7 +567,11 @@ turns are not Unio-admitted turns; effective model, service tier and
 effort stay Unknown; no continuous manual-change monitoring exists
 while no command is connected (the comparison happens at each command
 boundary); a typed settings rejection is `unavailable`, a timed-out
-update is `uncertain` and is never retried blindly. Full hands-free
+update is `uncertain` and is never retried blindly. A proxy EOF is
+diagnosed by its ACTUAL stage: an exit before the websocket handshake
+completed means the transport is unreachable, a close after the
+completed handshake means the daemon connection dropped mid-RPC — the
+stage is never misreported. Full hands-free
 per-turn phase classification and worker watching remain follow-ups;
 the explicit cooperating-lead phase signal is the automation of this
 slice. Attach state is strictly additive under
