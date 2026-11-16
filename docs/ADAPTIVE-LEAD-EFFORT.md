@@ -76,6 +76,10 @@ unio lead-session effort show|auto|manual low|xhigh|request low|xhigh [--reason 
 unio lead-session worker register ID|wait|terminal ID [--json]
 unio lead-session stop [--json]
 unio lead-session output [--after N] [--limit N] [--json]
+unio lead-session attach inspect|attach|phase|manual|auto|status|detach
+                        [--thread-id ID] [--effort low|xhigh]
+                        [--kind coordination|planning|review]
+                        [--ceiling low|xhigh] [--reason R] [--json]
 ```
 
 - `start` requires an explicit owner goal file (bounded, private, regular,
@@ -373,26 +377,70 @@ with zero model calls, zero account reads and no thread resumed.
   requested id and IDLE; a running turn is never touched, interrupted
   or relabelled. An optional `--effort low|xhigh` requests the effort
   for FUTURE turns through one `thread/settings/update` whose params
-  are exactly `threadId` and `effort`.
+  are exactly `threadId` and `effort`: the requested level must not
+  exceed the requested `--ceiling` and must be advertised by the
+  thread's own native model (`model/list`, read-only) or the attach
+  refuses with no record and no settings call.
 - `attach phase` is the explicit cooperating-lead signal:
   `--kind coordination` requests low, `--kind planning` or `--kind
-  review` request the ceiling, and an explicit `--effort low|xhigh`
-  wins. Native manual changes take precedence: before every apply the
-  freshly read native effort is compared with the record's last
-  acknowledged request and last observation, and a detected native
-  manual change suspends AUTO and refuses to overwrite it — only the
-  explicit `attach auto` re-enables control. A running turn is never
-  relabelled; the request is shown as pending and applied only at a
-  later explicit idle command. The requested level must be advertised
-  by the thread's own native model (`model/list`, read-only); medium
-  and high are never substituted for low or xhigh.
+  review` request EXACTLY the persisted ceiling recorded at attach
+  (never a per-command default), and an explicit `--effort low|xhigh`
+  requests that concrete level only within the same promised bound —
+  a request above the configured ceiling refuses instead of silently
+  exceeding it. Native manual changes take precedence: before every
+  apply the freshly read native effort is compared with the record's
+  last acknowledged request and last observation, and a detected
+  native manual change suspends AUTO and refuses to overwrite it. A
+  suspended automatic phase STAYS suspended across commands: every
+  later `phase` signal (kind or explicit) refuses with NO setter and
+  NO pending automatic write until the owner explicitly re-enables
+  with `attach auto`. A running turn is never relabelled; the request
+  is shown as pending and applied only at a later explicit idle
+  command. The requested level must be advertised by the thread's own
+  native model (`model/list`, read-only); medium and high are never
+  substituted for low or xhigh.
+- `attach manual --effort low|xhigh` is the explicit owner manual
+  override: it applies one concrete owner level for future turns (the
+  same advertisement check applies) AND pins/suspends automatic phase
+  selection until the owner re-enables it with `attach auto` — the
+  owner requirement that a manual choice keeps winning over every
+  later automatic signal. It is distinct from the one-off cooperating
+  lead phase signal, it works while AUTO is suspended (the owner, not
+  the stored flag, is the authority) and it is the one explicit path
+  that may exceed the configured ceiling — always reported in its
+  output, never silent. During a running turn it pins without any
+  settings call and applies at the next explicit idle invocation.
+- `attach auto` re-enables AUTO control and lifts an owner manual
+  pin. An owner re-enable acknowledges AUTHORITY to continue, never
+  delivery: an earlier Unknown attempt keeps its uncertain
+  acknowledgement on the record (an `owner_acknowledged` timestamp is
+  kept separately) and its byte-identical journal receipt; it never
+  becomes a successful delivery because the owner chose auto.
 - `attach status` is a zero-connection local record view: the last
   requested effort with its acknowledgement (acknowledged, typed
-  unavailable, or preserved uncertain), any pending request, whether
-  AUTO is on or suspended, the last observed native effort and the
-  always-Unknown effective effort.
+  unavailable, or preserved uncertain with its separate owner
+  authority acknowledgement), any pending request, any owner manual
+  pin, whether AUTO is on or suspended, the last observed native
+  effort and the always-Unknown effective effort. The concrete
+  requested level comes first, the AUTO control state second, and the
+  effective provider effort is always Unknown.
 - `attach detach` releases the record; the shared daemon and the
   owner TUI are never touched. Detach also works during a STOP.
+
+Every settings attempt also keeps a durable, crash-aware two-line
+receipt in the thread's append-only attempt journal
+(`coord/lead-session-attach/attempts-*.jsonl`, 0600, bounded): the
+intent entry (requested effort, exact thread id, request timestamp)
+persists BEFORE the mutating RPC — a refusal to record is a refusal to
+call — and the result entry records the actual acknowledgement
+(acknowledged, rejected-unavailable or Unknown) afterward. Old
+unknown/rejected/acknowledged attempts stay separate from the current
+control state and byte-identical through re-enables, later successes,
+detaches and re-attaches; nothing is ever truncated, deleted or
+rewritten, and a full journal refuses new attempts instead of dropping
+history. A dangling intent (an interrupted run whose result receipt
+never landed) keeps its Unknown outcome and blocks further updates
+until the owner resolves it explicitly; no completion is invented.
 
 Honest boundary: the TUI keeps full manual control and its manual
 turns are not Unio-admitted turns; effective model, service tier and
@@ -403,8 +451,8 @@ update is `uncertain` and is never retried blindly. Full hands-free
 per-turn phase classification and worker watching remain follow-ups;
 the explicit cooperating-lead phase signal is the automation of this
 slice. Attach state is strictly additive under
-`coord/lead-session-attach/` (0700, records 0600) and never rewrites
-the owned session state under `coord/lead-effort/`.
+`coord/lead-session-attach/` (0700, records and attempt journal 0600)
+and never rewrites the owned session state under `coord/lead-effort/`.
 
 ## Upgrading and rolling back
 
@@ -438,8 +486,8 @@ the owned session state under `coord/lead-effort/`.
 - `tools/lead-session.py` — the `unio lead-session` CLI controller.
 - `tools/lead-session-attach.py` — existing-session attach connector:
   the websocket-over-proxy shared-daemon transport, the strictly
-  additive attach record store and the inspect/attach/phase/auto/
-  status/detach controls.
+  additive attach record store with the append-only attempt journal,
+  and the inspect/attach/phase/manual/auto/status/detach controls.
 - Tests: `tests/unio-lead-effort.py`, `tests/unio-lead-session.py`,
   `tests/unio-lead-session-codex.py`, `tests/unio-lead-session-policy.py`,
   `tests/unio-lead-session-attach.py`,

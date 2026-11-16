@@ -2152,10 +2152,10 @@ def build_parser():
 
     attach = sub.add_parser(
         'attach', help='existing-session attach: read-only inspect plus '
-                       'explicit attach/status/phase/auto/detach control of '
-                       'the CURRENT RUNNING shared Codex daemon through its '
-                       'app-server proxy (experimental; nothing is resumed, '
-                       'started, forked or signalled)')
+                       'explicit attach/status/phase/manual/auto/detach '
+                       'control of the CURRENT RUNNING shared Codex daemon '
+                       'through its app-server proxy (experimental; nothing '
+                       'is resumed, started, forked or signalled)')
     attach_sub = attach.add_subparsers(dest='control', required=True)
 
     attach_inspect = attach_sub.add_parser(
@@ -2189,9 +2189,11 @@ def build_parser():
         'phase', help='explicit cooperating-lead phase signal: request the '
                       'effort for future turns of the attached thread (low '
                       'or xhigh; kind coordination is low, planning/review '
-                      'are the ceiling; a running turn is never relabelled)')
+                      'are the persisted ceiling; a running turn is never '
+                      'relabelled; refused while AUTO is suspended)')
     attach_phase.add_argument('--effort', default=None,
-                              help='low or xhigh (explicit; wins over kind)')
+                              help='low or xhigh (explicit; wins over kind, '
+                                   'must not exceed the persisted ceiling)')
     attach_phase.add_argument('--kind', choices=pe.KINDS, default=None,
                               help='coordination, planning or review; '
                                    'default: coordination')
@@ -2202,9 +2204,27 @@ def build_parser():
     _attach_transport_flags(attach_phase)
     attach_phase.add_argument('--json', action='store_true')
 
+    attach_manual = attach_sub.add_parser(
+        'manual', help='explicit owner manual override: request low or xhigh '
+                       'for future turns AND pin/suspend automatic phase '
+                       'selection until `attach auto` re-enables it (the '
+                       'owner keeps final control; the only explicit path '
+                       'that may exceed the configured ceiling)')
+    attach_manual.add_argument('--effort', required=True,
+                               help='low or xhigh (concrete owner level)')
+    attach_manual.add_argument('--reason', default=None)
+    attach_manual.add_argument('--thread-id', default=None,
+                               help='required when several threads are '
+                                    'attached')
+    _attach_transport_flags(attach_manual)
+    attach_manual.add_argument('--json', action='store_true')
+
     attach_auto = attach_sub.add_parser(
-        'auto', help='explicit re-enable of AUTO control after a suspend '
-                     '(local record operation; no proxy)')
+        'auto', help='explicit re-enable of AUTO control after a suspend or '
+                     'owner manual pin; acknowledges the owner\'s authority '
+                     'to continue, never the delivery of an earlier Unknown '
+                     'attempt (record changes only; the dangling-attempt '
+                     'resolution receipt is journaled)')
     attach_auto.add_argument('--reason', default=None)
     attach_auto.add_argument('--thread-id', default=None)
     attach_auto.add_argument('--json', action='store_true')

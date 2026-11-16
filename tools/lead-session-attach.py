@@ -57,13 +57,33 @@ Enforced by this component:
   effort is compared with this record's last acknowledged request and
   last observation; a mismatch means a native manual change (for example
   the owner's own ``/model --reasoning`` in the TUI) and the connector
-  suspends AUTO control and refuses to overwrite it; only the explicit
-  ``attach auto`` command re-enables control;
+  suspends AUTO control and refuses to overwrite it; a suspended
+  automatic phase STAYS suspended across commands - NO setter and NO
+  pending automatic write happens - until the explicit ``attach auto``
+  command re-enables it, and the explicit owner ``attach manual
+  --effort low|xhigh`` override applies a concrete owner level while
+  pinning automatic phase selection off;
+- the configured ceiling actually binds automatic planning/review phase
+  resolution: it is read from the validated persisted attach record
+  (never from a per-command flag), an automatic kind never exceeds it,
+  an explicit phase request above it refuses, and only the explicit
+  owner ``attach manual`` override - always reported, never silent -
+  may go above the promised bound;
 - an acknowledged-because-typed-rejection setter is recorded as
   ``unavailable`` and an uncertain (timeout/exit) acknowledgement as
-  ``uncertain`` — the receipt is always preserved, never silently
-  retried; a still-Unknown acknowledgement blocks further updates until
-  the native reading resolves it or the owner re-enables explicitly;
+  ``uncertain`` - and every settings attempt is a durable two-line
+  journal receipt (``coord/lead-session-attach/attempts-*.jsonl``):
+  the intent entry persists BEFORE the mutating RPC (a refusal to
+  record means ZERO settings calls) and the result entry records the
+  actual acknowledgement afterward, so old unknown/rejected/
+  acknowledged attempt facts stay separate from the current control
+  state, byte-identical and never truncated, deleted or rewritten by
+  later setters, ``auto`` re-enables, successes, detaches or
+  re-attaches; an owner re-enable acknowledges AUTHORITY only, never
+  delivery - the original uncertain acknowledgement is kept intact,
+  and a dangling intent (interrupted run) blocks further updates until
+  the owner resolves it explicitly; no invented completion ever
+  happens;
 - admission uses the SAME policy controller as the owned path
   (``lead-session-policy.py``): project STOP, off holds, the configured
   registered lead's real account group mapping, native slot counting
@@ -93,6 +113,7 @@ import json
 import os
 import select
 import signal
+import stat
 import subprocess
 import time
 
@@ -596,17 +617,210 @@ class AttachConnection:
 
 # -- attach record store (strictly additive, separate directory) -------
 
+SCHEMA_VERSION = 2
 RECORD_KEYS = frozenset(('schema_version', 'thread_id', 'workspace', 'route',
                          'codex_binary', 'sock', 'ceiling', 'auto', 'effort',
-                         'native', 'pending', 'created_at', 'updated_at',
-                         'detached', 'detached_at'))
-EFFORT_KEYS = frozenset(('requested', 'source', 'ack', 'updated_at'))
+                         'native', 'pending', 'owner_pin', 'created_at',
+                         'updated_at', 'detached', 'detached_at'))
+LEGACY_RECORD_KEYS = RECORD_KEYS - frozenset(('owner_pin',))
+EFFORT_KEYS = frozenset(('requested', 'source', 'ack', 'owner_acknowledged',
+                         'updated_at'))
+LEGACY_EFFORT_KEYS = EFFORT_KEYS - frozenset(('owner_acknowledged',))
+OWNER_PIN_KEYS = frozenset(('effort', 'reason', 'updated_at'))
 NATIVE_KEYS = frozenset(('effort', 'updated_at'))
 PENDING_KEYS = frozenset(('effort', 'reason', 'updated_at'))
 ACKS = ('acknowledged', 'unavailable', 'uncertain',
         'acknowledged-by-owner')
-SOURCES = ('attach', 'phase')
+SOURCES = ('attach', 'phase', 'manual')
 STATE_BOUND = 65536
+
+# -- bounded attempt journal (crash-aware per-attempt receipts) ---------
+#
+# Every settings attempt is a two-line receipt: the intent entry is
+# persisted BEFORE the mutating RPC (a refusal to record means ZERO
+# settings calls) and the result entry records the ACTUAL acknowledgement
+# class afterward. An attempt interrupted between the two stays visibly
+# unresolved (dangling) and blocks further updates until the owner
+# resolves it explicitly — never an invented completion. Entries are
+# appended only: old unknown/rejected/acknowledged attempts are never
+# rewritten, truncated or deleted, byte-identical across unrelated later
+# control-state changes, auto re-enables, successes, detach and re-attach.
+
+JOURNAL_VERSION = 1
+JOURNAL_INTENT_KEYS = frozenset(('v', 'kind', 'attempt', 'at', 'thread_id',
+                                 'source', 'requested', 'reason'))
+JOURNAL_RESULT_KEYS = frozenset(('v', 'kind', 'attempt', 'at', 'thread_id',
+                                 'ack', 'error'))
+JOURNAL_RESOLUTION_KEYS = frozenset(('v', 'kind', 'at', 'thread_id',
+                                      'acknowledged'))
+JOURNAL_ACKS = ('acknowledged', 'unavailable', 'uncertain')
+JOURNAL_ENTRIES_BOUND = 256
+JOURNAL_BYTES_BOUND = 65536
+JOURNAL_ERROR_BOUND = 256
+
+
+def _journal_name(thread_id):
+    digest = hashlib.sha256(thread_id.encode('utf-8')).hexdigest()
+    return 'attempts-' + digest[:32] + '.jsonl'
+
+
+def _journal_path(root, thread_id):
+    return _attach_dir(root) / _journal_name(thread_id)
+
+
+def _validate_journal_entry(entry, name):
+    def refuse():
+        raise Refusal('invalid attach attempt journal entry: ' + name)
+
+    if not isinstance(entry, dict):
+        refuse()
+    keys = set(entry)
+    if entry.get('v') != JOURNAL_VERSION:
+        refuse()
+    if keys == JOURNAL_INTENT_KEYS:
+        if entry['kind'] != 'intent':
+            refuse()
+        if (not isinstance(entry.get('attempt'), int)
+                or entry['attempt'] < 1):
+            refuse()
+        if entry['source'] not in SOURCES:
+            refuse()
+        if entry['requested'] not in pe.INTERFACE_EFFORTS:
+            refuse()
+        if (not isinstance(entry.get('reason'), str)
+                or '\x00' in entry['reason']
+                or len(entry['reason'].encode('utf-8', 'replace'))
+                > pe.REASON_BOUND):
+            refuse()
+    elif keys == JOURNAL_RESULT_KEYS:
+        if entry['kind'] != 'result':
+            refuse()
+        if (not isinstance(entry.get('attempt'), int)
+                or entry['attempt'] < 1):
+            refuse()
+        if entry['ack'] not in JOURNAL_ACKS:
+            refuse()
+        error = entry['error']
+        if (error is not None and (not isinstance(error, str)
+                                   or '\x00' in error
+                                   or len(error.encode('utf-8', 'replace'))
+                                   > JOURNAL_ERROR_BOUND)):
+            refuse()
+    elif keys == JOURNAL_RESOLUTION_KEYS:
+        if entry['kind'] != 'owner-resolution':
+            refuse()
+        try:
+            _bounded(entry['acknowledged'], JOURNAL_ERROR_BOUND,
+                     'owner acknowledgement')
+        except Refusal:
+            refuse()
+    else:
+        refuse()
+    try:
+        _bounded(entry['at'], 32, 'timestamp')
+        _bounded(entry['thread_id'], cx.ID_BOUND, 'thread id')
+    except Refusal:
+        refuse()
+    return entry
+
+
+def _journal_entries(root, thread_id):
+    """Every journal entry of one thread; fail closed on unsafe state."""
+    path = _journal_path(root, thread_id)
+    if not path.exists():
+        return []
+    data = ml._read_owned_file(path, JOURNAL_BYTES_BOUND)
+    entries = []
+    for line in data.splitlines():
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except (ValueError, UnicodeError, RecursionError) as exc:
+            raise Refusal('invalid attach attempt journal (unreadable '
+                          'entry; refusing any settings call)') from exc
+        entries.append(_validate_journal_entry(entry, path.name))
+    if len(entries) > JOURNAL_ENTRIES_BOUND:
+        raise Refusal('attach attempt journal bound exceeded')
+    return entries
+
+
+def _journal_append(root, thread_id, entry):
+    """Append ONE durable receipt line; refuse without ever truncating.
+
+    Journal writes are single-writer: every mutating command holds the
+    lead admission lease, so no lock is taken here (which also keeps it
+    safely callable while the short record guard is held).
+    """
+    _validate_journal_entry(entry, _journal_name(thread_id))
+    path = _journal_path(root, thread_id)
+    ml.safe_path(path)
+    entries = _journal_entries(root, thread_id)
+    if len(entries) >= JOURNAL_ENTRIES_BOUND:
+        raise Refusal('the attach attempt journal is full (%d entries); '
+                      'no new attempt is recorded and no settings call is '
+                      'made; old failures are never truncated or deleted - '
+                      'archive the journal file before continuing'
+                      % JOURNAL_ENTRIES_BOUND)
+    line = (json.dumps(entry, ensure_ascii=False) + '\n').encode('utf-8')
+    if path.exists() and path.stat().st_size + len(line) > JOURNAL_BYTES_BOUND:
+        raise Refusal('the attach attempt journal is full (%d bytes); '
+                      'no new attempt is recorded and no settings call is '
+                      'made; old failures are never truncated or deleted - '
+                      'archive the journal file before continuing'
+                      % JOURNAL_BYTES_BOUND)
+    fd = None
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND
+                     | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        st = os.fstat(fd)
+        if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
+                or st.st_uid != os.getuid() or st.st_mode & 0o077):
+            raise OSError('unsafe attach attempt journal')
+        view = memoryview(line)
+        while view:
+            written = os.write(fd, view)
+            if not written:
+                raise OSError('short journal write')
+            view = view[written:]
+        os.fsync(fd)
+    except OSError as exc:
+        raise Refusal('the attach attempt journal cannot be written (%s); '
+                      'refusing BEFORE any settings call; no invented '
+                      'completion is possible' % exc) from exc
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def _journal_dangling(root, thread_id):
+    """The newest attempt whose intent has no completion receipt yet.
+
+    Crash-aware: an intent entry without its result entry (and without a
+    later explicit owner resolution) means the run died around the
+    mutating RPC and the attempt's outcome stays Unknown - it is never
+    completed by the owner's later choices and blocks new updates.
+    """
+    outstanding = []
+    for entry in _journal_entries(root, thread_id):
+        if entry['kind'] == 'owner-resolution':
+            outstanding = []
+        elif entry['kind'] == 'intent':
+            outstanding.append(entry)
+        elif entry['kind'] == 'result':
+            outstanding = [item for item in outstanding
+                           if item['attempt'] != entry['attempt']]
+    return outstanding[-1] if outstanding else None
+
+
+def _journal_next_attempt(root, thread_id):
+    entries = _journal_entries(root, thread_id)
+    numbers = [entry['attempt'] for entry in entries
+               if 'attempt' in entry]
+    return (max(numbers) + 1) if numbers else 1
 
 
 def _attach_dir(root):
@@ -632,9 +846,18 @@ def _validate_record(doc):
     def refuse():
         raise Refusal('invalid attach record')
 
-    if not isinstance(doc, dict) or set(doc) != RECORD_KEYS:
+    if not isinstance(doc, dict):
         refuse()
-    if doc.get('schema_version') != 1:
+    if (doc.get('schema_version') == 1
+            and set(doc) == LEGACY_RECORD_KEYS):
+        # Additive migration of an own prototype v1 record: the new
+        # control fields are added with neutral defaults and NOTHING
+        # existing is rewritten; it is persisted as v2 only on the next
+        # explicit save. Owned legacy records are never read here.
+        doc['schema_version'] = SCHEMA_VERSION
+        doc['owner_pin'] = None
+        doc['effort'] = dict(doc['effort'], owner_acknowledged=None)
+    if doc.get('schema_version') != SCHEMA_VERSION or set(doc) != RECORD_KEYS:
         refuse()
     bounds = {'thread_id': cx.ID_BOUND, 'workspace': 1024,
               'route': 256, 'codex_binary': 1024,
@@ -662,10 +885,31 @@ def _validate_record(doc):
             refuse()
         if effort['ack'] not in ACKS:
             refuse()
-        if not isinstance(effort['updated_at'], str):
-            refuse()
-    elif effort['source'] is not None or effort['ack'] is not None:
+    elif (effort['source'] is not None or effort['ack'] is not None
+            or effort['owner_acknowledged'] is not None):
         refuse()
+    if not isinstance(effort['updated_at'], str):
+        refuse()
+    if effort['owner_acknowledged'] is not None:
+        try:
+            _bounded(effort['owner_acknowledged'], 32,
+                     'owner acknowledgement')
+        except Refusal:
+            refuse()
+    pin = doc.get('owner_pin')
+    if pin is not None:
+        if not isinstance(pin, dict) or set(pin) != OWNER_PIN_KEYS:
+            refuse()
+        if pin['effort'] not in pe.INTERFACE_EFFORTS:
+            refuse()
+        if (not isinstance(pin['reason'], str) or '\x00' in pin['reason']
+                or len(pin['reason'].encode('utf-8', 'replace'))
+                > pe.REASON_BOUND):
+            refuse()
+        if not isinstance(pin['updated_at'], str):
+            refuse()
+        if doc['auto'] is not False:
+            refuse()
     native = doc.get('native')
     if not isinstance(native, dict) or set(native) != NATIVE_KEYS:
         refuse()
@@ -816,16 +1060,19 @@ def _record_guard(root):
 
 def _record_view(record):
     """A truthful HTTP-friendly whitelisted record view."""
+    pin = record['owner_pin']
     return {
         'thread_id': record['thread_id'],
         'route': record['route'],
         'ceiling': record['ceiling'],
         'auto': record['auto'],
+        'owner_pin': dict(pin) if pin else None,
         'detached': record['detached'],
         'requested': {
             'effort': record['effort']['requested'],
             'source': record['effort']['source'],
             'ack': record['effort']['ack'],
+            'owner_acknowledged': record['effort']['owner_acknowledged'],
             'updated_at': record['effort']['updated_at'],
         },
         'pending': dict(record['pending']) if record['pending'] else None,
@@ -860,30 +1107,69 @@ def _connect(args):
                             rpc_timeout=float(rpc_timeout))
 
 
-def _resolve_effort(args):
+def _resolve_effort(args, record=None):
     """Resolve the explicit cooperating-lead phase signal.
 
-    An explicit effort (low or xhigh only) wins; otherwise the explicit
-    kind maps exactly like the adaptive lead interface: coordination is
-    low, planning and review are the ceiling. Intermediate levels are
-    never substituted for a level the interface does not expose.
+    Automatic kind resolution is bound by the VALIDATED PERSISTED
+    ceiling of the attached record (never by a per-command flag): an
+    explicit effort (low or xhigh only) wins for the concrete level but
+    must not exceed that promised bound; coordination is low, planning
+    and review are exactly the stored ceiling. The promised bound is
+    never silently exceeded - going above it is an explicit owner
+    decision (`attach manual`), reported as such. Intermediate levels
+    are never substituted for a level the interface does not expose.
     """
     effort = getattr(args, 'effort', None)
     kind = getattr(args, 'kind', None) or 'coordination'
     if kind not in pe.KINDS:
         raise Refusal('unknown work kind: ' + str(kind))
+    ceiling = None
+    if record is not None:
+        ceiling = record['ceiling']  # validated when the record loaded
     if effort is None:
         if kind == 'coordination':
             effort = pe.COORDINATION_EFFORT
+        elif ceiling is not None:
+            effort = ceiling
         else:
-            effort = getattr(args, 'ceiling', None) or pe.DEFAULT_CEILING
+            effort = pe.DEFAULT_CEILING
     if effort not in pe.RANK:
         raise Refusal('unknown effort: ' + str(effort))
     if effort not in pe.INTERFACE_EFFORTS:
         raise Refusal('only low and xhigh are exposed in this first '
                       'adaptive interface; no medium/high substitution: '
                       + effort)
+    if ceiling is not None and pe.RANK.index(effort) > pe.RANK.index(ceiling):
+        raise Refusal('explicit effort %s exceeds the configured ceiling %s; '
+                      'the promised bound is never silently exceeded: '
+                      're-attach with a higher ceiling or apply the '
+                      'explicit owner override `unio lead-session attach '
+                      'manual --effort %s`' % (effort, ceiling, effort))
     return effort, kind
+
+
+def _refuse_suspended(record):
+    """Persistent manual precedence (a stored bool is not enforcement:
+    the gate that refuses every automatic write is)."""
+    if record['auto']:
+        return
+    pin = record['owner_pin']
+    if pin is not None:
+        raise Refusal('the owner manual pin %s is active: automatic phase '
+                      'selection stays suspended across commands with NO '
+                      'setter and NO pending automatic write; re-enable '
+                      'explicitly with `unio lead-session attach auto` or '
+                      'apply a concrete owner override with `unio '
+                      'lead-session attach manual --effort low|xhigh`'
+                      % pin['effort'])
+    raise Refusal('automatic phase control is suspended after a native '
+                  'manual change (native requested effort %r observed at %s) '
+                  'and stays suspended across commands: NO setter and NO '
+                  'pending automatic write happens until the owner '
+                  'explicitly re-enables with `unio lead-session attach '
+                  'auto`; the native value is never overwritten blindly'
+                  % (record['native']['effort'],
+                     record['native']['updated_at']))
 
 
 def _observe(record, reading):
@@ -891,32 +1177,55 @@ def _observe(record, reading):
                        'updated_at': _now()}
 
 
-def _apply_effort(conn, record, thread_id, effort, source, reason):
-    """One bounded thread/settings/update for future turns; truthful ack.
+def _apply_effort(root, conn, record, thread_id, effort, source, reason):
+    """One bounded thread/settings/update with a durable attempt receipt.
 
-    Returns the acknowledgement class and exit code:
-    'acknowledged' (0), 'unavailable' (5, typed provider rejection) or
-    'uncertain' (6, timeout/exit: the update may or may not have
-    landed; the receipt is preserved, never retried blindly).
+    The intent entry is persisted BEFORE the mutating RPC: if required
+    recording cannot be made, the call refuses and ZERO settings RPCs
+    happen. The result entry records the ACTUAL acknowledgement class
+    ('acknowledged' 0, 'unavailable' 5 typed provider rejection,
+    'uncertain' 6 timeout/exit: the update may or may not have landed).
+    Every attempt keeps its requested effort, exact thread id, request
+    timestamp and truthful outcome separately and durably; a previous
+    unknown/rejected attempt is never rewritten by a later setter, and a
+    dangling intent (interrupted run) blocks further updates until the
+    owner resolves it explicitly - no invented completion ever happens.
     """
+    dangling = _journal_dangling(root, thread_id)
+    if dangling is not None:
+        raise Refusal('the settings attempt %d (requested %s at %s) has no '
+                      'completion receipt - its outcome remains Unknown '
+                      'after an interrupted run and is never completed '
+                      'silently; verify it in the TUI, then resolve it '
+                      'explicitly with `unio lead-session attach auto` '
+                      'before any further update'
+                      % (dangling['attempt'], dangling['requested'],
+                         dangling['at']))
+    attempt = _journal_next_attempt(root, thread_id)
+    intent = {'v': JOURNAL_VERSION, 'kind': 'intent', 'attempt': attempt,
+              'at': _now(), 'thread_id': thread_id, 'source': source,
+              'requested': effort, 'reason': reason}
+    _journal_append(root, thread_id, intent)
     try:
         conn.update_thread_effort(thread_id, effort)
-        ack, code = 'acknowledged', 0
+        ack, code, error = 'acknowledged', 0, None
     except ProviderRejected as exc:
-        record['effort'] = {'requested': effort, 'source': source,
-                           'ack': 'unavailable', 'updated_at': _now()}
-        _apply_effort.last_error = str(exc)
-        return 'unavailable', 5
+        ack, code, error = 'unavailable', 5, str(exc)
     except Refusal as exc:
-        record['effort'] = {'requested': effort, 'source': source,
-                           'ack': 'uncertain', 'updated_at': _now()}
-        _apply_effort.last_error = str(exc)
-        return 'uncertain', 6
+        ack, code, error = 'uncertain', 6, str(exc)
+    if error is not None and len(error) > JOURNAL_ERROR_BOUND:
+        error = error[:JOURNAL_ERROR_BOUND]
+    _apply_effort.last_error = error
+    _journal_append(root, thread_id,
+                    {'v': JOURNAL_VERSION, 'kind': 'result',
+                     'attempt': attempt, 'at': _now(),
+                     'thread_id': thread_id, 'ack': ack, 'error': error})
     record['effort'] = {'requested': effort, 'source': source,
-                       'ack': 'acknowledged', 'updated_at': _now()}
-    record['pending'] = None
-    _apply_effort.last_error = None
-    return 'acknowledged', 0
+                        'ack': ack, 'owner_acknowledged': None,
+                        'updated_at': _now()}
+    if ack == 'acknowledged':
+        record['pending'] = None
+    return ack, code
 
 
 def _record_capability(record):
@@ -1007,7 +1316,17 @@ def cmd_attach(root, args):
                       'interface: ' + str(ceiling))
     requested = None
     if args.effort is not None:
-        _, _kind = _resolve_effort(args)
+        if args.effort not in pe.RANK:
+            raise Refusal('unknown effort: ' + str(args.effort))
+        if args.effort not in pe.INTERFACE_EFFORTS:
+            raise Refusal('only low and xhigh are exposed in this first '
+                          'adaptive interface; no medium/high substitution: '
+                          + args.effort)
+        if pe.RANK.index(args.effort) > pe.RANK.index(ceiling):
+            raise Refusal('the requested effort %s exceeds the requested '
+                          'ceiling %s; the promised bound is never silently '
+                          'exceeded at attach either'
+                          % (args.effort, ceiling))
         requested = args.effort
     policy_doc, lead_group, lease = lp.admit_lead(
         root, expected_agent='codex', budget_label=args.budget_label)
@@ -1022,6 +1341,19 @@ def cmd_attach(root, args):
                 raise Refusal('another thread is already attached in this '
                               'workspace (' + other['thread_id'][:12]
                               + '...); detach it before attaching here')
+        if requested is not None:
+            # A crash-aware journal must be able to record this attempt:
+            # refuse safely BEFORE any setter if it cannot.
+            dangling = _journal_dangling(root, thread_id)
+            if dangling is not None:
+                raise Refusal('the settings attempt %d (requested %s at %s) '
+                              'has no completion receipt - its outcome '
+                              'remains Unknown after an interrupted run; '
+                              'verify it in the TUI, then resolve it '
+                              'explicitly with `unio lead-session attach '
+                              'auto` before requesting a new effort'
+                              % (dangling['attempt'], dangling['requested'],
+                                 dangling['at']))
         conn = _connect(args)
         try:
             conn.initialize()
@@ -1040,18 +1372,34 @@ def cmd_attach(root, args):
                 raise Refusal('the thread status is %s; attaching requires '
                               'an idle thread on the shared daemon'
                               % reading['status_type'])
+            advertised = None
+            if requested is not None:
+                # Advertisement honesty for the optional initial effort
+                # too, not just phase: no level substitution, ever.
+                model = reading['model']
+                if not isinstance(model, str) or not model:
+                    raise Refusal('the thread does not expose its native '
+                                  'model; cannot verify that %s is '
+                                  'advertised; refusing to set it'
+                                  % requested)
+                advertised = conn.read_model_efforts(model)
+                if requested not in advertised:
+                    raise Refusal('the thread\'s native model does not '
+                                  'advertise %s; no effort substitution is '
+                                  'made (advertised: %s)'
+                                  % (requested, ', '.join(advertised)))
             now = _now()
             record = {
-                'schema_version': 1, 'thread_id': thread_id,
+                'schema_version': SCHEMA_VERSION, 'thread_id': thread_id,
                 'workspace': str(root), 'route': ROUTE_DEFAULT,
                 'codex_binary': args.codex_binary or 'codex',
                 'sock': args.sock or '', 'ceiling': ceiling, 'auto': True,
                 'effort': {'requested': None, 'source': None, 'ack': None,
-                           'updated_at': ''},
+                           'owner_acknowledged': None, 'updated_at': ''},
                 'native': {'effort': reading['reasoning_effort'],
                            'updated_at': now},
-                'pending': None, 'created_at': now, 'updated_at': now,
-                'detached': False, 'detached_at': None,
+                'pending': None, 'owner_pin': None, 'created_at': now,
+                'updated_at': now, 'detached': False, 'detached_at': None,
             }
             _save_record(root, record)
             payload = {
@@ -1071,11 +1419,13 @@ def cmd_attach(root, args):
                 'effective': 'Unknown',
                 'caution': CAUTION,
             }
+            if advertised is not None:
+                payload['advertised'] = advertised
             exit_code = 0
             human_note = ''
             if requested is not None:
                 ack, exit_code = _apply_effort(
-                    conn, record, thread_id, requested, 'attach',
+                    root, conn, record, thread_id, requested, 'attach',
                     _bounded_reason(args.reason))
                 with _record_guard(root):
                     _save_record(root, record)
@@ -1114,6 +1464,7 @@ def _requested_view(record):
     return {'effort': record['effort']['requested'],
             'source': record['effort']['source'],
             'ack': record['effort']['ack'],
+            'owner_acknowledged': record['effort']['owner_acknowledged'],
             'updated_at': record['effort']['updated_at']}
 
 
@@ -1133,17 +1484,22 @@ def _observe_record_after_apply(conn, record, thread_id):
 def cmd_phase(root, args):
     """Explicit cooperating-lead phase signal (auto or concrete effort).
 
-    Honours STOP via admission, keeps native manual changes in control,
-    never relabels a running turn (pending is recorded and applied only
-    at a later explicit idle command), and validates the requested level
-    against the thread's model advertisement before changing anything.
+    A suspended automatic phase stays suspended across commands: this
+    gate refuses with NO setter and NO pending automatic write until the
+    owner explicitly re-enables AUTO or applies the explicit owner
+    manual override (`attach manual`). Honours STOP via admission,
+    keeps native manual changes in control, never relabels a running
+    turn (pending is recorded and applied only at a later explicit idle
+    command), and validates the requested level against the thread's
+    model advertisement before changing anything.
     """
     record = _find_record(root, args.thread_id)
     if record is None:
         raise Refusal('no active attach record in this workspace; attach '
                       'first')
+    _refuse_suspended(record)
     thread_id = record['thread_id']
-    effort, kind = _resolve_effort(args)
+    effort, kind = _resolve_effort(args, record)
     reason = _bounded_reason(args.reason)
     policy_doc, lead_group, lease = lp.admit_lead(
         root, expected_agent='codex', budget_label=None)
@@ -1204,14 +1560,20 @@ def cmd_phase(root, args):
                               'requested effort is now %r); AUTO control is '
                               'suspended and the native value is never '
                               'overwritten blindly; re-enable explicitly '
-                              'with `unio lead-session attach auto`'
+                              'with `unio lead-session attach auto` or '
+                              'apply a concrete owner override with '
+                              '`unio lead-session attach manual --effort '
+                              'low|xhigh`'
                               % (fresh,))
             # An unresolved uncertain acknowledgement blocks new updates
             # until the native reading resolves it (evidence) or the owner
-            # re-enables explicitly; it is never retried silently.
+            # re-enables explicitly (authority, never delivery); it is
+            # never retried silently and is never rewritten as delivered.
             if record['effort']['ack'] == 'uncertain':
                 previous = record['effort']['requested']
-                if fresh is None or fresh != previous:
+                owner_ack = record['effort']['owner_acknowledged']
+                if (owner_ack is None and (fresh is None
+                                           or fresh != previous)):
                     raise Refusal('the previous effort update '
                                   'acknowledgement is still Unknown; verify '
                                   'it in the TUI, then re-enable explicitly '
@@ -1230,8 +1592,8 @@ def cmd_phase(root, args):
                               '%s; no effort substitution is made '
                               '(advertised: %s)'
                               % (effort, ', '.join(advertised)))
-            ack, exit_code = _apply_effort(conn, record, thread_id, effort,
-                                           'phase', reason)
+            ack, exit_code = _apply_effort(root, conn, record, thread_id,
+                                           effort, 'phase', reason)
             _observe_record_after_apply(conn, record, thread_id)
             with _record_guard(root):
                 _save_record(root, record)
@@ -1282,7 +1644,17 @@ def cmd_phase(root, args):
 
 
 def cmd_auto(root, args):
-    """Explicit re-enable of AUTO control after a suspend."""
+    """Explicit re-enable of AUTO control after a suspend or owner pin.
+
+    Owner re-enable acknowledges AUTHORITY, never delivery: an
+    unresolved Unknown attempt keeps its original uncertain
+    acknowledgement in the record and its byte-identical journal
+    receipt; only the block on further updates is lifted, and the
+    durable owner-resolution receipt is journaled before the record
+    changes. A dangling attempt (interrupted run, no completion
+    receipt) is resolved the same way - it never silently becomes a
+    successful delivery merely because the owner chooses auto.
+    """
     record = _find_record(root, args.thread_id)
     if record is None:
         raise Refusal('no active attach record in this workspace')
@@ -1293,21 +1665,191 @@ def cmd_auto(root, args):
             fresh = _load_record(root, record['thread_id'])
             if fresh is None or fresh['detached']:
                 raise Refusal('the attach record is no longer active')
+            uncertain = fresh['effort']['ack'] == 'uncertain'
+            dangling = _journal_dangling(root, fresh['thread_id'])
+            if uncertain or dangling is not None:
+                _journal_append(root, fresh['thread_id'], {
+                    'v': JOURNAL_VERSION, 'kind': 'owner-resolution',
+                    'at': _now(), 'thread_id': fresh['thread_id'],
+                    'acknowledged': ('owner acknowledged authority to '
+                                     'continue; delivery stays Unknown')})
             fresh['auto'] = True
-            if fresh['effort']['ack'] == 'uncertain':
-                # The owner explicitly intervenes: the uncertain receipt is
-                # preserved on disk history but control resumes from the
-                # next truthful acknowledgement.
-                fresh['effort'] = {'requested': fresh['effort']['requested'],
-                                   'source': fresh['effort']['source'],
-                                   'ack': 'acknowledged-by-owner',
-                                   'updated_at': _now()}
+            fresh['owner_pin'] = None
+            if uncertain:
+                # Authority only: the ORIGINAL uncertain acknowledgement
+                # is kept intact on the record and in the journal; it is
+                # never rewritten as acknowledged-by-owner.
+                fresh['effort']['owner_acknowledged'] = _now()
             _save_record(root, fresh)
         payload = _record_view(fresh)
         payload['note'] = ('AUTO re-enabled; native manual changes keep '
                            'winning over automatic control and suspend it '
-                           'again when detected')
+                           'again when detected; a re-enabled owner '
+                           'acknowledges authority to continue, not the '
+                           'delivery of any earlier Unknown attempt')
         return _emit(args, payload, 'attach auto: AUTO control re-enabled')
+    finally:
+        lease.release()
+
+
+def cmd_manual(root, args):
+    """Explicit owner manual LOW/XHIGH override; it pins AUTO selection.
+
+    The owner requirement: a concrete owner choice sets the requested
+    effort for future turns (validated against the thread's own model
+    advertisement) AND pins/suspends automatic phase selection until
+    the owner explicitly re-enables with `attach auto`. It is DISTINCT
+    from the one-off cooperating-lead phase signal, it works while AUTO
+    is suspended (the owner, not the stored bool, is the authority) and
+    it is the one explicit path that may exceed the configured ceiling
+    - always reported, never silent. Every attempt keeps its durable
+    receipt like any other settings write.
+    """
+    record = _find_record(root, args.thread_id)
+    if record is None:
+        raise Refusal('no active attach record in this workspace; attach '
+                      'first')
+    thread_id = record['thread_id']
+    effort = args.effort
+    if effort not in pe.RANK:
+        raise Refusal('unknown effort: ' + str(effort))
+    if effort not in pe.INTERFACE_EFFORTS:
+        raise Refusal('only low and xhigh are exposed in this first '
+                      'adaptive interface; no medium/high substitution: '
+                      + str(effort))
+    reason = _bounded_reason(args.reason)
+    ceiling = record['ceiling']
+    exceeded = pe.RANK.index(effort) > pe.RANK.index(ceiling)
+    note = None
+    if exceeded:
+        note = ('explicit owner override %s exceeds the configured ceiling '
+                '%s; applied because the owner is the authority here - '
+                'explicit and reported, never silent'
+                % (effort, ceiling))
+    policy_doc, lead_group, lease = lp.admit_lead(
+        root, expected_agent='codex', budget_label=None)
+    try:
+        pin = {'effort': effort, 'reason': reason, 'updated_at': _now()}
+        conn = _connect(args)
+        try:
+            conn.initialize()
+            loaded = conn.loaded_thread_ids()
+            if thread_id not in loaded:
+                raise Refusal('the attached thread is no longer loaded in '
+                              'the shared daemon (the TUI may have closed '
+                              'it); control refused without a fallback')
+            reading = conn.read_loaded_thread(thread_id)
+            if reading['status_type'] == 'active':
+                # A running turn is never relabelled: the owner pin is
+                # still pinned locally; re-run this override when the
+                # TUI shows the thread idle to apply the concrete level.
+                record['auto'] = False
+                record['owner_pin'] = pin
+                with _record_guard(root):
+                    _save_record(root, record)
+                payload = {
+                    'thread_id': thread_id,
+                    'requested': _requested_view(record),
+                    'owner_pin': dict(pin),
+                    'auto': False,
+                    'active_turn': True,
+                    'native_requested_effort': reading['reasoning_effort'],
+                    'note': ('the thread has a running turn: it is never '
+                             'relabelled and no settings changed; the '
+                             'owner pin %s is recorded and automatic '
+                             'phase selection stays suspended (no pending '
+                             'automatic write); re-run this override when '
+                             'idle to apply it for future turns' % effort),
+                    'effective': 'Unknown',
+                    'caution': CAUTION,
+                }
+                return _emit(args, payload, 'attach manual: owner pin %s '
+                                            'recorded; the running turn '
+                                            'is never relabelled (no '
+                                            'settings call); AUTO '
+                                            'suspended; effective Unknown'
+                                            % effort)
+            if reading['status_type'] != 'idle':
+                raise Refusal('the attached thread status is %s; control '
+                              'requires an idle thread'
+                              % reading['status_type'])
+            # Advertisement honesty, same as phase: no level substitution.
+            model = reading['model']
+            if not isinstance(model, str) or not model:
+                raise Refusal('the thread does not expose its native model; '
+                              'cannot verify that %s is advertised; '
+                              'refusing to set it' % effort)
+            advertised = conn.read_model_efforts(model)
+            if effort not in advertised:
+                raise Refusal('the thread\'s native model does not advertise '
+                              '%s; no effort substitution is made '
+                              '(advertised: %s)'
+                              % (effort, ', '.join(advertised)))
+            ack, exit_code = _apply_effort(root, conn, record, thread_id,
+                                           effort, 'manual', reason)
+            if ack == 'acknowledged':
+                # The owner override replaces any earlier pending
+                # automatic request and pins AUTO selection off.
+                record['auto'] = False
+                record['owner_pin'] = pin
+                record['pending'] = None
+            else:
+                record['auto'] = False
+                record['owner_pin'] = pin
+            _observe_record_after_apply(conn, record, thread_id)
+            with _record_guard(root):
+                _save_record(root, record)
+            payload = {
+                'thread_id': thread_id,
+                'requested': _requested_view(record),
+                'owner_pin': dict(pin),
+                'auto': False,
+                'active_turn': False,
+                'ceiling': ceiling,
+                'advertised': advertised,
+                'ceiling_exceeded': exceeded,
+                'note': (note if note is not None else
+                         ('the owner override %s applies to the thread\'s '
+                          'future turns only; automatic phase selection is '
+                          'now suspended (pinned) until the owner '
+                          're-enables it with `unio lead-session attach '
+                          'auto`; the effective provider effort remains '
+                          'Unknown' % effort)),
+                'effective': 'Unknown',
+                'caution': CAUTION,
+            }
+            if ack == 'unavailable':
+                payload['note'] = ('the shared daemon rejected '
+                                   'thread/settings/update; effort control '
+                                   'is unavailable on this daemon; the '
+                                   'owner pin stays recorded: '
+                                   + _apply_effort.last_error)
+                return _emit(args, payload, 'attach manual: requested %s '
+                                            'UNAVAILABLE (typed rejection '
+                                            'recorded; owner pin kept): %s'
+                                            % (effort,
+                                               _apply_effort.last_error),
+                                            exit_code=5)
+            if ack == 'uncertain':
+                payload['note'] = ('the effort update acknowledgement is '
+                                   'Unknown; the receipt is preserved and '
+                                   'never silently retried; the owner pin '
+                                   'stays recorded: '
+                                   + _apply_effort.last_error)
+                return _emit(args, payload, 'attach manual: requested %s '
+                                            'acknowledgement UNKNOWN; '
+                                            'verify in the TUI (owner pin '
+                                            'kept)' % effort, exit_code=6)
+            human = ('attach manual: owner override %s set for future '
+                     'turns (acknowledged); AUTO phase selection '
+                     'suspended by owner pin; effective Unknown'
+                     % effort)
+            if exceeded:
+                human += ('; explicit request above the configured '
+                          'ceiling %s - reported, never silent' % ceiling)
+            return _emit(args, payload, human)
+        finally:
+            conn.close()
     finally:
         lease.release()
 
@@ -1338,13 +1880,20 @@ def cmd_status(root, args):
                        'idle command); the owner TUI keeps full manual '
                        'control and its manual turns are not '
                        'Unio-admitted')
+    pin = record['owner_pin']
+    requested = record['effort']['requested'] or 'none'
+    ack = record['effort']['ack'] or 'none'
+    if record['effort']['ack'] == 'uncertain':
+        ack += (' (owner acknowledged authority at %s)'
+                % record['effort']['owner_acknowledged']) \
+            if record['effort']['owner_acknowledged'] else ''
+    pending = record['pending']['effort'] if record['pending'] else 'none'
+    auto = ('suspended (owner pin %s)' % pin['effort']
+            if pin else ('on' if record['auto'] else 'suspended'))
+    native = record['native']['effort'] or 'Unknown'
     human = ('attach status: thread attached, requested %s (ack %s), '
              'pending %s, AUTO %s, native observed %s, effective Unknown'
-             % (record['effort']['requested'] or 'none',
-                record['effort']['ack'] or 'none',
-                record['pending']['effort'] if record['pending'] else 'none',
-                'on' if record['auto'] else 'suspended',
-                record['native']['effort'] or 'Unknown'))
+             % (requested, ack, pending, auto, native))
     return _emit(args, payload, human)
 
 
@@ -1381,6 +1930,8 @@ def run(root, args):
         return cmd_attach(root, args)
     if args.control == 'phase':
         return cmd_phase(root, args)
+    if args.control == 'manual':
+        return cmd_manual(root, args)
     if args.control == 'auto':
         return cmd_auto(root, args)
     if args.control == 'status':

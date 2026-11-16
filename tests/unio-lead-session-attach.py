@@ -432,6 +432,13 @@ class Workspace:
     def refuses_phase(self, *extra):
         return refuses(self.argv('phase', *extra))
 
+    def manual(self, *extra):
+        return invoke(self.argv('manual', '--rpc-timeout', '3',
+                                '--json', *extra))
+
+    def refuses_manual(self, *extra):
+        return refuses(self.argv('manual', *extra))
+
     def status(self, *extra):
         return invoke(['--project', str(self.root), 'attach', 'status',
                        '--json'] + list(extra))
@@ -443,6 +450,18 @@ class Workspace:
     def detach(self, *extra):
         return invoke(['--project', str(self.root), 'attach', 'detach',
                        '--json'] + list(extra))
+
+    def journal_path(self, thread_id=THREAD):
+        return at._journal_path(Path(self.root), thread_id)
+
+    def journal_bytes(self, thread_id=THREAD):
+        path = self.journal_path(thread_id)
+        return path.read_bytes() if path.exists() else b''
+
+    def journal_entries(self, thread_id=THREAD):
+        return [json.loads(line)
+                for line in self.journal_bytes(thread_id).splitlines()
+                if line.strip()]
 
     # -- observation -------------------------------------------------------
 
@@ -719,6 +738,29 @@ def run_suite(base):
     print('  ok    a detected native manual change suspends AUTO without '
           'overwriting the native value', flush=True)
 
+    print('persistent suspension across separate commands', flush=True)
+    before = len(ws.wire())
+    message = ws.refuses_phase('--kind', 'review', '--rpc-timeout', '3',
+                               '--json')
+    assert 'stays suspended' in message
+    assert 'NO setter and NO pending automatic write' in message
+    assert 'attach auto' in message
+    assert ws.wire(after=before) == []
+    record = ws.record()
+    assert record['auto'] is False and record['pending'] is None
+    message = ws.refuses_phase('--kind', 'planning', '--rpc-timeout', '3',
+                               '--json')
+    assert 'stays suspended' in message
+    message = ws.refuses_phase('--effort', 'low', '--rpc-timeout', '3',
+                               '--json')
+    assert 'stays suspended' in message
+    assert ws.wire(after=before) == []
+    assert ws.record()['auto'] is False
+    print('  ok    a suspended automatic phase stays suspended across '
+          'separate commands: repeated kind and explicit signals make '
+          'zero settings calls and write no pending automatic request '
+          'until the owner re-enables', flush=True)
+
     payload, _, code = ws.auto()
     assert code == 0 and payload['auto'] is True
     ws.behavior({})
@@ -794,8 +836,13 @@ def run_suite(base):
     reject_ws.behavior({})
     payload, _, code = reject_ws.phase('--effort', 'xhigh')
     assert code == 0 and payload['requested']['ack'] == 'acknowledged'
+    rejected = [entry for entry in reject_ws.journal_entries()
+                if entry['kind'] == 'result'
+                and entry['ack'] == 'unavailable']
+    assert len(rejected) == 1 and rejected[0]['attempt'] == 1
     print('  ok    a typed settings rejection is unavailable (exit 5) and '
-          'recovers only through a new explicit signal', flush=True)
+          'recovers only through a new explicit signal while its original '
+          'rejected receipt stays durably in the journal', flush=True)
 
     silent_ws = Workspace(base)
     silent_ws.attach()
@@ -818,11 +865,280 @@ def run_suite(base):
     assert 'still Unknown' in message and 'attach auto' in message
     payload, _, code = silent_ws.auto()
     assert code == 0
+    # Owner re-enable acknowledges AUTHORITY, never delivery: the
+    # original uncertain attempt keeps its truthful acknowledgement
+    # (this corrects the earlier rewrite-to-acknowledged-by-owner:
+    # an unresolved Unknown must not become a successful delivery).
+    fresh_record = silent_ws.record()
+    assert fresh_record['effort']['ack'] == 'uncertain'
+    assert fresh_record['effort']['owner_acknowledged']
+    assert fresh_record['effort']['requested'] == 'xhigh'
     payload, _, code = silent_ws.phase('--effort', 'xhigh')
     assert code == 0 and payload['requested']['ack'] == 'acknowledged'
     assert silent_ws.record()['native']['effort'] == 'xhigh'
+    # the original uncertain receipt is retained in the journal
+    kinds = [entry['kind'] for entry in silent_ws.journal_entries()]
+    assert kinds[:2] == ['intent', 'result']
+    uncertain_receipts = [entry for entry in silent_ws.journal_entries()
+                          if entry['kind'] == 'result'
+                          and entry['ack'] == 'uncertain']
+    assert len(uncertain_receipts) == 1
+    assert uncertain_receipts[0]['attempt'] == 1
     print('  ok    an unresolved uncertain receipt blocks updates until '
-          'the owner re-enables explicitly', flush=True)
+          'the owner re-enables explicitly; re-enable acknowledges '
+          'authority only and the original uncertain attempt is kept '
+          'truthfully with its journal receipt', flush=True)
+
+    print('explicit owner manual override pins automatic selection', flush=True)
+    pin_ws = Workspace(base)
+    pin_ws.attach()
+    before = len(pin_ws.wire())
+    payload, _, code = pin_ws.manual('--effort', 'low',
+                                     '--reason', 'owner choice')
+    assert code == 0
+    assert payload['requested']['effort'] == 'low'
+    assert payload['requested']['source'] == 'manual'
+    assert payload['requested']['ack'] == 'acknowledged'
+    assert payload['auto'] is False
+    assert payload['owner_pin']['effort'] == 'low'
+    calls = pin_ws.settings_calls(pin_ws.wire(after=before))
+    assert calls and calls[-1]['params'] == {'threadId': THREAD,
+                                             'effort': 'low'}
+    record = pin_ws.record()
+    assert record['auto'] is False and record['owner_pin']['effort'] == 'low'
+    print('  ok    the owner manual override applies one concrete level '
+          'and pins/suspends automatic phase selection in one explicit '
+          'step', flush=True)
+
+    message = pin_ws.refuses_manual('--effort', 'medium', '--rpc-timeout',
+                                    '3', '--json')
+    assert 'only low and xhigh' in message
+    print('  ok    the owner override exposes exactly low and xhigh with '
+          'no substitution', flush=True)
+
+    before = len(pin_ws.wire())
+    message = pin_ws.refuses_phase('--kind', 'review', '--rpc-timeout', '3',
+                                   '--json')
+    assert 'owner manual pin' in message and 'stays suspended' in message
+    assert pin_ws.wire(after=before) == []
+    message = pin_ws.refuses_phase('--kind', 'coordination', '--rpc-timeout',
+                                   '3', '--json')
+    assert 'owner manual pin' in message
+    message = pin_ws.refuses_phase('--effort', 'low', '--rpc-timeout', '3',
+                                   '--json')
+    assert 'owner manual pin' in message
+    assert pin_ws.wire(after=before) == []
+    record = pin_ws.record()
+    assert record['auto'] is False and record['pending'] is None
+    payload, _, code = pin_ws.status()
+    assert code == 0
+    assert payload['auto'] is False
+    assert payload['owner_pin']['effort'] == 'low'
+    print('  ok    the owner pin persists across separate CLI commands: '
+          'every automatic phase signal (kind or explicit) refuses with '
+          'zero settings calls and no pending automatic write', flush=True)
+
+    pin_ws.behavior({'read_status': 'active'})
+    before = len(pin_ws.wire())
+    payload, _, code = pin_ws.manual('--effort', 'xhigh', '--rpc-timeout',
+                                     '3', '--json')
+    assert code == 0 and payload['active_turn'] is True
+    assert payload['owner_pin']['effort'] == 'xhigh'
+    assert pin_ws.settings_calls(pin_ws.wire(after=before)) == []
+    record = pin_ws.record()
+    assert record['owner_pin']['effort'] == 'xhigh'
+    assert record['pending'] is None and record['auto'] is False
+    pin_ws.behavior({})
+    payload, _, code = pin_ws.manual('--effort', 'xhigh')
+    assert code == 0 and payload['requested']['effort'] == 'xhigh'
+    print('  ok    an owner override during a running turn keeps pinning '
+          'without relabelling the turn and applies at the next explicit '
+          'idle boundary', flush=True)
+
+    payload, _, code = pin_ws.auto()
+    assert code == 0 and payload['auto'] is True
+    assert payload['owner_pin'] is None
+    payload, _, code = pin_ws.phase('--kind', 'review')
+    assert code == 0 and payload['requested']['effort'] == 'xhigh'
+    print('  ok    `attach auto` lifts the pin and automatic kind phase '
+          'selection resumes from the persisted ceiling', flush=True)
+
+    print('the persisted ceiling actually binds automatic selection', flush=True)
+    ceil_ws = Workspace(base)
+    payload, _, code = ceil_ws.attach(THREAD, '--ceiling', 'low')
+    assert code == 0 and payload['ceiling'] == 'low'
+    for kind in ('planning', 'review'):
+        before = len(ceil_ws.wire())
+        payload, _, code = ceil_ws.phase('--kind', kind, '--rpc-timeout',
+                                         '3', '--json')
+        assert code == 0 and payload['requested']['effort'] == 'low'
+        calls = ceil_ws.settings_calls(ceil_ws.wire(after=before))
+        assert calls and calls[-1]['params']['effort'] == 'low'
+    payload, _, code = ceil_ws.phase('--kind', 'coordination', '--json')
+    assert code == 0 and payload['requested']['effort'] == 'low'
+    message = ceil_ws.refuses_phase('--effort', 'xhigh', '--rpc-timeout', '3',
+                                    '--json')
+    assert 'exceeds the configured ceiling low' in message
+    print('  ok    attach --ceiling low binds kind planning/review and the '
+          'explicit phase signal across separate CLI commands: review '
+          'resolves low from the persisted record and never sends xhigh '
+          'above the promised bound', flush=True)
+
+    payload, _, code = ceil_ws.manual('--effort', 'xhigh')
+    assert code == 0
+    assert payload['ceiling_exceeded'] is True
+    assert 'exceeds the configured ceiling' in payload['note']
+    calls = ceil_ws.settings_calls(ceil_ws.wire())
+    assert calls[-1]['params']['effort'] == 'xhigh'
+    payload, _, code = ceil_ws.auto()
+    assert code == 0
+    payload, _, code = ceil_ws.phase('--kind', 'review', '--json')
+    assert code == 0 and payload['requested']['effort'] == 'low'
+    print('  ok    the explicit owner override is the only path above the '
+          'ceiling - reported, never silent - and the ceiling binds again '
+          'after the owner re-enables', flush=True)
+
+    message = ceil_ws.refuses_attach('--thread-id', OTHER, '--ceiling',
+                                     'low', '--effort', 'xhigh',
+                                     '--rpc-timeout', '3', '--json')
+    assert 'exceeds the requested ceiling' in message
+    print('  ok    an attach request above its own ceiling refuses before '
+          'any connection or record', flush=True)
+
+    print('optional initial attach effort is advertisement-checked', flush=True)
+    adv_ws = Workspace(base)
+    adv_ws.behavior({'models': {MODEL: ['low']}})
+    before = len(adv_ws.wire())
+    message = adv_ws.refuses_attach('--thread-id', THREAD, '--effort',
+                                    'xhigh', '--rpc-timeout', '3',
+                                    '--json')
+    assert 'does not advertise' in message
+    assert 'no effort substitution' in message
+    assert adv_ws.settings_calls(adv_ws.wire(after=before)) == []
+    assert not adv_ws.has_record(THREAD)
+    adv_ws.behavior({})
+    payload, _, code = adv_ws.attach(THREAD, '--ceiling', 'low',
+                                     '--effort', 'low')
+    assert code == 0
+    assert payload['requested']['effort'] == 'low'
+    assert payload['requested']['ack'] == 'acknowledged'
+    entries = adv_ws.journal_entries()
+    assert [entry['kind'] for entry in entries] == ['intent', 'result']
+    assert entries[0]['source'] == 'attach'
+    assert entries[0]['requested'] == 'low'
+    assert entries[0]['thread_id'] == THREAD
+    assert entries[1]['ack'] == 'acknowledged'
+    print('  ok    an unadvertised initial attach effort refuses with zero '
+          'settings calls and no record; an advertised one keeps its '
+          'full attempt receipt', flush=True)
+
+    print('attempt journal: durable byte-identical receipts', flush=True)
+    jr_ws = Workspace(base)
+    jr_ws.attach()
+    jr_ws.behavior({'settings': 'silence'})
+    payload, _, code = jr_ws.phase('--effort', 'xhigh', '--rpc-timeout',
+                                   '1', '--json')
+    assert code == 6 and payload['requested']['ack'] == 'uncertain'
+    original = jr_ws.journal_bytes()
+    entries = jr_ws.journal_entries()
+    assert [entry['kind'] for entry in entries] == ['intent', 'result']
+    assert entries[0]['attempt'] == 1
+    assert entries[0]['requested'] == 'xhigh'
+    assert entries[0]['thread_id'] == THREAD
+    assert entries[0]['source'] == 'phase'
+    assert entries[0]['at']
+    assert entries[1]['ack'] == 'uncertain'
+    print('  ok    an uncertain settings attempt persists its intent '
+          'before the RPC and its actual Unknown outcome afterward', flush=True)
+
+    jr_ws.behavior({})
+    payload, _, code = jr_ws.auto()
+    assert code == 0
+    kinds = [entry['kind'] for entry in jr_ws.journal_entries()]
+    assert kinds == ['intent', 'result', 'owner-resolution']
+    assert jr_ws.journal_bytes().startswith(original)
+    assert jr_ws.record()['effort']['ack'] == 'uncertain'
+    payload, _, code = jr_ws.phase('--effort', 'xhigh')
+    assert code == 0 and payload['requested']['ack'] == 'acknowledged'
+    assert jr_ws.journal_bytes().startswith(original)
+
+    jr_ws.behavior({'settings': 'reject'})
+    payload, _, code = jr_ws.phase('--effort', 'low', '--rpc-timeout', '3',
+                                   '--json')
+    assert code == 5 and payload['requested']['ack'] == 'unavailable'
+    rejected = jr_ws.journal_bytes()
+    jr_ws.behavior({})
+    payload, _, code = jr_ws.phase('--effort', 'low')
+    assert code == 0 and payload['requested']['ack'] == 'acknowledged'
+    assert jr_ws.journal_bytes().startswith(rejected)
+
+    jr_ws.detach()
+    payload, _, code = jr_ws.attach()
+    assert code == 0
+    record = jr_ws.record()
+    assert record['effort']['requested'] is None
+    assert record['effort']['ack'] is None
+    payload, _, code = jr_ws.phase('--effort', 'low')
+    assert code == 0
+    final = jr_ws.journal_entries()
+    attempts = [entry['attempt'] for entry in final
+                if entry['kind'] == 'intent']
+    assert attempts == [1, 2, 3, 4, 5]
+    results = {entry['attempt']: entry['ack'] for entry in final
+               if entry['kind'] == 'result'}
+    assert results == {1: 'uncertain', 2: 'acknowledged',
+                       3: 'unavailable', 4: 'acknowledged',
+                       5: 'acknowledged'}
+    assert [entry['kind'] for entry in final
+            if entry['kind'] == 'owner-resolution']
+    assert jr_ws.journal_bytes().startswith(original)
+    print('  ok    the original unknown and rejected attempt receipts stay '
+          'byte-identical through auto re-enable, later successes, typed '
+          'rejection, detach and re-attach; the re-attached record starts '
+          'fresh and never inherits delivery', flush=True)
+
+    print('crash-aware receipts: recording failure and dangling attempts',
+          flush=True)
+    crash_ws = Workspace(base)
+    crash_ws.attach()
+    crash_ws.journal_path().mkdir()
+    before = len(crash_ws.wire())
+    message = crash_ws.refuses_phase('--effort', 'xhigh', '--rpc-timeout',
+                                     '3', '--json')
+    assert crash_ws.settings_calls(crash_ws.wire(after=before)) == []
+    record = crash_ws.record()
+    assert record['effort']['requested'] is None
+    assert record['effort']['ack'] is None
+    print('  ok    a settings attempt whose receipt cannot be recorded '
+          'refuses safely BEFORE the setter: zero settings calls are '
+          'made and the record is unchanged', flush=True)
+
+    dangling_ws = Workspace(base)
+    dangling_ws.attach()
+    at._journal_append(Path(dangling_ws.root), THREAD, {
+        'v': 1, 'kind': 'intent', 'attempt': 1,
+        'at': '2026-11-16T00:00:00Z', 'thread_id': THREAD,
+        'source': 'phase', 'requested': 'xhigh', 'reason': 'simulated '
+        'crash right after the intent receipt'})
+    before = len(dangling_ws.wire())
+    message = dangling_ws.refuses_phase('--effort', 'low', '--rpc-timeout',
+                                        '3', '--json')
+    assert 'no completion receipt' in message
+    assert 'remains Unknown' in message
+    assert dangling_ws.settings_calls(
+        dangling_ws.wire(after=before)) == []
+    payload, _, code = dangling_ws.auto()
+    assert code == 0
+    payload, _, code = dangling_ws.phase('--effort', 'low')
+    assert code == 0 and payload['requested']['ack'] == 'acknowledged'
+    entries = dangling_ws.journal_entries()
+    assert [entry['kind'] for entry in entries] == [
+        'intent', 'owner-resolution', 'intent', 'result']
+    assert [entry['attempt'] for entry in entries
+            if entry['kind'] == 'result'] == [2]
+    print('  ok    a dangling intent (interrupted run) is never completed '
+          'silently: it blocks updates, needs the explicit owner '
+          'resolution, and keeps its unresolved receipt untouched', flush=True)
 
     print('status, detach and STOP interactions', flush=True)
     before = len(ws.wire())
@@ -897,7 +1213,8 @@ def run_suite(base):
     permitted = {'initialize', 'thread/loaded/list', 'thread/read',
                  'model/list', 'thread/settings/update'}
     for space in (ws, fresh, adm, owner_ws, reject_ws, silent_ws,
-                  human_ws, empty_ws, none_ws):
+                  human_ws, empty_ws, none_ws, pin_ws, ceil_ws, adv_ws,
+                  jr_ws, crash_ws, dangling_ws):
         names = space.rpc_names(space.wire())
         assert not (set(names) & forbidden), set(names) & forbidden
         assert set(names) <= permitted, set(names) - permitted
@@ -913,6 +1230,7 @@ def run_suite(base):
     assert directory.is_dir()
     assert stat.S_IMODE(directory.stat().st_mode) == 0o700
     records = 0
+    journals = 0
     for item in directory.iterdir():
         assert stat.S_IMODE(item.stat().st_mode) == 0o600, (
             item.name, oct(stat.S_IMODE(item.stat().st_mode)))
@@ -920,10 +1238,18 @@ def run_suite(base):
             doc = json.loads(item.read_text())
             at._validate_record(doc)
             records += 1
+        elif item.name.endswith('.jsonl'):
+            # The attempt journal is part of the additive attach state:
+            # every durable receipt line is validated, never truncated.
+            for entry in ws.journal_entries():
+                at._validate_journal_entry(entry, item.name)
+            journals += 1
         else:
             assert item.name == 'attach.lock', item.name
     assert records == 1, records
-    print('  ok    attach state is separate, private, additive and valid',
+    assert journals == 1, journals
+    print('  ok    attach state is separate, private, additive and valid '
+          '(records and the attempt journal together)',
           flush=True)
 
     print('the fake daemon survived every command (only the proxy is '
