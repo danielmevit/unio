@@ -1,6 +1,6 @@
 # Unio 0.5.32 — Managed lead first turn fixed; truthful completion under lock contention
 
-Status: **release candidate, not yet published.** The full quality gate, private installation, smoke checks, publication and global installation are still pending. Until they pass, the official stable release remains 0.5.31.
+Status: **validated 0.5.32 release source.** The full quality gate and private installation checks passed. Global installation must pass its configuration-preservation and smoke checks before official publication; the release assets and local receipts record the actual delivery state.
 
 This patch fixes two problems in the experimental, opt-in `unio lead-session` Codex backend. It adds no new commands. It does not adopt an existing AI CLI or ordinary TUI session, and it is not an autonomous scheduler. You still drive each turn explicitly and choose the phase with `--kind` and worker events.
 
@@ -12,7 +12,7 @@ This patch fixes two problems in the experimental, opt-in `unio lead-session` Co
 
 The six embedded managed-lead helpers and the managed guide in the installer were regenerated from these sources.
 
-## Validation so far
+## Validation
 
 - **Author and native checks.** The authors' focused checks and native task verification exited 0 on each fix.
 - **Combined offline checks** on candidate `f52396b54cc484b99c87ea1788830987d6c3e4cf`: `tests/unio-lead-session.py`, `tests/unio-lead-session-codex.py`, `tests/unio-lead-effort-display.py`, `tools/embed-managed-lead.py --check` and `bash -n unio-install.sh` each exited 0, with zero provider calls.
@@ -21,13 +21,13 @@ The six embedded managed-lead helpers and the managed guide in the installer wer
 
 **Limitation of the live trial:** the three turns span **two** managed sessions, not one. The lead's own test harness searched serialized streamed chunks for a whole reply. After the first LOW turn completed correctly, the harness misread it and stopped that session. With the harness corrected (it now joins the ordered delta text), a new session ran XHIGH then LOW on one native thread. So the XHIGH→LOW transition is proven live on one thread, but a full LOW→XHIGH→LOW sequence on a single thread was not run live. The offline fixtures cover the full single-thread sequence. The original harness failure receipt is preserved. No further model calls were made to extend this coverage.
 
-**Still pending before publication:** one full `tools/quality-check.sh` gate on the exact final reviewed candidate, private installation and smoke checks, publication, and global installation. Nothing in this note claims those have passed.
+**Final release checks:** `bash tools/quality-check.sh` passed on frozen revision `5ebd9c5a8ada966fa8d943436d73477e67adce49`, with tracked source unchanged and zero provider calls. It finished 2026-11-16T12:59:39+01:00 after 3968.312 seconds. A private installation and all six offline smoke checks passed. The subsequent release commit changes only the changelog, these release notes and the development handoff; the runtime, installer and tests remain byte-identical to the gated revision. The package records exact source and validation provenance. Global installation and official publication have separate receipts; they are not inferred from these code checks.
 
 ## Upgrading, and rolling back safely
 
 - An existing 0.5.31 session written before this fix is read as `legacy`. If its thread never ran a turn, `run` refuses with the native error and a hint to stop it and start a new session.
-- **0.5.31 cannot read the newer control state.** After 0.5.32 writes `coord/lead-effort/` state, a 0.5.31 binary refuses it (fail closed) and refuses a new `start`. A safe rollback needs the matching 0.5.31 binary **and** a backup of that project's state taken **before** the upgrade, restored only while the managed lead is idle and every turn is reconciled. If you do not have such a backup, keeping 0.5.32, or running 0.5.31 only in a separate isolated trial project, is safer.
-- Do not delete or casually move `coord/lead-effort/`, do not override STOP, and do not replace an owner whose ownership or pending turn is unresolved. Those records are your history and evidence. Unio has no automatic state migration, downgrade or retry feature.
+- **0.5.31 cannot read the newer control state.** On its next control write, 0.5.32 adds the lifecycle field to an older session. A 0.5.31 binary then refuses that state (fail closed) and refuses a new `start`. A safe rollback needs the matching 0.5.31 binary **and** a backup of `coord/lead-effort/` (owner and session files) taken **before** the upgrade. Restore only while the managed lead is idle and every turn is reconciled. First preserve a separate copy of the current newer directory, including its receipts, without deleting the records. Restore only the managed-lead state, not an unrelated project's files. If you lack a pre-upgrade backup, keeping 0.5.32 or running 0.5.31 in a separate isolated trial project is safer.
+- Do not delete or casually move `coord/lead-effort/`, override STOP, or replace an owner whose ownership or pending turn is unresolved. Those records are your history and evidence. The forward field addition above is automatic on write; there is no automatic reverse migration, downgrade or retry. The shorter managed guide's statement about migration is imprecise; this paragraph describes the actual behavior.
 
 ## Known limits
 
@@ -35,7 +35,7 @@ The six embedded managed-lead helpers and the managed guide in the installer wer
 - When native Codex persists a thread after an interrupted or killed first turn is **Unknown**; only completed first turns were observed live.
 - The deferred-thread creator maps any exception during creation to a known non-delivery. That outcome is true, but it can hide an internal bug.
 - The lock-contention regression test depends on a timing margin. A slow machine can make it fail spuriously; it cannot make it pass falsely.
-- One stop/start hint shown for `legacy` sessions is slightly inaccurate (cosmetic).
+- One stop/start hint can be slightly inaccurate for a `legacy` session whose only turn was never acknowledged (cosmetic).
 - Live `turn/interrupt`, approval handling and stale-turn recovery against a real app-server remain unverified.
 - Starting a new managed session gives it a new thread. Give it a goal file, your turn files and a short handoff; it does not adopt a whole earlier chat.
 

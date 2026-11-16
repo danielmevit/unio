@@ -4,13 +4,13 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.32 — managed lead startup and truthful completion — unreleased
+## 0.5.32 — managed lead startup and truthful completion — 2026-11-16
 
 - Fix the first turn of the experimental owned Codex lead: prepare the session without an empty provider thread, then create the thread alongside its first real turn. Later turns resume that exact thread. There is no bootstrap model request, input resend or silent replacement after a resume failure.
-- Keep a genuinely completed turn's exit0 and completed JSON when post-completion waiting cleanup cannot acquire its lock; emit a bounded warning. Failed, interrupted and unknown work keeps its own outcome.
+- Keep a genuinely completed turn's exit 0 and completed JSON when post-completion waiting cleanup cannot acquire its lock; emit a bounded warning. Failed, interrupted and unknown work keeps its own outcome.
 - Explain safe rollback for the newer control state, concrete requested effort first, and the remaining display-only stale-waiting limitation.
 
-Focused machine checks and an independent scoped Opus5.5XHIGH review passed on the functional code. The owner-authorized native smoke completed three requests LOW/XHIGH/LOW across two managed sessions after a lead test-checker mistake; the last two proved XHIGH→LOW on one thread. Effective settings remain Unknown. Final release gate, final package installation and publication are pending. See [scope, evidence and limits](docs/RELEASE-0.5.32.md).
+Focused checks, fresh-context Opus 5.5 XHIGH reviews and the existing OpenAI lead assessment passed. The worker reviewers used the same AI lab as the authors; this is not cross-lab worker coverage. The owner-authorized native smoke completed three requests LOW/XHIGH/LOW across two managed sessions after a lead test-checker mistake; the last two showed requested XHIGH→LOW on one thread. Effective settings remain Unknown. The full quality gate and six private-installation checks passed; runtime, installer and test bytes stayed unchanged through release preparation. See [scope, evidence and limits](docs/RELEASE-0.5.32.md).
 
 ## 0.5.31 — clearer lead controls and durable review defaults — 2026-11-15
 
