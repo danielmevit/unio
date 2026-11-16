@@ -16,7 +16,7 @@ Setting attempts retain intent and acknowledged/rejected/Unknown outcomes in bou
 
 ## Review and validation
 
-The implementation is frozen at `28d855039200d486719f4273d5f92c3b5726dfae`. Its 62 connector checks, embedding parity, installer syntax and documentation checks passed native verification. The lead independently checked seven repaired behaviours using fake transports. The validation-runner suite has 71 passing assertions. The last delivered independent review requested changes; the final cumulative current-code review is in progress. Its eventual verdict, the full gate, installation and publication have separate receipts; none is inferred from a process exit.
+The implementation is frozen at `729734befb30df5bcfa59564766fdaee76b8eede`. Its focused connector checks, embedding parity, installer syntax and documentation checks passed native verification. The bounded recording and identity corrections are included; the final reviewer must assess them independently. The lead independently checked seven repaired behaviours using fake transports. The validation-runner suite has 71 passing assertions. The prior independent code review approved its named snapshot; the lead then reproduced additional recording and identity defects. Those corrections have passed task verification, and a fresh review of this exact combined candidate is pending. Its eventual verdict, the full gate, installation and publication have separate receipts; none is inferred from a process exit.
 
 The release layer changes only the version declaration and three release Markdown files. Full runtime/test checks remain pending at this checkpoint. The final notes will record actual results before publication.
 
