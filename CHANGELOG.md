@@ -4,14 +4,14 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
-## 0.5.33 — focused checks and existing-session controls (unreleased) — 2026-11-16
+## 0.5.33 — focused checks and existing-session controls — 2026-11-16
 
 - Select focused development-check lanes, list their exact commands and record per-command timings. The default full gate retains the original coverage; partial and fixture runs identify themselves clearly.
 - Connect the experimental lead controls to an already-open Codex conversation on its running shared server. Keep the same thread and history while requesting LOW/XHIGH for future turns through explicit phase signals.
 - Honour manual choices, persisted ceilings and queued effort changes. Keep unknown/rejected setting attempts in bounded journals, make inspection read-only, and reuse saved connection settings.
 - Expand the command guide with the actual controls, flags and defaults.
 
-Focused implementation checks and native verification passed. Final current-code review, the combined release gate and installation checks are pending. Live effort-setting acceptance and a complete automatic scheduler remain unverified. See [scope and limits](docs/RELEASE-0.5.33.md).
+Focused checks, fresh current-code Gemini HIGH review and the existing OpenAI lead assessment passed. The combined full gate and six private-installation checks passed. Live effort-setting acceptance and a complete automatic scheduler remain unverified. See [scope and limits](docs/RELEASE-0.5.33.md).
 
 ## 0.5.32 — managed lead startup and truthful completion — 2026-11-16
 

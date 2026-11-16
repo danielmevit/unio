@@ -1,6 +1,6 @@
 # Unio 0.5.33 — focused checks and existing-session controls
 
-Release candidate prepared 2026-11-16. Publication and installation are pending the current-code review, lead assessment and full release checks.
+Prepared for release on 2026-11-16. Current-code review, lead assessment, the full release gate and isolated installation checks passed. The official tag, assets and local installation receipts identify actual delivery.
 
 ## Faster development checks
 
@@ -16,11 +16,13 @@ Setting attempts retain intent and acknowledged/rejected/Unknown outcomes in bou
 
 ## Review and validation
 
-The implementation is frozen at `729734befb30df5bcfa59564766fdaee76b8eede`. Its focused connector checks, embedding parity, installer syntax and documentation checks passed native verification. The bounded recording and identity corrections are included; the final reviewer must assess them independently. The lead independently checked seven repaired behaviours using fake transports. The validation-runner suite has 71 passing assertions. The prior independent code review approved its named snapshot; the lead then reproduced additional recording and identity defects. Those corrections have passed task verification, and a fresh review of this exact combined candidate is pending. Its eventual verdict, the full gate, installation and publication have separate receipts; none is inferred from a process exit.
+Mistral subscription / Vibe 3.1.2 / requested GLM 5.3 High implemented the connector. Antigravity subscription / agy 1.5.9 / requested Gemini 3.8 Flash High reviewed the final combined candidate, then the existing OpenAI lead independently assessed it. Requested model and effort do not prove provider-effective identity or effort. The owner explicitly authorized this review route while Claude was unavailable. Earlier change requests, additional lead findings, corrections and operational failures remain preserved separately. Copilot Free Auto Balance supplied two supplementary documentation findings; its selected model and lab remain Unknown. The free OpenCode trial returned no usable artifact and does not count as review evidence.
 
-The release layer changes only the version declaration and three release Markdown files. Full runtime/test checks remain pending at this checkpoint. The final notes will record actual results before publication.
+The one full `bash tools/quality-check.sh` gate passed on frozen `72ab8aff4b4b2b8f197ab8e2e7a618e9a05565af` with tracked source unchanged and no provider calls, finishing 2026-11-16T23:16:35+01:00 after 5229.505 seconds. All 127 catalogue commands passed and produced ordered timing records. Private installation and all six offline checks passed. Final release preparation changes only the changelog, release notes and handoff; runtime, installer and test bytes remain identical to the reviewed and gated candidate. Global installation and official assets have separate receipts.
 
 ## Known limits
+
+- A shortened non-ASCII error can omit one extra complete character at its boundary. The receipt remains valid and keeps the rejection classification; this minor prefix-completeness issue is deferred.
 
 - Existing-session controls currently require the supported Codex shared-server interface; other lead CLIs retain their own behaviour.
 - Implicit executable/socket defaults can change outside Unio. Explicit saved selections and exact loaded-thread acknowledgements bound control; effective model/effort remain Unknown.
