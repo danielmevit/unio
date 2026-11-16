@@ -33,18 +33,33 @@ Behaviour contract (see docs/development/VALIDATION-MATRIX.md):
   not print the success string.
 - The private installer fixture (temp directory + install + shellcheck on the
   installed engine) is created only when a selected command needs it, and is
-  always removed on exit.
+  always removed on exit — including when SIGTERM or SIGHUP terminates the
+  gate: the signal is forwarded to the command the gate currently owns (only
+  that process), the child is reaped within a bounded wait, and the gate then
+  exits 128+signal. Actual command failures keep their own exit codes.
 - Environment bounds for every child: UNIO_AUTO_VERIFY=0, UNIO_AUTO_OFF=0,
   UNIO_AUTO_SYNC=0, UNIO_CLI_UPDATES_OFFLINE=1, PYTHONDONTWRITEBYTECODE=1.
+  The UNIO_* bounds are the original gate's; PYTHONDONTWRITEBYTECODE=1 is an
+  intentional minor addition, so the child environment is not byte-identical
+  to the legacy one.
+- Control variables QUALITY_TIMINGS and UNIO_QUALITY_GATE_CATALOGUE are never
+  inherited by child commands, so a nested gate run (for example the runner
+  self-test inside a timed full gate) cannot truncate or corrupt the outer
+  timing file. A fixture command that wants either variable must set it
+  explicitly in its own env.
 - UNIO_QUALITY_GATE_CATALOGUE overrides the catalogue path. It exists for the
   runner's own regression tests (fixture commands) and is not a lane selector.
+  Every run made with an override is labelled FIXTURE/noncanonical and never
+  prints the canonical success string, so no override can certify the
+  production full gate.
 
 There is no parallelism, caching, retry, automatic skip or changed-path
-selection in this batch; the default run is serial, exactly as before.
+selection in this batch; the default run is serial, as before.
 """
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -58,6 +73,9 @@ SUCCESS = "quality-check: all checks passed"
 CHECK_DIR_PLACEHOLDER = "{check_dir}"
 TIMING_HEADER = "id\tcommand\tstart_utc\tend_utc\telapsed_seconds\texit_code"
 DEPENDENCIES = ("python3", "shellcheck", "node")
+CHILD_CONTROL_VARS = ("QUALITY_TIMINGS", "UNIO_QUALITY_GATE_CATALOGUE")
+TERMINATION_SIGNALS = ("SIGTERM", "SIGHUP")
+REAP_TIMEOUT_SECONDS = 5
 
 
 def usage_error(message):
@@ -216,7 +234,10 @@ def run_gate(data, lanes):
     if not selection:
         usage_error("the selected lanes contain no commands")
 
+    override = os.environ.get("UNIO_QUALITY_GATE_CATALOGUE", "")
     child_env = dict(os.environ)
+    for key in CHILD_CONTROL_VARS:
+        child_env.pop(key, None)
     child_env.update(
         {
             "UNIO_AUTO_VERIFY": "0",
@@ -236,7 +257,28 @@ def run_gate(data, lanes):
     check_dir = None
     if any(entry.get("needs_fixture") for entry in selection):
         check_dir = tempfile.mkdtemp(prefix="quality-check-")
+
+    owned = {"proc": None}
+
+    def on_termination_signal(signum, frame):
+        proc = owned["proc"]
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.send_signal(signum)
+            except (ProcessLookupError, OSError):
+                pass
+        raise SystemExit(128 + signum)
+
+    installed_signals = []
     try:
+        for name in TERMINATION_SIGNALS:
+            sig = getattr(signal, name, None)
+            if sig is None:
+                continue
+            try:
+                installed_signals.append((sig, signal.signal(sig, on_termination_signal)))
+            except (OSError, ValueError):
+                pass
         for entry in selection:
             argv = [substitute(a, check_dir) for a in entry["argv"]]
             env = dict(child_env)
@@ -253,11 +295,23 @@ def run_gate(data, lanes):
             start_mono = time.monotonic()
             start_utc = datetime.now(timezone.utc).isoformat()
             try:
-                code = subprocess.run(argv, env=env, cwd=REPO, stdout=out_handle).returncode
+                proc = subprocess.Popen(argv, env=env, cwd=REPO, stdout=out_handle)
             except FileNotFoundError:
+                if out_handle is not None:
+                    out_handle.close()
                 print(f"quality-check: command not found: {argv[0]}", file=sys.stderr)
                 raise SystemExit(127)
+            owned["proc"] = proc
+            try:
+                code = proc.wait()
             finally:
+                owned["proc"] = None
+                if proc.poll() is None:
+                    try:
+                        proc.wait(timeout=REAP_TIMEOUT_SECONDS)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
                 if out_handle is not None:
                     out_handle.close()
             end_utc = datetime.now(timezone.utc).isoformat()
@@ -268,6 +322,11 @@ def run_gate(data, lanes):
             if code != 0:
                 raise SystemExit(code)
     finally:
+        for sig, previous in installed_signals:
+            try:
+                signal.signal(sig, previous)
+            except (OSError, ValueError):
+                pass
         if check_dir:
             shutil.rmtree(check_dir, ignore_errors=True)
         timings.close()
@@ -277,16 +336,26 @@ def run_gate(data, lanes):
         raise SystemExit(1)
     if lanes:
         total = len(data["commands"])
+        if override:
+            print(f"quality-check: FIXTURE catalogue {override} (noncanonical)")
         print(f"quality-check: PARTIAL coverage — lanes: {', '.join(lanes)}")
         print(
             f"quality-check: {len(selection)} of {total} full-gate commands ran; "
             f"{total - len(selection)} not run"
+        )
+    elif override:
+        print(
+            f"quality-check: FIXTURE catalogue {override} — all fixture commands "
+            "passed (noncanonical: not the production catalogue; not a full-gate pass)"
         )
     else:
         print(SUCCESS)
 
 
 def list_selection(data, lanes):
+    override = os.environ.get("UNIO_QUALITY_GATE_CATALOGUE", "")
+    if override:
+        print(f"quality-check: FIXTURE catalogue {override} (noncanonical)")
     selection = select_commands(data, lanes)
     if lanes:
         print(

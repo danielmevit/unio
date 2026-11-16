@@ -13,13 +13,22 @@ tracked baseline snapshot (tests/fixtures/quality-gate-baseline.json) is an
 independent record of the original 125-command gate; comparing the live
 catalogue against it proves default coverage and order without mirroring
 the implementation's own selection predicates.
+
+Correction regressions (review 2026-11-16, REQUEST-CHANGES): a catalogue
+override can never print the canonical full-gate success string; an outer
+QUALITY_TIMINGS file survives nested gate runs (including a nested real
+self-test) without truncation or NUL corruption while real failure exits
+are preserved; SIGTERM/SIGHUP clean up the fixture and the owned child
+without touching unrelated processes.
 """
 import json
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -51,6 +60,12 @@ def check(name, condition, detail=""):
 def run_gate(args, catalogue=None, timings=None, tmpdir=None):
     env = dict(os.environ)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    # Sanitize inherited control variables even when this helper is invoked
+    # standalone with them present: only explicitly passed values reach the
+    # gate, so an ambient QUALITY_TIMINGS or catalogue override can neither
+    # leak a timing path into nested runs nor change what is under test.
+    env.pop("QUALITY_TIMINGS", None)
+    env.pop("UNIO_QUALITY_GATE_CATALOGUE", None)
     if catalogue is not None:
         env["UNIO_QUALITY_GATE_CATALOGUE"] = str(catalogue)
     if timings is not None:
@@ -201,13 +216,34 @@ def main():
 
         print("execution semantics")
         result = run_gate([], catalogue=fixture, tmpdir=tmp)
-        check("full fixture run passes with the exact full-gate success string",
-              result.returncode == 0 and result.stdout.strip() == SUCCESS,
+        check("a full fixture run passes, labelled FIXTURE, never the canonical string",
+              result.returncode == 0 and "FIXTURE" in result.stdout
+              and "noncanonical" in result.stdout and SUCCESS not in result.stdout,
               (result.returncode, result.stdout, result.stderr))
         check("full run output never says PARTIAL",
               "PARTIAL" not in result.stdout)
         check("commands with spaces in their paths ran",
               m1.exists() and m2.exists() and m3.exists())
+
+        print("a catalogue override can never certify the production gate")
+        single = root / "single true catalogue.json"
+        single.write_text(json.dumps({
+            "format": 1, "lanes": ["alpha"],
+            "commands": [{"id": "only", "argv": ["true"], "lanes": ["alpha"]}],
+        }))
+        result = run_gate([], catalogue=single, tmpdir=tmp)
+        check("a one-command override run never prints the canonical success string",
+              result.returncode == 0 and SUCCESS not in result.stdout,
+              (result.returncode, result.stdout))
+        check("an override run labels itself FIXTURE/noncanonical",
+              "FIXTURE" in result.stdout and "noncanonical" in result.stdout,
+              result.stdout)
+        result = run_gate(["--list"], catalogue=single, tmpdir=tmp)
+        check("an override dry listing is labelled FIXTURE and claims no pass",
+              result.returncode == 0 and "FIXTURE" in result.stdout
+              and "PASS" not in result.stdout.upper()
+              and SUCCESS not in result.stdout,
+              (result.returncode, result.stdout))
 
         failing = root / "failing catalogue.json"
         never = markers / "never marker.txt"
@@ -357,6 +393,192 @@ def main():
         check("a timing failure never masks the command's failure code",
               result.returncode == 7 and "timing" in result.stderr.lower(),
               (result.returncode, result.stderr))
+
+        print("nested timing isolation (outer rows survive nested gate runs)")
+        nested_tmp = root / "nested tmp"
+        nested_tmp.mkdir()
+        inner = root / "inner catalogue.json"
+        inner.write_text(json.dumps({
+            "format": 1, "lanes": ["alpha"],
+            "commands": [{"id": "inner-true", "argv": ["true"], "lanes": ["alpha"]}],
+        }))
+        inner_timings = nested_tmp / "inner timings.tsv"
+        outer_timings = nested_tmp / "outer timings.tsv"
+        nested_gate = root / "nested gate catalogue.json"
+        nested_gate.write_text(json.dumps({
+            "format": 1, "lanes": ["alpha"],
+            "commands": [
+                {"id": "pre", "argv": ["touch", str(nested_tmp / "pre marker.txt")],
+                 "lanes": ["alpha"]},
+                {"id": "nested-gate", "lanes": ["alpha"], "argv": [
+                    "bash", str(REPO / "tools" / "quality-check.sh")],
+                 "env": {"UNIO_QUALITY_GATE_CATALOGUE": str(inner)}},
+                {"id": "nested-gate-timed", "lanes": ["alpha"], "argv": [
+                    "bash", str(REPO / "tools" / "quality-check.sh")],
+                 "env": {"UNIO_QUALITY_GATE_CATALOGUE": str(inner),
+                         "QUALITY_TIMINGS": str(inner_timings)}},
+                {"id": "boom", "argv": ["bash", "-c", "exit 7"], "lanes": ["alpha"]},
+            ],
+        }))
+        result = run_gate([], catalogue=nested_gate, timings=outer_timings,
+                          tmpdir=nested_tmp)
+        raw = outer_timings.read_bytes()
+        rows = outer_timings.read_text().splitlines()
+        fields = [row.split("\t") for row in rows[1:]]
+        check("an outer timing file survives nested gate runs with a real failure exit",
+              result.returncode == 7 and b"\x00" not in raw and len(rows) == 5
+              and [f[0] for f in fields] == ["pre", "nested-gate",
+                                            "nested-gate-timed", "boom"]
+              and [f[5] for f in fields] == ["0", "0", "0", "7"],
+              (result.returncode, rows))
+        check("the outer row before the nested runs keeps its rendered command",
+              "touch" in fields[0][1] and "pre marker" in fields[0][1], fields[0])
+        check("a nested gate child without explicit timings never touches the outer file",
+              result.returncode == 7 and len(rows) == 5 and b"\x00" not in raw,
+              (result.returncode, rows))
+        check("a fixture can still set its own nested QUALITY_TIMINGS explicitly",
+              inner_timings.exists()
+              and inner_timings.read_text().splitlines()[1].split("\t")[0] == "inner-true",
+              inner_timings.read_text() if inner_timings.exists() else "absent")
+
+        if os.environ.get("UNIO_QUALITY_GATE_SELFTEST_GUARD"):
+            print("  note  nested real self-test skipped (already nested; guard set)")
+        else:
+            selftest_catalogue = root / "nested selftest catalogue.json"
+            selftest_catalogue.write_text(json.dumps({
+                "format": 1, "lanes": ["alpha"],
+                "commands": [
+                    {"id": "pre", "argv": [
+                        "touch", str(nested_tmp / "selftest pre marker.txt")],
+                     "lanes": ["alpha"]},
+                    {"id": "nested-selftest", "argv": [
+                        "python3", "-B", str(REPO / "tests" / "unio-quality-gate.py")],
+                     "env": {"UNIO_QUALITY_GATE_SELFTEST_GUARD": "1"},
+                     "lanes": ["alpha"]},
+                ],
+            }))
+            outer_selftest_timings = nested_tmp / "outer selftest timings.tsv"
+            result = run_gate([], catalogue=selftest_catalogue,
+                              timings=outer_selftest_timings, tmpdir=nested_tmp)
+            raw = outer_selftest_timings.read_bytes()
+            rows = outer_selftest_timings.read_text().splitlines()
+            fields = [row.split("\t") for row in rows[1:]]
+            check("an outer timing file survives a nested real self-test run",
+                  result.returncode == 0 and b"\x00" not in raw and len(rows) == 3
+                  and [f[0] for f in fields] == ["pre", "nested-selftest"]
+                  and [f[5] for f in fields] == ["0", "0"],
+                  (result.returncode, rows))
+            check("the outer row before the nested self-test keeps its content",
+                  "touch" in fields[0][1] and "selftest pre marker" in fields[0][1],
+                  fields[0])
+            check("the nested self-test leaves no scratch behind",
+                  sorted(p.name for p in nested_tmp.iterdir()) == [
+                      "inner timings.tsv", "outer selftest timings.tsv",
+                      "outer timings.tsv", "pre marker.txt",
+                      "selftest pre marker.txt"],
+                  sorted(p.name for p in nested_tmp.iterdir()))
+
+        print("inherited control variables are sanitized by the helper")
+        os.environ["QUALITY_TIMINGS"] = str(nested_tmp / "leaked timings.tsv")
+        try:
+            result = run_gate([], catalogue=passing, tmpdir=tmp)
+        finally:
+            del os.environ["QUALITY_TIMINGS"]
+        check("an inherited QUALITY_TIMINGS never reaches the gate uninvited",
+              result.returncode == 0
+              and not (nested_tmp / "leaked timings.tsv").exists(),
+              (result.returncode, result.stdout))
+        os.environ["UNIO_QUALITY_GATE_CATALOGUE"] = str(single)
+        try:
+            result = run_gate(["--list"])
+        finally:
+            del os.environ["UNIO_QUALITY_GATE_CATALOGUE"]
+        check("an inherited catalogue override never reaches the gate uninvited",
+              result.returncode == 0 and "only\ttrue" not in result.stdout
+              and "bash-n-unio-install" in result.stdout,
+              (result.returncode, result.stdout[:80]))
+
+        print("termination signals clean up the fixture and the owned child")
+
+        def probe_pid(marker):
+            try:
+                names = os.listdir("/proc")
+            except OSError:
+                return None
+            for name in names:
+                if not name.isdigit():
+                    continue
+                try:
+                    cmdline = Path("/proc", name, "cmdline").read_bytes()
+                except OSError:
+                    continue
+                if marker.encode() in cmdline:
+                    return int(name)
+            return None
+
+        def termination_case(name, send):
+            case_tmp = root / f"term {name} tmp"
+            case_tmp.mkdir()
+            owned_marker = f"unio-gate-owned-{name.lower()}"
+            sentinel_marker = f"unio-gate-sentinel-{name.lower()}"
+            sentinel = subprocess.Popen(
+                ["bash", "-c", f"exec -a {sentinel_marker} sleep 300"])
+            catalogue = root / f"term {name} catalogue.json"
+            catalogue.write_text(json.dumps({
+                "format": 1, "lanes": ["alpha"],
+                "commands": [
+                    {"id": "t0", "argv": ["touch", str(case_tmp / "started marker.txt")],
+                     "lanes": ["alpha"]},
+                    {"id": "t1", "lanes": ["alpha"], "needs_fixture": True,
+                     "argv": ["bash", "-c", f"exec -a {owned_marker} sleep 300"]},
+                ],
+            }))
+            env = dict(os.environ)
+            env["PYTHONDONTWRITEBYTECODE"] = "1"
+            env["TMPDIR"] = str(case_tmp)
+            env.pop("QUALITY_TIMINGS", None)
+            env["UNIO_QUALITY_GATE_CATALOGUE"] = str(catalogue)
+            proc = subprocess.Popen(GATE, env=env, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            try:
+                deadline = time.monotonic() + 30
+                while not (case_tmp / "started marker.txt").exists():
+                    if time.monotonic() > deadline or proc.poll() is not None:
+                        break
+                    time.sleep(0.05)
+                while probe_pid(owned_marker) is None:
+                    if time.monotonic() > deadline or proc.poll() is not None:
+                        break
+                    time.sleep(0.05)
+                send(proc)
+                code = proc.wait(timeout=60)
+                owned_alive = probe_pid(owned_marker) is not None
+                sentinel_alive = (sentinel.poll() is None
+                                  and probe_pid(sentinel_marker) is not None)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
+                if sentinel.poll() is None:
+                    sentinel.terminate()
+                    sentinel.wait()
+            leftovers = [p.name for p in case_tmp.iterdir()
+                         if p.name.startswith("quality-check-")]
+            return code, leftovers, owned_alive, sentinel_alive
+
+        code, leftovers, owned_alive, sentinel_alive = termination_case(
+            "SIGTERM", subprocess.Popen.terminate)
+        check("SIGTERM exits 128+15 with the fixture directory removed",
+              code == 143 and not leftovers, (code, leftovers))
+        check("SIGTERM leaves no owned child behind", not owned_alive)
+        check("an unrelated process survives SIGTERM handling", sentinel_alive)
+
+        code, leftovers, owned_alive, sentinel_alive = termination_case(
+            "SIGHUP", lambda p: p.send_signal(signal.SIGHUP))
+        check("SIGHUP exits 128+1 with the fixture directory removed",
+              code == 129 and not leftovers, (code, leftovers))
+        check("SIGHUP leaves no owned child behind", not owned_alive)
+        check("an unrelated process survives SIGHUP handling", sentinel_alive)
 
         print("bad runner inputs")
         broken = root / "broken catalogue.json"
