@@ -1,0 +1,1432 @@
+{
+  "format": 1,
+  "lanes": [
+    "static",
+    "install-smoke",
+    "safety-core",
+    "evidence-review",
+    "managed-lead",
+    "adapters",
+    "observation",
+    "bridge",
+    "delegation",
+    "admission-env",
+    "save",
+    "docs"
+  ],
+  "commands": [
+    {
+      "id": "bash-n-unio-install",
+      "argv": [
+        "bash",
+        "-n",
+        "unio-install.sh"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-lead-cooldown-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-lead-cooldown.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-browser-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-browser.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-capacity-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-capacity.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-readiness-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-readiness.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-fleet-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-fleet.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-task-plan-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-task-plan.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-worktree-cache-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-worktree-cache.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-task-outcomes-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-task-outcomes.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-task-dispatch-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-task-dispatch.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-continuous-delegation-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-continuous-delegation.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-dashboard-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-dashboard.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-adapters-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-adapters.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-route-profiles-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-route-profiles.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-model-experience-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-model-experience.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-codex-worker-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-codex-worker.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-managed-lead-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-managed-lead.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-run-observation-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-run-observation.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-cli-updates-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-cli-updates.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-role-cards-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-role-cards.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-report-reviews-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-report-reviews.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "embed-task-preview-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-task-preview.py",
+        "--check"
+      ],
+      "lanes": [
+        "static"
+      ]
+    },
+    {
+      "id": "install-fixture",
+      "argv": [
+        "bash",
+        "unio-install.sh"
+      ],
+      "lanes": [
+        "install-smoke"
+      ],
+      "needs_fixture": true,
+      "env": {
+        "UNIO_BIN_DIR": "{check_dir}/bin",
+        "UNIO_CONF_DIR": "{check_dir}/conf",
+        "UNIO_COMPLETION_DIR": "{check_dir}/completion"
+      },
+      "stdout_path": "{check_dir}/install.log"
+    },
+    {
+      "id": "shellcheck-installed-engine",
+      "argv": [
+        "shellcheck",
+        "-S",
+        "warning",
+        "{check_dir}/bin/unio"
+      ],
+      "lanes": [
+        "install-smoke"
+      ],
+      "needs_fixture": true
+    },
+    {
+      "id": "test-unio-installer-safety",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-installer-safety.py"
+      ],
+      "lanes": [
+        "install-smoke"
+      ]
+    },
+    {
+      "id": "test-unio-startup-refusal",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-startup-refusal.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-neutral-startup",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-neutral-startup.py"
+      ],
+      "lanes": [
+        "install-smoke"
+      ]
+    },
+    {
+      "id": "test-unio-required-delivery",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-required-delivery.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-handoff-incomplete",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-handoff-incomplete.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-task-outcomes",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-task-outcomes.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-thin-config",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-thin-config.py"
+      ],
+      "lanes": [
+        "install-smoke"
+      ]
+    },
+    {
+      "id": "test-unio-selftest",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-selftest.py"
+      ],
+      "lanes": [
+        "install-smoke"
+      ]
+    },
+    {
+      "id": "test-unio-quality-sh",
+      "argv": [
+        "bash",
+        "tests/unio-quality.sh"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-tail",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-tail.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-scope-annotations",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-scope-annotations.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-task-preview",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-task-preview.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-review-receipts",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-review-receipts.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-review-collection",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-review-collection.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-review-coherence",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-review-coherence.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-review-findings",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-review-findings.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-report-reviews",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-report-reviews.py"
+      ],
+      "lanes": [
+        "evidence-review"
+      ]
+    },
+    {
+      "id": "test-unio-run-identity",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-run-identity.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-loop-brake",
+      "argv": [
+        "python3",
+        "tests/unio-loop-brake.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-limit-wall",
+      "argv": [
+        "python3",
+        "tests/unio-limit-wall.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-watch",
+      "argv": [
+        "python3",
+        "tests/unio-watch.py"
+      ],
+      "lanes": [
+        "observation"
+      ]
+    },
+    {
+      "id": "test-unio-orphan-observation",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-orphan-observation.py"
+      ],
+      "lanes": [
+        "observation"
+      ]
+    },
+    {
+      "id": "test-unio-opencode",
+      "argv": [
+        "python3",
+        "tests/unio-opencode.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-prompt-transport",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-prompt-transport.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-role-cards",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-role-cards.py"
+      ],
+      "lanes": [
+        "install-smoke"
+      ]
+    },
+    {
+      "id": "test-unio-command-audit",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-command-audit.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-cli-updates",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-cli-updates.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-perplexity",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-perplexity.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-vibe",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-vibe.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-copilot",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-copilot.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-antigravity",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-antigravity.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-adapters-install",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-adapters-install.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-route-profiles",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-route-profiles.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-adapter-outcome",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-adapter-outcome.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "test-unio-adapter-budget",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-adapter-budget.py"
+      ],
+      "lanes": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "bridge-progress-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/progress_test.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "bridge-progress-api-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/progress_api_test.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "bridge-worker-files-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/worker_files_test.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "node-check-worker-console",
+      "argv": [
+        "node",
+        "--check",
+        "bridge/worker_console.js"
+      ],
+      "lanes": [
+        "static",
+        "bridge"
+      ]
+    },
+    {
+      "id": "node-check-theme",
+      "argv": [
+        "node",
+        "--check",
+        "bridge/theme.js"
+      ],
+      "lanes": [
+        "static",
+        "bridge"
+      ]
+    },
+    {
+      "id": "bridge-server-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/server_test.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "bridge-limits-api-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/limits_api_test.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "test-unio-browser-launcher",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-browser-launcher.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "test-unio-dashboard",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-dashboard.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "bridge-capacity-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/capacity_test.py"
+      ],
+      "lanes": [
+        "observation"
+      ]
+    },
+    {
+      "id": "test-unio-capacity",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-capacity.py"
+      ],
+      "lanes": [
+        "observation"
+      ]
+    },
+    {
+      "id": "test-unio-readiness",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-readiness.py"
+      ],
+      "lanes": [
+        "observation"
+      ]
+    },
+    {
+      "id": "test-unio-fleet",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-fleet.py"
+      ],
+      "lanes": [
+        "observation"
+      ]
+    },
+    {
+      "id": "test-unio-model-experience",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-model-experience.py"
+      ],
+      "lanes": [
+        "observation"
+      ]
+    },
+    {
+      "id": "test-unio-codex-worker",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-codex-worker.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "test-unio-worker-effort",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-worker-effort.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "test-unio-managed-session",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-managed-session.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "test-unio-managed-lead",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-managed-lead.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "test-unio-managed-lead-codex",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-managed-lead-codex.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "test-unio-lead-effort",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-lead-effort.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "test-unio-lead-session",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-lead-session.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "test-unio-lead-session-codex",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-lead-session-codex.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "test-unio-lead-session-policy",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-lead-session-policy.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "test-unio-lead-effort-display",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-lead-effort-display.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "test-unio-task-plan",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-task-plan.py"
+      ],
+      "lanes": [
+        "delegation"
+      ]
+    },
+    {
+      "id": "test-unio-worktree-cache",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-worktree-cache.py"
+      ],
+      "lanes": [
+        "delegation"
+      ]
+    },
+    {
+      "id": "test-unio-task-dispatch",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-task-dispatch.py"
+      ],
+      "lanes": [
+        "delegation"
+      ]
+    },
+    {
+      "id": "test-unio-task-dispatch-install",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-task-dispatch-install.py"
+      ],
+      "lanes": [
+        "delegation"
+      ]
+    },
+    {
+      "id": "test-unio-continuous-delegation",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-continuous-delegation.py"
+      ],
+      "lanes": [
+        "delegation"
+      ]
+    },
+    {
+      "id": "test-unio-readiness-install",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-readiness-install.py"
+      ],
+      "lanes": [
+        "delegation"
+      ]
+    },
+    {
+      "id": "bridge-provider-capacity-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/provider_capacity_test.py"
+      ],
+      "lanes": [
+        "observation"
+      ]
+    },
+    {
+      "id": "test-unio-provider-capacity",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-provider-capacity.py"
+      ],
+      "lanes": [
+        "observation"
+      ]
+    },
+    {
+      "id": "test-unio-lead-budget",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-lead-budget.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-disk-preflight",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-disk-preflight.py"
+      ],
+      "lanes": [
+        "admission-env"
+      ]
+    },
+    {
+      "id": "test-unio-host-space",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-host-space.py"
+      ],
+      "lanes": [
+        "admission-env"
+      ]
+    },
+    {
+      "id": "embed-host-space-check",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/embed-host-space.py",
+        "--check"
+      ],
+      "lanes": [
+        "static",
+        "admission-env"
+      ]
+    },
+    {
+      "id": "test-unio-work-policy",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-work-policy.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-work-policy-guard",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-work-policy-guard.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-admission-deadline",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-admission-deadline.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-remote-guard",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-remote-guard.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-project-root",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-project-root.py"
+      ],
+      "lanes": [
+        "admission-env"
+      ]
+    },
+    {
+      "id": "test-unio-save-walk",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-save-walk.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-save-performance",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-save-performance.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-save-attempt-reuse",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-save-attempt-reuse.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-save-latest-lookup",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-save-latest-lookup.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-work-saving",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-work-saving.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-save-retention",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-save-retention.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-save-archive-worker",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-save-archive-worker.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-save-cap-preflight",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-save-cap-preflight.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-save-benchmark",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-save-benchmark.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-work-saving-auto",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-work-saving-auto.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-run-phases",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-run-phases.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-save-capture-budget",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-save-capture-budget.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-work-saving-continue",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-work-saving-continue.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-kill-pid",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-kill-pid.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-native-stop",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-native-stop.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-wip",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-wip.py"
+      ],
+      "lanes": [
+        "save"
+      ]
+    },
+    {
+      "id": "test-unio-lead-cooldown",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-lead-cooldown.py"
+      ],
+      "lanes": [
+        "managed-lead"
+      ]
+    },
+    {
+      "id": "bridge-plan-store-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/plan_store_test.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "bridge-plan-api-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/plan_api_test.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "bridge-job-store-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/job_store_test.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "bridge-execution-service-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/execution_service_test.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "bridge-execution-api-test",
+      "argv": [
+        "python3",
+        "-B",
+        "bridge/tests/execution_api_test.py"
+      ],
+      "lanes": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "test-unio-probes-sh",
+      "argv": [
+        "bash",
+        "tests/unio-probes.sh"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-branding-sh",
+      "argv": [
+        "bash",
+        "tests/unio-branding.sh"
+      ],
+      "lanes": [
+        "docs"
+      ]
+    },
+    {
+      "id": "docs-check-docs",
+      "argv": [
+        "bash",
+        "tools/check-docs.sh"
+      ],
+      "lanes": [
+        "static",
+        "docs"
+      ]
+    },
+    {
+      "id": "test-unio-quality-gate",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-quality-gate.py"
+      ],
+      "lanes": [
+        "static"
+      ],
+      "added_self_test": true
+    }
+  ]
+}

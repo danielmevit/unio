@@ -6,144 +6,16 @@
 # Additional attribution/origin terms: NOTICE (AGPLv3 sections 7(b), 7(c)).
 # See LICENSE and NOTICE; distributed without warranty.
 # Repeatable checks; no installed user configuration or live providers.
+#
+#   bash tools/quality-check.sh              # full offline gate (unchanged)
+#   bash tools/quality-check.sh --list       # dry listing, runs nothing
+#   bash tools/quality-check.sh --lane NAME  # named lane (repeatable, PARTIAL)
+#
+# The ordered command catalogue lives in tools/quality-gate-commands.json and
+# the dispatcher in tools/quality-gate.py. See
+# docs/development/VALIDATION-MATRIX.md for lanes, timings and limitations.
 set -euo pipefail
 QUALITY_REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-QUALITY_CHECK_DIR=$(mktemp -d)
-trap 'rm -rf -- "$QUALITY_CHECK_DIR"' EXIT
 cd "$QUALITY_REPO"
-export UNIO_AUTO_VERIFY=0 UNIO_AUTO_OFF=0 UNIO_AUTO_SYNC=0
-# The whole quality gate is an offline fixture environment: no suite may
-# perform CLI-update metadata fetches, even though awareness lines are
-# cached-facts-only for noninteractive invocations by design. This is an
-# explicit env bound, never a claim that an isolated tmpfs blocks network.
-export UNIO_CLI_UPDATES_OFFLINE=1
-for dependency in python3 shellcheck node; do
-  command -v "$dependency" >/dev/null || { echo "missing dependency: $dependency" >&2; exit 1; }
-done
-bash -n unio-install.sh
-python3 -B tools/embed-lead-cooldown.py --check
-python3 -B tools/embed-browser.py --check
-python3 -B tools/embed-capacity.py --check
-python3 -B tools/embed-readiness.py --check
-python3 -B tools/embed-fleet.py --check
-python3 -B tools/embed-task-plan.py --check
-python3 -B tools/embed-worktree-cache.py --check
-python3 -B tools/embed-task-outcomes.py --check
-python3 -B tools/embed-task-dispatch.py --check
-python3 -B tools/embed-continuous-delegation.py --check
-python3 -B tools/embed-dashboard.py --check
-python3 -B tools/embed-adapters.py --check
-python3 -B tools/embed-route-profiles.py --check
-python3 -B tools/embed-model-experience.py --check
-python3 -B tools/embed-codex-worker.py --check
-python3 -B tools/embed-managed-lead.py --check
-python3 -B tools/embed-run-observation.py --check
-python3 -B tools/embed-cli-updates.py --check
-python3 -B tools/embed-role-cards.py --check
-python3 -B tools/embed-report-reviews.py --check
-python3 -B tools/embed-task-preview.py --check
-UNIO_BIN_DIR="$QUALITY_CHECK_DIR/bin" UNIO_CONF_DIR="$QUALITY_CHECK_DIR/conf" \
-  UNIO_COMPLETION_DIR="$QUALITY_CHECK_DIR/completion" bash unio-install.sh > "$QUALITY_CHECK_DIR/install.log"
-shellcheck -S warning "$QUALITY_CHECK_DIR/bin/unio"
-python3 -B tests/unio-installer-safety.py
-python3 -B tests/unio-startup-refusal.py
-python3 -B tests/unio-neutral-startup.py
-python3 -B tests/unio-required-delivery.py
-python3 -B tests/unio-handoff-incomplete.py
-python3 -B tests/unio-task-outcomes.py
-python3 -B tests/unio-thin-config.py
-python3 -B tests/unio-selftest.py
-bash tests/unio-quality.sh
-python3 -B tests/unio-tail.py
-python3 -B tests/unio-scope-annotations.py
-python3 -B tests/unio-task-preview.py
-python3 -B tests/unio-review-receipts.py
-python3 -B tests/unio-review-collection.py
-python3 -B tests/unio-review-coherence.py
-python3 -B tests/unio-review-findings.py
-python3 -B tests/unio-report-reviews.py
-python3 -B tests/unio-run-identity.py
-python3 tests/unio-loop-brake.py
-python3 tests/unio-limit-wall.py
-python3 tests/unio-watch.py
-python3 -B tests/unio-orphan-observation.py
-python3 tests/unio-opencode.py
-python3 -B tests/unio-prompt-transport.py
-python3 -B tests/unio-role-cards.py
-python3 -B tests/unio-command-audit.py
-python3 -B tests/unio-cli-updates.py
-python3 -B tests/unio-perplexity.py
-python3 -B tests/unio-vibe.py
-python3 -B tests/unio-copilot.py
-python3 -B tests/unio-antigravity.py
-python3 -B tests/unio-adapters-install.py
-python3 -B tests/unio-route-profiles.py
-python3 -B tests/unio-adapter-outcome.py
-python3 -B tests/unio-adapter-budget.py
-python3 -B bridge/tests/progress_test.py
-python3 -B bridge/tests/progress_api_test.py
-python3 -B bridge/tests/worker_files_test.py
-node --check bridge/worker_console.js
-node --check bridge/theme.js
-python3 -B bridge/tests/server_test.py
-python3 -B bridge/tests/limits_api_test.py
-python3 -B tests/unio-browser-launcher.py
-python3 -B tests/unio-dashboard.py
-python3 -B bridge/tests/capacity_test.py
-python3 -B tests/unio-capacity.py
-python3 -B tests/unio-readiness.py
-python3 -B tests/unio-fleet.py
-python3 -B tests/unio-model-experience.py
-python3 -B tests/unio-codex-worker.py
-python3 -B tests/unio-worker-effort.py
-python3 -B tests/unio-managed-session.py
-python3 -B tests/unio-managed-lead.py
-python3 -B tests/unio-managed-lead-codex.py
-python3 -B tests/unio-lead-effort.py
-python3 -B tests/unio-lead-session.py
-python3 -B tests/unio-lead-session-codex.py
-python3 -B tests/unio-lead-session-policy.py
-python3 -B tests/unio-lead-effort-display.py
-python3 -B tests/unio-task-plan.py
-python3 -B tests/unio-worktree-cache.py
-python3 -B tests/unio-task-dispatch.py
-python3 -B tests/unio-task-dispatch-install.py
-python3 -B tests/unio-continuous-delegation.py
-python3 -B tests/unio-readiness-install.py
-python3 -B bridge/tests/provider_capacity_test.py
-python3 -B tests/unio-provider-capacity.py
-python3 -B tests/unio-lead-budget.py
-python3 -B tests/unio-disk-preflight.py
-python3 -B tests/unio-host-space.py
-python3 -B tools/embed-host-space.py --check
-python3 -B tests/unio-work-policy.py
-python3 -B tests/unio-work-policy-guard.py
-python3 -B tests/unio-admission-deadline.py
-python3 -B tests/unio-remote-guard.py
-python3 -B tests/unio-project-root.py
-python3 -B tests/unio-save-walk.py
-python3 -B tests/unio-save-performance.py
-python3 -B tests/unio-save-attempt-reuse.py
-python3 -B tests/unio-save-latest-lookup.py
-python3 -B tests/unio-work-saving.py
-python3 -B tests/unio-save-retention.py
-python3 -B tests/unio-save-archive-worker.py
-python3 -B tests/unio-save-cap-preflight.py
-python3 -B tests/unio-save-benchmark.py
-python3 -B tests/unio-work-saving-auto.py
-python3 -B tests/unio-run-phases.py
-python3 -B tests/unio-save-capture-budget.py
-python3 -B tests/unio-work-saving-continue.py
-python3 -B tests/unio-kill-pid.py
-python3 -B tests/unio-native-stop.py
-python3 -B tests/unio-wip.py
-python3 -B tests/unio-lead-cooldown.py
-python3 -B bridge/tests/plan_store_test.py
-python3 -B bridge/tests/plan_api_test.py
-python3 -B bridge/tests/job_store_test.py
-python3 -B bridge/tests/execution_service_test.py
-python3 -B bridge/tests/execution_api_test.py
-bash tests/unio-probes.sh
-bash tests/unio-branding.sh
-bash tools/check-docs.sh
-echo 'quality-check: all checks passed'
+command -v python3 >/dev/null || { echo "missing dependency: python3" >&2; exit 1; }
+exec python3 -B tools/quality-gate.py "$@"
