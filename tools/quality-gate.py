@@ -37,6 +37,10 @@ Behaviour contract (see docs/development/VALIDATION-MATRIX.md):
   gate: the signal is forwarded to the command the gate currently owns (only
   that process), the child is reaped within a bounded wait, and the gate then
   exits 128+signal. Actual command failures keep their own exit codes.
+  Only the direct child is signalled; its grandchildren are not signalled
+  automatically. A signal that was already ignored when the gate started
+  (for example SIGHUP under nohup) stays ignored and the gate keeps running.
+  SIGKILL and other signals cannot trigger this cleanup.
 - Environment bounds for every child: UNIO_AUTO_VERIFY=0, UNIO_AUTO_OFF=0,
   UNIO_AUTO_SYNC=0, UNIO_CLI_UPDATES_OFFLINE=1, PYTHONDONTWRITEBYTECODE=1.
   The UNIO_* bounds are the original gate's; PYTHONDONTWRITEBYTECODE=1 is an
@@ -276,6 +280,11 @@ def run_gate(data, lanes):
             if sig is None:
                 continue
             try:
+                # Keep an inherited SIG_IGN (for example under nohup): the
+                # legacy shell gate kept running in that case, so do not
+                # turn an ignored hangup/termination into a gate exit.
+                if signal.getsignal(sig) == signal.SIG_IGN:
+                    continue
                 installed_signals.append((sig, signal.signal(sig, on_termination_signal)))
             except (OSError, ValueError):
                 pass

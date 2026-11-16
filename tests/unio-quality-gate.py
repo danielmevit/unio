@@ -550,6 +550,7 @@ def main():
                     if time.monotonic() > deadline or proc.poll() is not None:
                         break
                     time.sleep(0.05)
+                observed = probe_pid(owned_marker) is not None
                 send(proc)
                 code = proc.wait(timeout=60)
                 owned_alive = probe_pid(owned_marker) is not None
@@ -564,6 +565,7 @@ def main():
                     sentinel.wait()
             leftovers = [p.name for p in case_tmp.iterdir()
                          if p.name.startswith("quality-check-")]
+            check(f"{name} probe observed the owned child before signalling", observed)
             return code, leftovers, owned_alive, sentinel_alive
 
         code, leftovers, owned_alive, sentinel_alive = termination_case(
@@ -579,6 +581,60 @@ def main():
               code == 129 and not leftovers, (code, leftovers))
         check("SIGHUP leaves no owned child behind", not owned_alive)
         check("an unrelated process survives SIGHUP handling", sentinel_alive)
+
+        print("an inherited ignored SIGHUP (nohup) keeps the gate running")
+
+        def ignored_hup_case(label, exit_code):
+            case_tmp = root / f"nohup {label} tmp"
+            case_tmp.mkdir()
+            go = case_tmp / "go"
+            ran = case_tmp / "ran marker.txt"
+            marker = f"unio-gate-nohup-{label}"
+            script = (f'while [ ! -e "$1" ]; do sleep 0.05; done; '
+                      f'touch "$2"; exit {exit_code}')
+            catalogue = root / f"nohup {label} catalogue.json"
+            catalogue.write_text(json.dumps({
+                "format": 1, "lanes": ["alpha"],
+                "commands": [{"id": "h1", "lanes": ["alpha"], "needs_fixture": True,
+                              "argv": ["bash", "-c", script, marker, str(go), str(ran)]}],
+            }))
+            env = dict(os.environ)
+            env["PYTHONDONTWRITEBYTECODE"] = "1"
+            env["TMPDIR"] = str(case_tmp)
+            env.pop("QUALITY_TIMINGS", None)
+            env["UNIO_QUALITY_GATE_CATALOGUE"] = str(catalogue)
+            proc = subprocess.Popen(
+                GATE, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN))
+            try:
+                deadline = time.monotonic() + 30
+                while probe_pid(marker) is None:
+                    if time.monotonic() > deadline or proc.poll() is not None:
+                        break
+                    time.sleep(0.05)
+                observed = probe_pid(marker) is not None
+                proc.send_signal(signal.SIGHUP)
+                time.sleep(0.3)
+                alive_after_hup = proc.poll() is None
+                go.touch()
+                code = proc.wait(timeout=60)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
+            leftovers = [p.name for p in case_tmp.iterdir()
+                         if p.name.startswith("quality-check-")]
+            return observed, alive_after_hup, code, ran.exists(), leftovers
+
+        observed, alive, code, ran, leftovers = ignored_hup_case("pass", 0)
+        check("nohup case observed the owned command before SIGHUP", observed)
+        check("an ignored SIGHUP does not stop the gate", alive, code)
+        check("under an ignored SIGHUP the owned command completes and the gate exits 0",
+              code == 0 and ran and not leftovers, (code, ran, leftovers))
+        observed, alive, code, ran, leftovers = ignored_hup_case("fail", 3)
+        check("an ignored SIGHUP keeps the owned command's own nonzero exit",
+              observed and alive and code == 3 and ran and not leftovers,
+              (observed, alive, code, ran, leftovers))
 
         print("bad runner inputs")
         broken = root / "broken catalogue.json"

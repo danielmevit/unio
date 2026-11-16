@@ -33,9 +33,12 @@ wants either must set it explicitly. Every run made with a catalogue override
 is labelled FIXTURE/noncanonical and never prints the full-gate success
 string, so no override or fixture can certify the production catalogue.
 Handled `SIGTERM`/`SIGHUP` termination forwards the signal to the currently
-owned command only, reaps it within a bounded wait, removes the fixture
-directory and exits 128+signal, restoring the legacy bash EXIT-trap cleanup
-guarantee; actual command failures keep their exit codes. New
+owned direct child only (grandchildren are not signalled automatically),
+reaps it within a bounded wait, removes the fixture directory and exits
+128+signal, restoring the legacy bash EXIT-trap cleanup for those signals;
+an inherited ignored signal (such as `SIGHUP` under `nohup`) stays ignored,
+`SIGKILL` cannot be cleaned up, and actual command failures keep their exit
+codes. New
 `docs/development/VALIDATION-MATRIX.md` documents the lanes, the TSV format,
 the Fast/Balanced/Thorough developer, batch and release matrix and the
 limitations. Deliberately deferred, documented as follow-ups rather than

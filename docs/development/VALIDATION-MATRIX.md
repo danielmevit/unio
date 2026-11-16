@@ -48,9 +48,13 @@ certify the production catalogue.
 The union of all lanes equals the full catalogue; the runner self-test
 enforces this, the baseline comparison and the lane invariants. The installer
 fixture is created only when a selected command needs it, and it is removed on
-every exit path, including handled `SIGTERM`/`SIGHUP` termination: the gate
-forwards the signal to the command it currently owns (only that process),
-reaps it within a bounded wait, removes the fixture and exits 128+signal.
+normal exit, command failure and handled `SIGTERM`/`SIGHUP` termination: the
+gate forwards the signal to the command it currently owns (only that direct
+child; its grandchildren are not signalled automatically), reaps it within a
+bounded wait, removes the fixture and exits 128+signal. A signal already
+ignored when the gate starts (for example `SIGHUP` under `nohup`) stays
+ignored, so the gate keeps running as the legacy shell gate did. `SIGKILL`
+and other unhandled signals cannot trigger this cleanup.
 Every child runs with `UNIO_AUTO_VERIFY=0`, `UNIO_AUTO_OFF=0`,
 `UNIO_AUTO_SYNC=0`, `UNIO_CLI_UPDATES_OFFLINE=1` and
 `PYTHONDONTWRITEBYTECODE=1`; provider and model calls stay zero.
