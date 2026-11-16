@@ -105,8 +105,7 @@ remain Unknown unless there is evidence.
 
 ## Optional: adaptive managed lead trial
 
-This is experimental. Use Unio 0.5.32 or newer once it is published and
-installed: in 0.5.31 the first `run` fails with `no rollout found` before
+This is experimental. Use installed Unio 0.5.32 or newer: in 0.5.31 the first `run` fails with `no rollout found` before
 any model turn. Check `unio version` and `unio lead-session --help` on
 your machine. It is a separate trial that you drive from a terminal. It is
 not something to paste into an AI CLI, and it does not take over an

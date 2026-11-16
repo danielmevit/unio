@@ -1,6 +1,6 @@
 # Lead Effort Display (Effort-First Presentation)
 
-Status: documentation for contract `docs/development/contracts/0531-EFFORT-PRESENTATION-V8.md`, with the bounded truth corrections of `docs/development/contracts/0531-FINAL-REVIEW-CORRECTIONS-V10.md` (0.5.31 release), plus the 0.5.32 completion-housekeeping change (candidate, not yet published).
+Status: documentation for contract `docs/development/contracts/0531-EFFORT-PRESENTATION-V8.md`, with the bounded truth corrections of `docs/development/contracts/0531-FINAL-REVIEW-CORRECTIONS-V10.md` (0.5.31 release), plus the 0.5.32 completion-housekeeping change.
 
 ## Principle: Concrete effort first; adaptive policy secondary
 

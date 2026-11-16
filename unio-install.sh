@@ -28983,7 +28983,7 @@ Status: experimental vertical slice for contracts
 `docs/development/contracts/0532-ADAPTIVE-LEAD-EFFORT-V1.md` and the
 owner correction `...-V2.md`, with the final review corrections of
 `0531-ADAPTIVE-REVIEW-CORRECTIONS-V7.md`. First shipped in 0.5.31; 0.5.32
-(candidate, not yet published) fixes the first owned turn, see
+fixes the first owned turn, see
 `docs/development/contracts/0532-FIRST-TURN-PERSISTENCE.md`. `unio
 lead-session` is an opt-in managed lead session with adaptive requested
 effort. The concrete requested effort of each turn (`low` or `xhigh`) is
