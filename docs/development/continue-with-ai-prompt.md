@@ -1,3 +1,13 @@
+# Unio release checkpoint — 2026-11-16
+
+The public installed release is 0.5.32. Candidate 0.5.33 combines focused validation lanes/timings and experimental existing-conversation lead controls. Functional implementation: `28d855039200d486719f4273d5f92c3b5726dfae`. This release layer changes the version declaration and release Markdown only. Preserve the same native conversation; restarting alone does not activate adaptive control.
+
+Current implementation checks: 62 connector checks and native verification passed, plus the validation runner's 71 assertions. The existing lead independently reproduced seven repaired behaviours with fake transports. The final cumulative independent review is pending, followed by lead assessment, one exact-candidate full gate and private/global installation checks. No candidate publication is implied. The installer embeds the managed lead modules; run `python3 -B tools/embed-managed-lead.py --check` after relevant changes.
+
+The first existing-session slice selects future-turn effort from explicit phase signals. Live setting acceptance, mid-turn effort changes, autonomous phase classification and worker watching remain separate follow-ups. Keep requested/effective Unknowns, original failures, actual provider routes and exact review material. Older private launch failures are operational evidence, not adverse model-quality results. Copilot's current stock adapter compatibility is a known follow-up; per-run trials do not repair the public adapter.
+
+Earlier checkpoint follows unchanged.
+
 # Continue Unio development
 
 Read AGENTS.md, the newest enclosing coord/AGENT-LOG.md when available, and the current personal OWNER-WORKFLOW.md before planning. Check actual local/remote Git state, installed version, active runs, account mappings, owner holds and fresh capacity observations. This handoff or a version string never proves publication, installation or remaining allowance.
