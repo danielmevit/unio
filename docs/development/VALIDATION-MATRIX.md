@@ -2,10 +2,12 @@
 
 First 0.5.33 batch: developer tooling for Unio itself. `tools/quality-check.sh`
 run without arguments is still the full offline gate — every original suite,
-in the original order, with the original environment bounds, first-failure
-semantics and success string. What this batch adds is measurement and
-selection, so a Fast loop can run the relevant checks without hand-written
-command lists and without pretending a partial run is a full pass.
+in the original order, with the original `UNIO_*` offline and auto bounds
+(plus `PYTHONDONTWRITEBYTECODE=1` for every child, an intentional minor
+addition — not a byte-identical environment), first-failure semantics and
+success string. What this batch adds is measurement and selection, so a Fast
+loop can run the relevant checks without hand-written command lists and
+without pretending a partial run is a full pass.
 
 ## Commands
 
@@ -21,7 +23,10 @@ before any check or fixture is started. The ordered catalogue lives in
 The catalogue contains the original 125 commands plus one explicitly added
 runner self-test (`tests/unio-quality-gate.py`, static lane); the tracked
 snapshot `tests/fixtures/quality-gate-baseline.json` pins the original list so
-any coverage or order drift is caught by the self-test.
+any coverage or order drift is caught by the self-test. A run made with
+`UNIO_QUALITY_GATE_CATALOGUE` set is always labelled `FIXTURE`/noncanonical
+and never prints the full-gate success string, so no override or fixture can
+certify the production catalogue.
 
 ## Lanes
 
@@ -42,8 +47,11 @@ any coverage or order drift is caught by the self-test.
 
 The union of all lanes equals the full catalogue; the runner self-test
 enforces this, the baseline comparison and the lane invariants. The installer
-fixture is created only when a selected command needs it, and it is always
-removed on exit. Every child runs with `UNIO_AUTO_VERIFY=0`, `UNIO_AUTO_OFF=0`,
+fixture is created only when a selected command needs it, and it is removed on
+every exit path, including handled `SIGTERM`/`SIGHUP` termination: the gate
+forwards the signal to the command it currently owns (only that process),
+reaps it within a bounded wait, removes the fixture and exits 128+signal.
+Every child runs with `UNIO_AUTO_VERIFY=0`, `UNIO_AUTO_OFF=0`,
 `UNIO_AUTO_SYNC=0`, `UNIO_CLI_UPDATES_OFFLINE=1` and
 `PYTHONDONTWRITEBYTECODE=1`; provider and model calls stay zero.
 
@@ -72,7 +80,10 @@ variables, credentials or provider logs are recorded. A timing failure never
 masks a check failure: a failing command's exit code wins. If every check
 passed but the requested timing output was unusable, the gate exits 1 and
 does not print the success string. With `QUALITY_TIMINGS` unset, output is
-unchanged.
+unchanged. `QUALITY_TIMINGS` is not inherited by child commands, so a nested
+gate run (for example the runner self-test as the last command of a timed
+full gate) cannot truncate or corrupt the outer timing file; a fixture
+command that wants nested timings must set its own path explicitly.
 
 ## Matrix
 
@@ -106,6 +117,8 @@ are separate choices and are not affected by this matrix.
   skips `docs/ai/` and `docs/development/` by default (recursive docs lint
   is deferred).
 - The runner self-test uses the `UNIO_QUALITY_GATE_CATALOGUE` override to
-  exercise fixture catalogues. It is test plumbing, not a lane selector.
+  exercise fixture catalogues. It is test plumbing, not a lane selector: every
+  override run is labelled `FIXTURE`/noncanonical, never prints the full-gate
+  success string, and the variable is not inherited by child commands.
 - No measured speedup or savings claim is made in this batch; per-command
   timings exist so the next optimization discussion is measured, not guessed.
