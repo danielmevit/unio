@@ -23,6 +23,9 @@ that check.
 it for out-of-scope follow-ups or failed integration checks: list what remains
 and what the lead must do. It never authorizes edits outside Allowed scope.
 
+If a Git hook refuses a command, preserve the work and report the command and
+the refusal under `INTEGRATION FOR THE LEAD`. Keep the hooks enabled.
+
 ## Allowed Scope Patterns
 
 Every entry under `## Allowed scope` begins with `- ` followed by a pattern relative to the repository root.

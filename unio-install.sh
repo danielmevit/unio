@@ -52024,7 +52024,9 @@ substantive problems to the lead instead of expanding a routine assignment.
   (reading ritual). The rules HERE override them on branches, scope, commits.
 - Work ONLY in this directory — a git worktree on branch agent/{{WORKER}}.
   Never switch branches, never push, never touch the base branch (dev/main).
-  Git hooks enforce this; do not fight them.
+  Keep Git hooks enabled. If a hook refuses a command, stop, preserve your
+  work and report the command and refusal to the lead. Hooks catch common
+  mistakes. Task verification still applies.
 - Modify only files in the task's "Allowed scope". The "- path" lines there
   are machine-checked after your run (`unio verify`) — out-of-scope
   edits get the whole branch rejected. Need something outside it? Do NOT
