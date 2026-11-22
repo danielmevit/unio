@@ -150,3 +150,28 @@ and recheck zero input/output/cache prices before each free-route call.
 Prefer stronger actually-available subscription agents for complex work and
 final assessment. Unknown quota and old reset estimates remain Unknown;
 this policy does not restore capacity or implement an automatic meter.
+
+## Interrupted Git worktrees and suspected Grok 402 balance exhaustion
+
+- **Interrupted Git worktrees**: End-of-run output and task reports surface
+  Git in-progress metadata (`MERGE_HEAD`, `rebase-merge`, `rebase-apply`,
+  `REBASE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `BISECT_LOG`, `sequencer`)
+  and bounded unmerged paths (up to 20 paths plus `(+N more)` total count)
+  read-only from `.git` metadata and `ls-files --unmerged -z` without mutating,
+  resetting, or aborting the worktree, preserving original Source exit codes
+  even when post-run snapshots fail (`end-unbound`).
+- **Suspected Grok 402 balance exhaustion**: When a failed run outputs
+  recognizable Grok 402 balance-exhaustion text (such as `API error (status 402
+  Payment Required): Grok Build usage balance exhausted`), `LIMIT_RE` flags it as
+  suspected limit language (`wall=1`, stderr warning with `unio off <agent>`
+  recovery guidance) while keeping `Adapter outcome: Unknown`, preserving the
+  real process exit, and incrementing `failed_attempts` normally.
+- **Operator action and deferred confirmation/auto-off**: Confirmed
+  `quota_exhausted` classification, loop-brake exemptions, and automatic holds
+  remain deferred. Exact typed terminal quota evidence for this installed Grok
+  CLI path is unavailable (bare stdout/stderr JSON, quoted output, and
+  human-prefixed prose are not a supported native error boundary), and
+  project-only persistent policy with fail-safe concurrent manual-hold
+  coexistence in `$CONF_DIR/off` is not established. Benching (`unio off` /
+  `unio on`), loop-brake grants (`unio allow-retry`), and worktree conflict
+  resolution remain explicit operator actions.

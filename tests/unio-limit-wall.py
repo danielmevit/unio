@@ -128,4 +128,11 @@ raise SystemExit(0 if mode in ('work','dry') else 7)
     check('printed repository file text walls a failed run as suspected only, never benches',
           WARNING in p.stderr and wall('printed-repo')==1 and not bench() and clean_state())
 
+    task('unstructured-ocy')
+    p=call('run','mock','unstructured-ocy',code=7,auto_off='1',
+           text='API error (status 402 Payment Required): Grok Build usage balance exhausted')
+    check('unstructured Grok 402 balance exhaustion stays Unknown/suspected only and never benches',
+          'Adapter outcome: Unknown' in p.stdout and WARNING in p.stderr and wall('unstructured-ocy')==1
+          and not bench() and clean_state())
+
     print(f'limit-wall regressions: {count} passed')

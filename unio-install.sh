@@ -34028,7 +34028,7 @@ OFF_DIR="$CONF_DIR/off"
 TIMEOUT="${UNIO_TIMEOUT:-3600}"
 CG_INDEX_TIMEOUT="${UNIO_CG_INDEX_TIMEOUT:-600}"
 RUN_CONTINUATION_CLAIM="" # Only the validated private entry point sets this.
-LIMIT_RE='rate.?limit|usage limit|limit (reached|exceeded)|quota (exceeded|exhausted)|exceeded your quota|too many requests|resets (at|in)'
+LIMIT_RE='rate.?limit|usage limit|limit (reached|exceeded)|quota (exceeded|exhausted)|exceeded your quota|too many requests|resets (at|in)|(usage )?balance (is )?exhausted'
 
 die() { echo "unio: $*" >&2; exit 1; }
 
@@ -36472,6 +36472,79 @@ try:
         locations(*a)
         for part in ('.locks','reports','results','handoffs'): safe(a[0],'coord',part)
         safe(a[0],'coord','.locks',a[1]+'.lock')
+    elif cmd=='worktree-state':
+        wt = a[0]
+        timeout = 2.0
+        raw_to = os.environ.get('UNIO_WORKTREE_STATE_TIMEOUT', '')
+        if raw_to:
+            try:
+                val = float(raw_to)
+                if 0.05 <= val <= 30.0:
+                    timeout = val
+            except ValueError:
+                pass
+        if not os.path.isdir(wt):
+            print('Git worktree state: Unknown')
+            sys.exit(0)
+        try:
+            p = subprocess.run(
+                ['git', '-C', wt, 'rev-parse', '--path-format=absolute', '--git-dir'],
+                stdin=subprocess.DEVNULL, text=True, capture_output=True, timeout=timeout,
+            )
+        except (OSError, subprocess.SubprocessError):
+            print('Git worktree state: Unknown')
+            sys.exit(0)
+        if p.returncode != 0 or not p.stdout.strip():
+            print('Git worktree state: Unknown')
+            sys.exit(0)
+        gd = p.stdout.strip()
+        ops = []
+        for marker, label in (
+            ('MERGE_HEAD', 'MERGE in progress (MERGE_HEAD)'),
+            ('rebase-merge', 'REBASE in progress (rebase-merge)'),
+            ('rebase-apply', 'REBASE in progress (rebase-apply)'),
+            ('REBASE_HEAD', 'REBASE in progress (REBASE_HEAD)'),
+            ('CHERRY_PICK_HEAD', 'CHERRY-PICK in progress (CHERRY_PICK_HEAD)'),
+            ('REVERT_HEAD', 'REVERT in progress (REVERT_HEAD)'),
+            ('BISECT_LOG', 'BISECT in progress (BISECT_LOG)'),
+            ('sequencer', 'SEQUENCER in progress (sequencer)'),
+        ):
+            if os.path.lexists(os.path.join(gd, marker)):
+                if marker == 'REBASE_HEAD' and any(x.startswith('REBASE') for x in ops):
+                    continue
+                ops.append(label)
+        unmerged = []
+        ls_unknown = False
+        try:
+            ls = subprocess.run(
+                ['git', '-C', wt, '-c', 'core.fsmonitor=false', '-c', 'core.quotePath=false',
+                 'ls-files', '--unmerged', '-z'],
+                stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout,
+            )
+            if ls.returncode != 0:
+                ls_unknown = True
+            elif ls.stdout:
+                seen_u = set()
+                for row in ls.stdout.split(b'\0'):
+                    if not row or b'\t' not in row: continue
+                    rel = row.split(b'\t', 1)[1].decode('utf-8', errors='replace')
+                    rel = re.sub(r'[\x00-\x1f\x7f]+', '?', rel)
+                    if rel not in seen_u:
+                        seen_u.add(rel)
+                        unmerged.append(rel)
+                unmerged.sort()
+        except (OSError, subprocess.SubprocessError):
+            ls_unknown = True
+        if ops:
+            print('Git worktree state: ' + '; '.join(ops))
+        if ls_unknown:
+            if not ops:
+                print('Git worktree state: Unknown')
+            print('Unmerged paths: Unknown')
+        elif unmerged:
+            shown_u = unmerged[:20]
+            tail_u = (' (+%d more)' % (len(unmerged) - 20)) if len(unmerged) > 20 else ''
+            print('Unmerged paths (%d): %s%s' % (len(unmerged), ', '.join(shown_u), tail_u))
     else: fail('unknown quality command')
 except OSError as exc:
     if sys.argv[1:2] == ['disk-preflight']:
@@ -43873,6 +43946,12 @@ cmd_run() {
     echo "!! post-run snapshot failed — exit=$rc is recorded, but the result is not bound to the current worktree and is not ready; fix the worktree, then run again" >&2
   fi
   [ "$record_failed" = 0 ] || echo "!! could not persist the structured result for '$task' — see the error above" >&2
+  local wt_state=""
+  wt_state=$(quality worktree-state "$wt" 2>/dev/null || true)
+  if [ -n "$wt_state" ]; then
+    printf '%s\n' "$wt_state"
+    echo "note: worktree left untouched; inspect/resolve in wt/$worker before retry"
+  fi
 
   # receipts for the verdict line + ledger
   local commits files ins dels unc
@@ -43880,7 +43959,8 @@ cmd_run() {
   read -r files ins dels < <(git -C "$wt" diff --shortstat "$base...HEAD" 2>/dev/null \
     | awk '{f=0;i=0;d=0;for(n=1;n<NF;n++){if($(n+1)~/^file/)f=$n;if($(n+1)~/^insertion/)i=$n;if($(n+1)~/^deletion/)d=$n}print f+0,i+0,d+0}') || true
   files=${files:-0}; ins=${ins:-0}; dels=${dels:-0}
-  unc=$(git -C "$wt" status --porcelain=v1 2>/dev/null | wc -l)
+  unc=$(git -C "$wt" status --porcelain=v1 2>/dev/null | wc -l || true)
+  unc=${unc:-0}
 
   # One final 60-line window, normalized (ANSI/control escapes and carriage
   # returns stripped — normalization processes the text, it never executes
@@ -43897,6 +43977,23 @@ cmd_run() {
     -e $'s,[\x01-\x08\x0b\x0c\x0e-\x1f\x7f],,g' \
     > "$norm" || true
 
+  # limit detection is a helper only: a conservative text heuristic over the
+  # same normalized final window — wall=1 and its warning mean SUSPECTED
+  # limit language, never a confirmed provider quota. A run counts as failed
+  # for this helper when its actual exit is nonzero, or the empty-work check
+  # above found zero commits against the base and zero uncommitted files; the
+  # real process exit is preserved in every receipt. Worker text never calls
+  # off or writes availability/configuration state: UNIO_AUTO_OFF is accepted
+  # for compatibility and ignored, and benching stays an explicit operator
+  # action (`unio off` / `unio on`).
+  local failed_helper=0 wall=0 limit_warning=""
+  [ "$rc" -ne 0 ] && failed_helper=1
+  [ "$outcome_mode" = report-only ] || { [ "$commits" -eq 0 ] && [ "$unc" -eq 0 ] && failed_helper=1; }
+  if [ "$failed_helper" = 1 ] && grep -aqiE "$LIMIT_RE" "$norm"; then
+    wall=1
+    limit_warning="!! output mentions usage limits — suspected limit language, not a confirmed quota; if '$agent' hit its 5h/weekly/balance cap:  unio off $agent 5h   (weekly: 7d; manual: unio off $agent)"
+  fi
+
   {
     echo
     echo "## run $(date -Is) — worker=$worker agent=$agent exit=$rc duration=${dur}s task_sha=$task_fp"
@@ -43907,7 +44004,8 @@ cmd_run() {
     [ "$snap_failed" = 1 ] && echo "!! post-run snapshot failed — exit=$rc recorded; structured result unbound and not ready"
     echo
     echo "### git status (branch, staged/unstaged)"
-    git -C "$wt" status --porcelain=v1 -b
+    [ -z "$wt_state" ] || printf '%s\n' "$wt_state"
+    git -C "$wt" status --porcelain=v1 -b 2>/dev/null || echo "(git status unavailable)"
     echo
     echo "### committed diffstat vs $base"
     git -C "$wt" diff --stat "$base...HEAD" 2>/dev/null || echo "(none)"
@@ -43918,6 +44016,7 @@ cmd_run() {
     if [ "$outcome_mode" != report-only ] && [ "$rc" -eq 0 ] && [ "$commits" -eq 0 ] && [ "$unc" -eq 0 ]; then
       echo "!! exit=0 with an empty diff — no-op or overclaim; treat as FAILED (I10/I12)"
     fi
+    [ -z "$limit_warning" ] || echo "$limit_warning"
     echo
     echo "### agent output (tail)"
     echo '~~~'
@@ -43925,22 +44024,7 @@ cmd_run() {
     echo '~~~'
   } >> "$report"
 
-  # limit detection is a helper only: a conservative text heuristic over the
-  # same normalized final window — wall=1 and its warning mean SUSPECTED
-  # limit language, never a confirmed provider quota. A run counts as failed
-  # for this helper when its actual exit is nonzero, or the empty-work check
-  # above found zero commits against the base and zero uncommitted files; the
-  # real process exit is preserved in every receipt. Worker text never calls
-  # off or writes availability/configuration state: UNIO_AUTO_OFF is accepted
-  # for compatibility and ignored, and benching stays an explicit operator
-  # action (`unio off` / `unio on`).
-  local failed_helper=0 wall=0
-  [ "$rc" -ne 0 ] && failed_helper=1
-  [ "$outcome_mode" = report-only ] || { [ "$commits" -eq 0 ] && [ "$unc" -eq 0 ] && failed_helper=1; }
-  if [ "$failed_helper" = 1 ] && grep -aqiE "$LIMIT_RE" "$norm"; then
-    wall=1
-    echo "!! output mentions usage limits — suspected limit language, not a confirmed quota; if '$agent' hit its 5h/weekly cap:  unio off $agent 5h   (weekly: 7d)" >&2
-  fi
+  [ -z "$limit_warning" ] || echo "$limit_warning" >&2
   rm -f "$norm"
 
   ledger_add "$root" "$(printf '{"event":"run","ts":"%s","task":"%s","worker":"%s","agent":"%s","exit":%d,"duration_s":%d,"wall_s":%d,"suspended":%d,"snapshot_failed":%d,"commits":%d,"files":%d,"insertions":%d,"deletions":%d,"uncommitted":%d,"wall":%d}' \
