@@ -1,5 +1,32 @@
 # Unio roadmap and development priorities
 
+## Runtime reliability and the supervisor experiment
+
+[Unio 0.5.33](../RELEASE-0.5.33.md) is the current stable baseline. The next
+functional work improves the same runtime for every Unio workspace.
+
+1. Make worker startup and completion trustworthy. Confirm when a detached run
+   is ready, keep each exit tied to its own attempt and explain stops and
+   unfinished Git operations. Verify the intended worker branch and task scope.
+2. Make recovery and coordination easier. Flag quiet runs as observations
+   and let an operator close a proved-inactive attempt while retaining its
+   Unknown exit. Warn about overlapping work, preview merge conflicts and
+   improve disk and build-cache guidance. Preserve checkpoints and manual
+   account holds.
+3. Complete automatic lead effort using native worker events. Preserve the
+   existing conversation and show the concrete requested effort first.
+   Existing-session switching in 0.5.33 uses explicit phase signals.
+4. Pilot a small optional Rust supervisor against the established run lifecycle.
+   Test the same startup, exit, recovery and policy cases on both paths and
+   compare real authorized runs before considering a default change. Measure
+   correctness and operator experience before claiming a performance gain.
+
+Evidence for external work and guarded public snapshot publication remain in
+the functional backlog. Managed control in the existing dashboard,
+session-scoped phone access, native Windows and then native macOS follow the
+runtime work. The Rust trial is scoped to process supervision and supplies
+evidence for later platform decisions.
+
 ## 0.5.28 reliability checkpoint
 
 Finish installation and startup safety before expanding session ownership or
