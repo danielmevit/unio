@@ -53180,6 +53180,12 @@ required. Source success and report evidence do not grant human acceptance.
 ## Report
 End with: SUMMARY / FILES CHANGED / TESTS RUN + RESULTS / ASSUMPTIONS /
 RISKS / NEEDS-REVIEW
+
+Keep the verified evidence for each check next to that check.
+
+INTEGRATION FOR THE LEAD (optional; omit when there is nothing to hand over)
+List out-of-scope follow-ups or failed integration checks, what remains and
+what the lead must do. This section never authorizes edits outside Allowed scope.
 TASK_TPL_EOF
 
 cat > "$TPL_DIR/board.md" <<'BOARD_TPL_EOF'

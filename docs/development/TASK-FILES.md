@@ -13,6 +13,16 @@ A valid task order contains three core sections:
 
 Tasks lacking `## Allowed scope` or `## Validate` fail machine verification as `INCOMPLETE` (exit 2).
 
+## Report and lead handoff
+
+The standard `Report` ends with SUMMARY / FILES CHANGED / TESTS RUN + RESULTS /
+ASSUMPTIONS / RISKS / NEEDS-REVIEW. Keep each check's verified evidence next to
+that check.
+
+`INTEGRATION FOR THE LEAD` is optional when there is nothing to hand over. Use
+it for out-of-scope follow-ups or failed integration checks: list what remains
+and what the lead must do. It never authorizes edits outside Allowed scope.
+
 ## Allowed Scope Patterns
 
 Every entry under `## Allowed scope` begins with `- ` followed by a pattern relative to the repository root.
