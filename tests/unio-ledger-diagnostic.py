@@ -102,6 +102,7 @@ def expect_refusal(ns, root, ledger, task, needle, row, label, body):
         message = str(exc)
         check(label + ' names the journal', JOURNAL in message, message)
         check(label + ' names the exact physical row', f'row {row}' in message, message)
+        check(label + ' names the failure class', needle in message, message)
         check(label + ' carries actionable wording',
               'inspect that row' in message and 'never skip, repair or rewrite ledger history' in message,
               message)

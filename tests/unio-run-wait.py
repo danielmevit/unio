@@ -34,11 +34,7 @@ import time
 from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1]
-SCRATCH = Path(os.environ.get(
-    'UNIO_WAIT_TEST_SCRATCH',
-    str(SOURCE.parents[3] / 'tmp' / 'unio-next'
-        / 'ocy-wait-mistral-glm-high-20261122' / 'fixtures')))
-SCRATCH.mkdir(parents=True, exist_ok=True)
+SCRATCH = os.environ.get('UNIO_WAIT_TEST_SCRATCH')
 
 TASK_TEXT = '# Task {name}\n## Goal\nfake work\n## Allowed scope\n- hello.txt\n## Validate\n$ true\n## Done means\nnothing special\n## Report\nSUMMARY\n'
 

@@ -1321,6 +1321,17 @@
       ]
     },
     {
+      "id": "test-unio-ledger-diagnostic",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-ledger-diagnostic.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
       "id": "test-unio-native-stop",
       "argv": [
         "python3",
