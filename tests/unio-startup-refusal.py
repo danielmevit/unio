@@ -9,9 +9,8 @@ Verifies that the pre-provider Gitdir-resolution / index.lock startup refusal
 leaves a dated, distinct diagnostic in the task report and log:
 - Foreground refusal keeps its nonzero exit, original stderr diagnostic, and
   appends a visible `## startup-refused` fragment after any existing content.
-- Background refusal: the parent's exit-0 line stays a launch acknowledgement,
-  while the detached child (stderr discarded) still records the refusal; the
-  fragment appears through `unio report` and `unio tail` after bounded polling.
+- Background refusal: the launcher reports the detached child's refusal with
+  exit 2. The child records the fragment for `unio report` and `unio tail`.
 - Provider stub is never called on refusal; the lock entry, ledger, results,
   and native budget slots stay untouched (no grant consumed).
 - Normal foreground and background runs still succeed and record no fragment.
@@ -328,7 +327,7 @@ def run_tests():
         lock_file.unlink()
         print("  PASS: refusal visible via report/tail; sentinels, lock, provider, ledger and slots untouched.")
 
-        print("[TEST 2] Background refusal: parent acknowledgement, child evidence after bounded polling...")
+        print("[TEST 2] Background refusal: the launcher reports the child's refusal...")
         report_bg = reports_dir / 'T-START-REF2.md'
         log_bg = reports_dir / 'T-START-REF2.log'
         lock_file.write_bytes(b'stale lock for background refusal\n')
@@ -336,10 +335,10 @@ def run_tests():
         calls_before = get_provider_calls()
 
         res = unio('run', '-b', 'stub', 'T-START-REF2', timeout=60)
-        if res.returncode != 0:
-            raise AssertionError(f"background parent refused at launch (rc={res.returncode}):\n{res.stderr}")
-        if 'started in background' not in res.stdout:
-            raise AssertionError(f"parent acknowledgement missing:\n{res.stdout}")
+        if res.returncode != 2 or 'background run refused before identity was published' not in res.stderr:
+            raise AssertionError(f"background refusal was not acknowledged (rc={res.returncode}):\n{res.stderr}")
+        if 'started in background' in res.stdout:
+            raise AssertionError(f"launcher claimed a refused run had started:\n{res.stdout}")
 
         def child_refusal_recorded():
             return (report_bg.is_file() and '## startup-refused ' in report_bg.read_text()
@@ -379,7 +378,7 @@ def run_tests():
         if tail_res.returncode != 0 or '## startup-refused ' not in tail_res.stdout:
             raise AssertionError(f"unio tail does not show the background refusal: rc={tail_res.returncode}\n{tail_res.stdout}")
         lock_file.unlink()
-        print("  PASS: parent acked exit 0; child refusal recorded; no provider, grant, result or pidfile.")
+        print("  PASS: launcher returned 2 with the child refusal; no provider, grant, result or pidfile.")
 
         print("[TEST 3] Normal foreground run control...")
         calls_before = get_provider_calls()
