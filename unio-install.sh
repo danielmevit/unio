@@ -34735,9 +34735,20 @@ def dispatch_sha(root, worker, task, d=None):
             fail('dispatch evidence conflicts with not_run process')
         ledger = safe(root, 'coord', 'reports', 'ledger.jsonl')
         if os.path.exists(ledger):
-            for row in regular(ledger).splitlines():
-                event = json.loads(row)
-                if not isinstance(event, dict): fail('malformed Source ledger')
+            journal = 'coord/reports/ledger.jsonl'
+            for number, row in enumerate(regular(ledger).splitlines(), 1):
+                # Read-only diagnostic: name the journal and the exact
+                # physical row, never the row's contents. The check stays
+                # fail-closed and ledger history is never skipped,
+                # repaired or rewritten.
+                try:
+                    event = json.loads(row)
+                except UnicodeDecodeError:
+                    fail('malformed Source ledger: %s row %d is not decodable text; inspect that row; never skip, repair or rewrite ledger history' % (journal, number))
+                except ValueError:
+                    fail('malformed Source ledger: %s row %d is not valid JSON; inspect that row; never skip, repair or rewrite ledger history' % (journal, number))
+                if not isinstance(event, dict):
+                    fail('malformed Source ledger: %s row %d is not a JSON object record; inspect that row; never skip, repair or rewrite ledger history' % (journal, number))
                 if event.get('task') == task and event.get('event') in ('run_start', 'run'):
                     fail('dispatch binding unavailable for recorded Source')
         retry_path = safe(root, 'coord', 'retries', task, 'state.json')
