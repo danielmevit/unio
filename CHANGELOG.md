@@ -4,6 +4,15 @@ Release notes for Unio. Between releases, each task writes a short
 fragment in `changelog.d/`; the fragments are rolled into this file when a
 version is released.
 
+## 0.5.34 — reliable worker launches and clearer failure reports (unreleased) — 2026-11-22
+
+- Background runs report when the runner has acknowledged startup. Use `unio wait TASK` to get the exact attempt's recorded exit. It can also wait for several tasks, return after the first result, or apply a deadline.
+- Failure reports retain the worker's real exit and show interrupted Git operations and likely quota or balance problems when there is evidence. Quota hints leave manual holds under your control.
+- Verification locates damaged run-history records by file and line number, without displaying their contents or altering the history.
+- Task reports can include a short integration handoff. Worker guidance explains how to report a blocked Git operation.
+
+The scoped reviews and lead checks are complete. The full release gate and installation are pending. See [what changed and how to test it](docs/RELEASE-0.5.34.md).
+
 ## 0.5.33 — focused checks and existing-session controls — 2026-11-16
 
 - Select focused development-check lanes, list their exact commands and record per-command timings. The default full gate retains the original coverage; partial and fixture runs identify themselves clearly.
