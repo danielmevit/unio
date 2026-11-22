@@ -46,4 +46,17 @@ with tempfile.TemporaryDirectory(prefix='kill-pid-') as directory:
         assert not calls.exists(), 'malformed PID reached a signal probe'
         assert not (repo / 'evaluated-marker').exists(), 'PID text was evaluated'
         print('  ok rejected malformed PID safely: ' + repr(value))
+    # The read-only waiter faces the same bogus evidence: it must refuse
+    # without signalling, evaluating or mutating anything (here no ownership
+    # record exists, so nothing can be bound at all).
+    for value in values:
+        body = value + '\n'
+        pidfile.write_text(body)
+        r = subprocess.run([at, 'wait', 'bad', '--timeout', '5'], cwd=repo, env=env,
+                           capture_output=True, text=True, timeout=30)
+        assert r.returncode == 2 and 'nothing is bound' in r.stderr, (value, r.returncode, r.stderr)
+        assert pidfile.read_text() == body, 'wait mutated identity evidence'
+        assert not calls.exists(), 'wait reached a signal probe'
+        assert not (repo / 'evaluated-marker').exists(), 'wait evaluated PID text'
+        print('  ok wait refused bogus identity safely: ' + repr(value))
     print('kill PID safety: %d cases passed; zero signal calls and provider calls' % len(values))
