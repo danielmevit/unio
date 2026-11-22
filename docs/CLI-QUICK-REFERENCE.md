@@ -34,9 +34,10 @@ acknowledges this exact launch**:
   reports `background start Unknown` — never a start claim, never a signal,
   never an automatic retry.
 
-So the pid file and ownership record already exist the moment `started in
-background` is printed. Manual `/proc` polling is no longer needed to
-confirm a launch. The acknowledgement wait is bounded by
+The child publishes its PID and ownership before acknowledging the launch.
+A fast run can finish and retire those files before the parent prints its
+message. Use `unio wait` to read the recorded exit. The acknowledgement wait
+is bounded by
 `UNIO_BG_ACK_TIMEOUT` (whole seconds 1..900; default: admission timeout + 30)
 and makes `run -b` block for the child's pre-start preparation (admission,
 disk preflight, git checks) instead of returning instantly.
@@ -76,8 +77,8 @@ retired control file never hides the exact exit.
 - **Multiple handles** — the public ownership record selects the worker;
   without one, a ledger naming exactly one worker is still unambiguous, and
   a ledger naming several workers is refused (`nothing is bound`) rather
-  than guessed. Wait while the run is live, or wait one worker's task at a
-  time after the fact.
+  than guessed. Give concurrent assignments distinct task IDs and use
+  `unio result <worker> <task>` to inspect a specific worker's stored result.
 - **Deterministic behavior** — tasks are bound in argument order; duplicates
   are refused; a task with nothing to bind fails the whole wait before any
   watching starts (with the last stored result as clearly unbound context).

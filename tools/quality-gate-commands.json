@@ -526,6 +526,18 @@
       ]
     },
     {
+      "id": "test-unio-ocy-quota",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-ocy-quota.py"
+      ],
+      "lanes": [
+        "safety-core",
+        "observation"
+      ]
+    },
+    {
       "id": "test-unio-watch",
       "argv": [
         "python3",
@@ -1292,6 +1304,17 @@
         "python3",
         "-B",
         "tests/unio-kill-pid.py"
+      ],
+      "lanes": [
+        "safety-core"
+      ]
+    },
+    {
+      "id": "test-unio-run-wait",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/unio-run-wait.py"
       ],
       "lanes": [
         "safety-core"
