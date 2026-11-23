@@ -1,6 +1,6 @@
 # Unio 0.5.34 — reliable worker launches and clearer failure reports
 
-The release candidate makes it easier to see whether a worker started, what exit belonged to an attempt and what stopped verification. The full release gate and installation are pending.
+This release makes it easier to see whether a worker started, what exit belonged to an attempt and what stopped verification.
 
 ## Start and wait for a worker
 
@@ -17,6 +17,8 @@ If verification requires the existing run ledger and encounters a malformed row,
 ## Review and validation
 
 Antigravity subscription / agy 1.5.14 / Gemini 4 Hydrogen Medium and Mistral subscription / Vibe 3.1.3 provided scoped implementation and independent reviews. The existing lead assessed the exact changes and reran targeted offline cases. The wait implementation was recovered from a timed-out Mistral 4 High run. Native verification on the preserved revision passed separately, and an independent reviewer approved the preserved changes. The original run remains recorded as incomplete.
+
+The full release gate passed all 130 commands on revision `b67f3aa5f69e5aba9d4eec618b1d44ccf73a5fd5` in 5417.4 seconds. The tracked source stayed unchanged. Private installation and all six offline smoke checks passed. The first gate stopped at an outdated test expectation for a refused background launch. The corrected test still requires a preserved lock, no provider call, no slot use and a durable refusal. The second gate reached its own catalogue self-test, which was updated to check the original commands and the three reviewed additions.
 
 ## Follow-up work
 

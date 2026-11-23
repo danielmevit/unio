@@ -1,3 +1,13 @@
+# Unio 0.5.34 delivery checkpoint — 2026-11-23
+
+The release adds exact background startup and completion, durable stop clues, Git state and malformed-ledger location. Preserve original failures and the current owner routing policy, including the temporary Opus hold. The original protected lead session is still separate from the optional automatic effort work.
+
+The full release gate passed all 130 commands on revision `b67f3aa5f69e5aba9d4eec618b1d44ccf73a5fd5` in 5417.4 seconds. The tracked source stayed unchanged. Private installation and all six offline smoke checks passed. The first gate stopped at an outdated test expectation for a refused background launch. The corrected test still requires a preserved lock, no provider call, no slot use and a durable refusal. The second gate reached its own catalogue self-test, which was updated to check the original commands and the three reviewed additions.
+
+Next complete reviewed registered worker-branch safety and per-commit scope checks. Then verify exact ownership for closing interrupted runs and add an optional inactivity observation. Rust follows a stable supervised run lifecycle. Before resuming, check actual published/installed version, current Git and native locks. Ocy supplied evidence only. Existing-session automatic effort is still open.
+
+Earlier checkpoint follows unchanged.
+
 # Unio 0.5.33 release checkpoint — 2026-11-16
 
 The reviewed candidate is `72ab8aff4b4b2b8f197ab8e2e7a618e9a05565af`. It combines focused validation lanes/timings and experimental controls for the same existing Codex conversation. Preserve native history: restarting alone does not activate adaptive control. Initial attachment requires an idle thread; explicit phase signals select requested LOW/XHIGH for future turns only. This is not a prose classifier, continuous worker watcher, running-turn control or complete scheduler. Native transport and metadata were read-only probed; real setting acceptance remains unverified, and the current owner conversation has not been attached.

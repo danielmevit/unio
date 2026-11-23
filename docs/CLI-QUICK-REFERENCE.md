@@ -116,7 +116,7 @@ retired control file never hides the exact exit.
 - `run -b` now blocks until the child acknowledges (typically a few
   seconds; bounded by `UNIO_BG_ACK_TIMEOUT`). Callers that need the old
   fire-and-forget timing can background the command itself.
-- `unio wait` is a new subcommand; no existing command changed its meaning.
+- A confirmed startup refusal or an Unknown acknowledgement returns exit 2. If acknowledgement is Unknown, check the recorded attempt before launching again.
 - New environment variable: `UNIO_BG_ACK_TIMEOUT` (invalid values refuse
   before any admission or grant, like `UNIO_ADMISSION_TIMEOUT`).
 - STOP, owner grants, authoritative child admission, the worker lock, real
