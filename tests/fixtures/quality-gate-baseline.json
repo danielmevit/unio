@@ -1,6 +1,11 @@
 {
   "format": 1,
   "source": "tools/quality-check.sh at a7d1537cf118303c29493917a779c0e8e69e68b8 (125 commands, canonical rendering: env assignments, argv joined by single spaces, redirect; quotes dropped)",
+  "runtime_additions": {
+    "test-unio-ocy-quota": "python3 -B tests/unio-ocy-quota.py",
+    "test-unio-run-wait": "python3 -B tests/unio-run-wait.py",
+    "test-unio-ledger-diagnostic": "python3 -B tests/unio-ledger-diagnostic.py"
+  },
   "commands": [
     "bash -n unio-install.sh",
     "python3 -B tools/embed-lead-cooldown.py --check",

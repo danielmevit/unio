@@ -13,18 +13,18 @@ without pretending a partial run is a full pass.
 
 | Command | Behaviour |
 | --- | --- |
-| `bash tools/quality-check.sh` | Full offline gate: all 127 catalogue commands in canonical order. The first failing command stops the run and its exit code becomes the gate's. Only a complete full run prints `quality-check: all checks passed`. |
+| `bash tools/quality-check.sh` | Full offline gate: all 130 catalogue commands in canonical order. The first failing command stops the run and its exit code becomes the gate's. Only a complete full run prints `quality-check: all checks passed`. |
 | `bash tools/quality-check.sh --list` | Dry listing of the selected (or full) command ids and commands. Runs nothing, installs nothing, creates no fixture, changes no configuration and never claims a pass. |
 | `bash tools/quality-check.sh --lane NAME` | Runs the named lane; repeatable. The union of the selected lanes is deduplicated and kept in canonical order. A successful lane run prints a PARTIAL coverage summary and never the full-gate success string. |
 
 Unknown flags, unknown lanes, duplicate lanes and missing values exit 2
 before any check or fixture is started. The ordered catalogue lives in
 `tools/quality-gate-commands.json`; the dispatcher is `tools/quality-gate.py`.
-The catalogue contains the original 125 commands plus two explicitly
-added self-tests (`tests/unio-quality-gate.py`, static lane, and
-`tests/unio-lead-session-attach.py`, managed-lead lane); the tracked
-snapshot `tests/fixtures/quality-gate-baseline.json` pins the original list so
-any coverage or order drift is caught by the self-test. A run made with
+The catalogue contains the original 125 commands, two later self-tests and
+three worker-runtime regression tests for quota clues, waiting and ledger
+diagnostics. The tracked snapshot `tests/fixtures/quality-gate-baseline.json`
+pins the original list and records the three runtime additions separately.
+The self-test checks those commands for coverage and order. A run made with
 `UNIO_QUALITY_GATE_CATALOGUE` set is always labelled `FIXTURE`/noncanonical
 and never prints the full-gate success string, so no override or fixture can
 certify the production catalogue.

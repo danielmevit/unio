@@ -103,11 +103,14 @@ def marker_command(cid, marker, lanes):
 
 def main():
     root = Path(tempfile.mkdtemp(prefix="quality gate selftest "))
+    fixture_id = root.name.rsplit(" ", 1)[-1]
     try:
         catalogue = json.loads(CATALOGUE_PATH.read_text(encoding="utf-8"))
         baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
         commands = catalogue["commands"]
-        original = [e for e in commands if not e.get("added_self_test")]
+        runtime_additions = baseline["runtime_additions"]
+        original = [e for e in commands if not e.get("added_self_test")
+                    and e["id"] not in runtime_additions]
         added = [e for e in commands if e.get("added_self_test")]
 
         print("catalogue coverage and order")
@@ -116,7 +119,10 @@ def main():
               coverage_diff(original, baseline["commands"])[:3])
         check("baseline snapshot has the original 125 commands",
               len(baseline["commands"]) == 125, len(baseline["commands"]))
-        check("only explicitly added self-tests extend the gate",
+        check("runtime additions match their independently listed commands",
+              [(e["id"], render_entry(e)) for e in commands
+               if e["id"] in runtime_additions] == list(runtime_additions.items()))
+        check("the two designated self-tests remain in the gate",
               [e["id"] for e in added] == ["test-unio-quality-gate",
                                           "test-unio-lead-session-attach"],
               [e["id"] for e in added])
@@ -502,6 +508,7 @@ def main():
         print("termination signals clean up the fixture and the owned child")
 
         def probe_pid(marker):
+            argument = marker.encode()
             try:
                 names = os.listdir("/proc")
             except OSError:
@@ -513,15 +520,16 @@ def main():
                     cmdline = Path("/proc", name, "cmdline").read_bytes()
                 except OSError:
                     continue
-                if marker.encode() in cmdline:
+                # A shell's command text can mention the marker before exec.
+                if argument in cmdline.split(b"\0"):
                     return int(name)
             return None
 
         def termination_case(name, send):
             case_tmp = root / f"term {name} tmp"
             case_tmp.mkdir()
-            owned_marker = f"unio-gate-owned-{name.lower()}"
-            sentinel_marker = f"unio-gate-sentinel-{name.lower()}"
+            owned_marker = f"unio-gate-owned-{name.lower()}-{fixture_id}"
+            sentinel_marker = f"unio-gate-sentinel-{name.lower()}-{fixture_id}"
             sentinel = subprocess.Popen(
                 ["bash", "-c", f"exec -a {sentinel_marker} sleep 300"])
             catalogue = root / f"term {name} catalogue.json"
@@ -590,7 +598,7 @@ def main():
             case_tmp.mkdir()
             go = case_tmp / "go"
             ran = case_tmp / "ran marker.txt"
-            marker = f"unio-gate-nohup-{label}"
+            marker = f"unio-gate-nohup-{label}-{fixture_id}"
             script = (f'while [ ! -e "$1" ]; do sleep 0.05; done; '
                       f'touch "$2"; exit {exit_code}')
             catalogue = root / f"nohup {label} catalogue.json"
