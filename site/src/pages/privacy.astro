@@ -1,0 +1,194 @@
+---
+import fs from "node:fs";
+import "@fontsource-variable/archivo/wdth.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource-variable/doto";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/ibm-plex-mono/600.css";
+
+// Same version source as the home page footer: the newest released heading in CHANGELOG.md.
+const changelog = fs.readFileSync(new URL("../../../CHANGELOG.md", import.meta.url), "utf8");
+const match = changelog.match(/^## (\d+\.\d+\.\d+)\b(?![^\n]*unreleased)/im);
+if (!match) throw new Error("Could not read the latest released version from CHANGELOG.md");
+const version = match[1];
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const url = "https://danielmevit.github.io/unio/privacy/";
+const title = "Privacy — Unio";
+const description =
+  "Unio runs on your own machine. It has no account and sends no usage data; the AI coding tools you connect work through their own providers.";
+const repo = "https://github.com/danielmevit/unio";
+const doc = (path: string) => `${repo}/blob/main/${path}`;
+const year = 2026;
+const builtOn = new Date().toISOString().slice(0, 10).split("-").reverse().join(".");
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="author" content="Daniel Mevit" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#1c1c1c" />
+    <link rel="canonical" href={url} />
+    <link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={url} />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="hud">
+      <div class="wrap hud-inner">
+        <a class="logo" href={`${base}/`} aria-label="Unio home"><span class="wordmark">Unio</span></a>
+        <nav class="tabs" aria-label="Main">
+          <a class="tab" href={`${base}/`}>Home</a>
+          <a class="tab" href={repo} target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span><span class="sr-only"> (opens in a new tab)</span></a>
+          <a class="tab tab-on" href={`${base}/#install`}>Install</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main" tabindex="-1" class="wrap">
+      <article class="prose">
+        <h1>Privacy</h1>
+        <p class="updated">Last updated 26 November 2026</p>
+        <p class="lede">Unio runs on your own machine. There is no account, no sign-up and no usage data sent to us.</p>
+
+        <h2>What Unio stores on your machine</h2>
+        <p>Unio keeps its settings in <code>~/.config/unio</code>. Tasks, reports, worker output, run records and token or turn budgets stay in your project's coordination folder. None of it is sent to damt.xyz.</p>
+
+        <h2>The AI tools you connect</h2>
+        <p>Unio starts the AI coding tools you set up, such as Claude Code, Codex or Gemini CLI. Those tools send your prompts and code to their providers, under your own accounts and each provider's privacy terms. Unio puts no server of its own in between, so check each provider's terms for how they handle your data.</p>
+
+        <h2>Unio's own network use</h2>
+        <p>The dashboard listens only on your own computer (<code>127.0.0.1</code>). Unio itself goes online only when you run <code>unio update clis</code>, to ask npm, PyPI and GitHub for the latest version numbers of the AI tools you have installed. The installer downloads Unio from GitHub.</p>
+
+        <h2>Development &amp; generative AI disclosure</h2>
+        <p>Unio is designed, directed and maintained by damt.xyz with extensive use of generative AI tools, from start to finish: most of the code and tests, the documentation, packaging and build automation, this website, other marketing materials, and ongoing maintenance.</p>
+        <p>Unlike damt.xyz's other apps, Unio is itself an AI tool: when you run it, it coordinates the AI coding agents you choose, and they work with your code through their providers.</p>
+        <p>Throughout, a real person steers the work and decides what is released.</p>
+
+        <h2>This website</h2>
+        <p>This site is static HTML hosted on GitHub Pages. It sets no cookies, runs no analytics and loads nothing from third parties. GitHub, as the host, keeps standard server logs under <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a>.</p>
+
+        <h2>Contact</h2>
+        <p>Questions are welcome at <a href="mailto:support@damt.xyz">support@damt.xyz</a>. Unio is open source <span class="nowrap">(AGPL-3.0)</span>, so everything on this page can be checked against <a href={repo}>the code on GitHub</a>.</p>
+
+        <p class="back"><a href={`${base}/`}>Back to the Unio home page</a></p>
+      </article>
+    </main>
+
+    <footer class="foot-hud">
+      <div class="wrap foot-inner">
+        <p>© {year} Daniel Mevit · Made by <a href="https://damt.xyz" target="_blank" rel="noopener noreferrer">damt.xyz<span class="sr-only"> (opens in a new tab)</span></a></p>
+        <div class="stamp" aria-hidden="true"><span>build {version} · published {builtOn}</span></div>
+        <nav class="tabs" aria-label="Project links">
+          <a class="tab" href={repo} target="_blank" rel="noopener noreferrer">GitHub<span class="sr-only"> (opens in a new tab)</span></a>
+          <a class="tab" href={`${repo}/releases`} target="_blank" rel="noopener noreferrer">Releases<span class="sr-only"> (opens in a new tab)</span></a>
+          <a class="tab" href={doc("CHANGELOG.md")} target="_blank" rel="noopener noreferrer">Changelog<span class="sr-only"> (opens in a new tab)</span></a>
+          <a class="tab tab-on" href={`${base}/privacy/`} aria-current="page">Privacy</a>
+          <a class="tab" href={doc("LICENSE")} title="GNU Affero General Public License v3.0" aria-label="License: GNU Affero General Public License v3.0 (opens in a new tab)" target="_blank" rel="noopener noreferrer">AGPL</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style is:global>
+  /* The home page's tokens and HUD/footer pieces (index.astro), kept to what this page uses. */
+  :root {
+    --bg: #1c1c1c;
+    --deep: #171717;
+    --raised: #2b2b2b;
+    --line: #3d3d3d;
+    --line-alt: #555555;
+    --text: #e8e8e8;
+    --muted: #a6a6a6;
+    --label: #c4c4c4;
+    --chip: #333333;
+    --on: #d2d2d2;
+    --on-hover: #eeeeee;
+    --on-text: #1c1c1c;
+    --focus: #e2e2e2;
+    --title: #d4d4d4;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    --section-title: "Doto Variable", ui-monospace, monospace;
+    --wide: "Archivo Variable", "Arial Black", system-ui, sans-serif;
+    --gutter: clamp(16px, 4vw, 64px);
+    --r-xs: 2px;
+    --r-sm: 4px;
+    --r-out: 9px;
+    color-scheme: dark;
+    font-synthesis: none;
+    -webkit-text-size-adjust: 100%;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-size: clamp(14px, 0.45vw + 9px, 20px); }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 1rem; line-height: 1.6; }
+  a { color: var(--text); }
+  a:hover { color: var(--on-hover); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  h1, h2 { margin: 0; font-weight: 400; }
+  p { margin: 0; }
+  code { font-family: var(--mono); font-size: 0.92em; background: var(--chip); color: var(--label); padding: 1px 5px; border-radius: var(--r-xs); overflow-wrap: anywhere; }
+  .wrap { width: 100%; padding-inline: var(--gutter); }
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .skip-link { position: absolute; left: 16px; top: -48px; z-index: 60; background: var(--on); color: var(--on-text); padding: 8px 12px; border-radius: var(--r-sm); }
+  .skip-link:focus { top: 12px; }
+
+  .hud { position: sticky; top: 0; z-index: 40; background: rgba(23, 23, 23, 0.94); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .hud-inner { display: flex; align-items: center; gap: 18px; min-height: 56px; }
+  .logo { display: inline-flex; align-items: center; min-height: 44px; color: var(--title); text-decoration: none; }
+  .wordmark { display: inline-block; font-family: var(--section-title); font-weight: 900; font-size: 2.4rem; line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+  .tab {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
+    border: 1px solid var(--line-alt); background: transparent; color: var(--label);
+    font-family: var(--wide); font-stretch: 125%; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em;
+    font-size: 0.66rem; text-decoration: none; border-radius: var(--r-xs);
+    transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  }
+  .tabs > .tab:first-child { border-top-left-radius: var(--r-out); border-bottom-left-radius: var(--r-out); }
+  .tabs > .tab:last-child { border-top-right-radius: var(--r-out); border-bottom-right-radius: var(--r-out); }
+  .tab:hover { background: var(--raised); color: var(--text); }
+  .tab:not(.tab-on):hover { border-color: var(--label); }
+  .tab-on { background: var(--on); border-color: var(--on); color: var(--on-text); }
+  .tab-on:hover { background: var(--on-hover); color: var(--on-text); }
+  @media (prefers-reduced-motion: reduce) { .tab { transition: none; } }
+
+  /* The text column: a readable measure, left-aligned in the full-width page */
+  main { padding-block: clamp(40px, 6vw, 96px) 0; }
+  .prose { max-width: 72ch; }
+  .prose h1 { font-family: var(--section-title); font-weight: 800; font-size: clamp(2.4rem, 5vw, 3.6rem); line-height: 1; color: var(--title); text-transform: uppercase; }
+  .updated { margin-top: 12px; color: var(--muted); font-size: 0.8rem; }
+  .lede { margin-top: 24px; font-size: 1.1rem; color: var(--text); }
+  .prose h2 {
+    margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-family: var(--wide); font-stretch: 125%; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em;
+    font-size: 0.95rem; color: var(--label);
+  }
+  .prose h2 + p { margin-top: 12px; }
+  .prose p + p { margin-top: 12px; }
+  .prose p { color: var(--label); }
+  .prose a { color: var(--text); text-underline-offset: 3px; }
+  .prose .back { margin-top: 44px; }
+
+  .foot-hud { margin-top: clamp(60px, 7vw, 140px); border-top: 1px solid var(--line); background: var(--deep); }
+  .foot-inner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 24px; padding-block: 14px; color: var(--muted); font-size: 0.8rem; }
+  .foot-inner a { color: var(--label); }
+  .foot-inner a.tab-on { color: var(--on-text); }
+  .foot-hud .tabs { margin-left: 0; }
+  .nowrap { white-space: nowrap; }
+  .stamp { display: flex; align-items: center; gap: 10px; margin-inline: auto; font-family: var(--mono); font-size: 0.6rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8a8a8a; }
+  @media (max-width: 980px) {
+    .foot-inner { flex-direction: column; align-items: center; text-align: center; }
+    .foot-hud .tabs { justify-content: center; }
+  }
+  @media (max-width: 760px) { .stamp { display: none; } }
+</style>
