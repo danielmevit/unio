@@ -1112,7 +1112,8 @@ const faqs = [
   }
   .slot-foot::before { content: ""; position: absolute; left: 5px; top: 4px; bottom: 4px; width: 2px; border-radius: 1px; background: var(--tone, var(--line-alt)); }
   .slot:hover svg { color: var(--tone, var(--text)); }
-  .slot svg { transition: color 0.2s; }
+  .slot svg { transition: color 0.12s ease-out; }
+  .slot:hover svg { transition-duration: 0s; }
   .slot svg { width: 32%; max-width: 64px; height: auto; fill: currentColor; }
   .slot-name { font-size: 0.6rem; text-align: center; line-height: 1.2; color: var(--text); }
   .slot:hover { background: var(--raised); color: var(--text); }
@@ -1171,7 +1172,7 @@ const faqs = [
     display: flex; justify-content: space-between; padding: 12px 2px;
     font-size: 0.82rem; text-decoration: none;
   }
-  .menu a:hover { background: var(--paper); padding-inline: 10px; border-radius: var(--r-xs); }
+  .menu a:hover { background: var(--paper); border-radius: var(--r-xs); box-shadow: -8px 0 0 var(--paper), 8px 0 0 var(--paper); }
   .console { display: flex; flex-direction: column; background: var(--deep); border: 1px solid var(--line); border-radius: var(--r-md); }
   .console .copy { border-radius: var(--r-sm); }
   .console-foot {
@@ -1231,7 +1232,13 @@ const faqs = [
   /* Hover: panels answer the pointer with a thicker edge and a lift in
      shade; tiles also take their agent's tone. */
   .slot, .card, .row, .intel li, .faq details, .map-panel, .btn, .tab, .menu a {
-    transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease, padding 0.18s ease;
+    transition: background-color 0.12s ease-out, border-color 0.12s ease-out, box-shadow 0.12s ease-out, color 0.12s ease-out, transform 0.12s ease-out;
+  }
+  /* Snappy: the hover state appears at once (only the tile lift eases in, 0.1 s);
+     leaving it fades out in 0.12 s so sweeping across cards doesn't flicker. Padding is
+     never animated (that would re-run layout on every frame). */
+  :is(.slot, .card, .row, .intel li, .faq details, .map-panel, .btn, .tab, .menu a):hover {
+    transition: background-color 0s, border-color 0s, box-shadow 0s, color 0s, transform 0.1s ease-out;
   }
   .card:hover, .row:hover, .intel li:hover, .faq details:hover, .map-panel:hover {
     border-color: var(--label); box-shadow: 0 0 0 1px var(--label); background-color: var(--raised);
@@ -1248,7 +1255,8 @@ const faqs = [
   .btn:not(.btn-on):hover, .tab:not(.tab-on):hover { border-color: var(--label); }
   @media (prefers-reduced-motion: reduce) {
     .slot:hover { transform: none; }
-    .slot, .card, .row, .intel li, .faq details, .map-panel, .btn, .tab, .menu a { transition: none; }
+    .slot, .card, .row, .intel li, .faq details, .map-panel, .btn, .tab, .menu a,
+    :is(.slot, .card, .row, .intel li, .faq details, .map-panel, .btn, .tab, .menu a):hover { transition: none; }
   }
 
   /* Responsive */

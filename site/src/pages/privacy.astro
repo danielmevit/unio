@@ -152,15 +152,16 @@ const builtOn = new Date().toISOString().slice(0, 10).split("-").reverse().join(
     border: 1px solid var(--line-alt); background: transparent; color: var(--label);
     font-family: var(--wide); font-stretch: 125%; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em;
     font-size: 0.66rem; text-decoration: none; border-radius: var(--r-xs);
-    transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+    transition: background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out;
   }
+  .tab:hover { transition-duration: 0s; }
   .tabs > .tab:first-child { border-top-left-radius: var(--r-out); border-bottom-left-radius: var(--r-out); }
   .tabs > .tab:last-child { border-top-right-radius: var(--r-out); border-bottom-right-radius: var(--r-out); }
   .tab:hover { background: var(--raised); color: var(--text); }
   .tab:not(.tab-on):hover { border-color: var(--label); }
   .tab-on { background: var(--on); border-color: var(--on); color: var(--on-text); }
   .tab-on:hover { background: var(--on-hover); color: var(--on-text); }
-  @media (prefers-reduced-motion: reduce) { .tab { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .tab, .tab:hover { transition: none; } }
 
   /* The text column: a readable measure, left-aligned in the full-width page */
   main { padding-block: clamp(40px, 6vw, 96px) 0; }
