@@ -122,7 +122,7 @@ unverified.
 
 ## A look around
 
-The [website](https://danielmevit.github.io/unio/) runs the real dashboard on
+The [website](https://unio.damt.xyz/) runs the real dashboard on
 a demo project that you can drag, zoom and click.
 
 **What needs you.** Every task with its run, checks and review, its state and
@@ -628,6 +628,14 @@ Continuing development of Unio itself with another AI? Paste the prompt from
 and [findings index](docs/RESEARCH-FINDINGS.md) hold the details.
 
 ![](docs/brand/patterns/line.svg)
+
+## Development & AI disclosure
+
+Unio is designed, directed and maintained by [damt.xyz](https://damt.xyz) with extensive use of generative AI tools, from start to finish: most of the code and tests, the documentation, packaging and build automation, the website, other marketing materials, and ongoing maintenance.
+
+Unlike damt.xyz's other apps, Unio is itself an AI tool: when you run it, it coordinates the AI coding agents you choose, and they work with your code through their providers. See the [privacy page](https://unio.damt.xyz/privacy/) for what that means for your data.
+
+Throughout, a real person steers the work and decides what is released.
 
 ## License
 

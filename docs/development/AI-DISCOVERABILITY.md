@@ -34,13 +34,13 @@ complete them. The detailed checklist below is retained for the eventual setup.
 ## 1. Publish and check the website
 
 - [ ] Publish the SEO changes and confirm the GitHub Pages deployment succeeds.
-- [ ] Open [Unio's homepage](https://danielmevit.github.io/unio/) in a browser
+- [ ] Open [Unio's homepage](https://unio.damt.xyz/) in a browser
   without signing in. Confirm its description, features and installation links
   are readable.
-- [ ] Open the [generated sitemap index](https://danielmevit.github.io/unio/sitemap-index.xml)
+- [ ] Open the [generated sitemap index](https://unio.damt.xyz/sitemap-index.xml)
   and the sitemap it references. Both should return successfully after deployment.
 - [ ] Confirm the sitemap lists real public pages using their canonical URLs.
-  The homepage is `https://danielmevit.github.io/unio/`, including the final slash.
+  The homepage is `https://unio.damt.xyz/`, including the final slash.
 - [ ] Keep the Google verification file at
   `site/public/googlecb41a1d9722becfd.html` and confirm its deployed copy remains
   accessible at `/unio/googlecb41a1d9722becfd.html`.
@@ -53,14 +53,14 @@ the HTML verification file published preserves that verification method.
 ## 2. Complete Google Search Console setup
 
 - [ ] Open [Google Search Console](https://search.google.com/search-console)
-  and select the verified property covering `https://danielmevit.github.io/unio/`.
+  and select the verified property covering `https://unio.damt.xyz/`.
 - [ ] Under **Sitemaps**, submit this full URL and check that Google can process it:
 
 ```text
-https://danielmevit.github.io/unio/sitemap-index.xml
+https://unio.damt.xyz/sitemap-index.xml
 ```
 
-- [ ] Inspect `https://danielmevit.github.io/unio/` with **URL Inspection**.
+- [ ] Inspect `https://unio.damt.xyz/` with **URL Inspection**.
   Use the live test if needed, resolve any indexing restriction, and select
   **Request indexing**.
 - [ ] Check **Settings → Search generative AI**. Choose **Include**, or confirm

@@ -2,11 +2,14 @@
 
 > Free, open-source tool that brings AI agents from different AI labs into one coordinated team. A lead agent delegates the work, worker agents execute in parallel on isolated branches, and agents from different labs review changes before you accept them.
 
-- Site: https://danielmevit.github.io/unio/
+- Site: https://unio.damt.xyz/
 - Source: https://github.com/danielmevit/unio
 - Releases: https://github.com/danielmevit/unio/releases
 - License: AGPL-3.0-only. Free and open source.
 - Author: Daniel Mevit
+- Development: built by damt.xyz with extensive use of generative AI tools (code, tests, documentation,
+  packaging, website, marketing materials, maintenance), steered by a real person who decides what is released.
+  Unio itself is an AI tool: it coordinates the AI coding agents you choose, which work through their providers.
 
 ## What Unio Does
 * **Multi-Lab Agent Fleet:** Connect coding agents from various AI labs (Claude Code, Codex, Grok, Antigravity, OpenCode, Mistral Vibe, GitHub Copilot) into a single unified workspace.

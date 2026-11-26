@@ -1,7 +1,7 @@
 name: Deploy Unio site to Pages
 
 # Builds the Astro site in site/ and publishes it to
-# https://danielmevit.github.io/unio
+# https://unio.damt.xyz/ (custom domain; danielmevit.github.io/unio/ redirects)
 
 on:
   push:

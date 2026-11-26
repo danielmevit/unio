@@ -33,4 +33,4 @@ User-agent: Omgili
 Allow: /
 
 # Sitemap location
-Sitemap: https://danielmevit.github.io/unio/sitemap.xml
+Sitemap: https://unio.damt.xyz/sitemap.xml

@@ -81,7 +81,7 @@ information is unavailable, say Unknown instead of inventing a percentage.
 
 ## Visual identity
 
-The rules behind the website (<https://danielmevit.github.io/unio/>) and the
+The rules behind the website (<https://unio.damt.xyz/>) and the
 dashboard's look; the logo and pattern files are in the
 [brand kit](brand/README.md). The source of
 truth for every value is the code named in each part; update this section
